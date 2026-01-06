@@ -8,6 +8,9 @@ This tool is designed for **one-time complete organization migrations** where yo
 
 ## Features
 
+- ✅ **Three operation modes**: Remote→Local, Local→Remote, Remote→Remote
+- ✅ **Automated dependency checks**: Detects and offers to install git and GitHub CLI
+- ✅ **Package manager detection**: Supports winget, Chocolatey, Homebrew, apt, yum, dnf
 - ✅ Duplicates all repositories with complete git history
 - ✅ Preserves all branches and tags
 - ✅ Maintains repository privacy settings (public/private)
@@ -22,88 +25,98 @@ This tool is designed for **one-time complete organization migrations** where yo
 
 ### Required Software
 
-1. **Python 3.7+**
-   - Check: `python --version`
+1. **Python 3.7+** (required to run the script)
+   - Check: `python --version` or `python3 --version`
 
-2. **GitHub CLI (`gh`)**
-   - Install on Windows: `winget install --id GitHub.cli`
-   - Install on macOS: `brew install gh`
-   - Install on Linux: See https://cli.github.com/
-   - Check: `gh --version`
+2. **GitHub CLI (`gh`)** - The script will check and offer to install automatically
+   - Supported package managers: winget, Chocolatey (Windows), Homebrew (macOS), apt/yum/dnf (Linux)
+   - Manual install: https://cli.github.com/
 
-3. **Git**
-   - Install: https://git-scm.com/downloads
-   - Check: `git --version`
+3. **Git** - The script will check and offer to install automatically
+   - Supported package managers: winget, Chocolatey (Windows), Homebrew (macOS), apt/yum/dnf (Linux)
+   - Manual install: https://git-scm.com/downloads
+
+### Automated Checks
+
+The script automatically checks for required tools and offers to install them if missing:
+- ✅ Detects available package managers (winget, Chocolatey, Homebrew, apt, yum, dnf)
+- ✅ Checks for git and GitHub CLI installation
+- ✅ Offers automated installation via detected package manager
+- ✅ Verifies GitHub authentication
+- ✅ Configures git to use GitHub credentials
 
 ### Authentication Setup
 
-Before running the script, authenticate with GitHub:
+**Before first use**, authenticate with GitHub:
 ```bash
 # Authenticate with GitHub (includes 2FA)
 gh auth login
 
-# Configure git to use gh credentials
-gh auth setup-git
-
-# Verify authentication
-gh auth status
+# The script will automatically run: gh auth setup-git
 ```
 
 ### Permissions Required
 
 - **Source organization**: Admin/Owner access (to read all repositories)
-- **Destination organization**: Admin/Owner access (to create repositories)
+- **Destination organization**: Admin/Owner access (to create repositories) - *only for Remote→Remote mode*
 
 ## Pre-flight Checklist
 
-Run these commands to verify everything is ready:
-```bash
-# 1. Verify gh is installed and authenticated
-gh --version
-gh auth status
+The script handles most checks automatically, but verify these before running:
 
-# 2. Verify git is installed
-git --version
-
-# 3. Ensure git uses gh credentials
-gh auth setup-git
-
-# 4. Test access to both organizations
-gh repo list SOURCE-ORG --limit 1
-gh repo list DEST-ORG --limit 1
-
-# 5. Check available disk space for temp directory
-# Ensure you have at least 3-5 GB free
-```
+1. **GitHub Authentication** - Run `gh auth login` if you haven't already
+2. **Disk Space** - Ensure you have at least 3-5 GB free in your target/temp directory
+3. **Organization Access** - Verify you have admin access to the organizations you'll be working with
 
 ## Usage
 
 1. **Run the script:**
-```bash
-   python github-org-duplicator.py
-```
+   
+   **Windows:**
+   ```batch
+   duplicate.bat
+   ```
+   
+   **Or directly:**
+   ```bash
+   python github_org_duplicator.py
+   ```
 
-2. **Follow the prompts:**
-   - Enter source organization name
-   - Enter destination organization name
-   - Review detailed repository tables (shows size, privacy, LFS status)
-   - Press ENTER to continue
-   - Specify temporary directory path (needs ~3-5 GB free space)
-   - Type "YES" to confirm and start migration
+2. **Select operation mode:**
+   - **1. Remote → Local**: Download all repos from a GitHub org to your disk
+   - **2. Local → Remote**: Upload local git repos to a GitHub org
+   - **3. Remote → Remote**: Migrate repos between two GitHub orgs (original conduit mode)
 
-3. **Monitor progress:**
-   - The script will process repositories one at a time
-   - Each repository shows: clone → create → push → cleanup
-   - Timing information is displayed for each repository
-   - Progress is logged to `migration_log.txt` and `migration_errors.txt`
+3. **Follow the prompts:**
+   - The script will check for required tools and offer installation if needed
+   - Enter organization names or directory paths as prompted
+   - Review repository information tables
+   - Specify target/temp directory (needs ~3-5 GB free space)
+   - Type "YES" to confirm and start
+
+4. **Monitor progress:**
+   - The script processes repositories one at a time
+   - Progress, timing, and status are displayed for each repository
+   - Progress is logged to mode-specific log files
 
 ## Output Files
 
-The script creates three tracking files:
+The script creates mode-specific tracking files:
 
-- **`completed_repos.txt`** - List of successfully migrated repositories (one per line)
+**Remote → Local mode:**
+- **`downloaded_repos.txt`** - List of successfully downloaded repositories
+- **`download_log.txt`** - Timestamped log of successful downloads
+- **`download_errors.txt`** - Timestamped log of failed downloads
+
+**Local → Remote mode:**
+- **`uploaded_repos.txt`** - List of successfully uploaded repositories
+- **`upload_log.txt`** - Timestamped log of successful uploads
+- **`upload_errors.txt`** - Timestamped log of failed uploads
+
+**Remote → Remote mode:**
+- **`completed_repos.txt`** - List of successfully migrated repositories
 - **`migration_log.txt`** - Timestamped log of successful migrations
-- **`migration_errors.txt`** - Timestamped log of failed migrations with error details
+- **`migration_errors.txt`** - Timestamped log of failed migrations
 
 ## Resuming After Interruption
 

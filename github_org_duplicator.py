@@ -55,15 +55,209 @@ def log_message(message, log_file):
 #     with open(log_file, 'a') as f:
 #         f.write(log_entry + '\n')
 
+def detect_package_manager():
+    """Detect available package manager on the system."""
+    import platform
+    system = platform.system().lower()
+    
+    if system == 'windows':
+        # Check for winget
+        try:
+            result = run_command(['winget', '--version'], check=False, capture=True)
+            if result.returncode == 0:
+                return 'winget'
+        except:
+            pass
+        
+        # Check for chocolatey
+        try:
+            result = run_command(['choco', '--version'], check=False, capture=True)
+            if result.returncode == 0:
+                return 'chocolatey'
+        except:
+            pass
+        
+        return None
+    
+    elif system == 'darwin':  # macOS
+        # Check for Homebrew
+        try:
+            result = run_command(['brew', '--version'], check=False, capture=True)
+            if result.returncode == 0:
+                return 'brew'
+        except:
+            pass
+        return None
+    
+    elif system == 'linux':
+        # Check for apt (Debian/Ubuntu)
+        try:
+            result = run_command(['apt', '--version'], check=False, capture=True)
+            if result.returncode == 0:
+                return 'apt'
+        except:
+            pass
+        
+        # Check for yum (RHEL/CentOS)
+        try:
+            result = run_command(['yum', '--version'], check=False, capture=True)
+            if result.returncode == 0:
+                return 'yum'
+        except:
+            pass
+        
+        # Check for dnf (Fedora)
+        try:
+            result = run_command(['dnf', '--version'], check=False, capture=True)
+            if result.returncode == 0:
+                return 'dnf'
+        except:
+            pass
+        
+        return None
+    
+    return None
+
+def get_install_command(tool, package_manager):
+    """Get installation command for a tool using the specified package manager."""
+    commands = {
+        'winget': {
+            'git': ['winget', 'install', '--id', 'Git.Git', '-e', '--source', 'winget'],
+            'gh': ['winget', 'install', '--id', 'GitHub.cli', '-e', '--source', 'winget']
+        },
+        'chocolatey': {
+            'git': ['choco', 'install', 'git', '-y'],
+            'gh': ['choco', 'install', 'gh', '-y']
+        },
+        'brew': {
+            'git': ['brew', 'install', 'git'],
+            'gh': ['brew', 'install', 'gh']
+        },
+        'apt': {
+            'git': ['sudo', 'apt', 'update', '&&', 'sudo', 'apt', 'install', '-y', 'git'],
+            'gh': ['sudo', 'apt', 'install', '-y', 'gh']
+        },
+        'yum': {
+            'git': ['sudo', 'yum', 'install', '-y', 'git'],
+            'gh': ['sudo', 'yum', 'install', '-y', 'gh']
+        },
+        'dnf': {
+            'git': ['sudo', 'dnf', 'install', '-y', 'git'],
+            'gh': ['sudo', 'dnf', 'install', '-y', 'gh']
+        }
+    }
+    
+    return commands.get(package_manager, {}).get(tool)
+
+def offer_installation(tool_name, package_manager):
+    """Offer to install a missing tool."""
+    install_cmd = get_install_command(tool_name, package_manager)
+    
+    if not install_cmd:
+        return False
+    
+    print(f"\n{tool_name} is not installed.")
+    
+    if package_manager == 'winget':
+        print(f"Would you like to install {tool_name} using winget?")
+        print(f"Command: {' '.join(install_cmd)}")
+    elif package_manager == 'chocolatey':
+        print(f"Would you like to install {tool_name} using Chocolatey?")
+        print(f"Command: {' '.join(install_cmd)}")
+    elif package_manager == 'brew':
+        print(f"Would you like to install {tool_name} using Homebrew?")
+        print(f"Command: {' '.join(install_cmd)}")
+    elif package_manager in ['apt', 'yum', 'dnf']:
+        print(f"Would you like to install {tool_name} using {package_manager}?")
+        print(f"Command: {' '.join(install_cmd)}")
+    
+    response = input("Install now? (y/n): ").strip().lower()
+    
+    if response in ['y', 'yes']:
+        try:
+            # Handle commands with && for apt (git installation)
+            if '&&' in ' '.join(install_cmd):
+                # Split on && and run separately
+                parts = ' '.join(install_cmd).split(' && ')
+                for part in parts:
+                    cmd_parts = part.strip().split()
+                    run_command(cmd_parts, check=True)
+            else:
+                run_command(install_cmd, check=True)
+            
+            print(f"✓ {tool_name} installation completed")
+            # Give it a moment to register in PATH
+            import time
+            time.sleep(2)
+            return True
+        except Exception as e:
+            print(f"✗ Installation failed: {str(e)}")
+            print("Please install manually and try again.")
+            return False
+    else:
+        print(f"Please install {tool_name} manually and try again.")
+        print(f"Visit: https://git-scm.com/downloads" if tool_name == 'git' else "https://cli.github.com/")
+        return False
+
+def check_git_installed():
+    """Verify git is installed, offer installation if missing."""
+    try:
+        run_command(['git', '--version'], check=True)
+        print("✓ git installed")
+        return True
+    except:
+        print("✗ git is not installed")
+        package_manager = detect_package_manager()
+        
+        if package_manager:
+            if offer_installation('git', package_manager):
+                # Verify installation worked
+                try:
+                    run_command(['git', '--version'], check=True)
+                    print("✓ git installed and verified")
+                    return True
+                except:
+                    print("ERROR: git installation verification failed")
+                    sys.exit(1)
+            else:
+                sys.exit(1)
+        else:
+            print("ERROR: git is not installed and no package manager detected.")
+            print("Please install git manually:")
+            print("  Windows: https://git-scm.com/download/win")
+            print("  macOS: https://git-scm.com/download/mac")
+            print("  Linux: Use your distribution's package manager")
+            sys.exit(1)
+
 def check_gh_installed():
-    """Verify gh CLI is installed."""
+    """Verify gh CLI is installed, offer installation if missing."""
     try:
         run_command(['gh', '--version'], check=True)
         print("✓ gh CLI installed")
+        return True
     except:
-        print("ERROR: gh CLI is not installed.")
-        print("Install from: https://cli.github.com/")
-        sys.exit(1)
+        print("✗ GitHub CLI (gh) is not installed")
+        package_manager = detect_package_manager()
+        
+        if package_manager:
+            if offer_installation('gh', package_manager):
+                # Verify installation worked
+                try:
+                    run_command(['gh', '--version'], check=True)
+                    print("✓ GitHub CLI installed and verified")
+                    return True
+                except:
+                    print("ERROR: GitHub CLI installation verification failed")
+                    sys.exit(1)
+            else:
+                sys.exit(1)
+        else:
+            print("ERROR: GitHub CLI is not installed and no package manager detected.")
+            print("Please install GitHub CLI manually:")
+            print("  Windows: winget install --id GitHub.cli")
+            print("  macOS: brew install gh")
+            print("  Linux: See https://cli.github.com/")
+            sys.exit(1)
 
 def check_gh_authenticated():
     """Verify gh is authenticated."""
@@ -381,52 +575,184 @@ def display_repo_table(repos, org_name):
     
     print()
 
+def scan_local_git_repos(directory_path):
+    """Scan a directory for git repositories (both regular and mirror)."""
+    repos = []
+    
+    if not os.path.exists(directory_path):
+        return repos
+    
+    for item in os.listdir(directory_path):
+        item_path = os.path.join(directory_path, item)
+        
+        if not os.path.isdir(item_path):
+            continue
+        
+        # Check if it's a mirror repo (ends with .git and is a bare repo)
+        if item.endswith('.git'):
+            git_dir = item_path
+            # Verify it's actually a git repo by checking for HEAD or config
+            if os.path.exists(os.path.join(git_dir, 'HEAD')) or os.path.exists(os.path.join(git_dir, 'config')):
+                repo_name = item[:-4]  # Remove .git suffix
+                repos.append({
+                    'name': repo_name,
+                    'path': git_dir,
+                    'is_mirror': True
+                })
+        else:
+            # Check if it's a regular repo (has .git subfolder)
+            git_dir = os.path.join(item_path, '.git')
+            if os.path.isdir(git_dir):
+                repos.append({
+                    'name': item,
+                    'path': item_path,
+                    'is_mirror': False
+                })
+    
+    return repos
+
 def main():
     print("=" * 60)
-    print("GitHub Organization Repository Migration")
+    print("GitHub Organization Repository Tool")
     print("=" * 60)
     print()
     
     # Check prerequisites
+    check_git_installed()
     check_gh_installed()
     check_gh_authenticated()
     setup_git_credentials()
     print()
     
-    # Get user input
-    source_org = input("Source organization name: ").strip()
-    dest_org = input("Destination organization name: ").strip()
+    # Mode selection
+    print("Select operation mode:")
+    print("  1. Remote → Local (download repos to disk)")
+    print("  2. Local → Remote (upload repos from disk to GitHub org)")
+    print("  3. Remote → Remote (migrate between GitHub orgs)")
+    print()
+    mode_choice = input("Mode (1, 2, or 3): ").strip()
+    
+    if mode_choice == "1":
+        operation_mode = 'download'
+    elif mode_choice == "2":
+        operation_mode = 'upload'
+    elif mode_choice == "3":
+        operation_mode = 'migrate'
+    else:
+        print("ERROR: Invalid mode selection. Please choose 1, 2, or 3.")
+        sys.exit(1)
     
     print()
     
-    # Check access to both orgs
-    print("Verifying organization access...")
-    check_org_access(source_org)
-    print(f"✓ Admin rights confirmed for {source_org}")
-    check_org_access(dest_org)
-    print(f"✓ Admin rights confirmed for {dest_org}")
-    print()
-    
-    # Detect repos in both orgs
-    print("Detecting repos in both orgs...")
-    source_repos = get_repos_with_details(source_org)
-    dest_repos = get_repos_with_details(dest_org)
-    
-    print(f"✓ {len(source_repos)} repos found in {source_org}")
-    print(f"✓ {len(dest_repos)} repos found in {dest_org}")
-    print()
+    # Conditional input collection based on mode
+    if operation_mode == 'download':
+        # Remote → Local: Only need source org
+        source_org = input("Source organization name: ").strip()
+        dest_org = None
+        
+        print()
+        print("Verifying organization access...")
+        check_org_access(source_org)
+        print(f"✓ Admin rights confirmed for {source_org}")
+        print()
+        
+        # Detect repos in source org
+        print("Detecting repos...")
+        source_repos = get_repos_with_details(source_org)
+        dest_repos = []
+        
+        print(f"✓ {len(source_repos)} repos found in {source_org}")
+        print()
+        
+        # Format selection for download mode
+        print("Download format:")
+        print("  1. Working repositories (regular clone)")
+        print("  2. Mirror repositories (--mirror, archival)")
+        print()
+        format_choice = input("Format (1 or 2): ").strip()
+        
+        if format_choice == "2":
+            use_mirror = True
+        else:
+            use_mirror = False
+        
+        print()
+        
+    elif operation_mode == 'upload':
+        # Local → Remote: Need source directory and dest org
+        source_dir = input("Source directory path (scan for git repos): ").strip()
+        source_dir = os.path.expanduser(source_dir)
+        
+        if not os.path.exists(source_dir):
+            print(f"ERROR: Directory does not exist: {source_dir}")
+            sys.exit(1)
+        if not os.path.isdir(source_dir):
+            print(f"ERROR: {source_dir} is not a directory")
+            sys.exit(1)
+        
+        dest_org = input("Destination organization name: ").strip()
+        source_org = None
+        
+        print()
+        print("Verifying organization access...")
+        check_org_access(dest_org)
+        print(f"✓ Admin rights confirmed for {dest_org}")
+        print()
+        
+        # Scan local directory for git repos
+        print("Scanning directory for git repositories...")
+        local_repos = scan_local_git_repos(source_dir)
+        source_repos = local_repos  # Reuse variable name for consistency
+        dest_repos = []
+        
+        print(f"✓ {len(source_repos)} git repositories found")
+        print()
+        
+    else:  # operation_mode == 'migrate'
+        # Remote → Remote: Need both orgs (existing behavior)
+        source_org = input("Source organization name: ").strip()
+        dest_org = input("Destination organization name: ").strip()
+        
+        print()
+        
+        # Check access to both orgs
+        print("Verifying organization access...")
+        check_org_access(source_org)
+        print(f"✓ Admin rights confirmed for {source_org}")
+        check_org_access(dest_org)
+        print(f"✓ Admin rights confirmed for {dest_org}")
+        print()
+        
+        # Detect repos in both orgs
+        print("Detecting repos in both orgs...")
+        source_repos = get_repos_with_details(source_org)
+        dest_repos = get_repos_with_details(dest_org)
+        
+        print(f"✓ {len(source_repos)} repos found in {source_org}")
+        print(f"✓ {len(dest_repos)} repos found in {dest_org}")
+        print()
 
-    # Initialize tracking files
-    completed_file = 'completed_repos.txt'
-    error_log = 'migration_errors.txt'
-    success_log = 'migration_log.txt'
+    # Initialize tracking files based on mode
+    if operation_mode == 'download':
+        completed_file = 'downloaded_repos.txt'
+        error_log = 'download_errors.txt'
+        success_log = 'download_log.txt'
+    elif operation_mode == 'upload':
+        completed_file = 'uploaded_repos.txt'
+        error_log = 'upload_errors.txt'
+        success_log = 'upload_log.txt'
+    else:  # migrate
+        completed_file = 'completed_repos.txt'
+        error_log = 'migration_errors.txt'
+        success_log = 'migration_log.txt'
 
-    # Check for conflicts (case-insensitive)
-    source_names = {repo['name'].lower(): repo['name'] for repo in source_repos}
-    dest_names = {repo['name'].lower(): repo['name'] for repo in dest_repos}
-    conflicts = set(source_names.keys()) & set(dest_names.keys())
+    # Check for conflicts (case-insensitive) - only for migrate mode
+    if operation_mode == 'migrate':
+        source_names = {repo['name'].lower(): repo['name'] for repo in source_repos}
+        dest_names = {repo['name'].lower(): repo['name'] for repo in dest_repos}
+        conflicts = set(source_names.keys()) & set(dest_names.keys())
 
-    if conflicts:
+        if conflicts:
         print()
         print("=" * 60)
         print("Matching repository names found. Verifying if duplicates...")
@@ -468,8 +794,9 @@ def main():
                     with open(completed_file, 'a') as f:
                         f.write(f"{repo_name}\n")
             print()
-    else:
-        print("✓ No conflicts!")
+        else:
+            print("✓ No conflicts!")
+            print()
             
     # # Check for conflicts (case-insensitive)
     # source_names = {repo['name'].lower(): repo['name'] for repo in source_repos}
@@ -488,29 +815,63 @@ def main():
     # print("✓ No conflicts!")
     
     # Display detailed tables
-    display_repo_table(source_repos, source_org)
-    display_repo_table(dest_repos, dest_org)
+    if operation_mode == 'download':
+        display_repo_table(source_repos, source_org)
+    elif operation_mode == 'upload':
+        # Display table of local repos
+        print()
+        print("=" * 100)
+        print("Local Git Repositories Found")
+        print("=" * 100)
+        if not source_repos:
+            print("No git repositories found.")
+        else:
+            print(f"{'#':<4} {'Name':<40} {'Type':<12} {'Path':<50}")
+            print("-" * 100)
+            for idx, repo in enumerate(sorted(source_repos, key=lambda r: r['name']), 1):
+                repo_type = "Mirror" if repo.get('is_mirror', False) else "Regular"
+                path_display = repo['path'][:49] if len(repo['path']) > 49 else repo['path']
+                print(f"{idx:<4} {repo['name']:<40} {repo_type:<12} {path_display:<50}")
+            print("=" * 100)
+            print(f"Total: {len(source_repos)} repositories")
+        print()
+    else:  # migrate
+        display_repo_table(source_repos, source_org)
+        display_repo_table(dest_repos, dest_org)
     
     # Pause for user review
     print()
     print("=" * 60)
     print("Review the repository information above.")
     print("=" * 60)
-    input("Press ENTER to continue to migration setup...")
+    if operation_mode == 'download':
+        input("Press ENTER to continue to download setup...")
+    elif operation_mode == 'upload':
+        input("Press ENTER to continue to upload setup...")
+    else:
+        input("Press ENTER to continue to migration setup...")
     print()
     
-    # Get temp directory
-    temp_dir = input("Temporary directory path (for cloning): ").strip()
-    temp_dir = os.path.expanduser(temp_dir)
+    # Get directory based on mode
+    if operation_mode == 'download':
+        temp_dir = input("Target directory path (repos will be saved here): ").strip()
+    elif operation_mode == 'upload':
+        # Source directory already collected earlier, but we need it stored
+        temp_dir = source_dir  # Reuse variable name for consistency
+    else:  # migrate
+        temp_dir = input("Temporary directory path (for cloning): ").strip()
     
-    # Verify temp directory
-    if not os.path.exists(temp_dir):
-        print(f"\nCreating directory: {temp_dir}")
-        os.makedirs(temp_dir)
-    
-    if not os.path.isdir(temp_dir):
-        print(f"ERROR: {temp_dir} is not a directory")
-        sys.exit(1)
+    if operation_mode != 'upload':
+        temp_dir = os.path.expanduser(temp_dir)
+        
+        # Verify directory
+        if not os.path.exists(temp_dir):
+            print(f"\nCreating directory: {temp_dir}")
+            os.makedirs(temp_dir)
+        
+        if not os.path.isdir(temp_dir):
+            print(f"ERROR: {temp_dir} is not a directory")
+            sys.exit(1)
     
     print()
     
@@ -522,7 +883,12 @@ def main():
         print(f"{len(completed_repos)} repos already completed")
         print(f"{len(remaining_repos)} repos remaining")
     else:
-        print(f"Ready to copy {len(remaining_repos)} repos from {source_org} to {dest_org}")
+        if operation_mode == 'download':
+            print(f"Ready to download {len(remaining_repos)} repos from {source_org}")
+        elif operation_mode == 'upload':
+            print(f"Ready to upload {len(remaining_repos)} repos to {dest_org}")
+        else:  # migrate
+            print(f"Ready to copy {len(remaining_repos)} repos from {source_org} to {dest_org}")
     
     print()
     
@@ -534,12 +900,21 @@ def main():
     
     print()
     print("=" * 60)
-    print("Starting migration...")
+    if operation_mode == 'download':
+        print("Starting download...")
+    elif operation_mode == 'upload':
+        print("Starting upload...")
+    else:  # migrate
+        print("Starting migration...")
     print("=" * 60)
     print()
     
-    # Sort by creation date (oldest first)
-    remaining_repos.sort(key=lambda r: r['createdAt'])
+    # Sort by creation date (oldest first) - only for download and migrate modes
+    if operation_mode != 'upload':
+        remaining_repos.sort(key=lambda r: r.get('createdAt', ''))
+    else:
+        # For upload mode, sort by name
+        remaining_repos.sort(key=lambda r: r['name'])
     
     # Statistics
     total_repos = len(remaining_repos)
@@ -549,145 +924,280 @@ def main():
     # Main loop
     for idx, repo in enumerate(remaining_repos, 1):
         repo_name = repo['name']
-        is_private = repo['isPrivate']
-        description = repo.get('description', '') or ''
-        uses_lfs = repo.get('uses_lfs', False)
-        repo_size = format_size(repo.get('diskUsage', 0))
-        
-        print(f"[{idx}/{total_repos}] Processing: {repo_name} [{repo_size}]")
-        if uses_lfs:
-            print(f"  ⚠ This repo uses Git LFS")
-        
-        repo_temp_path = os.path.join(temp_dir, repo_name)
         start_time = time.time()
         
-        try:
-            # Step 1: Clone from source org
-            print(f"  → Cloning from {source_org}...")
-
-            # Clean up any leftover temp directory first
-            if os.path.exists(repo_temp_path):
-                print(f"  → Cleaning up leftover temp directory...")
-                shutil.rmtree(repo_temp_path, ignore_errors=True)
-
+        # Get repo info based on mode
+        if operation_mode == 'download':
+            is_private = repo['isPrivate']
+            description = repo.get('description', '') or ''
+            uses_lfs = repo.get('uses_lfs', False)
+            repo_size = format_size(repo.get('diskUsage', 0))
+            
+            print(f"[{idx}/{total_repos}] Processing: {repo_name} [{repo_size}]")
+            if uses_lfs:
+                print(f"  ⚠ This repo uses Git LFS")
+            
+            # Determine final path based on format
+            if use_mirror:
+                repo_final_path = os.path.join(temp_dir, f"{repo_name}.git")
+            else:
+                repo_final_path = os.path.join(temp_dir, repo_name)
+            
+            # Clean up any leftover directory first
+            if os.path.exists(repo_final_path):
+                print(f"  → Cleaning up leftover directory...")
+                shutil.rmtree(repo_final_path, ignore_errors=True)
+            
             clone_url = f"https://github.com/{source_org}/{repo_name}.git"
-
-            # # Step 1: Clone from source org
-            # print(f"  → Cloning from {source_org}...")
-            # clone_url = f"https://github.com/{source_org}/{repo_name}.git"
             
-            # Retry logic for clone
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    run_command(
-                        ['git', 'clone', '--mirror', clone_url, repo_temp_path],
-                        check=True
-                    )
-                    break
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        print(f"  → Clone attempt {attempt + 1} failed, retrying...")
-                        time.sleep(5)
-                    else:
-                        raise
+            try:
+                # Clone directly to final location
+                print(f"  → Cloning from {source_org}...")
+                
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        if use_mirror:
+                            run_command(
+                                ['git', 'clone', '--mirror', clone_url, repo_final_path],
+                                check=True
+                            )
+                        else:
+                            run_command(
+                                ['git', 'clone', clone_url, repo_final_path],
+                                check=True
+                            )
+                        break
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            print(f"  → Clone attempt {attempt + 1} failed, retrying...")
+                            time.sleep(5)
+                        else:
+                            raise
+                
+                # Mark as complete (no cleanup for download mode)
+                with open(completed_file, 'a') as f:
+                    f.write(f"{repo_name}\n")
+                
+                elapsed = time.time() - start_time
+                success_msg = f"✓ {repo_name} complete (took {elapsed:.1f}s)"
+                log_message(success_msg, success_log)
+                print()
+                successful += 1
+                
+            except Exception as e:
+                # Don't clean up on failure for download mode (keep partial work)
+                elapsed = time.time() - start_time
+                error_msg = f"✗ {repo_name} FAILED after {elapsed:.1f}s: {str(e)}"
+                log_message(error_msg, error_log)
+                print()
+                failed += 1
+                continue
+                
+        elif operation_mode == 'upload':
+            repo_path = repo['path']
+            is_mirror = repo.get('is_mirror', False)
             
-            # Step 2: Create repo in dest org
-            print(f"  → Creating in {dest_org}...")
-            visibility = "--private" if is_private else "--public"
-            cmd = ['gh', 'repo', 'create', f"{dest_org}/{repo_name}", visibility, '--clone=false']
+            print(f"[{idx}/{total_repos}] Processing: {repo_name}")
+            if is_mirror:
+                print(f"  → Mirror repository")
             
-            # Handle description with potential quotes
-            if description:
-                safe_description = description.replace('"', "'")
-                cmd.extend(['--description', safe_description])
-            
-            run_command(cmd, check=True)
-            
-            # Step 3: Push to dest org (excluding pull request refs)
-            print(f"  → Pushing to {dest_org}...")
-            push_url = f"https://github.com/{dest_org}/{repo_name}.git"
-
-            # Retry logic for push
-            for attempt in range(max_retries):
-                try:
-                    # First, get list of all refs
-                    result = run_command(
-                        ['git', '-C', repo_temp_path, 'for-each-ref', '--format=%(refname)', 'refs/'],
-                        check=True
-                    )
-                    
-                    # Filter out pull request refs
-                    all_refs = result.stdout.strip().split('\n')
-                    good_refs = [ref for ref in all_refs if not ref.startswith('refs/pull/')]
-                    
-                    # Push only the good refs
-                    if good_refs:
-                        run_command(
-                            ['git', '-C', repo_temp_path, 'push', push_url] + good_refs,
+            try:
+                # Step 1: Create repo in dest org (default to private)
+                print(f"  → Creating in {dest_org}...")
+                cmd = ['gh', 'repo', 'create', f"{dest_org}/{repo_name}", '--private', '--clone=false']
+                
+                # Check if repo already exists
+                result = run_command(
+                    ['gh', 'repo', 'view', f"{dest_org}/{repo_name}"],
+                    check=False
+                )
+                if result.returncode == 0:
+                    print(f"  → Repository already exists, skipping creation")
+                else:
+                    run_command(cmd, check=True)
+                
+                # Step 2: Push all refs to dest org (excluding pull request refs)
+                print(f"  → Pushing to {dest_org}...")
+                push_url = f"https://github.com/{dest_org}/{repo_name}.git"
+                
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        # Get list of all refs
+                        result = run_command(
+                            ['git', '-C', repo_path, 'for-each-ref', '--format=%(refname)', 'refs/'],
                             check=True
                         )
-                    break
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        print(f"  → Push attempt {attempt + 1} failed, retrying...")
-                        time.sleep(5)
-                    else:
-                        raise
+                        
+                        # Filter out pull request refs
+                        all_refs = result.stdout.strip().split('\n')
+                        good_refs = [ref for ref in all_refs if ref and not ref.startswith('refs/pull/')]
+                        
+                        # Push only the good refs
+                        if good_refs:
+                            run_command(
+                                ['git', '-C', repo_path, 'push', push_url] + good_refs,
+                                check=True
+                            )
+                        break
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            print(f"  → Push attempt {attempt + 1} failed, retrying...")
+                            time.sleep(5)
+                        else:
+                            raise
+                
+                # Mark as complete (no cleanup for upload mode)
+                with open(completed_file, 'a') as f:
+                    f.write(f"{repo_name}\n")
+                
+                elapsed = time.time() - start_time
+                success_msg = f"✓ {repo_name} complete (took {elapsed:.1f}s)"
+                log_message(success_msg, success_log)
+                print()
+                successful += 1
+                
+            except Exception as e:
+                # Don't clean up on failure for upload mode
+                elapsed = time.time() - start_time
+                error_msg = f"✗ {repo_name} FAILED after {elapsed:.1f}s: {str(e)}"
+                log_message(error_msg, error_log)
+                print()
+                failed += 1
+                continue
+                
+        else:  # operation_mode == 'migrate'
+            is_private = repo['isPrivate']
+            description = repo.get('description', '') or ''
+            uses_lfs = repo.get('uses_lfs', False)
+            repo_size = format_size(repo.get('diskUsage', 0))
+            
+            print(f"[{idx}/{total_repos}] Processing: {repo_name} [{repo_size}]")
+            if uses_lfs:
+                print(f"  ⚠ This repo uses Git LFS")
+            
+            repo_temp_path = os.path.join(temp_dir, repo_name)
+            
+            try:
+                # Step 1: Clone from source org
+                print(f"  → Cloning from {source_org}...")
 
-            # # Step 3: Push to dest org
-            # print(f"  → Pushing to {dest_org}...")
-            # push_url = f"https://github.com/{dest_org}/{repo_name}.git"
-            
-            # # Retry logic for push
-            # for attempt in range(max_retries):
-            #     try:
-            #         run_command(
-            #             ['git', '-C', repo_temp_path, 'push', '--mirror', push_url],
-            #             check=True
-            #         )
-            #         break
-            #     except Exception as e:
-            #         if attempt < max_retries - 1:
-            #             print(f"  → Push attempt {attempt + 1} failed, retrying...")
-            #             time.sleep(5)
-            #         else:
-            #             raise
-            
-            # Step 4: Clean up temp directory
-            print(f"  → Cleaning up...")
-            if os.path.exists(repo_temp_path):
-                shutil.rmtree(repo_temp_path, ignore_errors=True)
-            
-            # Step 5: Mark as complete
-            with open(completed_file, 'a') as f:
-                f.write(f"{repo_name}\n")
-            
-            elapsed = time.time() - start_time
-            success_msg = f"✓ {repo_name} complete (took {elapsed:.1f}s)"
-            log_message(success_msg, success_log)
-            print()
-            successful += 1
-            
-        except Exception as e:
-            # Clean up on failure
-            if os.path.exists(repo_temp_path):
-                shutil.rmtree(repo_temp_path, ignore_errors=True)
-            
-            elapsed = time.time() - start_time
-            error_msg = f"✗ {repo_name} FAILED after {elapsed:.1f}s: {str(e)}"
-            log_message(error_msg, error_log)
-            print()
-            failed += 1
-            continue
+                # Clean up any leftover temp directory first
+                if os.path.exists(repo_temp_path):
+                    print(f"  → Cleaning up leftover temp directory...")
+                    shutil.rmtree(repo_temp_path, ignore_errors=True)
+
+                clone_url = f"https://github.com/{source_org}/{repo_name}.git"
+                
+                # Retry logic for clone
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        run_command(
+                            ['git', 'clone', '--mirror', clone_url, repo_temp_path],
+                            check=True
+                        )
+                        break
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            print(f"  → Clone attempt {attempt + 1} failed, retrying...")
+                            time.sleep(5)
+                        else:
+                            raise
+                
+                # Step 2: Create repo in dest org
+                print(f"  → Creating in {dest_org}...")
+                visibility = "--private" if is_private else "--public"
+                cmd = ['gh', 'repo', 'create', f"{dest_org}/{repo_name}", visibility, '--clone=false']
+                
+                # Handle description with potential quotes
+                if description:
+                    safe_description = description.replace('"', "'")
+                    cmd.extend(['--description', safe_description])
+                
+                run_command(cmd, check=True)
+                
+                # Step 3: Push to dest org (excluding pull request refs)
+                print(f"  → Pushing to {dest_org}...")
+                push_url = f"https://github.com/{dest_org}/{repo_name}.git"
+
+                # Retry logic for push
+                for attempt in range(max_retries):
+                    try:
+                        # First, get list of all refs
+                        result = run_command(
+                            ['git', '-C', repo_temp_path, 'for-each-ref', '--format=%(refname)', 'refs/'],
+                            check=True
+                        )
+                        
+                        # Filter out pull request refs
+                        all_refs = result.stdout.strip().split('\n')
+                        good_refs = [ref for ref in all_refs if ref and not ref.startswith('refs/pull/')]
+                        
+                        # Push only the good refs
+                        if good_refs:
+                            run_command(
+                                ['git', '-C', repo_temp_path, 'push', push_url] + good_refs,
+                                check=True
+                            )
+                        break
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            print(f"  → Push attempt {attempt + 1} failed, retrying...")
+                            time.sleep(5)
+                        else:
+                            raise
+                
+                # Step 4: Clean up temp directory
+                print(f"  → Cleaning up...")
+                if os.path.exists(repo_temp_path):
+                    shutil.rmtree(repo_temp_path, ignore_errors=True)
+                
+                # Step 5: Mark as complete
+                with open(completed_file, 'a') as f:
+                    f.write(f"{repo_name}\n")
+                
+                elapsed = time.time() - start_time
+                success_msg = f"✓ {repo_name} complete (took {elapsed:.1f}s)"
+                log_message(success_msg, success_log)
+                print()
+                successful += 1
+                
+            except Exception as e:
+                # Clean up on failure for migrate mode
+                if os.path.exists(repo_temp_path):
+                    shutil.rmtree(repo_temp_path, ignore_errors=True)
+                
+                elapsed = time.time() - start_time
+                error_msg = f"✗ {repo_name} FAILED after {elapsed:.1f}s: {str(e)}"
+                log_message(error_msg, error_log)
+                print()
+                failed += 1
+                continue
     
     # Final summary
     print("=" * 60)
-    print("Migration Complete")
-    print("=" * 60)
-    print(f"Total processed: {total_repos}")
-    print(f"Successful: {successful}")
-    print(f"Failed: {failed}")
+    if operation_mode == 'download':
+        print("Download Complete")
+        print("=" * 60)
+        print(f"Total processed: {total_repos}")
+        print(f"Successful: {successful}")
+        print(f"Failed: {failed}")
+        print(f"\nRepositories saved to: {temp_dir}")
+    elif operation_mode == 'upload':
+        print("Upload Complete")
+        print("=" * 60)
+        print(f"Total processed: {total_repos}")
+        print(f"Successful: {successful}")
+        print(f"Failed: {failed}")
+        print(f"\nRepositories uploaded from: {temp_dir}")
+    else:  # migrate
+        print("Migration Complete")
+        print("=" * 60)
+        print(f"Total processed: {total_repos}")
+        print(f"Successful: {successful}")
+        print(f"Failed: {failed}")
     
     if failed > 0:
         print(f"\nSee {error_log} for error details")
