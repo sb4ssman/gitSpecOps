@@ -1,149 +1,146 @@
 # gitSpecOps
 
-Small local tools for maintaining Git archive folders and duplicating GitHub organizations.
+Small local special Git operations tools.
 
-Runtime requirements:
+- GitHub Organization Duplicator
+  - Copying whole GitHub organizations to disk or into another GitHub organization.
+- Archive Updater
+  - Keeping local folders full of cloned repositories refreshed in a controlled way.
 
-- `uv`
-- `git`
-- `gh` for the GitHub org duplicator
+The repo is intentionally plain. There is no package CLI, no hidden service, and no database. The tools are regular Python scripts launched through small generated `.bat` or `.sh` files.
 
-## Setup
+## Quick Start
 
-Run setup from the repo root:
+Install `uv`, `git`, and GitHub CLI (`gh`). Authenticate GitHub CLI if you plan to use the org duplicator:
+
+```powershell
+gh auth login
+```
+
+From the repo root, generate the local launchers:
 
 ```powershell
 .\run_setup.bat
 ```
 
-Equivalent direct command:
-
-```powershell
-uv run python setup_gitspecops.py
-```
-
-Setup detects the current OS and writes one launcher type. On Windows it writes:
+On Windows this writes:
 
 - `gitArchiveUpdater\update-archive.bat`
 - `gitArchiveUpdater\manage-archives.bat`
 - `github-org-duplicator\duplicate-github-org.bat`
 
-Setup only overwrites those expected launchers.
+Setup detects the current operating system and writes only that system's launcher type. Running setup again simply overwrites those expected launchers.
 
-## Layout
+## What Is Here
 
-Archive tools:
+There are three working Python tool files:
 
-- `gitArchiveUpdater\archive_updater.py`
-- `gitArchiveUpdater\archive_manager.py`
-- `gitArchiveUpdater\update-archive.bat`
-- `gitArchiveUpdater\manage-archives.bat`
+- `gitArchiveUpdater\archive_updater.py`: scans archive folders and optionally fast-forward pulls eligible repos.
+- `gitArchiveUpdater\archive_manager.py`: installs archive-local update launchers, tracks managed archives, refreshes all managed archives, and manages the optional scheduled refresh.
+- `github-org-duplicator\github_org_duplicator.py`: walks a user through copying repositories between GitHub orgs and local folders.
 
-GitHub org duplicator:
+Supporting files:
 
-- `github-org-duplicator\github_org_duplicator.py`
-- `github-org-duplicator\duplicate-github-org.bat`
-
-Legacy source snapshots:
-
-- `_legacy_sources\`
+- `setup_gitspecops.py`: writes the launcher scripts.
+- `run_setup.bat`, `run_setup.ps1`, `run_setup.sh`: convenient setup entry points.
+- `_legacy_sources\`: older source snapshots kept only for reference.
 
 ## Archive Updater
 
-`archive_updater.py` scans one or more archive roots. Each archive root should contain sibling Git repo folders.
+The archive updater is the low-level repo refresh tool. Give it one or more archive roots. Each archive root should be a folder whose direct children are Git repositories.
 
-For each direct child folder, it checks:
+Example:
+
+```powershell
+.\gitArchiveUpdater\update-archive.bat --root T:\Github\Archive-Public --default-output-dir
+```
+
+Under the hood, `archive_updater.py` inspects each direct child folder and only marks it updateable when all of these are true:
 
 - the child is a Git work tree rooted at that folder
-- an `origin` remote exists
-- the `origin` starts with an approved prefix, defaulting to `https://github.com/`
-- the working tree and index are clean
+- it has an `origin` remote
+- the remote starts with an approved prefix, defaulting to `https://github.com/`
+- the work tree is clean
+- the index is clean
 
-In update mode, eligible repos run:
+Repos that fail any check are skipped and explained in the console output and JSON report.
+
+When updating, it runs:
 
 ```powershell
 git fetch --dry-run origin
 git pull --ff-only
 ```
 
-It never merges, rebases, resets, force-pushes, installs dependencies, or runs project code.
+It does not merge, rebase, reset, force-push, install dependencies, run project code, or recurse into nested folders. Git commands time out after 45 seconds by default; use `--git-timeout` to change that.
 
-Git subprocess calls time out after 45 seconds by default. Override with:
-
-```powershell
-uv run python gitArchiveUpdater\archive_updater.py --root T:\Github\Archive --git-timeout 90
-```
-
-Reports:
-
-- Console inventory and summary are always printed.
-- JSON reports are written when `--output-dir` or `--default-output-dir` is provided.
-- Reports include elapsed timing and the Git timeout setting.
-- Archive-local launchers installed by the manager write reports to:
+Reports are written only when an output directory is provided. Archive-local launchers installed by the manager write reports here:
 
 ```text
 ARCHIVE_ROOT\.gitSpecOps\archive-updates\archive-update-YYYYMMDD-HHMMSS.json
 ```
 
+Reports include the root, eligible repos, skipped repos, update results, elapsed time, and Git timeout setting.
+
 ## Archive Manager
 
-Run the dashboard:
+The archive manager is the friendly front door for archive folders.
+
+Run it with:
 
 ```powershell
 .\gitArchiveUpdater\manage-archives.bat
 ```
 
-Direct command:
+The dashboard shows known archive folders, install time, repo count at install, launcher status, last refresh result, elapsed time, and latest report.
 
-```powershell
-uv run python gitArchiveUpdater\archive_manager.py
+Main actions:
+
+- install or refresh an archive-local `update_archive.bat`
+- scan all managed archives without pulling
+- update all managed archives
+- show detailed status
+- write a refresh-all script
+- create, inspect, or remove the monthly Windows scheduled refresh
+
+When you install an archive, the manager:
+
+1. accepts an archive folder path
+2. verifies the folder exists and is not itself a Git repo
+3. scans direct child folders with progress output
+4. writes `update_archive.bat` into that archive folder
+5. stores the archive in `gitArchiveUpdater\managed_archives.json`
+
+The archive-local launcher pins the target archive root and writes that archive's reports into the archive itself:
+
+```text
+ARCHIVE_ROOT\update_archive.bat
+ARCHIVE_ROOT\.gitSpecOps\archive-updates\
 ```
 
-The dashboard shows managed archive roots, install time, repo count, launcher status, last run, last result, elapsed time, and latest report time.
+The manager registry stays local to this repo:
 
-Actions:
-
-- Install or refresh an archive launcher.
-- Scan all managed archives.
-- Update all managed archives.
-- Show detailed status.
-- Write a refresh-all script.
-- Create a monthly Windows scheduled refresh.
-- Show scheduled refresh status.
-- Remove scheduled refresh.
-
-Install directly:
-
-```powershell
-uv run python gitArchiveUpdater\archive_manager.py --install T:\Github\Archive
+```text
+gitArchiveUpdater\managed_archives.json
 ```
 
-Installing an archive:
+Manager logs live here:
 
-- validates the folder is not itself a Git repo
-- scans direct children with progress output
-- writes `update_archive.bat` into that archive folder on Windows
-- records the archive in `gitArchiveUpdater\managed_archives.json`
-
-The archive-local `update_archive.bat` calls:
-
-```powershell
-uv run python gitArchiveUpdater\archive_updater.py --root ARCHIVE_ROOT --output-dir ARCHIVE_ROOT\.gitSpecOps\archive-updates
+```text
+gitArchiveUpdater\runs\archive-manager.log
 ```
 
-Refresh all managed archives:
+Refresh-all runs call `archive_updater.py` once per managed archive, then update the registry with the last run time, result, elapsed time, and latest report path.
 
-```powershell
-uv run python gitArchiveUpdater\archive_manager.py --refresh-all
+### Scheduling
+
+On Windows, the manager can write `gitArchiveUpdater\refresh-managed-archives.bat` and register it with Task Scheduler. The default task name is:
+
+```text
+gitSpecOps Archive Refresh
 ```
 
-Scan without pulling:
-
-```powershell
-uv run python gitArchiveUpdater\archive_manager.py --refresh-all --scan-only
-```
-
-Scheduling:
+Useful direct commands:
 
 ```powershell
 uv run python gitArchiveUpdater\archive_manager.py --write-refresh-all-script
@@ -152,79 +149,58 @@ uv run python gitArchiveUpdater\archive_manager.py --task-status
 uv run python gitArchiveUpdater\archive_manager.py --remove-task
 ```
 
-The default task name is `gitSpecOps Archive Refresh`.
+Task creation and removal are explicit. The manager does not silently install background jobs.
 
-Current Windows scheduled task:
+## GitHub Organization Duplicator
 
-- Name: `gitSpecOps Archive Refresh`
-- Schedule: monthly on day `1` at `09:00`
-- Next verified run: `2026-07-01 09:00`
-- Action: `gitArchiveUpdater\refresh-managed-archives.bat`
-
-Inspect or remove it with:
-
-```powershell
-uv run python gitArchiveUpdater\archive_manager.py --task-status
-uv run python gitArchiveUpdater\archive_manager.py --remove-task
-```
-
-Manager runtime files:
-
-- Registry: `gitArchiveUpdater\managed_archives.json`
-- Manager log: `gitArchiveUpdater\runs\archive-manager.log`
-- Generated refresh-all script: `gitArchiveUpdater\refresh-managed-archives.bat`
-
-## GitHub Org Duplicator
-
-Run:
+Run it with:
 
 ```powershell
 .\github-org-duplicator\duplicate-github-org.bat
 ```
 
-Direct command:
-
-```powershell
-uv run python github-org-duplicator\github_org_duplicator.py
-```
+The duplicator is interactive. It checks for `git`, `gh`, GitHub authentication, and Git credential setup before doing work.
 
 Modes:
 
-- **Remote to Local**: download all repos from a GitHub org to disk.
-- **Local to Remote**: upload local Git repos into a GitHub org.
-- **Remote to Remote**: mirror repos from one GitHub org to another.
+- **Remote to Local**: clone every repo in a GitHub org to a local folder.
+- **Local to Remote**: scan a local folder for Git repos and push them into a GitHub org.
+- **Remote to Remote**: copy repos from one GitHub org to another.
 
-The tool checks for `git`, `gh`, GitHub authentication, and git credential setup before doing work. It ignores accidental VS Code virtualenv activation commands pasted into prompts and asks again.
+The tool lists what it finds, warns about Git LFS, checks for existing repositories, and asks for a typed `YES` before it starts moving data.
 
-Run/resume files live under:
+Run files are kept here:
 
 ```text
-github-org-duplicator\runs
+github-org-duplicator\runs\
 ```
 
-Mode-specific files:
+Those files include completed-repo trackers, success logs, error logs, and operation session files. If a run is interrupted, rerun the same operation and completed repos are skipped.
 
-- Download: `downloaded_repos.txt`, `download_log.txt`, `download_errors.txt`, `download_session.txt`
-- Upload: `uploaded_repos.txt`, `upload_log.txt`, `upload_errors.txt`, `upload_session.txt`
-- Migrate: `completed_repos.txt`, `migration_log.txt`, `migration_errors.txt`, `migration_session.txt`
+The duplicator is meant for whole-org copies into clean destinations. If it finds name conflicts that are not verified duplicates, it stops instead of trying to reconcile unrelated repositories.
 
-If a run is interrupted, rerun the same operation. Completed repos listed in the matching resume file are skipped.
+## Runtime Files
 
-## Local Artifacts
-
-Ignored runtime/build artifacts include:
+These are generated locally and ignored by Git:
 
 - `.venv\`
 - `*.egg-info\`
 - `uv.lock`
 - `gitArchiveUpdater\managed_archives.json`
 - `gitArchiveUpdater\runs\`
+- `gitArchiveUpdater\refresh-managed-archives.bat`
 - `github-org-duplicator\runs\`
 
-## Safety
+The ignored state is useful on one machine but should not be shared as repo source.
 
-Prefer scan-only modes first.
+## Safety Model
 
-Archive updates are narrow by design: direct child folders only, approved remotes only, clean working trees only, Git command timeouts, and fast-forward pulls only.
+Archive updates are deliberately conservative: direct child folders only, approved remotes only, clean repos only, command timeouts, and fast-forward pulls only.
 
-GitHub organization duplication can create repositories and push mirrored refs. It requires explicit prompts and GitHub CLI authentication.
+The GitHub org duplicator can create repositories and push refs, so it stays interactive and confirmation-driven. It uses GitHub CLI credentials instead of storing tokens itself.
+
+When in doubt, scan first:
+
+```powershell
+uv run python gitArchiveUpdater\archive_manager.py --refresh-all --scan-only
+```
