@@ -23,12 +23,5 @@ classifiers = [
 
 dependencies = []
 
-[project.scripts]
-git-spec-ops = "git_spec_ops.cli:main"
-gitspecops = "git_spec_ops.cli:main"
-archive-updater = "git_spec_ops.archive_updater:main"
-archive-manager = "git_spec_ops.archive_manager:main"
-github-org-duplicator = "git_spec_ops.github_org_duplicator:main"
-
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools]
+py-modules = ["setup_gitspecops"]

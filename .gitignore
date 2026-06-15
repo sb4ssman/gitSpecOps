@@ -6,9 +6,15 @@ build/
 dist/
 .venv/
 venv/
+uv.lock
 
 # Tool runtime state
 archive_updater_registry.json
+gitArchiveUpdater/managed_archives.json
+gitArchiveUpdater/runs/
+gitArchiveUpdater/refresh-managed-archives.bat
+gitArchiveUpdater/refresh-managed-archives.sh
+github-org-duplicator/runs/
 completed_repos.txt
 migration_errors.txt
 migration_log.txt
