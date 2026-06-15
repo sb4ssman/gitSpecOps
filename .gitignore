@@ -26,3 +26,5 @@ upload_log.txt
 .idea/
 .DS_Store
 Thumbs.db
+_orig/
+_old/
