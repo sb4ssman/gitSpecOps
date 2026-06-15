@@ -20,27 +20,27 @@ Typical Usage
 -------------
 Run from the folder you want to manage:
 
-    python T:\\Github\\sb4ssman\\PythonTools\\ArchiveUpdater\\archive_updater.py
+    uv run python gitArchiveUpdater\\archive_updater.py
 
 Scan without fetching or pulling:
 
-    python T:\\Github\\sb4ssman\\PythonTools\\ArchiveUpdater\\archive_updater.py --scan-only
+    uv run python gitArchiveUpdater\\archive_updater.py --scan-only
 
 Point at one folder:
 
-    python T:\\Github\\sb4ssman\\PythonTools\\ArchiveUpdater\\archive_updater.py --root T:\\Github\\Archive
+    uv run python gitArchiveUpdater\\archive_updater.py --root T:\\Github\\Archive
 
 Point at several folders:
 
-    python T:\\Github\\sb4ssman\\PythonTools\\ArchiveUpdater\\archive_updater.py --root T:\\Github\\Archive --root T:\\Github\\BonusBrain
+    uv run python gitArchiveUpdater\\archive_updater.py --root T:\\Github\\Archive --root T:\\Github\\BonusBrain
 
 Write dated reports somewhere explicit:
 
-    python T:\\Github\\sb4ssman\\PythonTools\\ArchiveUpdater\\archive_updater.py --root T:\\Github\\Archive --output-dir T:\\Github\\Archive\\ArchAgent\\_claude_notes\\_claude_outputs\\archive_updates
+    uv run python gitArchiveUpdater\\archive_updater.py --root T:\\Github\\Archive --output-dir T:\\Github\\Archive\\.gitSpecOps\\archive-updates
 
 Show full remote URLs in console output:
 
-    python T:\\Github\\sb4ssman\\PythonTools\\ArchiveUpdater\\archive_updater.py --show-remote-urls
+    uv run python gitArchiveUpdater\\archive_updater.py --show-remote-urls
 
 Parameters
 ----------
@@ -54,7 +54,7 @@ Parameters
 
 --default-output-dir NAME
     For each scanned root, write reports under ROOT/NAME. Example:
-    `--default-output-dir ArchAgent/_claude_notes/_claude_outputs/archive_updates`.
+    `--default-output-dir .gitSpecOps/archive-updates`.
 
 --scan-only
     Inventory only. No fetch or pull.
@@ -77,6 +77,7 @@ import argparse
 import json
 import subprocess
 import sys
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -86,6 +87,8 @@ from typing import Iterable
 APP_NAME = "Archive Updater"
 VERSION = "0.2.0"
 DEFAULT_APPROVED_REMOTE_PREFIXES = ["https://github.com/"]
+DEFAULT_GIT_TIMEOUT_SECONDS = 45
+GIT_TIMEOUT_SECONDS = DEFAULT_GIT_TIMEOUT_SECONDS
 
 
 @dataclass
@@ -104,6 +107,7 @@ class RepoInfo:
     eligible: bool
     action: str
     result: str = "not run"
+    elapsed_seconds: float = 0.0
 
 
 @dataclass
@@ -116,18 +120,28 @@ class RootReport:
     git_repositories: list[str]
     non_repo_folders: list[str]
     repos: list[RepoInfo]
+    elapsed_seconds: float = 0.0
 
 
-def run_git(repo_path: Path, args: Iterable[str]) -> subprocess.CompletedProcess:
+def run_git(repo_path: Path, args: Iterable[str], timeout: int | None = None) -> subprocess.CompletedProcess:
+    timeout = GIT_TIMEOUT_SECONDS if timeout is None else timeout
     try:
         return subprocess.run(
             ["git", *args],
             cwd=repo_path,
             capture_output=True,
             text=True,
+            timeout=timeout,
         )
     except (PermissionError, FileNotFoundError):
         return subprocess.CompletedProcess(list(args), returncode=1, stdout="", stderr="")
+    except subprocess.TimeoutExpired as exc:
+        return subprocess.CompletedProcess(
+            list(args),
+            returncode=124,
+            stdout=exc.stdout or "",
+            stderr=f"timed out after {timeout}s",
+        )
 
 
 def git_stdout(repo_path: Path, args: Iterable[str]) -> str | None:
@@ -166,6 +180,7 @@ def approved_remote(origin: str | None, prefixes: list[str]) -> bool:
 
 
 def inspect_candidate(path: Path, approved_prefixes: list[str]) -> RepoInfo:
+    started = time.perf_counter()
     has_git_marker = (path / ".git").exists()
     is_work_tree = is_repo_root(path)
     origin = git_stdout(path, ["remote", "get-url", "origin"]) if is_work_tree else None
@@ -207,14 +222,16 @@ def inspect_candidate(path: Path, approved_prefixes: list[str]) -> RepoInfo:
         dirty_index=dirty_index,
         eligible=action.startswith("eligible:"),
         action=action,
+        elapsed_seconds=round(time.perf_counter() - started, 3),
     )
 
 
 def scan_root(root: Path, approved_prefixes: list[str]) -> RootReport:
+    started = time.perf_counter()
     child_dirs = list_child_dirs(root)
     repos = [inspect_candidate(path, approved_prefixes) for path in child_dirs]
 
-    return RootReport(
+    report = RootReport(
         root=str(root),
         generated=datetime.now().isoformat(timespec="seconds"),
         hidden_folders=[path.name for path in child_dirs if is_hidden(path)],
@@ -224,6 +241,8 @@ def scan_root(root: Path, approved_prefixes: list[str]) -> RootReport:
         non_repo_folders=[repo.name for repo in repos if not repo.is_work_tree],
         repos=repos,
     )
+    report.elapsed_seconds = round(time.perf_counter() - started, 3)
+    return report
 
 
 def print_list(title: str, names: list[str]) -> None:
@@ -238,6 +257,7 @@ def print_list(title: str, names: list[str]) -> None:
 def print_scan(report: RootReport, show_remote_urls: bool) -> None:
     print(f"Scan Root: {report.root}")
     print(f"Generated: {report.generated}")
+    print(f"Scan time: {report.elapsed_seconds:.3f}s")
     print()
     print_list("Hidden folders", report.hidden_folders)
     print_list("Regular folders", report.regular_folders)
@@ -262,6 +282,7 @@ def print_scan(report: RootReport, show_remote_urls: bool) -> None:
         print(f"    dirty work tree: {'yes' if repo.dirty_work_tree else 'no'}")
         print(f"    dirty index: {'yes' if repo.dirty_index else 'no'}")
         print(f"    action: {repo.action}")
+        print(f"    inspect time: {repo.elapsed_seconds:.3f}s")
     print()
 
 
@@ -269,11 +290,13 @@ def update_repo(repo: RepoInfo) -> str:
     path = Path(repo.path)
     fetch = run_git(path, ["fetch", "--dry-run", "origin"])
     if fetch.returncode != 0:
-        return "failed: fetch failed"
+        detail = f": {fetch.stderr.strip()}" if fetch.stderr.strip() else ""
+        return f"failed: fetch failed{detail}"
 
     pull = run_git(path, ["pull", "--ff-only"])
     if pull.returncode != 0:
-        return "failed: pull --ff-only failed"
+        detail = f": {pull.stderr.strip()}" if pull.stderr.strip() else ""
+        return f"failed: pull --ff-only failed{detail}"
 
     combined = f"{pull.stdout}\n{pull.stderr}".lower()
     if "already up to date" in combined or "already up-to-date" in combined:
@@ -285,8 +308,10 @@ def run_updates(report: RootReport) -> None:
     for repo in report.repos:
         if repo.eligible:
             print(f"[PULL] {repo.name}")
+            started = time.perf_counter()
             repo.result = update_repo(repo)
-            print(f"       {repo.result}")
+            repo.elapsed_seconds = round(time.perf_counter() - started, 3)
+            print(f"       {repo.result} ({repo.elapsed_seconds:.3f}s)")
         else:
             repo.result = repo.action
             print(f"[SKIP] {repo.name} - {repo.action.removeprefix('skip: ')}")
@@ -341,6 +366,8 @@ def report_payload(reports: list[RootReport], mode: str, approved_prefixes: list
         "generated": datetime.now().isoformat(timespec="seconds"),
         "mode": mode,
         "approved_remote_prefixes": approved_prefixes,
+        "git_timeout_seconds": GIT_TIMEOUT_SECONDS,
+        "elapsed_seconds": round(sum(report.elapsed_seconds for report in reports), 3),
         "roots": [
             {
                 "scan": asdict(report),
@@ -390,6 +417,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--show-remote-urls", action="store_true", help="Print full origin URLs.")
     parser.add_argument("--no-report", action="store_true", help="Do not write a dated JSON report.")
+    parser.add_argument(
+        "--git-timeout",
+        type=int,
+        default=DEFAULT_GIT_TIMEOUT_SECONDS,
+        help=f"Seconds before an individual git command is treated as failed. Defaults to {DEFAULT_GIT_TIMEOUT_SECONDS}.",
+    )
     return parser.parse_args()
 
 
@@ -417,7 +450,10 @@ def resolve_output_dir(args: argparse.Namespace, roots: list[Path]) -> Path | No
 
 
 def main() -> int:
+    global GIT_TIMEOUT_SECONDS
+    started = time.perf_counter()
     args = parse_args()
+    GIT_TIMEOUT_SECONDS = args.git_timeout
     approved_prefixes = args.approved_remote_prefix or DEFAULT_APPROVED_REMOTE_PREFIXES
 
     try:
@@ -456,6 +492,7 @@ def main() -> int:
     else:
         print("Report: not written; pass --output-dir or --default-output-dir to write one.")
 
+    print(f"Elapsed: {time.perf_counter() - started:.3f}s")
     return 0
 
 

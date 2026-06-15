@@ -15,6 +15,15 @@ import time
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+from pathlib import Path
+
+TOOL_DIR = Path(__file__).resolve().parent
+RUNS_DIR = TOOL_DIR / "runs"
+PRINT_LOCK = threading.Lock()
+
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8", errors="replace")
 
 def run_command(cmd, check=True, capture=True):
     """Run a shell command and return result."""
@@ -34,213 +43,38 @@ def log_message(message, log_file):
     """Print to console and write to log file."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_entry = f"[{timestamp}] {message}"
-    print(message)
-    with open(log_file, 'a', encoding='utf-8') as f:
-        f.write(log_entry + '\n')
-
-def detect_package_manager():
-    """Detect available package manager on the system."""
-    import platform
-    system = platform.system().lower()
-    
-    if system == 'windows':
-        # Check for winget
-        try:
-            result = run_command(['winget', '--version'], check=False, capture=True)
-            if result.returncode == 0:
-                return 'winget'
-        except:
-            pass
-        
-        # Check for chocolatey
-        try:
-            result = run_command(['choco', '--version'], check=False, capture=True)
-            if result.returncode == 0:
-                return 'chocolatey'
-        except:
-            pass
-        
-        return None
-    
-    elif system == 'darwin':  # macOS
-        # Check for Homebrew
-        try:
-            result = run_command(['brew', '--version'], check=False, capture=True)
-            if result.returncode == 0:
-                return 'brew'
-        except:
-            pass
-        return None
-    
-    elif system == 'linux':
-        # Check for apt (Debian/Ubuntu)
-        try:
-            result = run_command(['apt', '--version'], check=False, capture=True)
-            if result.returncode == 0:
-                return 'apt'
-        except:
-            pass
-        
-        # Check for yum (RHEL/CentOS)
-        try:
-            result = run_command(['yum', '--version'], check=False, capture=True)
-            if result.returncode == 0:
-                return 'yum'
-        except:
-            pass
-        
-        # Check for dnf (Fedora)
-        try:
-            result = run_command(['dnf', '--version'], check=False, capture=True)
-            if result.returncode == 0:
-                return 'dnf'
-        except:
-            pass
-        
-        return None
-    
-    return None
-
-def get_install_command(tool, package_manager):
-    """Get installation command for a tool using the specified package manager."""
-    commands = {
-        'winget': {
-            'git': ['winget', 'install', '--id', 'Git.Git', '-e', '--source', 'winget'],
-            'gh': ['winget', 'install', '--id', 'GitHub.cli', '-e', '--source', 'winget']
-        },
-        'chocolatey': {
-            'git': ['choco', 'install', 'git', '-y'],
-            'gh': ['choco', 'install', 'gh', '-y']
-        },
-        'brew': {
-            'git': ['brew', 'install', 'git'],
-            'gh': ['brew', 'install', 'gh']
-        },
-        'apt': {
-            'git': ['sudo', 'apt', 'update', '&&', 'sudo', 'apt', 'install', '-y', 'git'],
-            'gh': ['sudo', 'apt', 'install', '-y', 'gh']
-        },
-        'yum': {
-            'git': ['sudo', 'yum', 'install', '-y', 'git'],
-            'gh': ['sudo', 'yum', 'install', '-y', 'gh']
-        },
-        'dnf': {
-            'git': ['sudo', 'dnf', 'install', '-y', 'git'],
-            'gh': ['sudo', 'dnf', 'install', '-y', 'gh']
-        }
-    }
-    
-    return commands.get(package_manager, {}).get(tool)
-
-def offer_installation(tool_name, package_manager):
-    """Offer to install a missing tool."""
-    install_cmd = get_install_command(tool_name, package_manager)
-    
-    if not install_cmd:
-        return False
-    
-    print(f"\n{tool_name} is not installed.")
-    
-    if package_manager == 'winget':
-        print(f"Would you like to install {tool_name} using winget?")
-        print(f"Command: {' '.join(install_cmd)}")
-    elif package_manager == 'chocolatey':
-        print(f"Would you like to install {tool_name} using Chocolatey?")
-        print(f"Command: {' '.join(install_cmd)}")
-    elif package_manager == 'brew':
-        print(f"Would you like to install {tool_name} using Homebrew?")
-        print(f"Command: {' '.join(install_cmd)}")
-    elif package_manager in ['apt', 'yum', 'dnf']:
-        print(f"Would you like to install {tool_name} using {package_manager}?")
-        print(f"Command: {' '.join(install_cmd)}")
-    
-    response = input("Install now? (y/n): ").strip().lower()
-    
-    if response in ['y', 'yes']:
-        try:
-            # Handle commands with && for apt (git installation)
-            if '&&' in ' '.join(install_cmd):
-                # Split on && and run separately
-                parts = ' '.join(install_cmd).split(' && ')
-                for part in parts:
-                    cmd_parts = part.strip().split()
-                    run_command(cmd_parts, check=True)
-            else:
-                run_command(install_cmd, check=True)
-            
-            print(f"✓ {tool_name} installation completed")
-            # Give it a moment to register in PATH
-            import time
-            time.sleep(2)
-            return True
-        except Exception as e:
-            print(f"✗ Installation failed: {str(e)}")
-            print("Please install manually and try again.")
-            return False
-    else:
-        print(f"Please install {tool_name} manually and try again.")
-        print(f"Visit: https://git-scm.com/downloads" if tool_name == 'git' else "https://cli.github.com/")
-        return False
+    with PRINT_LOCK:
+        print(message)
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(log_entry + '\n')
 
 def check_git_installed():
-    """Verify git is installed, offer installation if missing."""
+    """Verify git is installed."""
     try:
         run_command(['git', '--version'], check=True)
         print("✓ git installed")
         return True
     except:
         print("✗ git is not installed")
-        package_manager = detect_package_manager()
-        
-        if package_manager:
-            if offer_installation('git', package_manager):
-                # Verify installation worked
-                try:
-                    run_command(['git', '--version'], check=True)
-                    print("✓ git installed and verified")
-                    return True
-                except:
-                    print("ERROR: git installation verification failed")
-                    sys.exit(1)
-            else:
-                sys.exit(1)
-        else:
-            print("ERROR: git is not installed and no package manager detected.")
-            print("Please install git manually:")
-            print("  Windows: https://git-scm.com/download/win")
-            print("  macOS: https://git-scm.com/download/mac")
-            print("  Linux: Use your distribution's package manager")
-            sys.exit(1)
+        print("Install git and rerun this tool:")
+        print("  Windows: https://git-scm.com/download/win")
+        print("  macOS: https://git-scm.com/download/mac")
+        print("  Linux: Use your distribution's package manager")
+        sys.exit(1)
 
 def check_gh_installed():
-    """Verify gh CLI is installed, offer installation if missing."""
+    """Verify gh CLI is installed."""
     try:
         run_command(['gh', '--version'], check=True)
         print("✓ gh CLI installed")
         return True
     except:
         print("✗ GitHub CLI (gh) is not installed")
-        package_manager = detect_package_manager()
-        
-        if package_manager:
-            if offer_installation('gh', package_manager):
-                # Verify installation worked
-                try:
-                    run_command(['gh', '--version'], check=True)
-                    print("✓ GitHub CLI installed and verified")
-                    return True
-                except:
-                    print("ERROR: GitHub CLI installation verification failed")
-                    sys.exit(1)
-            else:
-                sys.exit(1)
-        else:
-            print("ERROR: GitHub CLI is not installed and no package manager detected.")
-            print("Please install GitHub CLI manually:")
-            print("  Windows: winget install --id GitHub.cli")
-            print("  macOS: brew install gh")
-            print("  Linux: See https://cli.github.com/")
-            sys.exit(1)
+        print("Install GitHub CLI and rerun this tool:")
+        print("  Windows: winget install --id GitHub.cli")
+        print("  macOS: brew install gh")
+        print("  Linux: See https://cli.github.com/")
+        sys.exit(1)
 
 def check_gh_authenticated():
     """Verify gh is authenticated."""
@@ -459,7 +293,7 @@ def safe_cleanup_directory(directory_path, expected_parent_dir, repo_name):
     try:
         abs_directory = os.path.abspath(directory_path)
         abs_parent = os.path.abspath(expected_parent_dir)
-        if not abs_directory.startswith(abs_parent + os.sep) and abs_directory != abs_parent:
+        if os.path.commonpath([abs_directory, abs_parent]) != abs_parent:
             print(f"  ⚠ ERROR: Path {directory_path} is outside expected parent {expected_parent_dir}")
             return False
     except Exception as e:
@@ -546,8 +380,9 @@ def process_download_repo(repo, source_org, temp_dir, use_mirror, completed_file
                     raise
         
         # Mark as complete
-        with open(completed_file, 'a', encoding='utf-8') as f:
-            f.write(f"{repo_name}\n")
+        with PRINT_LOCK:
+            with open(completed_file, 'a', encoding='utf-8') as f:
+                f.write(f"{repo_name}\n")
         
         elapsed = time.time() - start_time
         success_msg = f"✓ {repo_name} complete (took {elapsed:.1f}s)"
@@ -615,8 +450,9 @@ def process_upload_repo(repo, dest_org, completed_file, success_log, error_log):
                     raise
         
         # Mark as complete
-        with open(completed_file, 'a', encoding='utf-8') as f:
-            f.write(f"{repo_name}\n")
+        with PRINT_LOCK:
+            with open(completed_file, 'a', encoding='utf-8') as f:
+                f.write(f"{repo_name}\n")
         
         elapsed = time.time() - start_time
         success_msg = f"✓ {repo_name} complete (took {elapsed:.1f}s)"
@@ -718,8 +554,9 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
             safe_cleanup_directory(repo_temp_path, temp_dir, repo_name)
         
         # Step 5: Mark as complete
-        with open(completed_file, 'a', encoding='utf-8') as f:
-            f.write(f"{repo_name}\n")
+        with PRINT_LOCK:
+            with open(completed_file, 'a', encoding='utf-8') as f:
+                f.write(f"{repo_name}\n")
         
         elapsed = time.time() - start_time
         success_msg = f"✓ {repo_name} complete (took {elapsed:.1f}s)"
@@ -781,29 +618,42 @@ def load_completed_repos(filename):
     with open(filename, 'r', encoding='utf-8') as f:
         return set(line.strip() for line in f if line.strip())
 
+
+def prompt_input(prompt):
+    """Read interactive input, ignoring VS Code auto-activation noise."""
+    while True:
+        value = input(prompt).strip()
+        lowered = value.lower()
+        if lowered.endswith(r"\scripts\activate.bat") or lowered.endswith("/bin/activate"):
+            print("Ignoring terminal activation command; please enter your choice.")
+            continue
+        return value
+
 def get_tracking_files(operation_mode):
     """Get tracking file names based on operation mode."""
     if operation_mode == 'download':
-        return {
+        names = {
             'completed': 'downloaded_repos.txt',
             'error': 'download_errors.txt',
             'success': 'download_log.txt',
             'session': 'download_session.txt'
         }
     elif operation_mode == 'upload':
-        return {
+        names = {
             'completed': 'uploaded_repos.txt',
             'error': 'upload_errors.txt',
             'success': 'upload_log.txt',
             'session': 'upload_session.txt'
         }
     else:  # migrate
-        return {
+        names = {
             'completed': 'completed_repos.txt',
             'error': 'migration_errors.txt',
             'success': 'migration_log.txt',
             'session': 'migration_session.txt'
         }
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    return {key: RUNS_DIR / name for key, name in names.items()}
 
 def initialize_tracking_files(operation_mode, source_org, dest_org, temp_dir):
     """Initialize tracking files and handle session management."""
@@ -843,6 +693,8 @@ def initialize_tracking_files(operation_mode, source_org, dest_org, temp_dir):
     # Write current session info
     with open(files['session'], 'w', encoding='utf-8') as f:
         f.write(current_session)
+
+    print(f"Run files: {RUNS_DIR}")
     
     return files
 
@@ -866,7 +718,7 @@ def setup_operation():
     print("  2. Local → Remote (upload repos from disk to GitHub org)")
     print("  3. Remote → Remote (migrate between GitHub orgs)")
     print()
-    mode_choice = input("Mode (1, 2, or 3): ").strip()
+    mode_choice = prompt_input("Mode (1, 2, or 3): ")
     
     if mode_choice == "1":
         operation_mode = 'download'
@@ -884,7 +736,7 @@ def setup_operation():
     config = {'operation_mode': operation_mode}
     
     if operation_mode == 'download':
-        config['source_org'] = input("Source organization name: ").strip()
+        config['source_org'] = prompt_input("Source organization name: ")
         config['dest_org'] = None
         
         print()
@@ -898,12 +750,12 @@ def setup_operation():
         print("  1. Working repositories (regular clone)")
         print("  2. Mirror repositories (--mirror, archival)")
         print()
-        format_choice = input("Format (1 or 2): ").strip()
+        format_choice = prompt_input("Format (1 or 2): ")
         config['use_mirror'] = (format_choice == "2")
         print()
         
         # Get target directory
-        temp_dir = input("Target directory path (repos will be saved here): ").strip()
+        temp_dir = prompt_input("Target directory path (repos will be saved here): ")
         temp_dir = os.path.expanduser(temp_dir)
         
         if not os.path.exists(temp_dir):
@@ -918,7 +770,7 @@ def setup_operation():
         print()
         
     elif operation_mode == 'upload':
-        source_dir = input("Source directory path (scan for git repos): ").strip()
+        source_dir = prompt_input("Source directory path (scan for git repos): ")
         source_dir = os.path.expanduser(source_dir)
         
         if not os.path.exists(source_dir):
@@ -930,7 +782,7 @@ def setup_operation():
         
         config['source_dir'] = source_dir
         config['temp_dir'] = source_dir  # Reuse for consistency
-        config['dest_org'] = input("Destination organization name: ").strip()
+        config['dest_org'] = prompt_input("Destination organization name: ")
         config['source_org'] = None
         print()
         
@@ -940,8 +792,8 @@ def setup_operation():
         print()
         
     else:  # migrate
-        config['source_org'] = input("Source organization name: ").strip()
-        config['dest_org'] = input("Destination organization name: ").strip()
+        config['source_org'] = prompt_input("Source organization name: ")
+        config['dest_org'] = prompt_input("Destination organization name: ")
         print()
         
         print("Verifying organization access...")
@@ -1111,11 +963,8 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
     repo_size = format_size(repo.get('diskUsage', 0))
     uses_lfs = repo.get('uses_lfs', False)
 
-    # Thread-safe printing with lock
-    print_lock = threading.Lock()
-
     try:
-        with print_lock:
+        with PRINT_LOCK:
             print(f"[{idx}/{total_repos}] Processing: {repo_name} [{repo_size}]")
             if uses_lfs:
                 print(f"  ⚠ This repo uses Git LFS")
@@ -1128,15 +977,15 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
 
         # Clean up any leftover directory first (safely)
         if os.path.exists(repo_final_path):
-            with print_lock:
+            with PRINT_LOCK:
                 print(f"  → [{repo_name}] Cleaning up leftover directory...")
             if not safe_cleanup_directory(repo_final_path, temp_dir, repo_name):
-                with print_lock:
+                with PRINT_LOCK:
                     print(f"  ⚠ [{repo_name}] Warning: Could not safely clean up directory")
 
         clone_url = f"https://github.com/{source_org}/{repo_name}.git"
 
-        with print_lock:
+        with PRINT_LOCK:
             print(f"  → [{repo_name}] Cloning from {source_org}...")
 
         # Clone with retries
@@ -1150,20 +999,21 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
                 break
             except Exception as e:
                 if attempt < max_retries - 1:
-                    with print_lock:
+                    with PRINT_LOCK:
                         print(f"  → [{repo_name}] Clone attempt {attempt + 1} failed, retrying...")
                     time.sleep(5)
                 else:
                     raise
 
-        # Mark as complete (thread-safe)
-        with open(completed_file, 'a', encoding='utf-8') as f:
-            f.write(f"{repo_name}\n")
+        # Mark as complete
+        with PRINT_LOCK:
+            with open(completed_file, 'a', encoding='utf-8') as f:
+                f.write(f"{repo_name}\n")
 
         elapsed = time.time() - start_time
         success_msg = f"✓ {repo_name} complete (took {elapsed:.1f}s)"
         log_message(success_msg, success_log)
-        with print_lock:
+        with PRINT_LOCK:
             print(f"✓ [{repo_name}] Complete ({elapsed:.1f}s)")
 
         return {'status': 'success', 'repo': repo_name, 'time': elapsed}
@@ -1172,12 +1022,27 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
         elapsed = time.time() - start_time
         error_msg = f"✗ {repo_name} FAILED after {elapsed:.1f}s: {str(e)}"
         log_message(error_msg, error_log)
-        with print_lock:
+        with PRINT_LOCK:
             print(f"✗ [{repo_name}] FAILED: {str(e)}")
 
         return {'status': 'failed', 'repo': repo_name, 'time': elapsed, 'error': str(e)}
 
 def main():
+    if any(arg in ("-h", "--help") for arg in sys.argv[1:]):
+        print("GitHub Organization Repository Tool")
+        print()
+        print("Usage:")
+        print("  uv run python github-org-duplicator\\github_org_duplicator.py")
+        print("  github-org-duplicator\\duplicate-github-org.bat")
+        print()
+        print("Modes:")
+        print("  1. Remote -> Local download")
+        print("  2. Local -> Remote upload")
+        print("  3. Remote -> Remote migration")
+        print()
+        print(f"Run files: {RUNS_DIR}")
+        return
+
     # Setup operation (mode selection and input collection)
     config = setup_operation()
     operation_mode = config['operation_mode']
@@ -1215,16 +1080,16 @@ def main():
     print("Review the repository information above.")
     print("=" * 60)
     if operation_mode == 'download':
-        input("Press ENTER to continue to download setup...")
+        prompt_input("Press ENTER to continue to download setup...")
     elif operation_mode == 'upload':
-        input("Press ENTER to continue to upload setup...")
+        prompt_input("Press ENTER to continue to upload setup...")
     else:
-        input("Press ENTER to continue to migration setup...")
+        prompt_input("Press ENTER to continue to migration setup...")
     print()
     
     # Get temp directory for migrate mode
     if operation_mode == 'migrate':
-        temp_dir = input("Temporary directory path (for cloning): ").strip()
+        temp_dir = prompt_input("Temporary directory path (for cloning): ")
         temp_dir = os.path.expanduser(temp_dir)
         
         if not os.path.exists(temp_dir):
@@ -1258,7 +1123,7 @@ def main():
     parallel_workers = 1
     if operation_mode == 'download' and len(remaining_repos) > 1:
         print("Parallel downloads can speed up the process significantly.")
-        parallel_input = input("Number of parallel downloads (1-5, default 3): ").strip()
+        parallel_input = prompt_input("Number of parallel downloads (1-5, default 3): ")
         if parallel_input == "":
             parallel_workers = 3
         elif parallel_input.isdigit() and 1 <= int(parallel_input) <= 5:
@@ -1270,7 +1135,7 @@ def main():
         print()
     
     # Confirm before proceeding
-    confirmation = input('Type "YES" to continue: ').strip()
+    confirmation = prompt_input('Type "YES" to continue: ')
     if confirmation != "YES":
         print("Aborted.")
         sys.exit(0)
