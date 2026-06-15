@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tool runtime state
+archive_updater_registry.json
+completed_repos.txt
+migration_errors.txt
+migration_log.txt
+download_errors.txt
+download_log.txt
+downloaded_repos.txt
+download_session.txt
+uploaded_repos.txt
+upload_errors.txt
+upload_log.txt
+
+# Local/editor
+.env
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

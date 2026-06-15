@@ -21,20 +21,37 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
-from archive_updater import DEFAULT_APPROVED_REMOTE_PREFIXES, approved_remote, is_repo_root, scan_root
+try:
+    from .archive_updater import DEFAULT_APPROVED_REMOTE_PREFIXES, approved_remote, is_repo_root, scan_root
+except ImportError:
+    from archive_updater import DEFAULT_APPROVED_REMOTE_PREFIXES, approved_remote, is_repo_root, scan_root
 
 
 APP_NAME = "Archive Updater Manager"
 VERSION = "0.1.0"
-REGISTRY_PATH = Path(__file__).with_name("archive_updater_registry.json")
+REGISTRY_PATH = None
 POWERSHELL_LAUNCHER_NAME = "update_archive.ps1"
 BAT_LAUNCHER_NAME = "update_archive.bat"
 DEFAULT_REPORT_DIR = r"ArchAgent\_claude_notes\_claude_outputs\archive_updates"
+
+
+def default_registry_path() -> Path:
+    if sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    return base / "gitSpecOps" / "archive_updater_registry.json"
+
+
+REGISTRY_PATH = default_registry_path()
 
 
 @dataclass
@@ -42,7 +59,7 @@ class InstallRecord:
     root: str
     installed_at: str
     updated_at: str
-    python_tools_dir: str
+    git_spec_ops_dir: str
     python_executable: str
     updater_path: str
     powershell_launcher: str
@@ -146,6 +163,7 @@ def load_registry() -> dict[str, dict]:
 
 
 def save_registry(data: dict[str, object]) -> None:
+    REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
     with REGISTRY_PATH.open("w", encoding="utf-8") as handle:
         json.dump(data, handle, indent=2)
         handle.write("\n")
@@ -186,7 +204,7 @@ def install_launchers(root: Path, approved_prefixes: list[str]) -> InstallRecord
         root=str(resolved),
         installed_at=stamp,
         updated_at=stamp,
-        python_tools_dir=str(Path(__file__).resolve().parents[1]),
+        git_spec_ops_dir=str(Path(__file__).resolve().parents[2]),
         python_executable=str(python_executable),
         updater_path=str(updater_path),
         powershell_launcher=str(ps1_path),
@@ -329,3 +347,7 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
+
