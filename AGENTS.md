@@ -4,17 +4,24 @@ This repo is intentionally small. Keep it that way.
 
 ## Repo Shape
 
-The working tools are:
+The entry-point tools are:
 
-- `gitArchiveUpdater/archive_updater.py`
-- `gitArchiveUpdater/archive_manager.py`
+- `gitArchiveUpdater/archive_manager.py` (front door: registry, launchers, scheduling)
+- `gitArchiveUpdater/archive_updater.py` (standalone, git-only, update-only)
 - `github-org-duplicator/github_org_duplicator.py`
+
+The archive engine behind the manager is split into single-purpose modules in the same folder:
+
+- `archive_sync.py` (plan/apply: detect -> plan -> decide -> execute -> review)
+- `archive_diff.py` (pure decision logic; no git, no network; has a self-test)
+- `git_inspect.py` (read-only local git facts; host-agnostic)
+- `remote_provider.py` + `provider_github.py` (the cross-git provider seam)
 
 The setup helper is:
 
 - `setup_gitspecops.py`
 
-There is no `cli.py`, no `src/` package, and no console-script entry point. Do not reintroduce those unless the user explicitly asks for a larger packaging refactor.
+These modules are deliberately flat (sibling files imported with a `try: from . / except: from` shim), not a `src/` package. There is no `cli.py` and no console-script entry point. Keep it flat: do not introduce a `src/` package or packaging entry points unless the user explicitly asks for a larger refactor.
 
 ## Launchers
 
@@ -32,7 +39,7 @@ Setup should overwrite the expected launcher files. It should not run stale-laun
 
 ## Archive Tools
 
-`archive_updater.py` is the low-level updater. It scans direct children of archive roots and only updates repos that:
+`archive_updater.py` is the low-level, git-only updater. It scans direct children of archive roots and only updates repos that:
 
 - are Git work trees rooted at that child folder
 - have an approved `origin` remote
@@ -40,7 +47,9 @@ Setup should overwrite the expected launcher files. It should not run stale-laun
 
 It should use fast-forward pulls only. It must not merge, rebase, reset, delete repos, install dependencies, run project code, or recurse through arbitrary nested directories.
 
-`archive_manager.py` owns the archive registry and friendly workflow. It installs archive-local `update_archive` launchers, tracks managed archive folders, refreshes all managed archives, writes manager logs, and manages the optional Windows scheduled task.
+`archive_sync.py` is the richer engine used by the manager. It can also discover an org's full repo set through a provider and clone missing repos, reconcile stale origins, and rename folders to match upstream. Every operation is graceful (failures are collected, never fatal) and nothing ambiguous is auto-applied. Discovery is the only host-specific part: when no provider matches the host, or discovery fails, `archive_sync.py` must degrade to the same fast-forward-only behavior as `archive_updater.py` (pull every clean repo; never invent clones, orphans, or renames). The `remote_authoritative` flag in `detect_plan`/`build_plan` is what enforces this; keep it honest.
+
+`archive_manager.py` owns the archive registry and friendly workflow. It installs archive-local `update_archive` launchers (which call `archive_sync.py` in the archive's configured `update` or `sync` mode), tracks managed archive folders, refreshes all managed archives, writes manager logs, and manages the optional Windows scheduled task. Scheduled/launcher runs must never pass `--reconcile` or `--rename-folders`; those mutations stay interactive only.
 
 The registry is local runtime state:
 
@@ -50,9 +59,45 @@ gitArchiveUpdater/managed_archives.json
 
 Do not commit local registry contents.
 
+### Future direction: the push direction ("publish")
+
+Everything today is pull-only, fast-forward-only. A future need (e.g. an org where an agent
+edits many repos and that work must go back upstream) is the opposite direction. Notes for
+whoever builds it, so the safety model is not broken:
+
+- Pull is safe because fast-forward can never destroy data or require a choice. Push needs
+  write auth, can overwrite remote history, and can trigger CI / other agents. Do NOT reuse
+  the pull guarantees; build a narrower set.
+- The provably-safe primitive is "publish" = `git push` WITHOUT `--force` (git refuses a
+  non-fast-forward, mirroring `--ff-only` on pull). Classify each repo by ahead/behind vs its
+  upstream (`git rev-list --left-right --count @{u}...HEAD`): ahead-only -> ff-push; in sync ->
+  nothing; uncommitted -> surface, never auto-commit; diverged -> human only; detached/no
+  upstream -> skip.
+- Agent considerations: agents leave dirty trees (committing is a policy opt-in, not default);
+  do not push agents straight to default branches - prefer a per-agent/per-run branch + PR
+  (add `open_pr()` to the provider seam); fetch immediately before each push and let non-force
+  rejection mean "remote moved, needs human"; rate-limit to avoid CI/agent storms; give agent
+  commits their own identity/trailers; guard blast radius (`--dry-run` preview, typed-YES bulk
+  confirm, protected-branch awareness, optional secret/size checks); make runs idempotent and
+  resumable.
+- Architecture: keep the layers. `git_inspect` gains ahead/behind facts; `archive_diff` gains a
+  pure push-direction classifier; `archive_sync` gains a `--publish` phase that is its OWN apply
+  class and is NEVER bundled into `--update`/`--sync` nor baked into scheduled launchers (same
+  rule that keeps `--reconcile`/`--rename-folders` interactive-only); the provider gains
+  `open_pr()`. Ship the ahead-only ff-push slice first; layer auto-commit and branch+PR behind
+  explicit flags once the org workflow is settled.
+
 ## GitHub Org Duplicator
 
-`github_org_duplicator.py` is interactive and intentionally confirmation-heavy. It checks `git`, `gh`, authentication, and org access before moving repositories.
+`github_org_duplicator.py` is the interactive, confirmation-heavy orchestrator. It checks `git`, `gh`, authentication, and org access before moving repositories. The work is split into cohesive sibling modules in the same folder, imported with plain `import` (the entry point is always run as a script, so its directory is on `sys.path`):
+
+- `gh_common.py` - subprocess wrapper, print lock, run-file dir, console helpers
+- `gh_remote.py` - all `gh` CLI calls (env checks, inventory, duplicate comparison)
+- `local_repos.py` - on-disk repo discovery + safe deletion
+- `tracking.py` - resume state / run files
+- `operations.py` - the per-repo download/upload/migrate workers
+
+Keep new GitHub/`gh` logic in `gh_remote.py` and new filesystem logic in `local_repos.py`; the orchestrator should stay flow-only.
 
 Run/resume files live under:
 

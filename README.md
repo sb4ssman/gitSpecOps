@@ -33,17 +33,31 @@ Setup detects the current operating system and writes only that system's launche
 
 ## What Is Here
 
-There are three working Python tool files:
+There are three entry-point Python tools:
 
-- `gitArchiveUpdater\archive_updater.py`: scans archive folders and optionally fast-forward pulls eligible repos.
-- `gitArchiveUpdater\archive_manager.py`: installs archive-local update launchers, tracks managed archives, refreshes all managed archives, and manages the optional scheduled refresh.
+- `gitArchiveUpdater\archive_manager.py`: the front door. Installs archive-local launchers, tracks managed archives, refreshes them all, and manages the optional scheduled refresh.
+- `gitArchiveUpdater\archive_updater.py`: a standalone, dependency-free updater. Scans archive folders and fast-forward pulls eligible repos using only `git` (no `gh`, no provider).
 - `github-org-duplicator\github_org_duplicator.py`: walks a user through copying repositories between GitHub orgs and local folders.
+
+The manager and the archive-local launchers drive a small plan/apply engine made of single-purpose modules:
+
+- `archive_sync.py`: the plan/apply engine (detect -> plan -> decide -> execute -> review) for update, clone, reconcile, and rename.
+- `archive_diff.py`: pure decision logic (no git, no network), matching local repos to the remote set by stable id so renames survive. Run it directly to execute its self-test.
+- `git_inspect.py`: read-only, host-agnostic local git facts.
+- `remote_provider.py` / `provider_github.py`: the cross-git seam. Remote discovery (listing an org, following renames) is host-specific and lives behind a provider. GitHub via the `gh` CLI is the only provider today; any other host falls back to update-only.
 
 Supporting files:
 
 - `setup_gitspecops.py`: writes the launcher scripts.
 - `run_setup.bat`, `run_setup.ps1`, `run_setup.sh`: convenient setup entry points.
 - `_legacy_sources\`: older source snapshots kept only for reference.
+
+### archive_updater.py vs archive_sync.py
+
+Both fast-forward clean repos. The difference is remote discovery:
+
+- `archive_updater.py` needs only `git`. It never lists an org, so it never clones, reconciles, or renames. The top-level `update-archive.bat` launcher uses it.
+- `archive_sync.py` can additionally discover an org's full repo set through a provider, so it can clone missing repos and reconcile drift. The manager and the archive-local launchers it installs use it. When no provider matches the host, or discovery fails (e.g. `gh` is missing or unauthenticated), `archive_sync.py` degrades to the same update-only behavior as `archive_updater.py`.
 
 ## Archive Updater
 
@@ -107,11 +121,13 @@ When you install an archive, the manager:
 
 1. accepts an archive folder path
 2. verifies the folder exists and is not itself a Git repo
-3. scans direct child folders with progress output
-4. writes `update_archive.bat` into that archive folder
-5. stores the archive in `gitArchiveUpdater\managed_archives.json`
+3. scans direct child folders, and (if a provider matches the host) the authoritative remote set
+4. presents a plan and applies only the classes you approve (pull, clone, reconcile, rename)
+5. asks which mode future automated runs should use: `update` (safe, default) or `sync` (auto-clone new repos)
+6. writes `update_archive.bat` into that archive folder
+7. stores the archive in `gitArchiveUpdater\managed_archives.json`
 
-The archive-local launcher pins the target archive root and writes that archive's reports into the archive itself:
+The archive-local launcher calls `archive_sync.py` against the pinned archive root with the configured mode and `--yes` for unattended runs. It auto-detects the owner at run time, so it survives org and repo renames; the owner is never baked in. Scheduled runs only ever `--update` or `--sync` (never reconcile or rename), so they cannot silently rewrite origins or move folders. It writes that archive's reports into the archive itself:
 
 ```text
 ARCHIVE_ROOT\update_archive.bat
@@ -130,7 +146,7 @@ Manager logs live here:
 gitArchiveUpdater\runs\archive-manager.log
 ```
 
-Refresh-all runs call `archive_updater.py` once per managed archive, then update the registry with the last run time, result, elapsed time, and latest report path.
+Refresh-all runs call `archive_sync.py` once per managed archive in its configured mode, then update the registry with the last run time, result, elapsed time, and latest report path. If a repo's host has no provider, or discovery fails (for example `gh` is missing or unauthenticated), that archive degrades to update-only and still fast-forwards every clean repo; the discovery failure is recorded as an issue in the run's report.
 
 ### Scheduling
 

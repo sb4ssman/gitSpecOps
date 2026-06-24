@@ -249,7 +249,7 @@ def main() -> int:
     if args.github_owner or args.clone_new:
         print("Note: repo discovery/clone/rename moved to archive_sync.py. "
               "Updating local repos only. For full sync run:")
-        print(f"      python archive_sync.py --root <folder> --sync")
+        print("      python archive_sync.py --root <folder> --sync")
         print()
 
     try:
