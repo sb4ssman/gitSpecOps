@@ -2,112 +2,58 @@
 Archive Updater
 ===============
 
-Purpose
--------
-Scan one or more local folders that contain sibling Git repositories, print a
-clear inventory of what was found, and optionally update eligible repositories
-with `git pull --ff-only`.
+Host-agnostic update of a folder of sibling Git repositories: scan direct child folders,
+print an inventory, and (unless --scan-only) `git pull --ff-only` every clean repo whose
+origin is approved. Works with ANY git remote and any platform — it needs only `git`.
 
-This tool is intentionally conservative:
-- It only inspects direct child folders of each root.
-- It never merges, rebases, resets, force-pushes, installs dependencies, or
-  runs project code.
-- It updates only clean Git work trees whose `origin` remote starts with an
-  approved prefix, defaulting to `https://github.com/`.
-- It writes dated JSON reports when an output folder is configured.
+This is the conservative, universal half of gitSpecOps. It never merges, rebases, resets,
+force-pushes, installs dependencies, runs project code, clones, or renames. Discovery of
+remote repos that aren't cloned locally, cloning them, and reconciling renames are the job
+of archive_sync.py (which requires a remote provider such as the GitHub `gh` CLI).
 
-Typical Usage
--------------
-Run from the folder you want to manage:
+Local repo facts come from git_inspect; this file is just scan + fast-forward + report.
 
-    uv run python gitArchiveUpdater\\archive_updater.py
-
-Scan without fetching or pulling:
-
-    uv run python gitArchiveUpdater\\archive_updater.py --scan-only
-
-Point at one folder:
-
-    uv run python gitArchiveUpdater\\archive_updater.py --root T:\\Github\\Archive
-
-Point at several folders:
-
-    uv run python gitArchiveUpdater\\archive_updater.py --root T:\\Github\\Archive --root T:\\Github\\BonusBrain
-
-Write dated reports somewhere explicit:
-
-    uv run python gitArchiveUpdater\\archive_updater.py --root T:\\Github\\Archive --output-dir T:\\Github\\Archive\\.gitSpecOps\\archive-updates
-
-Show full remote URLs in console output:
-
-    uv run python gitArchiveUpdater\\archive_updater.py --show-remote-urls
-
-Parameters
-----------
---root PATH
-    Root folder to scan. May be passed more than once. Defaults to the current
-    working directory when omitted.
-
---output-dir PATH
-    Folder where dated JSON reports are written. If omitted, no report is
-    written unless `--default-output-dir NAME` is used.
-
---default-output-dir NAME
-    For each scanned root, write reports under ROOT/NAME. Example:
-    `--default-output-dir .gitSpecOps/archive-updates`.
-
---scan-only
-    Inventory only. No fetch or pull.
-
---approved-remote-prefix PREFIX
-    Allowed remote prefix. May be passed more than once. Defaults to
-    `https://github.com/`.
-
---show-remote-urls
-    Print full remote URLs. By default, console output only says whether an
-    origin is present to avoid leaking credentials embedded in URLs.
-
---no-report
-    Suppress report writing even if an output directory is configured.
+Usage:
+    python archive_updater.py                      # update the current folder
+    python archive_updater.py --scan-only          # inventory only
+    python archive_updater.py --root T:\\Github\\Archive
+    python archive_updater.py --root A --root B     # several roots
+    python archive_updater.py --output-dir REPORTS  # write a dated JSON report
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
 
+try:
+    from .git_inspect import (
+        RepoInfo,
+        inspect_candidate,
+        is_hidden,
+        list_child_dirs,
+        run_git,
+        set_git_timeout,
+    )
+except ImportError:
+    from git_inspect import (
+        RepoInfo,
+        inspect_candidate,
+        is_hidden,
+        list_child_dirs,
+        run_git,
+        set_git_timeout,
+    )
 
 APP_NAME = "Archive Updater"
-VERSION = "0.2.0"
-DEFAULT_APPROVED_REMOTE_PREFIXES = ["https://github.com/"]
+VERSION = "0.4.0"
+DEFAULT_APPROVED_REMOTE_PREFIXES = ["https://github.com/", "git@github.com:", "ssh://git@github.com/"]
 DEFAULT_GIT_TIMEOUT_SECONDS = 45
-GIT_TIMEOUT_SECONDS = DEFAULT_GIT_TIMEOUT_SECONDS
-
-
-@dataclass
-class RepoInfo:
-    name: str
-    path: str
-    hidden: bool
-    has_git_marker: bool
-    is_work_tree: bool
-    origin_present: bool
-    origin: str | None
-    approved_remote: bool
-    branch: str | None
-    dirty_work_tree: bool
-    dirty_index: bool
-    eligible: bool
-    action: str
-    result: str = "not run"
-    elapsed_seconds: float = 0.0
 
 
 @dataclass
@@ -123,122 +69,18 @@ class RootReport:
     elapsed_seconds: float = 0.0
 
 
-def run_git(repo_path: Path, args: Iterable[str], timeout: int | None = None) -> subprocess.CompletedProcess:
-    timeout = GIT_TIMEOUT_SECONDS if timeout is None else timeout
-    try:
-        return subprocess.run(
-            ["git", *args],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-    except (PermissionError, FileNotFoundError):
-        return subprocess.CompletedProcess(list(args), returncode=1, stdout="", stderr="")
-    except subprocess.TimeoutExpired as exc:
-        return subprocess.CompletedProcess(
-            list(args),
-            returncode=124,
-            stdout=exc.stdout or "",
-            stderr=f"timed out after {timeout}s",
-        )
-
-
-def git_stdout(repo_path: Path, args: Iterable[str]) -> str | None:
-    proc = run_git(repo_path, args)
-    if proc.returncode != 0:
-        return None
-    value = proc.stdout.strip()
-    return value or None
-
-
-def git_top_level(path: Path) -> Path | None:
-    top_level = git_stdout(path, ["rev-parse", "--show-toplevel"])
-    if not top_level:
-        return None
-    return Path(top_level).resolve()
-
-
-def is_repo_root(path: Path) -> bool:
-    top_level = git_top_level(path)
-    return top_level == path.resolve()
-
-
-def is_hidden(path: Path) -> bool:
-    return path.name.startswith(".")
-
-
-def list_child_dirs(root: Path) -> list[Path]:
-    return sorted(
-        [item for item in root.iterdir() if item.is_dir()],
-        key=lambda item: item.name.lower(),
-    )
-
-
-def approved_remote(origin: str | None, prefixes: list[str]) -> bool:
-    return bool(origin and any(origin.startswith(prefix) for prefix in prefixes))
-
-
-def inspect_candidate(path: Path, approved_prefixes: list[str]) -> RepoInfo:
-    started = time.perf_counter()
-    has_git_marker = (path / ".git").exists()
-    is_work_tree = is_repo_root(path)
-    origin = git_stdout(path, ["remote", "get-url", "origin"]) if is_work_tree else None
-    origin_ok = approved_remote(origin, approved_prefixes)
-    branch = git_stdout(path, ["branch", "--show-current"]) if is_work_tree else None
-
-    dirty_work_tree = False
-    dirty_index = False
-    if is_work_tree:
-        dirty_work_tree = run_git(path, ["diff", "--quiet", "--ignore-submodules"]).returncode != 0
-        dirty_index = run_git(path, ["diff", "--cached", "--quiet", "--ignore-submodules"]).returncode != 0
-
-    if not has_git_marker and not is_work_tree:
-        action = "skip: not a git repository"
-    elif not is_work_tree:
-        action = "skip: .git marker exists but folder is not a work tree"
-    elif not origin:
-        action = "skip: no origin remote"
-    elif not origin_ok:
-        action = "skip: origin is not approved"
-    elif dirty_work_tree:
-        action = "skip: working tree has local changes"
-    elif dirty_index:
-        action = "skip: index has staged changes"
-    else:
-        action = "eligible: pull --ff-only"
-
-    return RepoInfo(
-        name=path.name,
-        path=str(path),
-        hidden=is_hidden(path),
-        has_git_marker=has_git_marker,
-        is_work_tree=is_work_tree,
-        origin_present=origin is not None,
-        origin=origin,
-        approved_remote=origin_ok,
-        branch=branch,
-        dirty_work_tree=dirty_work_tree,
-        dirty_index=dirty_index,
-        eligible=action.startswith("eligible:"),
-        action=action,
-        elapsed_seconds=round(time.perf_counter() - started, 3),
-    )
-
-
 def scan_root(root: Path, approved_prefixes: list[str]) -> RootReport:
     started = time.perf_counter()
     child_dirs = list_child_dirs(root)
     repos = [inspect_candidate(path, approved_prefixes) for path in child_dirs]
-
     report = RootReport(
         root=str(root),
         generated=datetime.now().isoformat(timespec="seconds"),
-        hidden_folders=[path.name for path in child_dirs if is_hidden(path)],
-        regular_folders=[path.name for path in child_dirs if not is_hidden(path)],
-        candidate_folders=[path.name for path in child_dirs],
-        git_repositories=[repo.name for repo in repos if repo.is_work_tree],
-        non_repo_folders=[repo.name for repo in repos if not repo.is_work_tree],
+        hidden_folders=[p.name for p in child_dirs if is_hidden(p)],
+        regular_folders=[p.name for p in child_dirs if not is_hidden(p)],
+        candidate_folders=[p.name for p in child_dirs],
+        git_repositories=[r.name for r in repos if r.is_work_tree],
+        non_repo_folders=[r.name for r in repos if not r.is_work_tree],
         repos=repos,
     )
     report.elapsed_seconds = round(time.perf_counter() - started, 3)
@@ -247,10 +89,9 @@ def scan_root(root: Path, approved_prefixes: list[str]) -> RootReport:
 
 def print_list(title: str, names: list[str]) -> None:
     print(f"{title}: {len(names)}")
-    if names:
-        for name in names:
-            print(f"  - {name}")
-    else:
+    for name in names:
+        print(f"  - {name}")
+    if not names:
         print("  - none")
 
 
@@ -259,30 +100,16 @@ def print_scan(report: RootReport, show_remote_urls: bool) -> None:
     print(f"Generated: {report.generated}")
     print(f"Scan time: {report.elapsed_seconds:.3f}s")
     print()
-    print_list("Hidden folders", report.hidden_folders)
-    print_list("Regular folders", report.regular_folders)
-    print_list("Candidate folders", report.candidate_folders)
     print_list("Git repositories", report.git_repositories)
     print_list("Non-repo folders", report.non_repo_folders)
     print()
-
     print("Candidate details:")
     for repo in report.repos:
-        print(f"  {repo.name}")
-        print(f"    .git marker: {'yes' if repo.has_git_marker else 'no'}")
-        print(f"    work tree: {'yes' if repo.is_work_tree else 'no'}")
-        if repo.origin and show_remote_urls:
-            print(f"    origin: {repo.origin}")
-        elif repo.origin_present:
-            print("    origin: present")
-        else:
-            print("    origin: none")
-        print(f"    approved remote: {'yes' if repo.approved_remote else 'no'}")
-        print(f"    branch: {repo.branch or 'unknown'}")
-        print(f"    dirty work tree: {'yes' if repo.dirty_work_tree else 'no'}")
-        print(f"    dirty index: {'yes' if repo.dirty_index else 'no'}")
-        print(f"    action: {repo.action}")
-        print(f"    inspect time: {repo.elapsed_seconds:.3f}s")
+        origin = repo.origin if (repo.origin and show_remote_urls) else ("present" if repo.origin_present else "none")
+        print(f"  {repo.name}: work_tree={'yes' if repo.is_work_tree else 'no'} "
+              f"host={repo.host or '-'} branch={repo.branch or '-'} "
+              f"dirty={'yes' if repo.dirty_work_tree or repo.dirty_index else 'no'} "
+              f"origin={origin} action={repo.action}")
     print()
 
 
@@ -292,12 +119,10 @@ def update_repo(repo: RepoInfo) -> str:
     if fetch.returncode != 0:
         detail = f": {fetch.stderr.strip()}" if fetch.stderr.strip() else ""
         return f"failed: fetch failed{detail}"
-
     pull = run_git(path, ["pull", "--ff-only"])
     if pull.returncode != 0:
         detail = f": {pull.stderr.strip()}" if pull.stderr.strip() else ""
         return f"failed: pull --ff-only failed{detail}"
-
     combined = f"{pull.stdout}\n{pull.stderr}".lower()
     if "already up to date" in combined or "already up-to-date" in combined:
         return "already current"
@@ -318,32 +143,21 @@ def run_updates(report: RootReport) -> None:
 
 
 def build_summary(report: RootReport) -> dict[str, list[str]]:
-    skipped_dirty_actions = {
-        "skip: working tree has local changes",
-        "skip: index has staged changes",
-    }
-    skipped_remote_actions = {
-        "skip: no origin remote",
-        "skip: origin is not approved",
-    }
-
-    skipped_non_repo = [repo.name for repo in report.repos if repo.result == "skip: not a git repository"]
-    skipped_dirty = [repo.name for repo in report.repos if repo.result in skipped_dirty_actions]
-    skipped_remote = [repo.name for repo in report.repos if repo.result in skipped_remote_actions]
-    known_skips = set(skipped_non_repo + skipped_dirty + skipped_remote)
-
+    dirty_actions = {"skip: working tree has local changes", "skip: index has staged changes"}
+    remote_actions = {"skip: no origin remote", "skip: origin is not approved"}
+    skipped_non_repo = [r.name for r in report.repos if r.result == "skip: not a git repository"]
+    skipped_dirty = [r.name for r in report.repos if r.result in dirty_actions]
+    skipped_remote = [r.name for r in report.repos if r.result in remote_actions]
+    known = set(skipped_non_repo + skipped_dirty + skipped_remote)
     return {
-        "updated": [repo.name for repo in report.repos if repo.result == "updated"],
-        "already_current": [repo.name for repo in report.repos if repo.result == "already current"],
+        "updated": [r.name for r in report.repos if r.result == "updated"],
+        "already_current": [r.name for r in report.repos if r.result == "already current"],
         "skipped_non_repo_folders": skipped_non_repo,
         "skipped_dirty_repos": skipped_dirty,
         "skipped_remote_issues": skipped_remote,
-        "skipped_other": [
-            repo.name
-            for repo in report.repos
-            if repo.result.startswith("skip:") and repo.name not in known_skips
-        ],
-        "failed": [repo.name for repo in report.repos if repo.result.startswith("failed:")],
+        "skipped_other": [r.name for r in report.repos
+                          if r.result.startswith("skip:") and r.name not in known],
+        "failed": [r.name for r in report.repos if r.result.startswith("failed:")],
     }
 
 
@@ -366,15 +180,8 @@ def report_payload(reports: list[RootReport], mode: str, approved_prefixes: list
         "generated": datetime.now().isoformat(timespec="seconds"),
         "mode": mode,
         "approved_remote_prefixes": approved_prefixes,
-        "git_timeout_seconds": GIT_TIMEOUT_SECONDS,
-        "elapsed_seconds": round(sum(report.elapsed_seconds for report in reports), 3),
-        "roots": [
-            {
-                "scan": asdict(report),
-                "summary": build_summary(report),
-            }
-            for report in reports
-        ],
+        "elapsed_seconds": round(sum(r.elapsed_seconds for r in reports), 3),
+        "roots": [{"scan": asdict(r), "summary": build_summary(r)} for r in reports],
     }
 
 
@@ -389,40 +196,24 @@ def write_report(output_dir: Path, reports: list[RootReport], mode: str, approve
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Scan and update one or more folders of sibling Git repositories.",
+        description="Scan and fast-forward update one or more folders of sibling Git repositories.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Run with no arguments to scan/update the current working directory.",
+        epilog="For clone/rename/sync of an org's repos, use archive_sync.py.",
     )
-    parser.add_argument(
-        "--root",
-        type=Path,
-        action="append",
-        help="Folder to scan. May be passed more than once. Defaults to cwd.",
-    )
-    parser.add_argument("--scan-only", action="store_true", help="Only scan and report; do not fetch or pull.")
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        help="Folder for one dated JSON report covering all scanned roots.",
-    )
-    parser.add_argument(
-        "--default-output-dir",
-        type=Path,
-        help="Per-root relative output folder used when --output-dir is omitted.",
-    )
-    parser.add_argument(
-        "--approved-remote-prefix",
-        action="append",
-        help="Allowed origin prefix. May be passed more than once. Defaults to https://github.com/.",
-    )
+    parser.add_argument("--root", type=Path, action="append", help="Folder to scan. Repeatable. Defaults to cwd.")
+    parser.add_argument("--scan-only", action="store_true", help="Only scan and report; do not pull.")
+    parser.add_argument("--output-dir", type=Path, help="Folder for one dated JSON report covering all roots.")
+    parser.add_argument("--default-output-dir", type=Path, help="Per-root relative output folder when --output-dir is omitted.")
+    parser.add_argument("--approved-remote-prefix", action="append",
+                        help="Allowed origin prefix. Repeatable. Defaults to common GitHub forms.")
     parser.add_argument("--show-remote-urls", action="store_true", help="Print full origin URLs.")
     parser.add_argument("--no-report", action="store_true", help="Do not write a dated JSON report.")
-    parser.add_argument(
-        "--git-timeout",
-        type=int,
-        default=DEFAULT_GIT_TIMEOUT_SECONDS,
-        help=f"Seconds before an individual git command is treated as failed. Defaults to {DEFAULT_GIT_TIMEOUT_SECONDS}.",
-    )
+    parser.add_argument("--git-timeout", type=int, default=DEFAULT_GIT_TIMEOUT_SECONDS,
+                        help=f"Per-git-command timeout seconds. Default {DEFAULT_GIT_TIMEOUT_SECONDS}.")
+    # Deprecated discovery flags: accepted for backward compatibility with older launchers.
+    parser.add_argument("--github-owner", help=argparse.SUPPRESS)
+    parser.add_argument("--clone-new", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--no-clone-new", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args()
 
 
@@ -450,11 +241,16 @@ def resolve_output_dir(args: argparse.Namespace, roots: list[Path]) -> Path | No
 
 
 def main() -> int:
-    global GIT_TIMEOUT_SECONDS
     started = time.perf_counter()
     args = parse_args()
-    GIT_TIMEOUT_SECONDS = args.git_timeout
+    set_git_timeout(args.git_timeout)
     approved_prefixes = args.approved_remote_prefix or DEFAULT_APPROVED_REMOTE_PREFIXES
+
+    if args.github_owner or args.clone_new:
+        print("Note: repo discovery/clone/rename moved to archive_sync.py. "
+              "Updating local repos only. For full sync run:")
+        print(f"      python archive_sync.py --root <folder> --sync")
+        print()
 
     try:
         roots = resolve_roots(args.root)
@@ -465,7 +261,6 @@ def main() -> int:
 
     mode = "scan-only" if args.scan_only else "update"
     reports: list[RootReport] = []
-
     print(f"{APP_NAME} v{VERSION}")
     print(f"Mode: {mode}")
     print(f"Roots: {len(roots)}")
@@ -477,7 +272,6 @@ def main() -> int:
         report = scan_root(root, approved_prefixes)
         reports.append(report)
         print_scan(report, show_remote_urls=args.show_remote_urls)
-
         if args.scan_only:
             print("Scan only: no repositories were updated.")
         else:
@@ -487,11 +281,9 @@ def main() -> int:
         print()
 
     if output_dir:
-        report_path = write_report(output_dir, reports, mode, approved_prefixes)
-        print(f"Report: {report_path}")
+        print(f"Report: {write_report(output_dir, reports, mode, approved_prefixes)}")
     else:
         print("Report: not written; pass --output-dir or --default-output-dir to write one.")
-
     print(f"Elapsed: {time.perf_counter() - started:.3f}s")
     return 0
 

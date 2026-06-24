@@ -29,25 +29,38 @@ from datetime import datetime
 from pathlib import Path
 
 try:
-    from .archive_updater import (
-        DEFAULT_APPROVED_REMOTE_PREFIXES,
-        approved_remote,
-        inspect_candidate,
-        is_repo_root,
-        list_child_dirs,
+    from .archive_updater import DEFAULT_APPROVED_REMOTE_PREFIXES
+    from .git_inspect import approved_remote, inspect_candidate, is_repo_root, list_child_dirs
+    from .archive_sync import (
+        apply_clone,
+        apply_pull,
+        apply_reconcile_origins,
+        apply_rename_folders,
+        detect_plan,
+        render_plan,
+        review,
     )
 except ImportError:
-    from archive_updater import (
-        DEFAULT_APPROVED_REMOTE_PREFIXES,
-        approved_remote,
-        inspect_candidate,
-        is_repo_root,
-        list_child_dirs,
+    from archive_updater import DEFAULT_APPROVED_REMOTE_PREFIXES
+    from git_inspect import approved_remote, inspect_candidate, is_repo_root, list_child_dirs
+    from archive_sync import (
+        apply_clone,
+        apply_pull,
+        apply_reconcile_origins,
+        apply_rename_folders,
+        detect_plan,
+        render_plan,
+        review,
     )
+
+# Per-archive run modes baked into the launcher / stored in the registry.
+MODE_UPDATE = "update"   # fast-forward pull only (safe; default)
+MODE_SYNC = "sync"       # update + clone repos missing locally (additive)
+VALID_MODES = (MODE_UPDATE, MODE_SYNC)
 
 
 APP_NAME = "Archive Updater Manager"
-VERSION = "0.1.0"
+VERSION = "0.3.0"
 TOOL_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TOOL_DIR.parent
 REGISTRY_PATH = TOOL_DIR / "managed_archives.json"
@@ -72,6 +85,7 @@ class InstallRecord:
     launcher_type: str
     repo_count: int
     approved_remote_prefixes: list[str]
+    mode: str = "update"
 
 
 def now_stamp() -> str:
@@ -127,7 +141,7 @@ def validate_archive_root(root: Path, approved_prefixes: list[str], show_progres
         print()
     if not resolved.exists() or not resolved.is_dir():
         raise ValueError(f"target folder is not a directory: {resolved}")
-    if (resolved / ".git").exists() or is_repo_root(resolved):
+    if is_repo_root(resolved):
         raise ValueError(f"target folder is itself a Git repository: {resolved}")
 
     suitable = (
@@ -155,16 +169,19 @@ def quote_sh(value: Path | str) -> str:
     return "'" + str(value).replace("'", "'\"'\"'") + "'"
 
 
-def launcher_text(root: Path, repo_root: Path, approved_prefixes: list[str]) -> str:
+def launcher_text(root: Path, repo_root: Path, approved_prefixes: list[str], mode: str = MODE_UPDATE) -> str:
+    """Generate the per-archive launcher. Calls archive_sync, which auto-detects the owner at
+    run time (surviving org/repo renames). The mode verb is the archive's configured intent;
+    --yes makes it non-interactive for unattended/scheduled runs. Owner is never baked in."""
+    verb = "--sync" if mode == MODE_SYNC else "--update"
     if WINDOWS:
         prefix_args = " ".join(f'--approved-remote-prefix "{quote_bat(prefix)}"' for prefix in approved_prefixes)
         return f"""@echo off
 setlocal
 set "REPO_ROOT={quote_bat(repo_root)}"
 set "ARCHIVE_ROOT={quote_bat(root)}"
-set "OUTPUT_DIR=%ARCHIVE_ROOT%\\{DEFAULT_REPORT_DIR}"
 cd /d "%REPO_ROOT%"
-uv run python gitArchiveUpdater\\archive_updater.py --root "%ARCHIVE_ROOT%" --output-dir "%OUTPUT_DIR%" {prefix_args} %*
+uv run python gitArchiveUpdater\\archive_sync.py --root "%ARCHIVE_ROOT%" {verb} --yes {prefix_args} %*
 exit /b %ERRORLEVEL%
 """
 
@@ -173,9 +190,8 @@ exit /b %ERRORLEVEL%
 set -eu
 REPO_ROOT={quote_sh(repo_root)}
 ARCHIVE_ROOT={quote_sh(root)}
-OUTPUT_DIR="$ARCHIVE_ROOT/.gitSpecOps/archive-updates"
 cd "$REPO_ROOT"
-exec uv run python gitArchiveUpdater/archive_updater.py --root "$ARCHIVE_ROOT" --output-dir "$OUTPUT_DIR" {prefix_args} "$@"
+exec uv run python gitArchiveUpdater/archive_sync.py --root "$ARCHIVE_ROOT" {verb} --yes {prefix_args} "$@"
 """
 
 
@@ -221,6 +237,7 @@ def install_launchers(
     approved_prefixes: list[str],
     show_progress: bool = False,
     prevalidated_repos: list[str] | None = None,
+    mode: str = MODE_UPDATE,
 ) -> InstallRecord:
     if prevalidated_repos is None:
         resolved, repos = validate_archive_root(root, approved_prefixes, show_progress=show_progress)
@@ -232,10 +249,10 @@ def install_launchers(
 
     if show_progress:
         print()
-        print(f"Writing archive update launcher: {launcher_path}")
+        print(f"Writing archive launcher ({mode}): {launcher_path}")
 
     launcher_path.write_text(
-        launcher_text(resolved, REPO_ROOT, approved_prefixes),
+        launcher_text(resolved, REPO_ROOT, approved_prefixes, mode=mode),
         encoding="utf-8",
         newline="\r\n" if WINDOWS else "\n",
     )
@@ -247,11 +264,12 @@ def install_launchers(
         updated_at=stamp,
         git_spec_ops_dir=str(REPO_ROOT),
         python_executable=str(python_executable),
-        runner="uv run python gitArchiveUpdater/archive_updater.py",
+        runner=f"uv run python gitArchiveUpdater/archive_sync.py ({mode})",
         launcher=str(launcher_path),
         launcher_type="bat" if WINDOWS else "sh",
         repo_count=len(repos),
         approved_remote_prefixes=approved_prefixes,
+        mode=mode,
     )
     upsert_record(record)
     if show_progress:
@@ -312,6 +330,7 @@ def print_registry(show_status: bool) -> None:
         details = installation_status(item) if show_status else item
         print()
         print(f"Root: {details['root']}")
+        print(f"  mode: {item.get('mode', 'update')}")
         print(f"  installed: {details.get('installed_at', 'unknown')}")
         print(f"  updated: {details.get('updated_at', 'unknown')}")
         if show_status:
@@ -346,6 +365,7 @@ def print_dashboard() -> None:
     for index, item in enumerate(installations, start=1):
         details = installation_status(item)
         print(f"{index}. {details['root']}")
+        print(f"   mode: {item.get('mode', 'update')}")
         print(f"   repos at install: {details['repo_count_at_install']}")
         print(f"   root: {'ok' if details['root_exists'] else 'missing'}")
         print(f"   launcher: {'ok' if details['launcher_exists'] else 'missing'} ({details['launcher_type']})")
@@ -357,25 +377,20 @@ def print_dashboard() -> None:
         print()
 
 
-def updater_command(item: dict, scan_only: bool) -> list[str]:
+def updater_command(item: dict, scan_only: bool, force_sync: bool = False) -> list[str]:
     root = Path(item["root"])
-    output_dir = root / DEFAULT_REPORT_DIR
-    command = [
-        sys.executable,
-        str(TOOL_DIR / "archive_updater.py"),
-        "--root",
-        str(root),
-        "--output-dir",
-        str(output_dir),
-    ]
+    command = [sys.executable, str(TOOL_DIR / "archive_sync.py"), "--root", str(root)]
     for prefix in item.get("approved_remote_prefixes") or DEFAULT_APPROVED_REMOTE_PREFIXES:
         command += ["--approved-remote-prefix", prefix]
     if scan_only:
-        command.append("--scan-only")
+        return command  # no verb -> archive_sync reports only
+    # Each archive runs its configured mode; force_sync promotes all to sync for this run.
+    mode = MODE_SYNC if (force_sync or item.get("mode") == MODE_SYNC) else MODE_UPDATE
+    command += ["--sync" if mode == MODE_SYNC else "--update", "--yes"]
     return command
 
 
-def refresh_all(scan_only: bool) -> int:
+def refresh_all(scan_only: bool, force_sync: bool = False) -> int:
     started_all = time.perf_counter()
     data = load_registry()
     installations = data["installations"]
@@ -387,8 +402,8 @@ def refresh_all(scan_only: bool) -> int:
     failures = 0
     refreshed = 0
     latest_reports: list[str] = []
-    mode = "scan-only" if scan_only else "update"
-    print(f"Refreshing {len(installations)} managed archive(s) in {mode} mode.")
+    mode = "scan-only" if scan_only else ("sync (all forced)" if force_sync else "per-archive mode")
+    print(f"Refreshing {len(installations)} managed archive(s): {mode}.")
     log_event(f"refresh-all started mode={mode} count={len(installations)}")
     print()
 
@@ -407,7 +422,7 @@ def refresh_all(scan_only: bool) -> int:
             log_event(f"refresh failed root={root} reason=root missing")
             continue
 
-        proc = subprocess.run(updater_command(item, scan_only), cwd=REPO_ROOT, text=True)
+        proc = subprocess.run(updater_command(item, scan_only, force_sync), cwd=REPO_ROOT, text=True)
         elapsed = round(time.perf_counter() - started, 3)
         status = "ok" if proc.returncode == 0 else f"failed: exit {proc.returncode}"
         details = installation_status(item)
@@ -519,33 +534,15 @@ def remove_task(task_name: str) -> int:
     return proc.returncode
 
 
-def choose_folder_dialog() -> tuple[Path, list[str]] | None:
+def choose_folder_dialog() -> Path | None:
     import tkinter as tk
-    from tkinter import filedialog, messagebox
+    from tkinter import filedialog
 
     root = tk.Tk()
     root.withdraw()
     folder = filedialog.askdirectory(title="Choose archive folder to manage")
-    if not folder:
-        root.destroy()
-        return None
-
-    target = Path(folder)
-    try:
-        resolved, repos = validate_archive_root(target, DEFAULT_APPROVED_REMOTE_PREFIXES, show_progress=True)
-    except ValueError as exc:
-        messagebox.showerror(APP_NAME, str(exc))
-        root.destroy()
-        return None
-
-    confirmed = messagebox.askyesno(
-        APP_NAME,
-        "Create archive update launchers here?\n\n"
-        f"{resolved}\n\n"
-        f"Found {len(repos)} suitable repo(s).",
-    )
     root.destroy()
-    return (resolved, repos) if confirmed else None
+    return Path(folder) if folder else None
 
 
 def interactive_menu(approved_prefixes: list[str]) -> int:
@@ -567,32 +564,58 @@ def interactive_menu(approved_prefixes: list[str]) -> int:
 
         if choice == "1":
             path_text = prompt_input("Archive folder path (blank opens picker): ")
-            prevalidated_repos = None
             if path_text:
                 target = Path(path_text)
             else:
-                selected = choose_folder_dialog()
-                if selected is None:
-                    target = None
-                else:
-                    target, prevalidated_repos = selected
+                target = choose_folder_dialog()
             if not target:
                 print("No archive folder selected.")
                 print()
                 continue
+            target = target.resolve()
+            if not target.is_dir():
+                print(f"Not a directory: {target}")
+                print()
+                continue
+
+            # DETECT + PLAN: scan local + (if a provider matches) the authoritative remote set.
+            print(f"Scanning {target} ...")
+            result = detect_plan(target, approved_prefixes)
+            render_plan(result)
+            issues = list(result.errors)
+            plan = result.plan
+
+            # DECIDE + EXECUTE, bulk, human in the middle. Nothing applied without an explicit yes.
+            if plan.to_clone and prompt_input(f"Clone {len(plan.to_clone)} missing repo(s) now? [y/N]: ").lower() in ("y", "yes"):
+                apply_clone(target, plan, issues)
+            stale = [it for it in plan.to_reconcile if it.origin_stale]
+            if stale and prompt_input(f"Rewrite {len(stale)} stale origin URL(s)? [y/N]: ").lower() in ("y", "yes"):
+                apply_reconcile_origins(target, plan, issues)
+            drift = [it for it in plan.to_reconcile if it.folder_mismatch]
+            if drift and prompt_input(f"Rename {len(drift)} folder(s) to match upstream? [y/N]: ").lower() in ("y", "yes"):
+                apply_rename_folders(target, plan, issues)
+            if plan.to_pull and prompt_input(f"Fast-forward {len(plan.to_pull)} repo(s) now? [y/N]: ").lower() in ("y", "yes"):
+                apply_pull(target, plan, issues)
+
+            print()
+            review(issues)
+            print()
+
+            # CONFIGURE: pick the verb future (and scheduled) runs of this archive will use.
+            is_org = result.provider_name is not None
+            mode = MODE_UPDATE
+            if is_org:
+                ans = prompt_input("Mode for automated runs - [u]pdate-only (safe) or [s]ync (auto-clone new)? [U/s]: ").lower()
+                mode = MODE_SYNC if ans in ("s", "sync") else MODE_UPDATE
+
             try:
-                record = install_launchers(
-                    target,
-                    approved_prefixes,
-                    show_progress=True,
-                    prevalidated_repos=prevalidated_repos,
-                )
+                record = install_launchers(target, approved_prefixes, show_progress=True, mode=mode)
             except (ValueError, OSError) as exc:
                 print(f"Error: {exc}")
                 print()
                 continue
             print(f"Installed archive launcher for {record.root}")
-            print(f"  Launcher: {record.launcher}")
+            print(f"  Launcher: {record.launcher}  (mode: {record.mode})")
             print(f"  Registry: {REGISTRY_PATH}")
             print()
             continue
@@ -603,9 +626,13 @@ def interactive_menu(approved_prefixes: list[str]) -> int:
             continue
 
         if choice == "3":
-            confirm = prompt_input('Type "YES" to update all managed archives: ')
+            confirm = prompt_input('Type "YES" to refresh all managed archives: ')
             if confirm == "YES":
-                refresh_all(scan_only=False)
+                # Each archive runs its own configured mode. This promotes ALL of them to sync.
+                force_sync = prompt_input(
+                    "Force SYNC (clone missing) for EVERY archive, overriding per-archive mode? [y/N]: "
+                ).strip().lower() in ("y", "yes")
+                refresh_all(scan_only=False, force_sync=force_sync)
             else:
                 print("Skipped.")
             print()
@@ -667,12 +694,15 @@ def interactive_menu(approved_prefixes: list[str]) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Install and track ArchiveUpdater launchers.")
-    parser.add_argument("--install", type=Path, help="Archive folder where launchers should be created.")
+    parser.add_argument("--install", type=Path, help="Archive folder where a launcher should be created.")
+    parser.add_argument("--mode", choices=VALID_MODES, default=MODE_UPDATE,
+                        help="With --install: launcher verb for automated runs. 'update' (safe) or 'sync' (auto-clone).")
     parser.add_argument("--list", action="store_true", help="List registered launcher installations.")
     parser.add_argument("--status", action="store_true", help="List installations and verify paths still exist.")
     parser.add_argument("--forget", type=Path, help="Remove one archive folder from the registry.")
-    parser.add_argument("--refresh-all", action="store_true", help="Run archive updater for every managed archive.")
+    parser.add_argument("--refresh-all", action="store_true", help="Run archive sync for every managed archive.")
     parser.add_argument("--scan-only", action="store_true", help="Use scan-only mode with --refresh-all.")
+    parser.add_argument("--force-sync", action="store_true", help="Promote every archive to sync for this --refresh-all run.")
     parser.add_argument("--write-refresh-all-script", action="store_true", help="Write a script that refreshes all managed archives.")
     parser.add_argument("--install-monthly-task", action="store_true", help="Create/update a monthly Windows scheduled task.")
     parser.add_argument("--task-status", action="store_true", help="Show the Windows scheduled task status.")
@@ -694,7 +724,7 @@ def main() -> int:
 
     try:
         if args.refresh_all:
-            return refresh_all(scan_only=args.scan_only)
+            return refresh_all(scan_only=args.scan_only, force_sync=args.force_sync)
 
         if args.write_refresh_all_script:
             path = write_refresh_all_script()
@@ -727,7 +757,7 @@ def main() -> int:
             print("No archive folder selected.")
             return 1
 
-        record = install_launchers(target, approved_prefixes, show_progress=True)
+        record = install_launchers(target, approved_prefixes, show_progress=True, mode=args.mode)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
@@ -735,7 +765,7 @@ def main() -> int:
         print(f"Error writing launcher or registry: {exc}", file=sys.stderr)
         return 3
 
-    print(f"Installed archive launchers for {record.root}")
+    print(f"Installed archive launcher for {record.root}  (mode: {record.mode})")
     print(f"  Launcher: {record.launcher}")
     print(f"  Registry: {REGISTRY_PATH}")
     return 0
