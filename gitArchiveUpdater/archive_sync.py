@@ -30,7 +30,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -71,6 +70,9 @@ class DetectResult:
     provider_name: str | None = None
     remote_count: int | None = None
     errors: list[Issue] = field(default_factory=list)
+    # True only when we obtained the complete remote repo set. False when there is no provider
+    # for the host, or the provider's listing failed/timed out -> we degrade to update-only.
+    remote_authoritative: bool = True
 
 
 # --------------------------------------------------------------------------------------
@@ -103,7 +105,10 @@ def detect_plan(root: Path, approved_prefixes: list[str], owner_override: str | 
 
     # No provider -> host-agnostic: update-only plan (everything clean is a pull candidate).
     if provider is None:
-        return DetectResult(root=str(root), plan=build_plan(locals_, []), owner=None, provider_name=None)
+        return DetectResult(
+            root=str(root), plan=build_plan(locals_, [], remote_authoritative=False),
+            owner=None, provider_name=None, remote_authoritative=False,
+        )
 
     # Resolve the canonical owner. Listing a renamed OLD owner 404s, so resolve via a repo
     # redirect: ask the provider for one known repo and read its current owner.
@@ -119,11 +124,25 @@ def detect_plan(root: Path, approved_prefixes: list[str], owner_override: str | 
             owner = ref.owner
 
     remote: list[RepoRef] = []
+    listing_ok = False
     if owner:
-        remote, err = provider.list_repos(owner)
-        if err:
-            errors.append(Issue(repo=owner, action="list-repos", detail=err))
+        listed, err = provider.list_repos(owner)
+        if err or listed is None:
+            errors.append(Issue(repo=owner, action="list-repos", detail=err or "no repos returned"))
             remote = []
+        else:
+            remote = listed
+            listing_ok = True
+
+    # Could not get an authoritative remote set (no owner resolved, or the listing failed). We
+    # know nothing about what exists remotely, so degrade to update-only rather than dumping
+    # every local repo into "local-only / missing". Fast-forward pulls stay safe and useful.
+    if not listing_ok:
+        return DetectResult(
+            root=str(root), plan=build_plan(locals_, [], remote_authoritative=False),
+            owner=owner, provider_name=getattr(provider, "name", "?"),
+            remote_count=None, errors=errors, remote_authoritative=False,
+        )
 
     # First pass by name/URL; then resolve ids only for the leftovers (renamed-upstream repos).
     plan = build_plan(locals_, remote)
@@ -155,8 +174,11 @@ def render_plan(result: DetectResult) -> None:
     plan = result.plan
     print("=" * 64)
     print(f"Archive: {result.root}")
-    if result.provider_name:
+    if result.provider_name and result.remote_authoritative:
         print(f"Type: org archive  ({result.provider_name}: {result.owner}, {result.remote_count} remote repos)")
+    elif result.provider_name:
+        print(f"Type: update-only  ({result.provider_name} discovery unavailable for "
+              f"{result.owner or '?'} -> updating local repos only; see issues below)")
     else:
         print("Type: loose archive  (no remote provider for these hosts -> update-only)")
     print("=" * 64)
@@ -312,7 +334,8 @@ def build_report(result: DetectResult, applied: dict[str, int], issues: list[Iss
         "version": VERSION,
         "generated": datetime.now().isoformat(timespec="seconds"),
         "root": result.root,
-        "type": "org" if result.provider_name else "loose",
+        "type": ("org" if result.remote_authoritative else "update-only") if result.provider_name else "loose",
+        "remote_authoritative": result.remote_authoritative,
         "provider": result.provider_name,
         "owner": result.owner,
         "remote_count": result.remote_count,

@@ -95,7 +95,11 @@ def normalize_owner_name(url: str | None) -> str | None:
     return f"{segments[0]}/{segments[-1]}".lower()
 
 
-def build_plan(local_repos: list[LocalRepo], remote_repos: list[RepoRef]) -> SyncPlan:
+def build_plan(
+    local_repos: list[LocalRepo],
+    remote_repos: list[RepoRef],
+    remote_authoritative: bool = True,
+) -> SyncPlan:
     """Categorize every local and remote repo. Pure: matching only, no side effects.
 
     Matching order per local repo:
@@ -103,8 +107,26 @@ def build_plan(local_repos: list[LocalRepo], remote_repos: list[RepoRef]) -> Syn
       2. by remote_id (filled by caller via provider redirect) -> origin is stale (renamed upstream)
       3. otherwise -> local-only (orphan; never assumed deleted)
     Any remote repo left unmatched is missing locally and a clone candidate.
+
+    `remote_authoritative` says whether `remote_repos` is the *true, complete* remote set.
+    When it is False (no provider for the host, or the listing failed/timed out) we know
+    nothing about what exists remotely, so we must NOT label local repos as orphans or
+    missing. We degrade to host-agnostic update-only: every clean work tree is a pull
+    candidate, every dirty one is skipped, and there are no clone/reconcile/local-only
+    buckets. This matches the standalone archive_updater behavior and the documented
+    "loose archive -> update-only" promise. An empty-but-authoritative listing (a genuinely
+    empty org) is different: there every local repo really is local-only.
     """
     plan = SyncPlan()
+
+    if not remote_authoritative:
+        for local in local_repos:
+            if local.dirty:
+                plan.skipped_dirty.append(local)
+            else:
+                plan.to_pull.append(local)
+        return plan
+
 
     remote_by_owner_name = {f"{r.owner}/{r.name}".lower(): r for r in remote_repos}
     remote_by_id = {r.id: r for r in remote_repos}
@@ -196,6 +218,16 @@ def _self_test() -> int:
           sorted(l.folder for l in plan.to_pull), ["Family-Clock", "ggm-wedding.com"])
     check("namespace rename detected",
           plan.namespace_renames, [("solid-five-seven", "moon-and-back")])
+
+    # Non-authoritative remote (no provider, or a failed/timed-out listing): we must fall back
+    # to update-only and pull every clean repo, never mislabel them as orphans/local-only.
+    loose = build_plan(local, [], remote_authoritative=False)
+    check("non-authoritative pulls all clean repos",
+          sorted(l.folder for l in loose.to_pull),
+          ["Family-Clock", "Old-Experiment", "ggm-wedding.com"])
+    check("non-authoritative skips dirty", [l.folder for l in loose.skipped_dirty], ["Agent-Five-Seven"])
+    check("non-authoritative invents no clones/orphans",
+          (len(loose.to_clone), len(loose.local_only), len(loose.to_reconcile)), (0, 0, 0))
 
     if failures:
         print("SELF-TEST FAILED:")

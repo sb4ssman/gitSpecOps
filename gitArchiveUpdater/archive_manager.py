@@ -602,7 +602,9 @@ def interactive_menu(approved_prefixes: list[str]) -> int:
             print()
 
             # CONFIGURE: pick the verb future (and scheduled) runs of this archive will use.
-            is_org = result.provider_name is not None
+            # Only offer sync (auto-clone) when we actually have an authoritative remote listing;
+            # if discovery failed there is nothing to clone and the archive is update-only.
+            is_org = result.provider_name is not None and result.remote_authoritative
             mode = MODE_UPDATE
             if is_org:
                 ans = prompt_input("Mode for automated runs - [u]pdate-only (safe) or [s]ync (auto-clone new)? [U/s]: ").lower()

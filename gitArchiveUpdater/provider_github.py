@@ -25,8 +25,8 @@ try:
 except ImportError:
     from archive_diff import RepoRef
 
-_LIST_FIELDS = "id,name,nameWithOwner,url,isPrivate,isFork,isArchived"
-_VIEW_FIELDS = "id,name,nameWithOwner,url,isPrivate,isFork,isArchived"
+# Fields requested from `gh` for both list and view; maps 1:1 onto RepoRef in _ref_from_json.
+_FIELDS = "id,name,nameWithOwner,url,isPrivate,isFork,isArchived"
 
 
 def _ref_from_json(item: dict) -> RepoRef:
@@ -49,7 +49,7 @@ class GitHubProvider:
     def list_repos(self, owner: str) -> tuple[list[RepoRef] | None, str | None]:
         try:
             proc = subprocess.run(
-                ["gh", "repo", "list", owner, "--json", _LIST_FIELDS, "--limit", "1000"],
+                ["gh", "repo", "list", owner, "--json", _FIELDS, "--limit", "1000"],
                 capture_output=True, text=True, timeout=60,
             )
             if proc.returncode != 0:
@@ -66,7 +66,7 @@ class GitHubProvider:
         """Resolve owner/name or a full URL to its canonical RepoRef, following renames."""
         try:
             proc = subprocess.run(
-                ["gh", "repo", "view", repo_spec, "--json", _VIEW_FIELDS],
+                ["gh", "repo", "view", repo_spec, "--json", _FIELDS],
                 capture_output=True, text=True, timeout=30,
             )
             if proc.returncode != 0:
