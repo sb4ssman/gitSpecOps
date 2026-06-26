@@ -182,7 +182,16 @@ set "REPO_ROOT={quote_bat(repo_root)}"
 set "ARCHIVE_ROOT={quote_bat(root)}"
 cd /d "%REPO_ROOT%"
 uv run python gitArchiveUpdater\\archive_sync.py --root "%ARCHIVE_ROOT%" {verb} --yes {prefix_args} %*
-exit /b %ERRORLEVEL%
+set "RC=%ERRORLEVEL%"
+rem When double-clicked from Explorer, %cmdcmdline% contains this script's name and the
+rem console would normally close on exit. Keep it open (no keypress) so the output can be
+rem inspected. When run from an existing console or another process, just propagate the code.
+echo "%cmdcmdline%" | find /i "%~nx0" >nul 2>&1 && (
+    echo.
+    echo Finished with exit code %RC%. Window left open for inspection; close it when done.
+    cmd /k
+)
+exit /b %RC%
 """
 
     prefix_args = " ".join(f"--approved-remote-prefix {quote_sh(prefix)}" for prefix in approved_prefixes)
