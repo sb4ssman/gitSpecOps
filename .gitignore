@@ -13,6 +13,7 @@ archive_updater_registry.json
 gitArchiveUpdater/managed_archives.json
 gitArchiveUpdater/runs/
 gitArchiveUpdater/refresh-managed-archives.bat
+gitArchiveUpdater/refresh-managed-archives.ps1
 gitArchiveUpdater/refresh-managed-archives.sh
 github-org-duplicator/runs/
 completed_repos.txt

@@ -36,6 +36,69 @@ from operations import download_single_repo, process_migrate_repo, process_uploa
 from tracking import initialize_tracking_files, load_completed_repos
 
 
+def prompt_yes_no(question, default=True):
+    """Ask a yes/no question. Empty input takes the default. Returns a bool."""
+    suffix = "[Y/n]" if default else "[y/N]"
+    while True:
+        answer = prompt_input(f"{question} {suffix}: ").lower()
+        if not answer:
+            return default
+        if answer in ("y", "yes"):
+            return True
+        if answer in ("n", "no"):
+            return False
+        print("Please answer y or n.")
+
+
+def prompt_for_directory(prompt_text, must_exist=False, create_ok=True):
+    """Prompt for a directory, re-prompting until a usable one is given.
+
+    must_exist: the path must already be a directory (upload SOURCE).
+    create_ok:  offer to create it when missing (download/migrate TARGET).
+    Returns the validated path. Never calls sys.exit on bad input — it re-prompts,
+    so a typo doesn't drop the user back to the mode menu.
+    """
+    while True:
+        raw = prompt_input(prompt_text)
+        if not raw:
+            print("Please enter a path.")
+            continue
+        path = os.path.expanduser(raw)
+
+        if os.path.isdir(path):
+            return path
+        if os.path.exists(path):
+            print(f"ERROR: {path} exists but is not a directory. Try again.")
+            continue
+
+        # Path does not exist.
+        if must_exist or not create_ok:
+            print(f"ERROR: Directory does not exist: {path}. Try again.")
+            continue
+        if not prompt_yes_no(f"'{path}' does not exist. Create it?", default=True):
+            print("Not created. Enter a different path.")
+            continue
+        try:
+            os.makedirs(path, exist_ok=True)
+        except OSError as exc:
+            print(f"ERROR: Could not create {path}: {exc}. Try again.")
+            continue
+        print(f"Created: {path}")
+        return path
+
+
+def non_repo_entries(directory_path, repos):
+    """Names of items in directory_path that are not among the detected git repos."""
+    repo_dir_names = set()
+    for repo in repos:
+        repo_dir_names.add(os.path.basename(repo['path']))
+    try:
+        entries = os.listdir(directory_path)
+    except OSError:
+        return []
+    return sorted(name for name in entries if name not in repo_dir_names)
+
+
 def display_repo_table(repos, org_name):
     """Display repository information in a readable table format."""
     print()
@@ -141,32 +204,20 @@ def setup_operation():
         config['use_mirror'] = (format_choice == "2")
         print()
 
-        # Get target directory
-        temp_dir = prompt_input("Target directory path (repos will be saved here): ")
-        temp_dir = os.path.expanduser(temp_dir)
-
-        if not os.path.exists(temp_dir):
-            print(f"\nCreating directory: {temp_dir}")
-            os.makedirs(temp_dir)
-
-        if not os.path.isdir(temp_dir):
-            print(f"ERROR: {temp_dir} is not a directory")
-            sys.exit(1)
-
-        config['temp_dir'] = temp_dir
+        # Get target directory (created if missing; re-prompts on a bad path)
+        config['temp_dir'] = prompt_for_directory(
+            "Target directory path (repos will be saved here): ",
+            must_exist=False,
+            create_ok=True,
+        )
         print()
 
     elif operation_mode == 'upload':
-        source_dir = prompt_input("Source directory path (scan for git repos): ")
-        source_dir = os.path.expanduser(source_dir)
-
-        if not os.path.exists(source_dir):
-            print(f"ERROR: Directory does not exist: {source_dir}")
-            sys.exit(1)
-        if not os.path.isdir(source_dir):
-            print(f"ERROR: {source_dir} is not a directory")
-            sys.exit(1)
-
+        source_dir = prompt_for_directory(
+            "Source directory path (scan for git repos): ",
+            must_exist=True,
+            create_ok=False,
+        )
         config['source_dir'] = source_dir
         config['temp_dir'] = source_dir  # Reuse for consistency
         config['dest_org'] = prompt_input("Destination organization name: ")
@@ -242,15 +293,31 @@ def validate_operation(config):
         if operation_mode == 'download':
             print()
             print("=" * 60)
-            print("Matching repository names found locally.")
+            print("Some repositories already exist in the target folder.")
             print("=" * 60)
-            print(f"✓ {len(conflicts)} repos already exist locally and will be skipped")
+            print(f"⚠ {len(conflicts)} of {len(source_repos)} repos already exist in "
+                  f"{config['temp_dir']}:")
+            for name_lower in sorted(conflicts):
+                print(f"    {source_names[name_lower]}")
+            print()
+            print("These will be SKIPPED — left untouched, never overwritten.")
+
+            others = non_repo_entries(config['temp_dir'], existing_local)
+            if others:
+                print(f"⚠ The target folder also holds {len(others)} other item(s), e.g.:")
+                for name in others[:10]:
+                    print(f"    {name}")
+            print()
 
             for name_lower in conflicts:
                 repo_name = source_names[name_lower]
                 if repo_name not in load_completed_repos(files['completed']):
                     with open(files['completed'], 'a', encoding='utf-8') as f:
                         f.write(f"{repo_name}\n")
+
+            if not prompt_yes_no("Continue with download?", default=False):
+                print("Aborted by user.")
+                sys.exit(0)
             print()
 
         elif operation_mode == 'upload':
@@ -408,17 +475,11 @@ def main():
 
     # Get temp directory for migrate mode
     if operation_mode == 'migrate':
-        temp_dir = prompt_input("Temporary directory path (for cloning): ")
-        temp_dir = os.path.expanduser(temp_dir)
-
-        if not os.path.exists(temp_dir):
-            print(f"\nCreating directory: {temp_dir}")
-            os.makedirs(temp_dir)
-
-        if not os.path.isdir(temp_dir):
-            print(f"ERROR: {temp_dir} is not a directory")
-            sys.exit(1)
-        config['temp_dir'] = temp_dir
+        config['temp_dir'] = prompt_for_directory(
+            "Temporary directory path (for cloning): ",
+            must_exist=False,
+            create_ok=True,
+        )
         print()
 
     # Load completed repos

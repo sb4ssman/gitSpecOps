@@ -7,29 +7,39 @@ Small local special Git operations tools.
 - Archive Updater
   - Keeping local folders full of cloned repositories refreshed in a controlled way.
 
-The repo is intentionally plain. There is no package CLI, no hidden service, and no database. The tools are regular Python scripts launched through small generated `.bat` or `.sh` files.
+The repo is intentionally plain. There is no package CLI, no hidden service, and no database. The tools are regular Python scripts launched through small committed `.bat` / `.ps1` / `.sh` files.
 
 ## Quick Start
 
-Install `uv`, `git`, and GitHub CLI (`gh`). Authenticate GitHub CLI if you plan to use the org duplicator:
+Install `git` and GitHub CLI (`gh`), plus `uv` (recommended). Authenticate GitHub CLI if you plan to use the org duplicator:
 
 ```powershell
 gh auth login
 ```
 
-From the repo root, generate the local launchers:
+The launchers are committed — just run one. On Windows double-click or call the `.bat`:
+
+```powershell
+.\github-org-duplicator\duplicate-github-org.bat
+```
+
+Each tool ships a launcher trio:
+
+- `<tool>.bat` — a small shim so Explorer double-click works (Windows).
+- `<tool>.ps1` — the real Windows launcher.
+- `<tool>.sh` — the macOS/Linux launcher.
+
+Every launcher prefers the repo's `.venv` interpreter and falls back to `uv run` when `.venv` is absent, so `uv` alone is enough to run everything with no setup step.
+
+### Optional: build a local environment
+
+Running the bootstrap once creates `.venv`, after which the launchers call it directly — faster cold start and no dependency on `uv` staying on `PATH`:
 
 ```powershell
 .\run_setup.bat
 ```
 
-On Windows this writes:
-
-- `gitArchiveUpdater\update-archive.bat`
-- `gitArchiveUpdater\manage-archives.bat`
-- `github-org-duplicator\duplicate-github-org.bat`
-
-Setup detects the current operating system and writes only that system's launcher type. Running setup again simply overwrites those expected launchers.
+`run_setup` prefers `uv sync` (honoring `uv.lock`) and falls back to the stdlib `venv` + `pip install -e .` when `uv` is unavailable. It also reports whether `git`, `gh`, and `uv` are present. It is entirely optional.
 
 ## What Is Here
 
@@ -48,8 +58,8 @@ The manager and the archive-local launchers drive a small plan/apply engine made
 
 Supporting files:
 
-- `setup_gitspecops.py`: writes the launcher scripts.
-- `run_setup.bat`, `run_setup.ps1`, `run_setup.sh`: convenient setup entry points.
+- `setup_gitspecops.py`: optional bootstrap — builds `.venv` (via `uv sync`, or stdlib `venv` as a fallback) and reports prerequisites. It does not write launchers.
+- `run_setup.bat`, `run_setup.ps1`, `run_setup.sh`: convenient entry points for the optional bootstrap.
 - `_legacy_sources\`: older source snapshots kept only for reference.
 
 ### archive_updater.py vs archive_sync.py
@@ -204,8 +214,10 @@ These are generated locally and ignored by Git:
 - `uv.lock`
 - `gitArchiveUpdater\managed_archives.json`
 - `gitArchiveUpdater\runs\`
-- `gitArchiveUpdater\refresh-managed-archives.bat`
+- `gitArchiveUpdater\refresh-managed-archives.bat` / `.ps1` / `.sh`
 - `github-org-duplicator\runs\`
+
+The per-tool launchers (`duplicate-github-org`, `manage-archives`, `update-archive`) and the per-archive `update_archive` launchers are committed/installed, not ignored.
 
 The ignored state is useful on one machine but should not be shared as repo source.
 

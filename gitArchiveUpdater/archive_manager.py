@@ -65,9 +65,16 @@ TOOL_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TOOL_DIR.parent
 REGISTRY_PATH = TOOL_DIR / "managed_archives.json"
 WINDOWS = sys.platform == "win32"
+# The double-clickable primary launcher. On Windows a .bat shim hands off to a
+# .ps1 that holds the real logic; on POSIX the .sh is the real launcher.
 LAUNCHER_NAME = "update_archive.bat" if WINDOWS else "update_archive.sh"
+LAUNCHER_PS1_NAME = "update_archive.ps1"  # Windows companion written next to the .bat
+# Interpreter the generated launchers prefer (built by run_setup); they fall back
+# to `uv run` when it is absent.
+VENV_PYTHON = REPO_ROOT / (".venv/Scripts/python.exe" if WINDOWS else ".venv/bin/python")
 DEFAULT_REPORT_DIR = r".gitSpecOps\archive-updates"
 REFRESH_ALL_SCRIPT = TOOL_DIR / ("refresh-managed-archives.bat" if WINDOWS else "refresh-managed-archives.sh")
+REFRESH_ALL_PS1 = TOOL_DIR / "refresh-managed-archives.ps1"  # Windows companion
 DEFAULT_TASK_NAME = "gitSpecOps Archive Refresh"
 RUNS_DIR = TOOL_DIR / "runs"
 MANAGER_LOG = RUNS_DIR / "archive-manager.log"
@@ -169,19 +176,46 @@ def quote_sh(value: Path | str) -> str:
     return "'" + str(value).replace("'", "'\"'\"'") + "'"
 
 
-def launcher_text(root: Path, repo_root: Path, approved_prefixes: list[str], mode: str = MODE_UPDATE) -> str:
-    """Generate the per-archive launcher. Calls archive_sync, which auto-detects the owner at
-    run time (surviving org/repo renames). The mode verb is the archive's configured intent;
-    --yes makes it non-interactive for unattended/scheduled runs. Owner is never baked in."""
+def quote_ps(value: Path | str) -> str:
+    """Quote a value for a PowerShell single-quoted string literal."""
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def launcher_ps1_text(root: Path, repo_root: Path, approved_prefixes: list[str], mode: str = MODE_UPDATE) -> str:
+    """The real per-archive launcher (Windows). Prefers the repo's .venv Python and falls back
+    to `uv run`. Calls archive_sync, which auto-detects the owner at run time (surviving org/repo
+    renames). The mode verb is the archive's configured intent; --yes makes it non-interactive for
+    unattended/scheduled runs. Owner is never baked in."""
     verb = "--sync" if mode == MODE_SYNC else "--update"
-    if WINDOWS:
-        prefix_args = " ".join(f'--approved-remote-prefix "{quote_bat(prefix)}"' for prefix in approved_prefixes)
-        return f"""@echo off
+    prefixes_ps = ", ".join(quote_ps(prefix) for prefix in approved_prefixes)
+    return f"""# Auto-generated per-archive launcher for gitSpecOps. Do not edit by hand.
+$ErrorActionPreference = "Stop"
+$RepoRoot = {quote_ps(repo_root)}
+$ArchiveRoot = {quote_ps(root)}
+$Prefixes = @({prefixes_ps})
+$VenvPy = Join-Path $RepoRoot '.venv\\Scripts\\python.exe'
+$SyncArgs = @('--root', $ArchiveRoot, '{verb}', '--yes')
+foreach ($p in $Prefixes) {{ $SyncArgs += @('--approved-remote-prefix', $p) }}
+$SyncArgs += $args
+Push-Location $RepoRoot
+try {{
+    if (Test-Path $VenvPy) {{
+        & $VenvPy gitArchiveUpdater/archive_sync.py @SyncArgs
+    }} else {{
+        uv run python gitArchiveUpdater/archive_sync.py @SyncArgs
+    }}
+}} finally {{ Pop-Location }}
+exit $LASTEXITCODE
+"""
+
+
+def launcher_bat_shim_text(ps1_name: str) -> str:
+    """The double-clickable .bat shim (Windows). Hands off to the .ps1 and keeps the console
+    open after a double-click so the output can be inspected."""
+    return f"""@echo off
 setlocal
-set "REPO_ROOT={quote_bat(repo_root)}"
-set "ARCHIVE_ROOT={quote_bat(root)}"
-cd /d "%REPO_ROOT%"
-uv run python gitArchiveUpdater\\archive_sync.py --root "%ARCHIVE_ROOT%" {verb} --yes {prefix_args} %*
+rem Shim: the real logic lives in {ps1_name}. This keeps double-click working.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0{ps1_name}" %*
 set "RC=%ERRORLEVEL%"
 rem When double-clicked from Explorer, %cmdcmdline% contains this script's name and the
 rem console would normally close on exit. Keep it open (no keypress) so the output can be
@@ -194,13 +228,21 @@ echo "%cmdcmdline%" | find /i "%~nx0" >nul 2>&1 && (
 exit /b %RC%
 """
 
+
+def launcher_sh_text(root: Path, repo_root: Path, approved_prefixes: list[str], mode: str = MODE_UPDATE) -> str:
+    """The real per-archive launcher (POSIX). Prefers the repo's .venv Python, falls back to `uv run`."""
+    verb = "--sync" if mode == MODE_SYNC else "--update"
     prefix_args = " ".join(f"--approved-remote-prefix {quote_sh(prefix)}" for prefix in approved_prefixes)
     return f"""#!/usr/bin/env sh
 set -eu
 REPO_ROOT={quote_sh(repo_root)}
 ARCHIVE_ROOT={quote_sh(root)}
 cd "$REPO_ROOT"
-exec uv run python gitArchiveUpdater/archive_sync.py --root "$ARCHIVE_ROOT" {verb} --yes {prefix_args} "$@"
+if [ -x ".venv/bin/python" ]; then
+    exec .venv/bin/python gitArchiveUpdater/archive_sync.py --root "$ARCHIVE_ROOT" {verb} --yes {prefix_args} "$@"
+else
+    exec uv run python gitArchiveUpdater/archive_sync.py --root "$ARCHIVE_ROOT" {verb} --yes {prefix_args} "$@"
+fi
 """
 
 
@@ -260,11 +302,26 @@ def install_launchers(
         print()
         print(f"Writing archive launcher ({mode}): {launcher_path}")
 
-    launcher_path.write_text(
-        launcher_text(resolved, REPO_ROOT, approved_prefixes, mode=mode),
-        encoding="utf-8",
-        newline="\r\n" if WINDOWS else "\n",
-    )
+    if WINDOWS:
+        # Real logic in the .ps1; the .bat is a double-clickable shim to it.
+        (resolved / LAUNCHER_PS1_NAME).write_text(
+            launcher_ps1_text(resolved, REPO_ROOT, approved_prefixes, mode=mode),
+            encoding="utf-8",
+            newline="\r\n",
+        )
+        launcher_path.write_text(
+            launcher_bat_shim_text(LAUNCHER_PS1_NAME),
+            encoding="utf-8",
+            newline="\r\n",
+        )
+        launcher_type = "bat+ps1"
+    else:
+        launcher_path.write_text(
+            launcher_sh_text(resolved, REPO_ROOT, approved_prefixes, mode=mode),
+            encoding="utf-8",
+            newline="\n",
+        )
+        launcher_type = "sh"
 
     stamp = now_stamp()
     record = InstallRecord(
@@ -273,9 +330,9 @@ def install_launchers(
         updated_at=stamp,
         git_spec_ops_dir=str(REPO_ROOT),
         python_executable=str(python_executable),
-        runner=f"uv run python gitArchiveUpdater/archive_sync.py ({mode})",
+        runner=f"gitArchiveUpdater/archive_sync.py ({mode})",
         launcher=str(launcher_path),
-        launcher_type="bat" if WINDOWS else "sh",
+        launcher_type=launcher_type,
         repo_count=len(repos),
         approved_remote_prefixes=approved_prefixes,
         mode=mode,
@@ -468,27 +525,47 @@ def refresh_all(scan_only: bool, force_sync: bool = False) -> int:
     return 1 if failures else 0
 
 
-def refresh_all_script_text() -> str:
-    if WINDOWS:
-        return f"""@echo off
-setlocal
-cd /d "{quote_bat(REPO_ROOT)}"
-uv run python gitArchiveUpdater\\archive_manager.py --refresh-all
-exit /b %ERRORLEVEL%
+def refresh_all_ps1_text() -> str:
+    """Real refresh-all launcher (Windows). Prefers the repo's .venv, falls back to `uv run`."""
+    return f"""# Auto-generated. Refresh every managed archive.
+$ErrorActionPreference = "Stop"
+$RepoRoot = {quote_ps(REPO_ROOT)}
+$VenvPy = Join-Path $RepoRoot '.venv\\Scripts\\python.exe'
+Push-Location $RepoRoot
+try {{
+    if (Test-Path $VenvPy) {{
+        & $VenvPy gitArchiveUpdater/archive_manager.py --refresh-all @args
+    }} else {{
+        uv run python gitArchiveUpdater/archive_manager.py --refresh-all @args
+    }}
+}} finally {{ Pop-Location }}
+exit $LASTEXITCODE
 """
+
+
+def refresh_all_sh_text() -> str:
+    """Real refresh-all launcher (POSIX). Prefers the repo's .venv, falls back to `uv run`."""
     return f"""#!/usr/bin/env sh
 set -eu
 cd {quote_sh(REPO_ROOT)}
-exec uv run python gitArchiveUpdater/archive_manager.py --refresh-all "$@"
+if [ -x ".venv/bin/python" ]; then
+    exec .venv/bin/python gitArchiveUpdater/archive_manager.py --refresh-all "$@"
+else
+    exec uv run python gitArchiveUpdater/archive_manager.py --refresh-all "$@"
+fi
 """
 
 
 def write_refresh_all_script() -> Path:
-    REFRESH_ALL_SCRIPT.write_text(
-        refresh_all_script_text(),
-        encoding="utf-8",
-        newline="\r\n" if WINDOWS else "\n",
-    )
+    if WINDOWS:
+        REFRESH_ALL_PS1.write_text(refresh_all_ps1_text(), encoding="utf-8", newline="\r\n")
+        REFRESH_ALL_SCRIPT.write_text(
+            launcher_bat_shim_text(REFRESH_ALL_PS1.name),
+            encoding="utf-8",
+            newline="\r\n",
+        )
+    else:
+        REFRESH_ALL_SCRIPT.write_text(refresh_all_sh_text(), encoding="utf-8", newline="\n")
     log_event(f"wrote refresh-all script path={REFRESH_ALL_SCRIPT}")
     return REFRESH_ALL_SCRIPT
 
