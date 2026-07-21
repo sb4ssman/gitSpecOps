@@ -9,6 +9,8 @@ Small local special Git operations tools.
 
 The repo is intentionally plain. There is no package CLI, no hidden service, and no database. The tools are regular Python scripts launched through small committed `.bat` / `.ps1` / `.sh` files.
 
+> Working on this repo (human or agent)? Start with [`.agents/README.md`](.agents/README.md) — the primary project brief — and the living [`.agents/working-notes.md`](.agents/working-notes.md).
+
 ## Quick Start
 
 Install `git` and GitHub CLI (`gh`), plus `uv` (recommended). Authenticate GitHub CLI if you plan to use the org duplicator:
