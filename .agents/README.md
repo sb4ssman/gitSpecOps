@@ -1,0 +1,163 @@
+# gitSpecOps — project brief (`.agents/README.md`)
+
+**This is the primary project document. Read it first.** Root `AGENTS.md` and `CLAUDE.md` are lean
+pointers to this file. Tend this document as the project evolves — it is the durable, hand-authored
+knowledge the code and git history do not capture.
+
+## Directives (how to work in this repo)
+
+- **Read this file first**, then check `working-notes.md` for open items before starting work.
+- **Keep `working-notes.md` current** — a living todo / scratch pad. Add items as they arise; prune
+  stale or resolved ones regularly. It is what saves the next session from reconstructing state.
+- **Graduate completed work into `work-log.md`** with an **absolute date** (e.g. `2026-07-21`).
+  Always write dates absolutely — never "yesterday" / "last week".
+- **Record durable decisions and findings under `knowledge/`** (one topic per file). Working notes
+  are transient; knowledge is kept.
+- `tools/` holds agent-owned helper scripts (empty for now); `output/` holds generated artifacts
+  from those tools (empty for now).
+- **Keep the repo flat.** Do not introduce a `src/` package or console-script entry points unless
+  the user explicitly asks for a larger refactor.
+
+## Repo Shape
+
+This repo is intentionally small. Keep it that way.
+
+The entry-point tools are:
+
+- `gitArchiveUpdater/archive_manager.py` (front door: registry, launchers, scheduling)
+- `gitArchiveUpdater/archive_updater.py` (standalone, git-only, update-only)
+- `github-org-duplicator/github_org_duplicator.py`
+
+The archive engine behind the manager is split into single-purpose modules in the same folder:
+
+- `archive_sync.py` (plan/apply: detect -> plan -> decide -> execute -> review)
+- `archive_diff.py` (pure decision logic; no git, no network; has a self-test)
+- `git_inspect.py` (read-only local git facts; host-agnostic)
+- `remote_provider.py` + `provider_github.py` (the cross-git provider seam)
+
+The optional bootstrap helper is:
+
+- `setup_gitspecops.py` (builds `.venv`; does NOT write launchers)
+
+These modules are deliberately flat (sibling files imported with a `try: from . / except: from` shim), not a `src/` package. There is no `cli.py` and no console-script entry point. Keep it flat: do not introduce a `src/` package or packaging entry points unless the user explicitly asks for a larger refactor.
+
+## Launchers
+
+The per-tool launchers are committed static files, one trio per tool:
+
+- `gitArchiveUpdater/update-archive.{bat,ps1,sh}`
+- `gitArchiveUpdater/manage-archives.{bat,ps1,sh}`
+- `github-org-duplicator/duplicate-github-org.{bat,ps1,sh}`
+
+Each `.ps1` holds the real Windows logic; the `.bat` is a thin shim that hands off to it (so Explorer double-click works); the `.sh` is the POSIX twin. Every launcher prefers the repo's `.venv` interpreter and falls back to `uv run` when `.venv` is absent — so they work with or without `setup_gitspecops.py` having been run. When editing a launcher's behavior, change the `.ps1`/`.sh` (the shim rarely changes).
+
+`setup_gitspecops.py` no longer writes launchers; it only builds `.venv` and reports prerequisites. The per-archive `update_archive` launchers and `refresh-managed-archives` are still generated at runtime by `archive_manager.py` (they bake in real archive paths), and follow the same trio + prefer-`.venv` scheme.
+
+## Archive Tools
+
+`archive_updater.py` is the low-level, git-only updater. It scans direct children of archive roots and only updates repos that:
+
+- are Git work trees rooted at that child folder
+- have an approved `origin` remote
+- have clean work tree and index state
+
+It should use fast-forward pulls only. It must not merge, rebase, reset, delete repos, install dependencies, run project code, or recurse through arbitrary nested directories.
+
+`archive_sync.py` is the richer engine used by the manager. It can also discover an org's full repo set through a provider and clone missing repos, reconcile stale origins, and rename folders to match upstream. Every operation is graceful (failures are collected, never fatal) and nothing ambiguous is auto-applied. Discovery is the only host-specific part: when no provider matches the host, or discovery fails, `archive_sync.py` must degrade to the same fast-forward-only behavior as `archive_updater.py` (pull every clean repo; never invent clones, orphans, or renames). The `remote_authoritative` flag in `detect_plan`/`build_plan` is what enforces this; keep it honest.
+
+`archive_manager.py` owns the archive registry and friendly workflow. It installs archive-local `update_archive` launchers (which call `archive_sync.py` in the archive's configured `update` or `sync` mode), tracks managed archive folders, refreshes all managed archives, writes manager logs, and manages the optional Windows scheduled task. Scheduled/launcher runs must never pass `--reconcile` or `--rename-folders`; those mutations stay interactive only.
+
+The registry is local runtime state:
+
+```text
+gitArchiveUpdater/managed_archives.json
+```
+
+Do not commit local registry contents.
+
+### Future direction: the push direction ("publish")
+
+Everything today is pull-only, fast-forward-only. A future need (e.g. an org where an agent
+edits many repos and that work must go back upstream) is the opposite direction. Notes for
+whoever builds it, so the safety model is not broken:
+
+- Pull is safe because fast-forward can never destroy data or require a choice. Push needs
+  write auth, can overwrite remote history, and can trigger CI / other agents. Do NOT reuse
+  the pull guarantees; build a narrower set.
+- The provably-safe primitive is "publish" = `git push` WITHOUT `--force` (git refuses a
+  non-fast-forward, mirroring `--ff-only` on pull). Classify each repo by ahead/behind vs its
+  upstream (`git rev-list --left-right --count @{u}...HEAD`): ahead-only -> ff-push; in sync ->
+  nothing; uncommitted -> surface, never auto-commit; diverged -> human only; detached/no
+  upstream -> skip.
+- Agent considerations: agents leave dirty trees (committing is a policy opt-in, not default);
+  do not push agents straight to default branches - prefer a per-agent/per-run branch + PR
+  (add `open_pr()` to the provider seam); fetch immediately before each push and let non-force
+  rejection mean "remote moved, needs human"; rate-limit to avoid CI/agent storms; give agent
+  commits their own identity/trailers; guard blast radius (`--dry-run` preview, typed-YES bulk
+  confirm, protected-branch awareness, optional secret/size checks); make runs idempotent and
+  resumable.
+- Architecture: keep the layers. `git_inspect` gains ahead/behind facts; `archive_diff` gains a
+  pure push-direction classifier; `archive_sync` gains a `--publish` phase that is its OWN apply
+  class and is NEVER bundled into `--update`/`--sync` nor baked into scheduled launchers (same
+  rule that keeps `--reconcile`/`--rename-folders` interactive-only); the provider gains
+  `open_pr()`. Ship the ahead-only ff-push slice first; layer auto-commit and branch+PR behind
+  explicit flags once the org workflow is settled.
+
+## GitHub Org Duplicator
+
+`github_org_duplicator.py` is the interactive, confirmation-heavy orchestrator. It checks `git`, `gh`, authentication, and org access before moving repositories. The work is split into cohesive sibling modules in the same folder, imported with plain `import` (the entry point is always run as a script, so its directory is on `sys.path`):
+
+- `gh_common.py` - subprocess wrapper, print lock, run-file dir, console helpers
+- `gh_remote.py` - all `gh` CLI calls (env checks, inventory, duplicate comparison)
+- `local_repos.py` - on-disk repo discovery + safe deletion
+- `tracking.py` - resume state / run files
+- `operations.py` - the per-repo download/upload/migrate workers
+
+Keep new GitHub/`gh` logic in `gh_remote.py` and new filesystem logic in `local_repos.py`; the orchestrator should stay flow-only.
+
+Run/resume files live under:
+
+```text
+github-org-duplicator/runs/
+```
+
+Keep output and tracking files there. Do not move them back to the repo root.
+
+## Generated And Ignored State
+
+These are local artifacts and should remain ignored:
+
+- `.venv/`
+- `*.egg-info/`
+- `uv.lock`
+- `gitArchiveUpdater/managed_archives.json`
+- `gitArchiveUpdater/runs/`
+- `gitArchiveUpdater/refresh-managed-archives.bat`
+- `github-org-duplicator/runs/`
+
+If tests or `uv run` recreate `uv.lock` or egg-info metadata, remove or ignore them according to `.gitignore`; do not treat them as source.
+
+## Validation
+
+Useful checks:
+
+```powershell
+uv run python -m py_compile setup_gitspecops.py gitArchiveUpdater\archive_updater.py gitArchiveUpdater\archive_manager.py github-org-duplicator\github_org_duplicator.py
+uv run python gitArchiveUpdater\archive_updater.py --help
+uv run python gitArchiveUpdater\archive_manager.py --help
+uv run python github-org-duplicator\github_org_duplicator.py --help
+```
+
+Do not run live GitHub duplication, archive refreshes, or scheduled-task creation/removal as validation unless the user explicitly requests it.
+
+## Style
+
+Prefer boring, visible, local behavior:
+
+- direct script calls through `uv run python`
+- explicit output directories
+- JSON or text files in obvious `runs/` folders
+- progress output for long scans
+- typed confirmation before remote writes or bulk updates
+
+Avoid hidden background behavior, broad filesystem traversal, clever packaging, or surprising cleanup.
