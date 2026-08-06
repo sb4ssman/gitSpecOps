@@ -3,6 +3,16 @@
 Append-only record of **completed** work. Newest first. Items that graduate from
 [`working-notes.md`](working-notes.md) land here with an absolute date.
 
+## 2026-08-06
+
+- **Consolidated Sync Suggester research and family design.** Added
+  [`new-tool-sync-suggester.md`](new-tool-sync-suggester.md) covering the cross-machine problem,
+  public-fork/private-branch constraint, privacy-minimized manifests, transport alternatives, watcher
+  and UI concepts, safety classifications, how Archive Updater/Sync Suggester/Org Duplicator can
+  share capabilities, and a no-mutation vertical slice. Identified a user-selected cloud-synced
+  folder as the simplest experiment; private Git, provider app folders, object storage, and P2P remain
+  optional transports.
+
 ## 2026-07-21
 
 - **Stood up the `.agents/` workspace.** Migrated the full project brief out of the fat root
