@@ -7,14 +7,14 @@ Archive Updater from this gitSpecOps checkout.
 
 Run with no arguments on Windows to choose an archive folder with a dialog:
 
-    uv run python gitArchiveUpdater\\archive_manager.py
+    uv run python git-archive-updater\\archive_manager.py
 
 Command-line usage:
 
-    uv run python gitArchiveUpdater\\archive_manager.py --install T:\\Github\\Archive
-    uv run python gitArchiveUpdater\\archive_manager.py --list
-    uv run python gitArchiveUpdater\\archive_manager.py --status
-    uv run python gitArchiveUpdater\\archive_manager.py --forget T:\\Github\\Archive
+    uv run python git-archive-updater\\archive_manager.py --install T:\\Github\\Archive
+    uv run python git-archive-updater\\archive_manager.py --list
+    uv run python git-archive-updater\\archive_manager.py --status
+    uv run python git-archive-updater\\archive_manager.py --forget T:\\Github\\Archive
 """
 
 from __future__ import annotations
@@ -200,9 +200,9 @@ $SyncArgs += $args
 Push-Location $RepoRoot
 try {{
     if (Test-Path $VenvPy) {{
-        & $VenvPy gitArchiveUpdater/archive_sync.py @SyncArgs
+        & $VenvPy git-archive-updater/archive_sync.py @SyncArgs
     }} else {{
-        uv run python gitArchiveUpdater/archive_sync.py @SyncArgs
+        uv run python git-archive-updater/archive_sync.py @SyncArgs
     }}
 }} finally {{ Pop-Location }}
 exit $LASTEXITCODE
@@ -239,9 +239,9 @@ REPO_ROOT={quote_sh(repo_root)}
 ARCHIVE_ROOT={quote_sh(root)}
 cd "$REPO_ROOT"
 if [ -x ".venv/bin/python" ]; then
-    exec .venv/bin/python gitArchiveUpdater/archive_sync.py --root "$ARCHIVE_ROOT" {verb} --yes {prefix_args} "$@"
+    exec .venv/bin/python git-archive-updater/archive_sync.py --root "$ARCHIVE_ROOT" {verb} --yes {prefix_args} "$@"
 else
-    exec uv run python gitArchiveUpdater/archive_sync.py --root "$ARCHIVE_ROOT" {verb} --yes {prefix_args} "$@"
+    exec uv run python git-archive-updater/archive_sync.py --root "$ARCHIVE_ROOT" {verb} --yes {prefix_args} "$@"
 fi
 """
 
@@ -330,7 +330,7 @@ def install_launchers(
         updated_at=stamp,
         git_spec_ops_dir=str(REPO_ROOT),
         python_executable=str(python_executable),
-        runner=f"gitArchiveUpdater/archive_sync.py ({mode})",
+        runner=f"git-archive-updater/archive_sync.py ({mode})",
         launcher=str(launcher_path),
         launcher_type=launcher_type,
         repo_count=len(repos),
@@ -534,9 +534,9 @@ $VenvPy = Join-Path $RepoRoot '.venv\\Scripts\\python.exe'
 Push-Location $RepoRoot
 try {{
     if (Test-Path $VenvPy) {{
-        & $VenvPy gitArchiveUpdater/archive_manager.py --refresh-all @args
+        & $VenvPy git-archive-updater/archive_manager.py --refresh-all @args
     }} else {{
-        uv run python gitArchiveUpdater/archive_manager.py --refresh-all @args
+        uv run python git-archive-updater/archive_manager.py --refresh-all @args
     }}
 }} finally {{ Pop-Location }}
 exit $LASTEXITCODE
@@ -549,9 +549,9 @@ def refresh_all_sh_text() -> str:
 set -eu
 cd {quote_sh(REPO_ROOT)}
 if [ -x ".venv/bin/python" ]; then
-    exec .venv/bin/python gitArchiveUpdater/archive_manager.py --refresh-all "$@"
+    exec .venv/bin/python git-archive-updater/archive_manager.py --refresh-all "$@"
 else
-    exec uv run python gitArchiveUpdater/archive_manager.py --refresh-all "$@"
+    exec uv run python git-archive-updater/archive_manager.py --refresh-all "$@"
 fi
 """
 

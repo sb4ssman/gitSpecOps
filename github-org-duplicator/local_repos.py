@@ -2,51 +2,56 @@
 local_repos
 ===========
 
-Local-disk side of the duplicator: discover git repositories (regular and mirror) in a
-folder, and delete a clone only after proving it is safe to (inside the expected parent,
-actually a git repo, name as expected). Pure filesystem; no git, no network.
+Local-disk side of the duplicator: discover git repositories (regular, linked worktree,
+and mirror) in a folder, and delete a clone only after proving it is safe to (inside the
+expected parent, actually a git repo, name as expected). Pure filesystem; no git, no network.
 """
 
 import os
 import shutil
+import sys
 import time
+from pathlib import Path
+
+# Shared discovery lives at the repo root. Keep direct script execution working.
+_REPO_ROOT = str(Path(__file__).resolve().parent.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from shared.repo_discovery import find_repos  # noqa: E402
 
 
-def scan_local_git_repos(directory_path):
-    """Scan a directory for git repositories (both regular and mirror)."""
+def scan_local_git_repos(directory_path, recursive=False):
+    """Find repositories below ``directory_path`` using shared discovery.
+
+    ``recursive=False`` preserves the original direct-child scan scope. Recursive mode
+    uses the same pruned, no-symlink, single-filesystem walk as the standalone scanner.
+    """
+    root = Path(directory_path)
+    if not root.is_dir():
+        return []
+
+    hits = find_repos(root, max_depth=None if recursive else 0)
     repos = []
-
-    if not os.path.exists(directory_path):
-        return repos
-
-    for item in os.listdir(directory_path):
-        item_path = os.path.join(directory_path, item)
-
-        if not os.path.isdir(item_path):
-            continue
-
-        # Check if it's a mirror repo (ends with .git and is a bare repo)
-        if item.endswith('.git'):
-            git_dir = item_path
-            # Verify it's actually a git repo by checking for HEAD or config
-            if os.path.exists(os.path.join(git_dir, 'HEAD')) or os.path.exists(os.path.join(git_dir, 'config')):
-                repo_name = item[:-4]  # Remove .git suffix
-                repos.append({
-                    'name': repo_name,
-                    'path': git_dir,
-                    'is_mirror': True
-                })
-        else:
-            # Check if it's a regular repo (has .git subfolder)
-            git_dir = os.path.join(item_path, '.git')
-            if os.path.isdir(git_dir):
-                repos.append({
-                    'name': item,
-                    'path': item_path,
-                    'is_mirror': False
-                })
-
+    for hit in hits:
+        path = Path(hit.path)
+        is_mirror = hit.kind == "bare"
+        name = path.name[:-4] if is_mirror and path.name.endswith(".git") else path.name
+        repos.append({
+            "name": name,
+            "path": str(path),
+            "is_mirror": is_mirror,
+            "repo_kind": hit.kind,
+        })
     return repos
+
+
+def duplicate_repo_names(repos):
+    """Return case-insensitive destination-name collisions and their local paths."""
+    grouped = {}
+    for repo in repos:
+        grouped.setdefault(repo["name"].lower(), []).append(repo["path"])
+    return {name: paths for name, paths in grouped.items() if len(paths) > 1}
 
 
 def safe_cleanup_directory(directory_path, expected_parent_dir, repo_name):

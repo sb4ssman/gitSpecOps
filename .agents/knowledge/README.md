@@ -7,4 +7,5 @@ Unlike [`../working-notes.md`](../working-notes.md), which is transient and prun
 **kept**. Reach for this folder when you learn something worth remembering next session: a design
 decision and its rationale, a non-obvious constraint, an investigation result.
 
-_Empty for now._
+- [`shared-layer.md`](shared-layer.md) — the `shared/` cross-operation primitive layer: admission
+  rule, module list, import mechanics, Linux notes.

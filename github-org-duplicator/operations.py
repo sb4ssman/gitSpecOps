@@ -12,6 +12,7 @@ import os
 import time
 
 from gh_common import PRINT_LOCK, format_size, log_message, run_command
+from gh_remote import create_repo, ensure_repo
 from local_repos import safe_cleanup_directory
 
 
@@ -101,14 +102,8 @@ def process_upload_repo(repo, dest_org, completed_file, success_log, error_log):
     try:
         # Step 1: Create repo in dest org (default to private)
         print(f"  → Creating in {dest_org}...")
-        cmd = ['gh', 'repo', 'create', f"{dest_org}/{repo_name}", '--private', '--clone=false']
-
-        # Check if repo already exists
-        result = run_command(['gh', 'repo', 'view', f"{dest_org}/{repo_name}"], check=False)
-        if result.returncode == 0:
+        if not ensure_repo(dest_org, repo_name, private=True):
             print("  → Repository already exists, skipping creation")
-        else:
-            run_command(cmd, check=True)
 
         # Step 2: Push all refs to dest org (excluding pull request refs)
         print(f"  → Pushing to {dest_org}...")
@@ -200,15 +195,7 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
 
         # Step 2: Create repo in dest org
         print(f"  → Creating in {dest_org}...")
-        visibility = "--private" if is_private else "--public"
-        cmd = ['gh', 'repo', 'create', f"{dest_org}/{repo_name}", visibility, '--clone=false']
-
-        # Handle description with potential quotes
-        if description:
-            safe_description = description.replace('"', "'")
-            cmd.extend(['--description', safe_description])
-
-        run_command(cmd, check=True)
+        create_repo(dest_org, repo_name, private=is_private, description=description)
 
         # Step 3: Push to dest org (excluding pull request refs)
         print(f"  → Pushing to {dest_org}...")

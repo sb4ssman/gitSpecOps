@@ -6,6 +6,8 @@ Interactive, confirmation-driven copying of whole GitHub organizations:
   1. Remote -> Local   (download an org's repos to disk)
   2. Local  -> Remote  (upload local repos into an org)
   3. Remote -> Remote  (migrate one org into another)
+  4. All my orgs -> Local (batch download to <root>/<org>/<repo>)
+  5. One repo -> Local (any single repo by owner/name or URL)
 
 This file is the orchestrator only. The real work lives in sibling modules:
   gh_common    shared subprocess/print/format helpers
@@ -21,7 +23,16 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from gh_common import RUNS_DIR, format_size, prompt_input
+from gh_common import (
+    RUNS_DIR,
+    format_size,
+    parse_selection,
+    prompt_clone_format,
+    print_download_warnings,
+    prompt_for_directory,
+    prompt_input,
+    prompt_yes_no,
+)
 from gh_remote import (
     check_gh_authenticated,
     check_gh_installed,
@@ -29,62 +40,14 @@ from gh_remote import (
     check_org_access,
     compare_repos,
     get_repos_with_details,
-    setup_git_credentials,
+    remind_git_credentials,
 )
-from local_repos import scan_local_git_repos
+from local_repos import duplicate_repo_names, scan_local_git_repos
 from operations import download_single_repo, process_migrate_repo, process_upload_repo
 from tracking import initialize_tracking_files, load_completed_repos
 
 
-def prompt_yes_no(question, default=True):
-    """Ask a yes/no question. Empty input takes the default. Returns a bool."""
-    suffix = "[Y/n]" if default else "[y/N]"
-    while True:
-        answer = prompt_input(f"{question} {suffix}: ").lower()
-        if not answer:
-            return default
-        if answer in ("y", "yes"):
-            return True
-        if answer in ("n", "no"):
-            return False
-        print("Please answer y or n.")
-
-
-def prompt_for_directory(prompt_text, must_exist=False, create_ok=True):
-    """Prompt for a directory, re-prompting until a usable one is given.
-
-    must_exist: the path must already be a directory (upload SOURCE).
-    create_ok:  offer to create it when missing (download/migrate TARGET).
-    Returns the validated path. Never calls sys.exit on bad input — it re-prompts,
-    so a typo doesn't drop the user back to the mode menu.
-    """
-    while True:
-        raw = prompt_input(prompt_text)
-        if not raw:
-            print("Please enter a path.")
-            continue
-        path = os.path.expanduser(raw)
-
-        if os.path.isdir(path):
-            return path
-        if os.path.exists(path):
-            print(f"ERROR: {path} exists but is not a directory. Try again.")
-            continue
-
-        # Path does not exist.
-        if must_exist or not create_ok:
-            print(f"ERROR: Directory does not exist: {path}. Try again.")
-            continue
-        if not prompt_yes_no(f"'{path}' does not exist. Create it?", default=True):
-            print("Not created. Enter a different path.")
-            continue
-        try:
-            os.makedirs(path, exist_ok=True)
-        except OSError as exc:
-            print(f"ERROR: Could not create {path}: {exc}. Try again.")
-            continue
-        print(f"Created: {path}")
-        return path
+# prompt_yes_no / prompt_for_directory moved to gh_common (shared console helpers); imported above.
 
 
 def non_repo_entries(directory_path, repos):
@@ -97,6 +60,23 @@ def non_repo_entries(directory_path, repos):
     except OSError:
         return []
     return sorted(name for name in entries if name not in repo_dir_names)
+
+
+def choose_repo_subset(repos):
+    """Optional repo-level granularity for download mode. ENTER keeps all repos.
+
+    Same selection grammar as the batch mode ('1-5, 7' style, names, 'except'/'!').
+    """
+    if not repos:
+        return repos
+    raw = prompt_input("Repos to include ('1-5, 7' style, names; ENTER = all): ")
+    selected, bad = parse_selection(raw, repos, key=lambda r: r['name'].lower())
+    if bad:
+        print(f"Not recognized: {', '.join(bad)} — keeping all repos.")
+        return repos
+    if len(selected) != len(repos):
+        print(f"{len(selected)} of {len(repos)} repos selected.")
+    return selected
 
 
 def display_repo_table(repos, org_name):
@@ -159,7 +139,7 @@ def setup_operation():
     check_git_installed()
     check_gh_installed()
     check_gh_authenticated()
-    setup_git_credentials()
+    remind_git_credentials()
     print()
 
     # Mode selection
@@ -167,8 +147,10 @@ def setup_operation():
     print("  1. Remote → Local (download repos to disk)")
     print("  2. Local → Remote (upload repos from disk to GitHub org)")
     print("  3. Remote → Remote (migrate between GitHub orgs)")
+    print("  4. All my orgs → Local (batch download)")
+    print("  5. One repo → Local (owner/name or URL)")
     print()
-    mode_choice = prompt_input("Mode (1, 2, or 3): ")
+    mode_choice = prompt_input("Mode (1, 2, 3, 4, or 5): ")
 
     if mode_choice == "1":
         operation_mode = 'download'
@@ -176,8 +158,12 @@ def setup_operation():
         operation_mode = 'upload'
     elif mode_choice == "3":
         operation_mode = 'migrate'
+    elif mode_choice == "4":
+        operation_mode = 'batch'
+    elif mode_choice == "5":
+        operation_mode = 'single'
     else:
-        print("ERROR: Invalid mode selection. Please choose 1, 2, or 3.")
+        print("ERROR: Invalid mode selection. Please choose 1, 2, 3, 4, or 5.")
         sys.exit(1)
 
     print()
@@ -196,12 +182,7 @@ def setup_operation():
         print()
 
         # Format selection
-        print("Download format:")
-        print("  1. Working repositories (regular clone)")
-        print("  2. Mirror repositories (--mirror, archival)")
-        print()
-        format_choice = prompt_input("Format (1 or 2): ")
-        config['use_mirror'] = (format_choice == "2")
+        config['use_mirror'] = prompt_clone_format()
         print()
 
         # Get target directory (created if missing; re-prompts on a bad path)
@@ -224,12 +205,21 @@ def setup_operation():
         config['source_org'] = None
         print()
 
+        print("Local repository scan scope:")
+        print("  1. Recursive (find nested repositories; recommended)")
+        print("  2. Direct children only (original behavior)")
+        scan_choice = prompt_input("Scope (1 or 2, default 1): ")
+        config['recursive_scan'] = scan_choice != "2"
+        if scan_choice not in ("", "1", "2"):
+            print("Invalid input, using recursive scan.")
+        print()
+
         print("Verifying organization access...")
         check_org_access(config['dest_org'])
         print(f"✓ Read access confirmed for {config['dest_org']} (write access is verified when repos are created)")
         print()
 
-    else:  # migrate
+    elif operation_mode == 'migrate':
         config['source_org'] = prompt_input("Source organization name: ")
         config['dest_org'] = prompt_input("Destination organization name: ")
         print()
@@ -239,6 +229,18 @@ def setup_operation():
         print(f"✓ Access confirmed for {config['source_org']}")
         check_org_access(config['dest_org'])
         print(f"✓ Read access confirmed for {config['dest_org']} (write access is verified when repos are created)")
+        print()
+
+    elif operation_mode == 'single':
+        config['source_spec'] = prompt_input("Repo (owner/name or full URL): ")
+        config['source_org'] = None
+        config['dest_org'] = None
+        print()
+        config['temp_dir'] = prompt_for_directory(
+            "Parent directory (an <owner>/<repo> subfolder will be created inside): ",
+            must_exist=False,
+            create_ok=True,
+        )
         print()
 
     return config
@@ -261,9 +263,23 @@ def validate_operation(config):
         print()
 
     elif operation_mode == 'upload':
-        print("Scanning directory for git repositories...")
-        local_repos = scan_local_git_repos(config['source_dir'])
+        scope = "recursively" if config.get('recursive_scan', True) else "in direct children"
+        print(f"Scanning directory for git repositories {scope}...")
+        local_repos = scan_local_git_repos(
+            config['source_dir'], recursive=config.get('recursive_scan', True)
+        )
         source_repos = local_repos
+
+        duplicate_names = duplicate_repo_names(source_repos)
+        if duplicate_names:
+            print()
+            print("ERROR: Multiple local repositories map to the same GitHub repository name:")
+            for name, paths in sorted(duplicate_names.items()):
+                print(f"  {name}:")
+                for path in paths:
+                    print(f"    {path}")
+            print("Choose a narrower scan root or direct-child scope, then rerun.")
+            sys.exit(1)
 
         print("Detecting existing repos in destination org...")
         dest_repos = get_repos_with_details(config['dest_org'])
@@ -425,6 +441,8 @@ def main():
         print("  1. Remote -> Local download")
         print("  2. Local -> Remote upload")
         print("  3. Remote -> Remote migration")
+        print("  4. All my orgs -> Local batch download")
+        print("  5. One repo -> Local (owner/name or URL)")
         print()
         print(f"Run files: {RUNS_DIR}")
         return
@@ -433,12 +451,26 @@ def main():
     config = setup_operation()
     operation_mode = config['operation_mode']
 
+    # Batch mode runs its own interactive flow (org selection, filters, per-org resume).
+    if operation_mode == 'batch':
+        from batch import run_batch_download
+        run_batch_download()
+        return
+
+    # Single-repo mode also runs its own granular flow (one namespace, one repo).
+    if operation_mode == 'single':
+        from batch import run_single_repo
+        run_single_repo(config['source_spec'], config['temp_dir'])
+        return
+
     # Validate operation (check access, detect repos, handle conflicts)
     source_repos, dest_repos, files = validate_operation(config)
 
     # Display repository information
     if operation_mode == 'download':
         display_repo_table(source_repos, config['source_org'])
+        print_download_warnings()
+        source_repos = choose_repo_subset(source_repos)
     elif operation_mode == 'upload':
         print()
         print("=" * 100)

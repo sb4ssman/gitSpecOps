@@ -13,8 +13,12 @@ import os
 from gh_common import RUNS_DIR
 
 
-def get_tracking_files(operation_mode):
-    """Return the tracking file paths for an operation mode (creating RUNS_DIR)."""
+def get_tracking_files(operation_mode, scope=None):
+    """Return the tracking file paths for an operation mode (creating RUNS_DIR).
+
+    scope: optional per-org suffix (batch mode) so each org keeps its own
+    completed/error/success/session files and resume never mixes orgs.
+    """
     if operation_mode == 'download':
         names = {
             'completed': 'downloaded_repos.txt',
@@ -37,16 +41,20 @@ def get_tracking_files(operation_mode):
             'session': 'migration_session.txt'
         }
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    if scope:
+        return {key: RUNS_DIR / f"{path.stem}__{scope}{path.suffix}"
+                for key, path in ((k, RUNS_DIR / n) for k, n in names.items())}
     return {key: RUNS_DIR / name for key, name in names.items()}
 
 
-def initialize_tracking_files(operation_mode, source_org, dest_org, temp_dir):
+def initialize_tracking_files(operation_mode, source_org, dest_org, temp_dir, scope=None):
     """Initialize tracking files and handle session management."""
-    files = get_tracking_files(operation_mode)
+    files = get_tracking_files(operation_mode, scope=scope)
 
     # Determine current session identifier
     if operation_mode == 'download':
-        current_session = f"{source_org} -> {temp_dir}"
+        current_session = (f"batch:{source_org} -> {temp_dir}" if scope
+                           else f"{source_org} -> {temp_dir}")
     elif operation_mode == 'upload':
         current_session = f"{temp_dir} -> {dest_org}"
     else:  # migrate

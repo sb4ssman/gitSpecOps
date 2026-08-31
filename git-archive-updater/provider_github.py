@@ -17,13 +17,16 @@ Standalone:
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
+from pathlib import Path
 
-try:
-    from .archive_diff import RepoRef
-except ImportError:
-    from archive_diff import RepoRef
+# Shared modules live at the repo root (gh wrapper + provider identity).
+_REPO_ROOT = str(Path(__file__).resolve().parent.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from shared.gh_cli import GhError, run_gh  # noqa: E402
+from shared.remote_identity import RepoRef  # noqa: E402,F401
 
 # Fields requested from `gh` for both list and view; maps 1:1 onto RepoRef in _ref_from_json.
 _FIELDS = "id,name,nameWithOwner,url,isPrivate,isFork,isArchived"
@@ -48,34 +51,20 @@ class GitHubProvider:
 
     def list_repos(self, owner: str) -> tuple[list[RepoRef] | None, str | None]:
         try:
-            proc = subprocess.run(
-                ["gh", "repo", "list", owner, "--json", _FIELDS, "--limit", "1000"],
-                capture_output=True, text=True, timeout=60,
-            )
-            if proc.returncode != 0:
-                return None, f"gh repo list failed: {proc.stderr.strip() or 'unknown error'}"
+            proc = run_gh(["repo", "list", owner, "--json", _FIELDS, "--limit", "1000"])
             return [_ref_from_json(item) for item in json.loads(proc.stdout)], None
-        except FileNotFoundError:
-            return None, "gh CLI not found; install from https://cli.github.com"
-        except subprocess.TimeoutExpired:
-            return None, "gh repo list timed out after 60s"
+        except GhError as exc:
+            return None, str(exc)
         except json.JSONDecodeError as exc:
             return None, f"gh repo list returned invalid JSON: {exc}"
 
     def resolve(self, repo_spec: str) -> tuple[RepoRef | None, str | None]:
         """Resolve owner/name or a full URL to its canonical RepoRef, following renames."""
         try:
-            proc = subprocess.run(
-                ["gh", "repo", "view", repo_spec, "--json", _FIELDS],
-                capture_output=True, text=True, timeout=30,
-            )
-            if proc.returncode != 0:
-                return None, f"gh repo view failed: {proc.stderr.strip() or 'unknown error'}"
+            proc = run_gh(["repo", "view", repo_spec, "--json", _FIELDS])
             return _ref_from_json(json.loads(proc.stdout)), None
-        except FileNotFoundError:
-            return None, "gh CLI not found; install from https://cli.github.com"
-        except subprocess.TimeoutExpired:
-            return None, f"gh repo view timed out resolving {repo_spec}"
+        except GhError as exc:
+            return None, str(exc)
         except json.JSONDecodeError as exc:
             return None, f"gh repo view returned invalid JSON: {exc}"
 
