@@ -1,7 +1,7 @@
 # gitSpecOps — agent brief
 
 gitSpecOps — small, flat, stdlib-first Git/GitHub automation tools: an archive updater/manager
-(`gitArchiveUpdater/`) and a GitHub org duplicator (`github-org-duplicator/`).
+(`git-archive-updater/`) and a GitHub org duplicator (`github-org-duplicator/`).
 
 **Read [`.agents/README.md`](.agents/README.md) first — it is the primary project brief** (repo
 shape, per-module guidance, launcher model, safety rules, validation, style).

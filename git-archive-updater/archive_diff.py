@@ -16,21 +16,20 @@ Standalone (runs the built-in self-test):
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
+
+# Canonical URL identity now lives in shared/ at the repo root; re-exported below so the
+# archive modules' existing imports keep working.
+_REPO_ROOT = str(Path(__file__).resolve().parent.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from shared.remote_identity import RepoRef, normalize_owner_name  # noqa: E402,F401
 
 
-@dataclass
-class RepoRef:
-    """A remote repository, as reported by a provider. `id` is a provider-stable identity
-    that survives repo and namespace (owner/org/group) renames."""
-    id: str
-    owner: str
-    name: str
-    url: str
-    host: str = "github.com"
-    private: bool = False
-    fork: bool = False
-    archived: bool = False
+# RepoRef moved to shared/remote_identity.py (imported and re-exported above).
 
 
 @dataclass
@@ -72,27 +71,7 @@ class SyncPlan:
         }
 
 
-def normalize_owner_name(url: str | None) -> str | None:
-    """Lowercased 'owner/name' from any common git URL, host-agnostic. None if unparseable."""
-    if not url:
-        return None
-    text = url.strip()
-    if text.startswith("git@"):
-        _, _, path = text[len("git@"):].partition(":")
-    elif "://" in text:
-        _, _, rest = text.partition("://")
-        if "@" in rest.split("/", 1)[0]:
-            rest = rest.split("@", 1)[1]
-        _, _, path = rest.partition("/")
-    else:
-        return None
-    path = path.rstrip("/")
-    if path.endswith(".git"):
-        path = path[:-4]
-    segments = [s for s in path.split("/") if s]
-    if len(segments) < 2:
-        return None
-    return f"{segments[0]}/{segments[-1]}".lower()
+# normalize_owner_name moved to shared/remote_identity.py (imported and re-exported above).
 
 
 def build_plan(

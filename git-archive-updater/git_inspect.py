@@ -8,6 +8,9 @@ nothing about GitHub, GitLab, or any remote API. It only runs `git` and parses U
 One task: given a folder, tell the caller what its child repositories are, what their
 origins/branches are, and whether they are clean enough to fast-forward.
 
+Generic primitives (run_git, URL parsing, child-dir listing) live in `shared/` and are
+re-exported here so the archive modules' imports keep working.
+
 Standalone:
 
     python git_inspect.py T:\\Github\\moon-and-back
@@ -15,20 +18,27 @@ Standalone:
 
 from __future__ import annotations
 
-import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
-DEFAULT_GIT_TIMEOUT_SECONDS = 45
-GIT_TIMEOUT_SECONDS = DEFAULT_GIT_TIMEOUT_SECONDS
+# Shared special-operation primitives live in shared/ at the repo root. Make them
+# importable whether this file runs as a script, a sibling import, or a package module.
+_REPO_ROOT = str(Path(__file__).resolve().parent.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
-
-def set_git_timeout(seconds: int) -> None:
-    global GIT_TIMEOUT_SECONDS
-    GIT_TIMEOUT_SECONDS = seconds
+from shared.git_facts import (  # noqa: E402
+    GIT_TIMEOUT_SECONDS,
+    is_repo_root,
+    git_stdout,
+    git_top_level,
+    run_git,
+    set_git_timeout,
+)
+from shared.remote_identity import parse_remote_url, remote_host  # noqa: E402
+from shared.repo_discovery import is_hidden, list_child_dirs  # noqa: E402
 
 
 @dataclass
@@ -51,99 +61,11 @@ class RepoInfo:
     elapsed_seconds: float = 0.0
 
 
-def run_git(repo_path: Path, args: Iterable[str], timeout: int | None = None) -> subprocess.CompletedProcess:
-    timeout = GIT_TIMEOUT_SECONDS if timeout is None else timeout
-    try:
-        return subprocess.run(
-            ["git", *args],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-    except (PermissionError, FileNotFoundError):
-        return subprocess.CompletedProcess(list(args), returncode=1, stdout="", stderr="")
-    except subprocess.TimeoutExpired as exc:
-        return subprocess.CompletedProcess(
-            list(args),
-            returncode=124,
-            stdout=exc.stdout or "",
-            stderr=f"timed out after {timeout}s",
-        )
+# run_git / git_stdout / git_top_level / is_repo_root moved to shared/git_facts.py;
+# is_hidden / list_child_dirs moved to shared/repo_discovery.py — all imported above.
 
 
-def git_stdout(repo_path: Path, args: Iterable[str]) -> str | None:
-    proc = run_git(repo_path, args)
-    if proc.returncode != 0:
-        return None
-    value = proc.stdout.strip()
-    return value or None
-
-
-def git_top_level(path: Path) -> Path | None:
-    top_level = git_stdout(path, ["rev-parse", "--show-toplevel"])
-    if not top_level:
-        return None
-    return Path(top_level).resolve()
-
-
-def is_repo_root(path: Path) -> bool:
-    return git_top_level(path) == path.resolve()
-
-
-def is_hidden(path: Path) -> bool:
-    return path.name.startswith(".")
-
-
-def list_child_dirs(root: Path) -> list[Path]:
-    return sorted(
-        [item for item in root.iterdir() if item.is_dir()],
-        key=lambda item: item.name.lower(),
-    )
-
-
-def parse_remote_url(url: str | None) -> tuple[str, str, str] | None:
-    """Parse any common git remote URL into (host, owner, name), host-agnostic.
-
-    Handles:
-        https://host/owner/.../name(.git)
-        git@host:owner/.../name(.git)
-        ssh://git@host/owner/.../name(.git)
-    For nested namespaces (e.g. GitLab groups) the first path segment is the owner and
-    the last is the name; the middle is ignored for identity purposes.
-    Returns None when the URL is not a recognizable git remote.
-    """
-    if not url:
-        return None
-    text = url.strip()
-    host = ""
-    if text.startswith("git@"):
-        # git@host:owner/name
-        rest = text[len("git@"):]
-        host, _, path = rest.partition(":")
-    elif "://" in text:
-        # scheme://[user@]host/owner/name
-        _scheme, _, rest = text.partition("://")
-        if "@" in rest.split("/", 1)[0]:
-            rest = rest.split("@", 1)[1]
-        host, _, path = rest.partition("/")
-    else:
-        return None
-    if not host or not path:
-        return None
-    path = path.rstrip("/")
-    if path.endswith(".git"):
-        path = path[:-4]
-    segments = [seg for seg in path.split("/") if seg]
-    if len(segments) < 2:
-        return None
-    owner, name = segments[0], segments[-1]
-    return host.lower(), owner, name
-
-
-def remote_host(url: str | None) -> str | None:
-    parsed = parse_remote_url(url)
-    return parsed[0] if parsed else None
+# parse_remote_url / remote_host moved to shared/remote_identity.py (imported above).
 
 
 def approved_remote(origin: str | None, prefixes: list[str]) -> bool:

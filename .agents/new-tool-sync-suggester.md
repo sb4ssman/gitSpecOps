@@ -418,15 +418,35 @@ the project to GitHub repositories, OAuth providers, tray dependencies, or a dae
 
 ## Open decisions
 
-- Is a user-selected cloud-synced folder acceptable as the initial “installation pairing” story?
-- Should repository display names be published by default inside a private transport, or remain an
-  explicit opt-in?
-- What freshness thresholds define current, stale-warning, and expired?
 - Do intentional long-lived stashes prevent an “all clear” result or merely appear as information?
 - Should cloud fetch be manual by default, scheduled opt-in, or part of every `check`?
-- Is Sync Suggester limited to direct children of registered roots initially?
 - When the Git transport arrives, should it prefer a designated existing private repo or offer to
   create `gitSpecOps-state` first?
 - What does “installed” mean on each OS: manual launcher, login task, periodic timer, watcher, tray, or
   selectable combinations?
 
+## Decisions for the first implementation
+
+_Decided 2026-08-31._
+
+- Begin with the user-selected local/cloud-synced folder transport and one atomic manifest per
+  machine.
+- Discovery is configured per registered root. Direct-child scanning is the default; recursive
+  scanning is an explicit saved option. Never scan outside registered roots.
+- Synced manifests identify repositories by a hash of canonical `host/owner/repository`; they do not
+  include display names by default. Each machine keeps an unsynced local catalog mapping known
+  `repo_id` values to readable display names and local paths. The dashboard joins manifests to that
+  catalog, so repositories known on the current machine remain readable. A peer-only unknown hash is
+  shown as a short stable identifier until the user supplies a local alias or clones/registers it.
+- Freshness thresholds are configurable. Initial defaults: current through 24 hours, stale after 24
+  hours, expired after 7 days. Stale/expired clean reports become unknown; stale/expired dirty or
+  ahead reports remain last-known unresolved warnings and are never silently converted to clean.
+- Machine observation freshness and source-remote freshness are separate. A recently written
+  manifest does not make old remote-tracking refs current; retain and display
+  `upstream_observed_at` independently.
+- The useful multi-machine behavior is continuous, semantic publication: a visible polling/watch
+  mode observes bounded registered roots, debounces changes, atomically rewrites only this machine's
+  manifest when facts change, and emits an occasional heartbeat. It performs a best-effort final
+  observation on normal termination. It cannot guarantee that an external cloud-sync client uploads
+  a last-second write before abrupt power loss, sleep, or shutdown, so an explicit handoff/check-now
+  action remains valuable.
