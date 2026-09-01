@@ -9,3 +9,6 @@ decision and its rationale, a non-obvious constraint, an investigation result.
 
 - [`shared-layer.md`](shared-layer.md) — the `shared/` cross-operation primitive layer: admission
   rule, module list, import mechanics, Linux notes.
+- [`venv-and-editors.md`](venv-and-editors.md) — why `.venv` must stay package-free (an editable
+  install's startup `.pth` + an editor's stray `^C` = `Fatal Python error: init_import_site`), and
+  the VS Code settings that stop terminal-injection breaking interactive prompts.

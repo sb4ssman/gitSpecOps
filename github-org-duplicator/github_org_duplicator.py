@@ -19,9 +19,11 @@ This file is the orchestrator only. The real work lives in sibling modules:
 Requires: git, and gh CLI authenticated (gh auth login).
 """
 
+import argparse
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 from gh_common import (
     RUNS_DIR,
@@ -32,6 +34,7 @@ from gh_common import (
     prompt_for_directory,
     prompt_input,
     prompt_yes_no,
+    use_scripted_answers,
 )
 from gh_remote import (
     check_gh_authenticated,
@@ -128,19 +131,22 @@ def display_repo_table(repos, org_name):
     print()
 
 
+def check_prerequisites():
+    """Verify git, gh, and gh auth before any operation. Exits on failure."""
+    check_git_installed()
+    check_gh_installed()
+    check_gh_authenticated()
+    remind_git_credentials()
+    print()
+
+
 def setup_operation():
     """Handle mode selection and input collection."""
     print("=" * 60)
     print("GitHub Organization Repository Tool")
     print("=" * 60)
     print()
-
-    # Check prerequisites
-    check_git_installed()
-    check_gh_installed()
-    check_gh_authenticated()
-    remind_git_credentials()
-    print()
+    check_prerequisites()
 
     # Mode selection
     print("Select operation mode:")
@@ -232,16 +238,12 @@ def setup_operation():
         print()
 
     elif operation_mode == 'single':
-        config['source_spec'] = prompt_input("Repo (owner/name or full URL): ")
+        # The repo spec and target directory are collected inside run_single_repo so the
+        # spec is resolved (and shown) before anything else is asked.
+        config['source_spec'] = None
         config['source_org'] = None
         config['dest_org'] = None
-        print()
-        config['temp_dir'] = prompt_for_directory(
-            "Parent directory (an <owner>/<repo> subfolder will be created inside): ",
-            must_exist=False,
-            create_ok=True,
-        )
-        print()
+        config['temp_dir'] = None
 
     return config
 
@@ -429,38 +431,129 @@ def show_summary(operation_mode, total_repos, successful, failed, temp_dir, file
     print(f"Success log: {files['success']}")
 
 
+_EPILOG = f"""\
+Modes (interactive menu when run with no flags):
+  1. Remote -> Local download
+  2. Local -> Remote upload
+  3. Remote -> Remote migration
+  4. All my orgs -> Local batch download
+  5. One repo -> Local (owner/name or URL)
+
+Non-interactive (so it runs cleanly inside editors/CI where a terminal helper may
+inject keystrokes into an open prompt):
+
+  # Back up every namespace, working clones, no further questions:
+  github_org_duplicator.py --batch --namespaces all --dest /backups/github --yes
+
+  # Batch, skip one org, mirror clones:
+  github_org_duplicator.py --batch --namespaces 'all,!some-org' \\
+      --dest /backups/github --format mirror --yes
+
+  # One repo:
+  github_org_duplicator.py --single owner/name --dest /backups/github --yes
+
+  # Any mode, answers pre-supplied one per line (blank line = that prompt's default):
+  github_org_duplicator.py --answers answers.txt
+
+--yes takes documented defaults for any batch option not given as a flag
+(private: yes, archived: no, forks: no, format: working, parallel: 3) and skips the
+final typed confirmation. It requires --namespaces and --dest.
+
+Run files: {RUNS_DIR}
+"""
+
+
+def _enter_batch(args):
+    """True when any flag signals batch mode (--single is handled before this is called)."""
+    return args.batch or any(
+        getattr(args, name) is not None
+        for name in ("namespaces", "dest", "private", "archived", "forks", "parallel")
+    )
+
+
+def parse_args(argv=None):
+    """Parse CLI flags. No flags -> fully interactive (the historical behavior)."""
+    parser = argparse.ArgumentParser(
+        prog="github_org_duplicator.py",
+        description="Cautious copying of whole GitHub namespaces (see modes below).",
+        epilog=_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--batch", action="store_true",
+                        help="Run mode 4 (batch download) without the menu.")
+    parser.add_argument("--single", metavar="OWNER/NAME|URL",
+                        help="Run mode 5 (one repo) without the menu.")
+    parser.add_argument("--namespaces", metavar="SPEC",
+                        help="Batch: which namespaces — 'all', '1-5,7', names, 'all,!org'.")
+    parser.add_argument("--dest", metavar="DIR",
+                        help="Batch/single: parent directory (created if missing).")
+    parser.add_argument("--private", action=argparse.BooleanOptionalAction, default=None,
+                        help="Batch: include private repos (default: yes).")
+    parser.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None,
+                        help="Batch: include archived repos (default: no).")
+    parser.add_argument("--forks", action=argparse.BooleanOptionalAction, default=None,
+                        help="Batch: include forks (default: no).")
+    parser.add_argument("--format", choices=("working", "mirror"), default=None,
+                        help="Clone format for batch/single (default: working).")
+    parser.add_argument("--parallel", type=int, metavar="N", default=None,
+                        help="Batch: parallel downloads per namespace, 1-5 (default: 3).")
+    parser.add_argument("--yes", action="store_true",
+                        help="Assume YES and take defaults for unspecified batch options.")
+    parser.add_argument("--answers", metavar="FILE", type=Path,
+                        help="Feed answers to any remaining prompt, one per line.")
+    args = parser.parse_args(argv)
+
+    if args.batch and args.single:
+        parser.error("--batch and --single are mutually exclusive")
+    if args.parallel is not None and not 1 <= args.parallel <= 5:
+        parser.error("--parallel must be between 1 and 5")
+    if args.yes and not (args.single or _enter_batch(args)):
+        parser.error("--yes only applies to --batch or --single")
+    if args.yes and args.batch and (not args.namespaces or not args.dest):
+        parser.error("--yes with --batch requires --namespaces and --dest")
+    if args.yes and args.single and not args.dest:
+        parser.error("--yes with --single requires --dest")
+    return args
+
+
 def main():
-    if any(arg in ("-h", "--help") for arg in sys.argv[1:]):
-        print("GitHub Organization Repository Tool")
-        print()
-        print("Usage:")
-        print("  uv run python github-org-duplicator\\github_org_duplicator.py")
-        print("  github-org-duplicator\\duplicate-github-org.bat")
-        print()
-        print("Modes:")
-        print("  1. Remote -> Local download")
-        print("  2. Local -> Remote upload")
-        print("  3. Remote -> Remote migration")
-        print("  4. All my orgs -> Local batch download")
-        print("  5. One repo -> Local (owner/name or URL)")
-        print()
-        print(f"Run files: {RUNS_DIR}")
+    args = parse_args()
+
+    if args.answers is not None:
+        try:
+            lines = args.answers.read_text(encoding="utf-8").split("\n")
+        except (OSError, UnicodeDecodeError) as exc:
+            print(f"ERROR: cannot read --answers file {args.answers}: {exc}")
+            sys.exit(2)
+        if lines and lines[-1] == "":
+            lines.pop()  # drop the phantom entry from a trailing newline
+        use_scripted_answers(lines, strict=bool(args.yes))
+
+    # --- Non-interactive entry points ---
+    if args.single is not None:
+        check_prerequisites()
+        from batch import run_single_repo
+        run_single_repo(args.single, args.dest, args)
         return
 
-    # Setup operation (mode selection and input collection)
+    if _enter_batch(args):
+        check_prerequisites()
+        from batch import run_batch_download
+        run_batch_download(args)
+        return
+
+    # --- Interactive menu (unchanged) ---
     config = setup_operation()
     operation_mode = config['operation_mode']
 
-    # Batch mode runs its own interactive flow (org selection, filters, per-org resume).
     if operation_mode == 'batch':
         from batch import run_batch_download
         run_batch_download()
         return
 
-    # Single-repo mode also runs its own granular flow (one namespace, one repo).
     if operation_mode == 'single':
         from batch import run_single_repo
-        run_single_repo(config['source_spec'], config['temp_dir'])
+        run_single_repo(None, None)
         return
 
     # Validate operation (check access, detect repos, handle conflicts)

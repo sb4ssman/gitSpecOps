@@ -20,11 +20,11 @@ tracking.
 
 import json
 import os
-import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from gh_common import (
+    PRINT_LOCK,
     RUNS_DIR,
     format_size,
     parse_selection,
@@ -33,6 +33,7 @@ from gh_common import (
     prompt_for_directory,
     prompt_input,
     prompt_yes_no,
+    resolve_directory,
 )
 from gh_remote import (
     check_repo_for_lfs,
@@ -78,23 +79,46 @@ def choose_orgs(orgs):
         return selected
 
 
-def ask_filters():
-    """Prompt once for the filters and options applied to every org in the batch."""
+def _prompt_parallel():
+    """Ask how many parallel downloads to run per org (1-5). Empty / bad input -> 3."""
+    raw = prompt_input("Number of parallel downloads per org (1-5, default 3): ")
+    if not raw:
+        return 3
+    if raw.isdigit() and 1 <= int(raw) <= 5:
+        return int(raw)
+    print("Invalid input, using default (3)")
+    return 3
+
+
+def ask_filters(args=None, assume_yes=False):
+    """Resolve the batch filters/options: a flag value wins, then (with --yes) a default,
+    otherwise the interactive prompt. Applies to every org in the batch."""
+    def resolved(attr, default, prompter):
+        value = getattr(args, attr, None)
+        if value is not None:
+            return value
+        return default if assume_yes else prompter()
+
     print()
-    include_private = prompt_yes_no("Include private repos?", default=True)
-    include_archived = prompt_yes_no("Include archived repos?", default=False)
-    include_forks = prompt_yes_no("Include forks?", default=False)
-    print()
-    use_mirror = prompt_clone_format()
-    print()
-    parallel_workers = 3
-    parallel_input = prompt_input("Number of parallel downloads per org (1-5, default 3): ")
-    if not parallel_input:
-        pass
-    elif parallel_input.isdigit() and 1 <= int(parallel_input) <= 5:
-        parallel_workers = int(parallel_input)
+    include_private = resolved(
+        "private", True, lambda: prompt_yes_no("Include private repos?", default=True))
+    include_archived = resolved(
+        "archived", False, lambda: prompt_yes_no("Include archived repos?", default=False))
+    include_forks = resolved(
+        "forks", False, lambda: prompt_yes_no("Include forks?", default=False))
+
+    clone_format = getattr(args, "format", None)
+    if clone_format is not None:
+        use_mirror = clone_format == "mirror"
+    elif assume_yes:
+        use_mirror = False
     else:
-        print("Invalid input, using default (3)")
+        print()
+        use_mirror = prompt_clone_format()
+
+    parallel_workers = getattr(args, "parallel", None)
+    if parallel_workers is None:
+        parallel_workers = 3 if assume_yes else _prompt_parallel()
     return include_private, include_archived, include_forks, use_mirror, parallel_workers
 
 
@@ -153,7 +177,13 @@ def download_one_org(item, root, use_mirror, parallel_workers):
             for idx, repo in enumerate(remaining, 1)
         ]
         for future in as_completed(futures):
-            result = future.result()
+            try:
+                result = future.result()
+            except Exception as exc:  # a worker should never raise, but one bug must not abort the batch
+                stats['failed'] += 1
+                with PRINT_LOCK:
+                    print(f"  ✗ [{org}] a download worker crashed: {exc}")
+                continue
             if result['status'] == 'success':
                 stats['downloaded'] += 1
             else:
@@ -162,10 +192,26 @@ def download_one_org(item, root, use_mirror, parallel_workers):
           f"(errors: {files['error']})")
     return stats
 
-def run_batch_download():
+def _select_namespaces(orgs, spec):
+    """Resolve --namespaces against the org list, or fall back to the interactive chooser."""
+    if spec is None:
+        return choose_orgs(orgs)
+    selected, bad = parse_selection(spec, orgs, key=lambda o: o['login'].lower())
+    if bad:
+        print(f"--namespaces: not recognized: {', '.join(bad)}")
+        return []
+    if not selected:
+        print("--namespaces: selection is empty after exclusions.")
+        return []
+    print(f"Namespaces from --namespaces: {', '.join(o['login'] for o in selected)}")
+    return selected
+
+
+def run_batch_download(args=None):
+    assume_yes = bool(getattr(args, "yes", False))
     print()
     print("=" * 60)
-    print("Batch download: all my orgs -> Local")
+    print("Batch download: your namespaces -> Local")
     print("=" * 60)
 
     print("Listing your org memberships...")
@@ -173,13 +219,25 @@ def run_batch_download():
     if not orgs:
         print("No org memberships found for the authenticated account. Nothing to do.")
         return
-    selected = choose_orgs(orgs)
-    root = prompt_for_directory(
-        "Parent directory (one <org> subfolder will be created per org): ",
-        must_exist=False, create_ok=True,
-    )
+    selected = _select_namespaces(orgs, getattr(args, "namespaces", None))
+    if not selected:
+        return
+
+    dest = getattr(args, "dest", None)
+    if dest is None:
+        root = prompt_for_directory(
+            "Parent directory (one <org> subfolder will be created per org): ",
+            must_exist=False, create_ok=True,
+        )
+    else:
+        root, error = resolve_directory(dest, create_missing=True)
+        if error:
+            print(f"--dest: {error}")
+            return
+        print(f"Destination: {root}")
+
     (include_private, include_archived,
-     include_forks, use_mirror, parallel_workers) = ask_filters()
+     include_forks, use_mirror, parallel_workers) = ask_filters(args, assume_yes)
     print_download_warnings()
 
     # ---- Inventory pass (read-only): access + repos + user filters + existing locals ----
@@ -206,7 +264,7 @@ def run_batch_download():
         inventory.append({'org': login, 'repos': kept, 'existing': existing, 'error': None})
 
     # ---- Repo-level granularity: the same grammar, per namespace (ENTER = all) ----
-    if prompt_yes_no("Pick individual repos per namespace?", default=False):
+    if not assume_yes and prompt_yes_no("Pick individual repos per namespace?", default=False):
         for item in inventory:
             if item['error'] or not item['repos']:
                 continue
@@ -256,7 +314,9 @@ def run_batch_download():
         print("Nothing to download (check your filter answers). No changes made.")
         return
     print()
-    if prompt_input('Type "YES" to start the batch download: ') != "YES":
+    if assume_yes:
+        print('Starting the batch download (--yes).')
+    elif prompt_input('Type "YES" to start the batch download: ') != "YES":
         print("Aborted. Nothing was downloaded.")
         return
 
@@ -298,38 +358,118 @@ def show_summary(results, started, root, include_private, include_archived,
             'failed': sum(s['failed'] for s in results),
         },
     }
-    RUNS_DIR.mkdir(parents=True, exist_ok=True)
-    manifest_path = RUNS_DIR / f"batch_{started.strftime('%Y%m%d_%H%M%S')}.json"
-    with open(manifest_path, 'w', encoding='utf-8') as f:
-        json.dump(manifest, f, indent=2)
-    print(f"\nBatch manifest: {manifest_path}")
+    try:
+        RUNS_DIR.mkdir(parents=True, exist_ok=True)
+        manifest_path = RUNS_DIR / f"batch_{started.strftime('%Y%m%d_%H%M%S')}.json"
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding='utf-8')
+        print(f"\nBatch manifest: {manifest_path}")
+    except OSError as exc:
+        print(f"\n(could not write the batch manifest: {exc})")
     print("Resume: rerun the same batch; completed and already-local repos are skipped.")
 
 
-def run_single_repo(spec, root):
+def _spec_has_owner(spec):
+    """True when the spec names an owner: 'owner/name', or a URL that carries one."""
+    spec = spec.strip()
+    return "/" in spec or "://" in spec
+
+
+def _resolve_one_repo(spec):
+    """Resolve a repo spec to gh's detail dict. Returns (data, problem_message).
+
+    A bare token with no owner is reported specially: `gh repo view` silently prepends the
+    authenticated user as the owner, which is almost never what someone typing a friend's
+    name intends.
+    """
+    spec = spec.strip()
+    if not spec:
+        return None, "no repo given."
+    if spec.startswith("-"):
+        return None, f"'{spec}' starts with '-' — that is not a repo. Use owner/name or a URL."
+    try:
+        return resolve_repo_details(spec), None
+    except (RuntimeError, json.JSONDecodeError) as exc:
+        if not _spec_has_owner(spec):
+            return None, (
+                f"'{spec}' has no owner. GitHub reads a bare name as one of YOUR repos "
+                f"('{spec}' -> a repo in your account), which is why it failed.\n"
+                f"    Give owner/name (e.g. {spec}/their-repo) or a full URL."
+            )
+        return None, f"could not resolve '{spec}': {exc}"
+
+
+def _resolve_repo_or_prompt(spec, allow_prompt):
+    """Return the resolved repo dict, re-prompting on failure when allow_prompt. None = give up."""
+    while True:
+        if not spec:
+            if not allow_prompt:
+                print("✗ No repo given. Use --single owner/name (or a full URL).")
+                return None
+            spec = prompt_input("Repo (owner/name or full URL; blank to cancel): ").strip()
+            if not spec:
+                print("Cancelled — nothing downloaded.")
+                return None
+        had_owner = _spec_has_owner(spec)
+        data, problem = _resolve_one_repo(spec)
+        if data is not None:
+            owner = (data.get('owner') or {}).get('login')
+            name = data.get('name')
+            if not owner or not name:
+                print("✗ gh returned a repo record with no owner/name; try a different spec.")
+                if not allow_prompt:
+                    return None
+                spec = None
+                continue
+            vis = "private" if data.get('isPrivate') else "public"
+            marker = "  ⚠ owner was assumed" if not had_owner else ""
+            print(f"\n  → {owner}/{name}  ({vis}, {format_size(data.get('diskUsage') or 0)}){marker}")
+            if data.get('description'):
+                print(f"    {str(data['description'])[:80]}")
+            if not had_owner and allow_prompt:
+                keep = prompt_input(f'  Use {owner}/{name}? [y] to keep, anything else to re-enter: ')
+                if keep.lower() != "y":
+                    spec = None
+                    continue
+            return data
+        print(f"✗ {problem}")
+        if not allow_prompt:
+            return None
+        spec = None
+
+
+def run_single_repo(spec, root, args=None):
     """Mode 5: download one repo (owner/name or URL) into <root>/<owner>/<repo>."""
+    assume_yes = bool(getattr(args, "yes", False))
+    clone_format = getattr(args, "format", None)
     print()
     print("=" * 60)
     print("Single repo -> Local")
     print("=" * 60)
-    try:
-        data = resolve_repo_details(spec)
-    except (RuntimeError, json.JSONDecodeError) as exc:
-        print(f"✗ Could not resolve '{spec}': {exc}")
-        print("  Use owner/name or a full URL, e.g. https://github.com/owner/name")
+
+    data = _resolve_repo_or_prompt(spec, allow_prompt=not assume_yes)
+    if data is None:
         return
     owner = data['owner']['login']
     repo = {'name': data['name'],
             'isPrivate': data.get('isPrivate', False),
             'isFork': data.get('isFork', False),
             'isArchived': data.get('isArchived', False),
-            'diskUsage': data.get('diskUsage', 0),
+            'diskUsage': data.get('diskUsage') or 0,
             'description': data.get('description') or ''}
-    visibility = "private" if repo['isPrivate'] else "public"
-    print(f"\n  {owner}/{repo['name']}  {format_size(repo['diskUsage'])}  {visibility}"
-          f"{'  fork' if repo['isFork'] else ''}{'  ARCHIVED' if repo['isArchived'] else ''}")
-    if repo['description']:
-        print(f"  {repo['description'][:80]}")
+    if repo['isFork'] or repo['isArchived']:
+        tags = " and ".join(t for t in ("a fork" if repo['isFork'] else "",
+                                        "archived" if repo['isArchived'] else "") if t)
+        print(f"  (this repo is {tags})")
+
+    if root is None:
+        if assume_yes:
+            print("✗ --yes with --single requires --dest.")
+            return
+        root = prompt_for_directory(
+            "Parent directory (an <owner>/<repo> subfolder will be created inside): ",
+            must_exist=False, create_ok=True,
+        )
+
     repo['uses_lfs'] = check_repo_for_lfs(owner, repo['name'])
     if repo['uses_lfs']:
         print("  ⚠ uses Git LFS")
@@ -345,9 +485,16 @@ def run_single_repo(spec, root):
         return
 
     print()
-    use_mirror = prompt_clone_format()
+    if clone_format is not None:
+        use_mirror = clone_format == "mirror"
+    elif assume_yes:
+        use_mirror = False
+    else:
+        use_mirror = prompt_clone_format()
     print()
-    if prompt_input(f'Type "YES" to download {owner}/{repo["name"]} into {org_dir}: ') != "YES":
+    if assume_yes:
+        print(f"Downloading {owner}/{repo['name']} into {org_dir} (--yes).")
+    elif prompt_input(f'Type "YES" to download {owner}/{repo["name"]} into {org_dir}: ') != "YES":
         print("Aborted. Nothing was downloaded.")
         return
     try:

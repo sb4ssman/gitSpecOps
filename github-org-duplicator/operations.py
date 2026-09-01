@@ -9,11 +9,20 @@ dict and records progress to the tracking files; failures are caught and reporte
 """
 
 import os
+import random
 import time
 
-from gh_common import PRINT_LOCK, format_size, log_message, run_command
+from gh_common import PRINT_LOCK, CommandTimeout, format_size, log_message, run_command
 from gh_remote import create_repo, ensure_repo
 from local_repos import safe_cleanup_directory
+
+RETRY_ATTEMPTS = 3
+
+
+def _retry_backoff(attempt):
+    """Seconds to wait before the next attempt: 5s, 10s, ... plus jitter so parallel
+    workers hitting the same transient failure don't retry in lockstep."""
+    return 5 * (attempt + 1) + random.uniform(0, 3)
 
 
 def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirror, completed_file, success_log, error_log):
@@ -49,21 +58,24 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
             print(f"  → [{repo_name}] Cloning from {source_org}...")
 
         # Clone with retries
-        max_retries = 3
-        for attempt in range(max_retries):
+        clone_cmd = ['git', 'clone', '--mirror', clone_url, repo_final_path] if use_mirror \
+            else ['git', 'clone', clone_url, repo_final_path]
+        for attempt in range(RETRY_ATTEMPTS):
             try:
-                if use_mirror:
-                    run_command(['git', 'clone', '--mirror', clone_url, repo_final_path], check=True)
-                else:
-                    run_command(['git', 'clone', clone_url, repo_final_path], check=True)
+                run_command(clone_cmd, check=True)
                 break
-            except Exception:
-                if attempt < max_retries - 1:
-                    with PRINT_LOCK:
-                        print(f"  → [{repo_name}] Clone attempt {attempt + 1} failed, retrying...")
-                    time.sleep(5)
-                else:
+            except CommandTimeout:
+                raise  # a hung clone won't un-hang on a retry
+            except RuntimeError as exc:
+                if attempt >= RETRY_ATTEMPTS - 1:
                     raise
+                with PRINT_LOCK:
+                    print(f"  → [{repo_name}] clone attempt {attempt + 1} failed "
+                          f"({str(exc).splitlines()[-1][:120]}); retrying...")
+                # A partial clone left behind will make the retry fail on "directory exists".
+                if os.path.exists(repo_final_path):
+                    safe_cleanup_directory(repo_final_path, temp_dir, repo_name)
+                time.sleep(_retry_backoff(attempt))
 
         # Mark as complete
         with PRINT_LOCK:
@@ -109,7 +121,7 @@ def process_upload_repo(repo, dest_org, completed_file, success_log, error_log):
         print(f"  → Pushing to {dest_org}...")
         push_url = f"https://github.com/{dest_org}/{repo_name}.git"
 
-        max_retries = 3
+        max_retries = RETRY_ATTEMPTS
         for attempt in range(max_retries):
             try:
                 # Get list of all refs
@@ -126,10 +138,10 @@ def process_upload_repo(repo, dest_org, completed_file, success_log, error_log):
                 if good_refs:
                     run_command(['git', '-C', repo_path, 'push', push_url] + good_refs, check=True)
                 break
-            except Exception:
+            except RuntimeError:
                 if attempt < max_retries - 1:
                     print(f"  → Push attempt {attempt + 1} failed, retrying...")
-                    time.sleep(5)
+                    time.sleep(_retry_backoff(attempt))
                 else:
                     raise
 
@@ -181,15 +193,17 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
         clone_url = f"https://github.com/{source_org}/{repo_name}.git"
 
         # Retry logic for clone
-        max_retries = 3
+        max_retries = RETRY_ATTEMPTS
         for attempt in range(max_retries):
             try:
                 run_command(['git', 'clone', '--mirror', clone_url, repo_temp_path], check=True)
                 break
-            except Exception:
+            except RuntimeError:
                 if attempt < max_retries - 1:
                     print(f"  → Clone attempt {attempt + 1} failed, retrying...")
-                    time.sleep(5)
+                    if os.path.exists(repo_temp_path):
+                        safe_cleanup_directory(repo_temp_path, temp_dir, repo_name)
+                    time.sleep(_retry_backoff(attempt))
                 else:
                     raise
 
@@ -218,10 +232,10 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
                 if good_refs:
                     run_command(['git', '-C', repo_temp_path, 'push', push_url] + good_refs, check=True)
                 break
-            except Exception:
+            except RuntimeError:
                 if attempt < max_retries - 1:
                     print(f"  → Push attempt {attempt + 1} failed, retrying...")
-                    time.sleep(5)
+                    time.sleep(_retry_backoff(attempt))
                 else:
                     raise
 
