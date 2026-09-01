@@ -40,7 +40,8 @@ The archive engine behind the manager is split into single-purpose modules in th
 
 The optional bootstrap helper is:
 
-- `setup_gitspecops.py` (builds `.venv`; does NOT write launchers)
+- `setup_gitspecops.py` (writes the generated launchers, then builds a bare `.venv` — `uv sync`,
+  or the stdlib `venv` module as a fallback; the project itself is never installed into it)
 
 These modules are deliberately flat (sibling files imported with a `try: from . / except: from` shim), not a `src/` package. There is no `cli.py` and no console-script entry point. Keep it flat: do not introduce a `src/` package or packaging entry points unless the user explicitly asks for a larger refactor.
 
@@ -142,8 +143,37 @@ whoever builds it, so the safety model is not broken:
 - `local_repos.py` - adapts shared repo discovery for direct/recursive upload scans + safe deletion
 - `tracking.py` - resume state / run files
 - `operations.py` - the per-repo download/upload/migrate workers
+- `batch.py` - modes 4 (batch) and 5 (single) flows, incl. their flag resolution
 
 Keep new GitHub/`gh` logic in `gh_remote.py` and new filesystem logic in `local_repos.py`; the orchestrator should stay flow-only.
+
+**Subprocess timing rules.** Every `gh` call goes through `shared/gh_cli.run_gh` (120s default);
+every git call through `gh_common.run_command` (3600s ceiling — a git op with no progress that
+long is hung, not slow — plus a forced `GIT_TERMINAL_PROMPT=0` so a missing credential fails fast
+instead of deadlocking a worker pool). Both raise `RuntimeError`/`GhError` on timeout; nothing
+blocks unbounded. Retries in `operations.py` use jittered backoff (`_retry_backoff`). The LFS
+`.gitattributes` probe (`gh_remote._check_lfs_flags`) is pooled (8 workers, 20s each) — it is a
+warning-only signal and must never gate or stall a run.
+
+**Non-interactive layer (added 2026-08-31).** Run with no flags it is still the interactive menu.
+`parse_args()` in the orchestrator adds `--batch` / `--single` plus `--namespaces --dest
+--[no-]private --[no-]archived --[no-]forks --format --parallel --yes` for an unattended batch,
+and `--answers FILE` feeds any remaining prompt (one line each; blank = default) for every mode.
+This is why it exists: VS Code / CI type venv-activation lines into an open prompt and corrupt
+`input()`. `gh_common.use_scripted_answers()` holds the queue; `prompt_input()` serves from it,
+skips activation-noise lines (`_ACTIVATION_MARKERS`), and raises a clean `SystemExit` (not an
+`EOFError` traceback) when an answer is needed and none is available. `resolve_directory()` is the
+non-prompting twin of `prompt_for_directory()`. Argparse flags in the one script are fine — still
+no `src/` package, no console-script entry point. Modes 1-3 are flag-less for now (use `--answers`);
+giving them real flags can follow the same pattern.
+
+**Mode 5 spec resolution.** `batch._resolve_repo_or_prompt()` resolves the `owner/name`/URL spec
+*before* asking for a target directory and shows the matched repo. A bare token (no `/`, no
+`://`) is the trap: `gh repo view <name>` silently prepends the authenticated user as owner, so
+`_resolve_one_repo()` rejects a failed bare name with a specific message, and a bare name that
+*does* resolve (to one of your own repos) prints `⚠ owner was assumed` and asks to confirm.
+`setup_operation()` no longer pre-collects the spec/dir for mode 5 — `run_single_repo(None, None)`
+drives the prompts itself.
 
 Run/resume files live under:
 
@@ -194,6 +224,7 @@ uv run python github-org-duplicator\github_org_duplicator.py --help
 uv run python tests\test_selection.py
 uv run python tests\test_local_repos.py
 uv run python tests\test_sync_scaffold.py
+uv run python tests\test_batch_args.py
 uv run python git-sync-suggester\sync_suggester.py --help
 ```
 

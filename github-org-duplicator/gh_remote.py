@@ -8,11 +8,19 @@ decide whether they're already identical duplicates. No other module shells out 
 """
 
 import base64
+import binascii
 import json
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from gh_common import run_command
+
+# The .gitattributes probe is a tiny single-file API read; it must never sit on the default
+# 120s gh timeout, and several can run at once.
+_LFS_PROBE_TIMEOUT = 20
+_LFS_PROBE_WORKERS = 8
 
 # Shared gh wrapper lives in shared/ at the repo root; all gh calls go through it.
 _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
@@ -93,46 +101,59 @@ def check_org_access(org):
 # Inventory + duplicate detection
 # -------------------------------------------------------------------------------------
 def check_repo_for_lfs(org, repo_name):
-    """Check if a repository uses Git LFS by looking for .gitattributes with LFS filters."""
-    try:
-        # Fetch .gitattributes file content
-        result = run_gh([
-            'api',
-            f'/repos/{org}/{repo_name}/contents/.gitattributes',
-            '--jq', '.content'
-        ], check=False)
+    """Best-effort: does this repo's .gitattributes declare an LFS filter?
 
-        if result.returncode == 0:
-            # Decode base64 content
-            content = base64.b64decode(result.stdout.strip()).decode('utf-8', errors='ignore')
-            if 'filter=lfs' in content:
-                return True
-    except Exception:
-        pass
-    return False
+    A network/timeout error or a repo without .gitattributes both mean "assume not" — this
+    only drives a warning line, never behaviour, so it must never raise.
+    """
+    try:
+        result = run_gh([
+            'api', f'/repos/{org}/{repo_name}/contents/.gitattributes', '--jq', '.content'
+        ], check=False, timeout=_LFS_PROBE_TIMEOUT)
+    except GhError:
+        return False
+    if result.returncode != 0 or not result.stdout.strip():
+        return False
+    try:
+        content = base64.b64decode(result.stdout.strip()).decode('utf-8', errors='ignore')
+    except (binascii.Error, ValueError):
+        return False
+    return 'filter=lfs' in content
 
 
 _REPO_FIELDS = 'name,createdAt,isPrivate,isFork,isArchived,description,diskUsage'
 
 
 def _fetch_org_repos(org):
-    """Fetch the raw repo list for an org. Raises GhError on failure."""
-    result = run_gh([
-        'repo', 'list', org,
-        '--limit', '1000',
-        '--json', _REPO_FIELDS
-    ])
-    return json.loads(result.stdout)
+    """Fetch the raw repo list for an org. Raises GhError on an empty/failed response."""
+    result = run_gh(['repo', 'list', org, '--limit', '1000', '--json', _REPO_FIELDS])
+    text = (result.stdout or "").strip()
+    if not text:
+        raise GhError(f"gh returned an empty repo list for {org}")
+    return json.loads(text)
 
 
 def _check_lfs_flags(org, repos):
-    """Fill uses_lfs on each repo (one API probe per repo)."""
-    print(f"Checking {len(repos)} repos for Git LFS usage...")
-    for idx, repo in enumerate(repos, 1):
-        # Clear line and print progress
-        print(f"\r{' ' * 80}\r  Checking {idx}/{len(repos)}: {repo['name']}", end='', flush=True)
+    """Fill uses_lfs on each repo. One tiny API probe per repo, run in a small pool so a
+    150-repo namespace is ~20s instead of minutes (and a slow probe can't stall the rest)."""
+    if not repos:
+        return
+    total = len(repos)
+    tty = sys.stdout.isatty()
+    print(f"Checking {total} repos for Git LFS usage...")
+    progress = {'done': 0}
+    lock = threading.Lock()
+
+    def probe(repo):
         repo['uses_lfs'] = check_repo_for_lfs(org, repo['name'])
-    print()  # New line after progress
+        with lock:
+            progress['done'] += 1
+            if tty:
+                print(f"\r  checked {progress['done']}/{total}", end='', flush=True)
+
+    with ThreadPoolExecutor(max_workers=_LFS_PROBE_WORKERS) as pool:
+        list(pool.map(probe, repos))
+    print(f"\r  checked {total}/{total}")
 
 
 def get_repos_with_details(org):
@@ -161,12 +182,21 @@ def org_repos_with_details_safe(org):
 
 
 def resolve_repo_details(spec):
-    """Resolve owner/name or URL into the fields used by single-repo download mode."""
+    """Resolve owner/name or URL into the fields used by single-repo download mode.
+
+    Raises GhError (missing repo / no access / bad spec) or json.JSONDecodeError.
+    """
+    spec = spec.strip()
+    if not spec or spec.startswith("-"):
+        raise GhError(f"not a repository spec: {spec!r}")
     result = run_gh([
-        'repo', 'view', spec.strip(), '--json',
+        'repo', 'view', spec, '--json',
         'name,owner,isPrivate,isFork,isArchived,diskUsage,description',
     ])
-    return json.loads(result.stdout)
+    text = (result.stdout or "").strip()
+    if not text:
+        raise GhError(f"gh returned nothing for {spec!r}")
+    return json.loads(text)
 
 
 def create_repo(org, repo_name, private=True, description=None):

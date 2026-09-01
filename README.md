@@ -55,7 +55,10 @@ Running the bootstrap once creates `.venv`, after which the launchers call it di
 .\run_setup.bat
 ```
 
-`run_setup` prefers `uv sync` (honoring `uv.lock`) and falls back to the stdlib `venv` + `pip install -e .` when `uv` is unavailable. It also reports whether `git`, `gh`, and `uv` are present. It is entirely optional.
+`run_setup` builds `.venv` with `uv sync` (or the stdlib `venv` module when `uv` is absent) and
+reports whether `git`, `gh`, and `uv` are present. The project is **not** installed into `.venv` —
+the tools are stdlib-only scripts and `.venv` is just a clean interpreter for the launchers. It is
+entirely optional; you can always run `python3 <tool>/<script>.py` directly.
 
 ## What Is Here
 
@@ -247,8 +250,27 @@ Run it with:
 .\duplicate-github-org.bat
 ```
 
-The duplicator is interactive. It checks for `git`, `gh`, GitHub authentication, and reminds you
-that private Git credentials remain yours to configure before doing work.
+Run with no flags it is interactive. It checks for `git`, `gh`, GitHub authentication, and reminds
+you that private Git credentials remain yours to configure before doing work.
+
+It also takes flags for an unattended run — useful inside editors/CI where a terminal helper may
+type virtualenv-activation lines into an open prompt:
+
+```bash
+# Back up every namespace, working clones, no further questions:
+python3 github-org-duplicator/github_org_duplicator.py --batch --namespaces all --dest /backups/github --yes
+
+# Batch, skip one org, mirror clones:
+python3 github-org-duplicator/github_org_duplicator.py --batch --namespaces 'all,!some-org' --dest /backups/github --format mirror --yes
+
+# One repo:
+python3 github-org-duplicator/github_org_duplicator.py --single owner/name --dest /backups/github --yes
+```
+
+`--yes` requires `--namespaces` and `--dest`; it takes documented defaults for anything else
+(private: yes, archived: no, forks: no, format: working, parallel: 3) and skips the typed
+confirmation. For any prompt not covered by a flag — including in the other modes — `--answers FILE`
+feeds answers one per line (a blank line accepts that prompt's default). See `--help`.
 
 Modes:
 
@@ -261,7 +283,9 @@ Modes:
   print-style grammar (`all`, `1-5, 7`, names, `except`/`!`), optionally pick individual repos
   per namespace, review one plan table, type YES once. Per-namespace resume; batch manifest in `runs/`.
 - **One Repo → Local**: any single repo by `owner/name` or full URL (public repos included),
-  downloaded into the same `<parent>/<owner>/<repo>` layout.
+  downloaded into the same `<parent>/<owner>/<repo>` layout. The spec is resolved and the
+  matched repo shown before anything else is asked; a bare name with no owner is rejected with
+  an explanation (GitHub would otherwise read it as one of *your* repos).
 
 All download modes share the same selection grammar, the same
 `<parent>/<namespace>/<repo>` arrival layout, the same limitations block before

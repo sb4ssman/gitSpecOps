@@ -3,15 +3,19 @@
 Living todo / scratch pad. Add items freely; **prune regularly**. When something is done, move it
 into [`work-log.md`](work-log.md) with an absolute date. Dates are always absolute.
 
-_Last tended: 2026-08-31_
+_Last tended: 2026-09-01_
 
 ## Open
 
-- [ ] **Batch "all my orgs" mode (Mode 4) is implemented, awaiting your live run.** Org selection
-  accepts print-style ranges (`1-5, 7, 9-25`), names, `all`, and `except`/`!` exclusions; filters
-  (private/archived/forks), format, and parallelism are prompted at run time. Per-org scoped
-  tracking files in `tracking.py` (resume never collides/clears), one typed-YES plan table, batch
-  manifest in `runs/`. Parser unit-tested with synthetic org names only.
+- [ ] **`.venv` stays package-free — watch for regressions.** `[tool.uv] package = false` makes
+  `uv sync` a virtual project (`uv.lock` shows `source = { virtual = "." }`, no `.pth`). If a stray
+  `pip install -e .` or a pyproject edit ever re-adds an `__editable__*.pth` / `git_spec_ops*.egg-info`,
+  remove it. See [`knowledge/venv-and-editors.md`](knowledge/venv-and-editors.md).
+- [ ] **Duplicator modes 1-3 (download-one / upload / migrate): follow-ups.** They inherit the
+  `run_command` timeout + `GIT_TERMINAL_PROMPT=0` + jittered backoff, but (a) their retry loops
+  still retry a `CommandTimeout` twice (mode-4's clone loop re-raises it — a hang won't un-hang),
+  and (b) they have no CLI flags — only `--batch`/`--single` do; `--answers FILE` is the stopgap.
+  Both low priority; mode 4 is the hot path. Same `parse_args()` pattern if it's ever wanted.
 - [ ] **Sync Suggester scaffold is live; complete the first vertical slice.** The consolidated design
   is in [`new-tool-sync-suggester.md`](new-tool-sync-suggester.md). Flat read-only modules now exist:
   `sync_suggester.py` (CLI flow), `observer.py` (configured-root facts), `manifest.py` (privacy-safe
@@ -30,8 +34,8 @@ _Last tended: 2026-08-31_
 
 ## Someday / deferred
 
-- Deferred from the setup/venv work (see work-log 2026-07-21): no `--dry-run` / `--yes` flags on
-  the duplicator yet; `_legacy_sources/` left untouched.
+- `--yes` shipped for the duplicator (2026-08-31, batch + single); no `--dry-run` yet.
+  `_legacy_sources/` still left untouched.
 - Future direction: the push/"publish" direction for `archive_sync` — design captured in
   [`README.md`](README.md#future-direction-the-push-direction-publish); not started.
 - Multi-host support is a stated goal: archive tools first via `shared/providers.py` (one

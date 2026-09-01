@@ -1,7 +1,3 @@
-[build-system]
-requires = ["setuptools>=69"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "git-spec-ops"
 version = "0.1.0"
@@ -21,7 +17,13 @@ classifiers = [
     "Topic :: Software Development :: Version Control :: Git",
 ]
 
+# Intentionally no runtime dependencies: every tool is stdlib-only and run as a script.
 dependencies = []
 
-[tool.setuptools]
-py-modules = ["setup_gitspecops"]
+# This project is NOT an importable package. The tools are flat scripts that put their own
+# directory (and the repo root, for `shared/`) on sys.path at runtime. `.venv` exists only to
+# give the launchers a clean, predictable interpreter. Do NOT install the project into it:
+# an editable install drops a `.pth` that runs finder code on every interpreter startup, which
+# turns a stray SIGINT during startup into `Fatal Python error: init_import_site`.
+[tool.uv]
+package = false

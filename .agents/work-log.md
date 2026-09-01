@@ -5,6 +5,98 @@ Append-only record of **completed** work. Newest first. Items that graduate from
 
 ## 2026-08-31
 
+- **Killed the editable install in `.venv` — it was crashing interpreter startup.** Running the
+  duplicator via a VS Code "Run" action died with `Fatal Python error: init_import_site` before the
+  script ran: `uv sync` had installed the project editable, whose `.pth` runs finder code on every
+  startup, and the editor sent a stray `^C` into that import. Full write-up in
+  [`knowledge/venv-and-editors.md`](knowledge/venv-and-editors.md). Fix: `pyproject.toml` gets
+  `[tool.uv] package = false` (and loses `[build-system]`/`[tool.setuptools]`);
+  `setup_gitspecops.py` builds a bare venv with no `pip install -e .`; removed the `__editable__*`
+  artifacts + `dist-info` from site-packages, root `git_spec_ops.egg-info/`, and `uv.lock`. Added a
+  local (gitignored) `.vscode/settings.json`: `python.terminal.activateEnvironment: false`,
+  interpreter pinned to `.venv`, Code-Runner set to not pre-interrupt. `site` import is now ~5 ms
+  with no project code; tools verified via `.venv`, the launcher, and system `python3`.
+
+- **Org duplicator: timeout / input-sanitising / error-handling hardening pass.**
+  - **Timing:** `gh_common.run_command` had NO timeout — a hung `git clone` (dead connection, or a
+    credential prompt with no terminal) blocked a worker thread forever. Now: 3600s ceiling
+    (`COMMAND_TIMEOUT_SECONDS`), `GIT_TERMINAL_PROMPT=0` forced on every git subprocess (a missing
+    credential fails in <1s instead of deadlocking the pool), and `FileNotFoundError` /
+    `TimeoutExpired` become `RuntimeError`. `operations.py` retries use exponential backoff **with
+    jitter** (`_retry_backoff`) instead of a lockstep `sleep(5)`, catch `RuntimeError` (not bare
+    `Exception`), and clean a partial clone before retrying. `gh_remote._check_lfs_flags` now runs
+    the per-repo `.gitattributes` probe in an 8-way pool with a 20s per-probe timeout — a
+    150-repo namespace drops from ~2.5 min to ~20 s and one slow probe can't stall the rest.
+    `download_one_org` guards `future.result()` so a crashed worker fails one repo, not the batch.
+  - **Input:** mode-5 spec rejects a leading `-` and empty string before calling `gh`
+    (`resolve_repo_details` + `batch._resolve_one_repo`); `--answers` catches `UnicodeDecodeError`
+    (binary file) not just `OSError`; `format_size` tolerates `None` / negatives / non-numbers
+    ("size unknown"); `_resolve_repo_or_prompt` defends against a gh record missing owner/name.
+  - **Errors:** `check_repo_for_lfs` narrowed from bare `except Exception` to
+    `(GhError, binascii.Error, ValueError)` and returns False on any; `_fetch_org_repos` /
+    `resolve_repo_details` raise a clear `GhError` on empty stdout instead of a raw
+    `JSONDecodeError`; `show_summary` wraps the manifest write so a read-only `runs/` doesn't
+    crash a finished run.
+  - Tests: `test_batch_args.py` covers the spec guards; live-checked the LFS pool, the
+    `run_command` timeout, and an end-to-end batch.
+
+- **Org duplicator mode 5 (single repo): resolve the spec up front, catch the bare-username
+  trap.** A user typed a friend's bare username; `setup_operation()` collected it plus a target
+  directory with zero validation, then `run_single_repo` failed much later (`gh repo view <name>`
+  reads a bare token as `<your-account>/<name>`). Now `run_single_repo(None, None)` owns the
+  prompts: `_resolve_repo_or_prompt()` resolves and *shows* the matched repo before asking where
+  to put it, re-prompting on failure; `_resolve_one_repo()` gives a bare name with no owner a
+  specific "GitHub reads this as one of YOUR repos" message; a bare name that resolves to one of
+  your own repos prints `⚠ owner was assumed` and asks to confirm. `--single` unchanged for the
+  flag path (still resolves once; `--yes` needs `--dest`). Tests extended.
+
+- **Org duplicator: non-interactive layer so it runs inside VS Code / CI.** The integrated
+  terminal (and some shells) type virtualenv-activation lines into an open `input()` prompt and
+  corrupt it. Fix:
+  - `github_org_duplicator.py` gains `parse_args()` (argparse, flat — no subcommands, no entry
+    point): `--batch` / `--single`, `--namespaces --dest --[no-]private --[no-]archived
+    --[no-]forks --format {working,mirror} --parallel N --yes`, and `--answers FILE` (feeds any
+    remaining prompt, one line each, blank = that prompt's default) for every mode. No flags ->
+    the interactive menu, unchanged. `--yes` needs `--namespaces`+`--dest`, takes documented
+    defaults for the rest, skips the typed confirmation.
+  - `gh_common.use_scripted_answers()` holds the answer queue; `prompt_input()` serves from it,
+    echoes each, broadens the activation-noise filter to a substring match over
+    `_ACTIVATION_MARKERS` (adds `.ps1`/`.fish`/`.csh`/`conda activate`), and turns a
+    "need an answer, none available" (strict queue empty, or terminal `EOFError`) into a clean
+    `SystemExit` with guidance instead of a traceback. New `resolve_directory()` is the
+    non-prompting twin of `prompt_for_directory()`.
+  - `batch.py`: `run_batch_download(args=None)` / `run_single_repo(spec, root, args=None)` /
+    `ask_filters(args, assume_yes)` resolve each value as flag > (`--yes` default) > prompt;
+    the "pick individual repos" and typed-YES steps are skipped under `--yes`.
+  - `tests/test_batch_args.py` (offline, synthetic): parser rejects/accepts, scripted-answer
+    queue + echo + strict-overflow, activation filter, `ask_filters` resolution. Full suite green;
+    end-to-end verified against a tiny real namespace.
+  - Docs: `README.md` + `.agents/README.md` duplicator sections, `--help` epilog, Validation list.
+  Modes 1-3 stay flag-less (use `--answers`) — noted in working-notes.
+
+- **First live run of the org duplicator Mode 4 (batch download).** Backed up all 9 GitHub
+  namespaces (`sb4ssman` + 8 orgs) to the `memory-lambda` archive drive at
+  `/memory-lambda/Github/<namespace>/<repo>` — 153 repos, working clones, private + archived +
+  forks included, 3 parallel per org. **153/153 succeeded, 0 failures**, ~16 min, ~69 GB on disk
+  (GitHub's reported 26.8 GB understates full object/history size). Batch manifest:
+  `github-org-duplicator/runs/batch_20260831_173958.json`.
+  - The VS Code integrated terminal swallows interactive input, so the run was driven by piping a
+    10-line answer file to stdin of `github_org_duplicator.py` (detached, logged). Recorded the
+    prompt order and recipe in agent memory; UX follow-up (a real `--yes`/answer-file mode) is in
+    `working-notes.md`.
+  - `git-lfs` was absent and this box has no passwordless sudo — installed the standalone
+    `git-lfs` 3.6.1 binary to `~/.local/bin`, ran `git lfs install`, and launched the job with
+    `~/.local/bin` on PATH. Only one repo in the set uses LFS
+    (`true-bots/magiconion-sample-client`); its LFS blobs were verified as real content, not
+    pointers.
+  - **Post-run trim (per user):** the `true-bots` org was not wanted — `True-Bots-Inc` is the
+    keeper. Removed `true-bots` from the archive (moved to
+    `/memory-lambda/Github/.trash-true-bots-20260831`, ~37 GB — final `rm -rf` left for the user
+    to run; the sandbox refuses recursive delete outside `/tmp`) and deleted its four
+    `runs/*__true-bots.txt` resume files. Also fully removed git-lfs again: `git lfs uninstall`
+    (global config + repo hooks) and deleted `~/.local/bin/git-lfs`. Active archive is now 8
+    namespaces; `True-Bots-Inc` intact at 55 repos.
+
 - **Completed a pre-commit family audit and refreshed the root README.** Reframed the project as
   three repository-level special operations and documented Sync Suggester's one-machine usefulness
   and cross-machine purpose, current privacy boundary, commands, and roadmap. Corrected all launcher

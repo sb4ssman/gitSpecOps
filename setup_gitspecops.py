@@ -12,8 +12,10 @@ This does three things:
 
   2. Creates a local virtual environment (.venv) so the launchers can call its
      Python directly -- no per-launch `uv run` sync, and no hard dependency on
-     `uv` being on PATH afterward. It prefers `uv sync` (honoring uv.lock) and
-     falls back to the stdlib `venv` + `pip install -e .` when `uv` is absent.
+     `uv` being on PATH afterward. It prefers `uv sync` and falls back to the
+     stdlib `venv` module. The project is NOT installed into .venv -- the tools
+     run as scripts and there are no dependencies; an editable install would only
+     add a startup-time `.pth` hook (see the note in pyproject.toml).
 
   3. Reports whether the runtime prerequisites (git, gh, uv) are available.
 
@@ -74,17 +76,18 @@ def _base_python() -> str:
 
 
 def create_venv_with_stdlib() -> bool:
-    """Create .venv with the stdlib venv module and install the project. Returns True on success."""
+    """Create a bare .venv with the stdlib venv module. Returns True on success.
+
+    Nothing is installed into it: the tools are stdlib-only scripts, so the venv just
+    needs to be a clean interpreter the launchers can point at.
+    """
     print("Creating .venv with the stdlib `venv` module...")
     if _run([_base_python(), "-m", "venv", str(VENV_DIR)]) != 0:
         return False
     if not VENV_PYTHON.exists():
         print(f"ERROR: expected interpreter not found at {VENV_PYTHON}")
         return False
-    print("Installing the project into .venv (`pip install -e .`)...")
-    # Upgrade pip quietly first; ignore its result, then do the editable install.
-    _run([str(VENV_PYTHON), "-m", "pip", "install", "--upgrade", "pip", "--quiet"])
-    return _run([str(VENV_PYTHON), "-m", "pip", "install", "-e", ".", "--quiet"]) == 0
+    return True
 
 
 def build_environment() -> bool:
