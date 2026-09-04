@@ -81,6 +81,39 @@ def list_child_dirs(root: Path) -> list[Path]:
 def is_hidden(path: Path) -> bool:
     return path.name.startswith(".")
 
+def device_id(path) -> int | None:
+    """Filesystem device id for a path, or None when it cannot be determined.
+
+    Windows is why this is not simply `stat().st_dev`. There, `os.DirEntry.stat()` serves
+    data cached from the directory scan, and that cached record carries `st_dev == 0`. The
+    root, statted directly, reports a real device number. Comparing the two rejected every
+    direct child as "cross-filesystem", so a scan of a Windows drive came back completely
+    empty — the tool looked broken rather than wrong.
+
+    A zero therefore means "unknown", never "different".
+    """
+    try:
+        dev = os.stat(path, follow_symlinks=False).st_dev
+    except (OSError, ValueError):
+        return None
+    return dev or None
+
+
+def entry_device_id(entry) -> int | None:
+    """Device id for a scandir entry, falling back to a real stat when the cache is empty.
+
+    The cached value is used first because it is free; the extra syscall is paid only on
+    platforms (Windows) where the cache does not carry a device id.
+    """
+    try:
+        dev = entry.stat(follow_symlinks=False).st_dev
+    except (OSError, ValueError):
+        return None
+    if dev:
+        return dev
+    return device_id(entry.path)
+
+
 def find_repos(root: Path, max_depth: int | None = None, include_hidden: bool = False,
                cross_filesystems: bool = False, skip_names: frozenset | set | None = None,
                progress: callable | None = None) -> list[RepoHit]:
@@ -95,10 +128,7 @@ def find_repos(root: Path, max_depth: int | None = None, include_hidden: bool = 
     root = Path(root)
     if not root.is_dir():
         raise NotADirectoryError(str(root))
-    try:
-        root_dev = root.stat().st_dev
-    except OSError:
-        root_dev = None
+    root_dev = device_id(root)
     hits: list[RepoHit] = []
     scanned = 0
     stack: list[tuple[Path, int]] = [(root, 0)]
@@ -119,10 +149,10 @@ def find_repos(root: Path, max_depth: int | None = None, include_hidden: bool = 
             if name in skip_names or (not include_hidden and name.startswith(".")):
                 continue
             if not cross_filesystems and root_dev is not None:
-                try:
-                    if entry.stat(follow_symlinks=False).st_dev != root_dev:
-                        continue
-                except OSError:
+                child_dev = entry_device_id(entry)
+                # Exclude only on positive evidence of a different filesystem. An unknown
+                # device must never mean "skip", or an entire drive disappears from the scan.
+                if child_dev is not None and child_dev != root_dev:
                     continue
             child = Path(entry.path)
             hit = classify(child)

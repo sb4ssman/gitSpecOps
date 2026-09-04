@@ -8,7 +8,8 @@ from pathlib import Path
 TOOL_DIR = Path(__file__).resolve().parent.parent / "git-sync-suggester"
 sys.path.insert(0, str(TOOL_DIR))
 
-from advice import classify_repository, render_table  # noqa: E402
+from advice import (classify_repository, describe_repository,  # noqa: E402
+                    render_table, repository_flags, secondary_facts)
 from folder_transport import FolderTransport  # noqa: E402
 from manifest import (branch_id, build_manifest, decode_manifest,  # noqa: E402
                       encode_manifest, fleet_id_for, is_fleet_secret, new_fleet_secret,
@@ -199,6 +200,50 @@ if BRANCH not in table:
 unknown_branch = render_table(manifest, {}, {})
 if BRANCH in unknown_branch or f"branch:{BRANCH_ID[:8]}" not in unknown_branch:
     failures.append("a branch this machine has never seen should show as an opaque id")
+
+# --- compound facts: precedence must order, never hide -------------------------------
+# A headline state is single by design, so anything that renders or advises has to keep the
+# rest. A repository that is dirty AND ahead must not report only "dirty".
+COMPOUND = dict(BASE, staged=1, unstaged=2, ahead=3, behind=0, stashes=1)
+flags = repository_flags(COMPOUND)
+if flags != frozenset({"dirty", "ahead", "stashed"}):
+    failures.append(f"repository_flags lost a fact: {sorted(flags)}")
+if classify_repository(COMPOUND)[0] != "dirty":
+    failures.append("the headline state changed; severity ordering depends on it")
+described = describe_repository(COMPOUND)
+for fragment in ("dirty 3", "ahead 3", "1 stash"):
+    if fragment not in described:
+        failures.append(f"describe_repository dropped {fragment!r}: {described}")
+extras = secondary_facts(COMPOUND, "dirty")
+if "ahead 3" not in extras or "dirty" in extras:
+    failures.append(f"secondary_facts should report what the headline omits: {extras!r}")
+
+clean_repo = dict(BASE)
+if repository_flags(clean_repo) != frozenset({"clean"}):
+    failures.append("a clean repository should carry exactly the clean flag")
+if describe_repository(clean_repo) != "clean":
+    failures.append("a clean repository should describe as clean")
+if secondary_facts(clean_repo, "synced") != "":
+    failures.append("a clean repository has nothing to add")
+
+diverged = dict(BASE, ahead=2, behind=4, unstaged=1)
+if "diverged 2/4" not in describe_repository(diverged):
+    failures.append(f"diverged counts were lost: {describe_repository(diverged)}")
+if "diverged 2/4" not in secondary_facts(diverged, "dirty"):
+    failures.append("a dirty repository that is also diverged must say so")
+
+detached = dict(BASE, has_upstream=False, ahead=None, behind=None, unstaged=2)
+if "no upstream" not in describe_repository(detached):
+    failures.append("a missing upstream was hidden behind dirtiness")
+
+# the compound description reaches the rendered table
+compound_manifest = build_manifest(FLEET_ID, "machine-a", "workstation-a", [dict(COMPOUND)],
+                                   "2026-01-02T03:04:05Z")
+compound_table = render_table(compound_manifest, {REPO_ID: {"display_name": "alpha-repo"}},
+                              {BRANCH_ID: BRANCH})
+if "ahead 3" not in compound_table:
+    failures.append(f"the table hid a secondary fact behind the headline:\n{compound_table}")
+
 
 if failures:
     print("SYNC-SCAFFOLD-TESTS FAILED:")

@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from advice import classify_repository
+from advice import classify_repository, secondary_facts
 from config import display_name_for
 from manifest import decode_manifest
 
@@ -206,6 +206,12 @@ def _effective_state(state: str, machine_freshness: str) -> str:
     return state if state in WORK_STATES else "unknown"
 
 
+def _with_extras(text: str, cell: "Cell") -> str:
+    """Append whatever the headline state left out, so precedence cannot hide it."""
+    extras = secondary_facts(cell.repo, cell.state)
+    return f"{text} (also {extras})" if extras else text
+
+
 def _row_advice(name: str, cells: dict[str, Cell], views: list[MachineView]) -> tuple[str, str]:
     """Cross-machine advice for one repository. Returns (severity_key, text)."""
     label = {view.machine_id: view.label for view in views}
@@ -227,14 +233,14 @@ def _row_advice(name: str, cells: dict[str, Cell], views: list[MachineView]) -> 
             return ("operation" if cell.trusted else "stale_work",
                     where if cell.trusted else f"last known {where} ({age_phrase(cell.age)})")
         if cell.trusted:
-            return "dirty", f"STOP: uncommitted work on {label[mid]}"
-        return "stale_work", (f"last known uncommitted work on {label[mid]} "
-                              f"({age_phrase(cell.age)})")
+            return "dirty", _with_extras(f"STOP: uncommitted work on {label[mid]}", cell)
+        return "stale_work", _with_extras(
+            f"last known uncommitted work on {label[mid]} ({age_phrase(cell.age)})", cell)
 
     diverged = machines_with("diverged")
     if diverged:
         mid, cell = diverged[0]
-        return "diverged", f"↕ diverged on {label[mid]} — human decision"
+        return "diverged", _with_extras(f"↕ diverged on {label[mid]} — human decision", cell)
 
     ahead = machines_with("ahead")
     if ahead:
@@ -242,12 +248,13 @@ def _row_advice(name: str, cells: dict[str, Cell], views: list[MachineView]) -> 
         count = cell.repo.get("ahead") or 0
         suffix = "" if cell.trusted else f" (last seen {age_phrase(cell.age)})"
         return ("ahead" if cell.trusted else "stale_work",
-                f"PUSH {label[mid]} ↑{count}{suffix}")
+                _with_extras(f"PUSH {label[mid]} ↑{count}{suffix}", cell))
 
     behind = machines_with("behind")
     if behind:
         mid, cell = behind[0]
-        return "behind", f"PULL {label[mid]} ↓{cell.repo.get('behind') or 0}"
+        return "behind", _with_extras(
+            f"PULL {label[mid]} ↓{cell.repo.get('behind') or 0}", cell)
 
     stashed = machines_with("stashed")
     if stashed:

@@ -7,25 +7,43 @@ _Last tended: 2026-09-03_
 
 ## Open
 
-- [ ] **Outside fleet review (2026-09-04): keep integrations optional and fix Windows discovery
-  before expanding the watchdog.** gitSpecOps, org admin/agent repositories, Digital Cartography,
-  and BonusBrain are independent systems that should interoperate through small contracts; none
-  should become a required runtime dependency of Sync Suggester. Sync Suggester should own a local
-  stable machine ID and may optionally accept a human label or metadata exported by another tool.
-  A live `check` against `T:\Github\Sb4ssport-Alpha`, `T:\Github\moon-and-back`, and
-  `T:\Github\BonusBrain` returned an empty fleet on Windows. Root cause: `repo_discovery.py`
-  compares the root's `Path.stat().st_dev` with each child's
-  `os.scandir(...).stat().st_dev`; on this T: drive those reported `1154836881` and `0`
-  respectively, so every direct child was incorrectly rejected as cross-filesystem. Use one
-  consistent volume/device identity strategy and add a real Windows regression test. Once fixed,
-  the watchdog path remains: persistent per-root config and machine identity; peer-manifest
-  aggregation with stale/expired rules; optional bounded fetch with honest
-  `upstream_observed_at`; visible polling/watch with semantic-change writes and heartbeat;
-  notifications; then explicit handoff. Preserve compound facts in advice (for example dirty AND
-  ahead), rather than allowing precedence to hide relevant state. Org/agent policy may locally
-  annotate an intentionally dirty patch-ledger tree as recorded or drifted, but raw dirtiness must
-  still be published and must never become an all-clear. Run background operation as the
-  interactive user so Git ownership, credentials, configuration, and cloud-folder access match.
+- [ ] **Outside fleet review (2026-09-04) — status.** Recorded by the user; two items were acted
+  on the same day, the rest are still open.
+  - ~~**Windows discovery returned an empty fleet.**~~ **Fixed 2026-09-04.** The diagnosis in the
+    review was exactly right: `os.DirEntry.stat()` on Windows serves data cached from the directory
+    scan and that record carries `st_dev == 0`, while the root statted directly reports a real
+    device number, so every direct child was rejected as cross-filesystem. `repo_discovery.py` now
+    excludes only on **positive evidence** of a different device — unknown never means skip — via
+    `device_id()` / `entry_device_id()`, which pay for a real stat only when the cached value is
+    absent. `tests/test_repo_discovery_devices.py` reproduces the Windows symptom on any platform
+    by faking the cached-zero device; verified it fails ("found 0 of 3") against the old code.
+    **Still wanted: a run on the real Windows box against `T:\Github\...` to confirm.**
+  - ~~**Compound facts hidden by precedence.**~~ **Fixed 2026-09-04.** `classify_repository` is now
+    documented as a headline for severity *ordering only*; anything that renders or advises uses
+    `repository_flags` / `describe_repository` / `secondary_facts`, so a repository that is dirty
+    AND ahead now reads `STOP: uncommitted work on cbox (also ahead 9)`. Tests pin dirty+ahead,
+    behind+stash, diverged+dirty, missing-upstream+dirty, and that a clean repository invents no
+    extras.
+  - **Integrations stay optional.** gitSpecOps, the org admin/agent repositories, Digital
+    Cartography and BonusBrain are independent systems that interoperate through small contracts;
+    none may become a required runtime dependency of Sync Suggester. Sync Suggester owns its local
+    stable machine id (it already does — `config.py`, derived from the hostname and overridable)
+    and may *optionally* accept a human label or metadata exported by another tool. Nothing to
+    build until a concrete contract is proposed; the constraint is what matters.
+  - **Intentionally-dirty trees (patch ledgers).** Org/agent policy may locally annotate such a
+    tree as "recorded" or "drifted", but **raw dirtiness must still be published and must never
+    become an all-clear**. Not built. The natural home is a local-only annotation in the catalog
+    (beside `alias`), displayed alongside the state and explicitly excluded from classification —
+    the manifest must keep carrying the raw counts.
+  - **Run background operation as the interactive user**, so Git ownership, credentials,
+    configuration and cloud-folder access all match. Applies to whatever schedules `check`; not
+    built, and it is the main correctness trap in the tier-2 OS-timer idea.
+  - **Note on sequencing:** the review's "watchdog path remains" list was written against
+    `9989dc0`, before the 2026-09-03 work. Persistent per-root config and machine identity,
+    peer-manifest aggregation with stale/expired rules, optional bounded fetch with honest
+    `upstream_observed_at`, and visible polling/watch with semantic-change writes plus heartbeat
+    are all **already built** (see [`work-log.md`](work-log.md)). What genuinely remains from that
+    list is **notifications**, then **explicit handoff**.
 
 - [ ] **`.venv` stays package-free — watch for regressions.** `[tool.uv] package = false` makes
   `uv sync` a virtual project (`uv.lock` shows `source = { virtual = "." }`, no `.pth`). If a stray

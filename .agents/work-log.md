@@ -3,6 +3,34 @@
 Append-only record of **completed** work. Newest first. Items that graduate from
 [`working-notes.md`](working-notes.md) land here with an absolute date.
 
+## 2026-09-04
+
+- **Fixed the Windows discovery bug reported in the outside fleet review — the tool found nothing
+  at all on a Windows drive.** A `check` against `T:\Github\...` returned an empty fleet. The
+  review's diagnosis was exactly right: `os.DirEntry.stat()` on Windows serves data cached from
+  the directory scan, and that cached record carries `st_dev == 0`, while the root statted
+  directly reports a real device number. The cross-filesystem guard compared the two, found them
+  unequal, and rejected **every** direct child — so a whole drive silently disappeared.
+  - `shared/repo_discovery.py` now excludes only on *positive evidence* of a different device.
+    Unknown never means skip. `device_id()` treats a zero as unknown, and `entry_device_id()` uses
+    the free cached value first, paying for a real `os.stat` only when the cache has none — so the
+    fast path on Linux is unchanged.
+  - `tests/test_repo_discovery_devices.py` reproduces the Windows symptom on any platform by
+    wrapping `os.scandir` so entries report a cached device of 0. Mutation-checked: against the old
+    code it fails with "found 0 of 3 repositories". It also pins that a genuinely different device
+    is *still* excluded, so the fix is not just the check being disabled, and that
+    `cross_filesystems=True` still bypasses it entirely.
+  - Not yet confirmed on the real Windows machine; that run is still wanted.
+
+- **Compound facts are no longer hidden by precedence** (also from the review). `classify_repository`
+  returns one headline state, which severity ordering needs but which necessarily buries everything
+  behind it — a repository that was both dirty and ahead reported only "dirty", and the unpushed
+  commits vanished. The headline is now documented as ordering-only, and everything that renders or
+  advises uses the new `repository_flags` / `describe_repository` / `secondary_facts`. Live result
+  on this repository: `STOP: uncommitted work on cbox (also ahead 9)`. Tests cover dirty+ahead,
+  behind+stash, diverged+dirty, missing-upstream+dirty, and that a clean repository invents no
+  extras. 12/12 suite files pass.
+
 ## 2026-09-03
 
 - **Manifest compression as an opt-in setting (`compress_manifests`, default off).** Requested by
