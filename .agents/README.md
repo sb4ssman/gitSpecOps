@@ -29,7 +29,7 @@ The entry-point tools are:
 - `git-archive-updater/archive_manager.py` (front door: registry, launchers, scheduling)
 - `git-archive-updater/archive_updater.py` (standalone, git-only, update-only)
 - `github-org-duplicator/github_org_duplicator.py`
-- `git-sync-suggester/sync_suggester.py` (initial read-only status/advice scaffold)
+- `git-sync-suggester/sync_suggester.py` (read-only cross-machine status/advice)
 
 The archive engine behind the manager is split into single-purpose modules in the same folder:
 
@@ -185,16 +185,46 @@ Keep output and tracking files there. Do not move them back to the repo root.
 
 ## Sync Suggester
 
-`sync_suggester.py` is the read-only entry point. The initial flat scaffold is:
+`sync_suggester.py` is the read-only entry point. Nothing in this tool pulls, pushes, commits,
+stashes, or otherwise touches an observed repository — it reads local Git facts, publishes this
+machine's status manifest, and reads what other machines left behind. The flat modules are:
 
 - `observer.py` - bounded direct-child/recursive discovery and local Git observation
 - `manifest.py` - hash identities, v1 privacy boundary, JSON encoding/validation
-- `folder_transport.py` - one manifest per machine with same-directory atomic replacement
-- `advice.py` - pure local-state classification and readable ASCII table
+- `folder_transport.py` - one manifest per machine, same-directory atomic replacement
+  (`atomic_write_bytes` is the shared primitive; `config.py` uses it too)
+- `config.py` - persistent local config + the local-only catalog (the privacy pressure point:
+  it is the file mapping an opaque `repo_id` back to a readable name and a path on this disk)
+- `advice.py` - pure single-machine classification and the local ASCII table
+- `aggregate.py` - freshness, cross-machine advice, and the control-tower dashboard
+- `watcher.py` - the polling loop; pure enough to test with an injected clock
 
-`check` and `doctor` are runnable. `init`, `watch`, and `handoff` are reserved visibly but not yet
-implemented. Synced manifests never contain repository names, paths, or URLs; readable names come
-from local-only catalog data. The complete product/design record remains in
+`init`, `check`, `dashboard`, `alias`, `watch`, and `doctor` all run. **`handoff` stays reserved
+on purpose** — moving unfinished work between machines is a mutation flow and gets its own design
+pass rather than hiding inside the watcher.
+
+Three rules hold this design together; do not quietly relax any of them:
+
+- **Silence is never good news.** A machine report that is not current can never produce an "all
+  clear". A stale *clean* report becomes `unknown`; a stale *dirty*/*ahead*/*diverged*/*operation*
+  report keeps its warning as last-known unresolved work. `WORK_STATES` and `_effective_state()`
+  in `aggregate.py` are where that lives, and `tests/test_sync_aggregate.py` pins every case.
+- **Machine freshness and remote freshness are separate.** A manifest written a second ago says
+  nothing about how old its remote-tracking refs are. `upstream_observed_at` is carried
+  independently, and the dashboard footnotes any ↑/↓ it shows while no fetch has been run.
+- **The watch must not churn.** It republishes only on a semantic change (`semantic_fingerprint`
+  deliberately ignores `observed_at`) plus a heartbeat, because a manifest rewritten every cycle
+  would make the user's cloud client upload constantly and bury the write that mattered.
+
+Local state lives outside the repo — `GITSPECOPS_SYNC_HOME`, else XDG on POSIX / `%APPDATA%` on
+Windows, under `gitspecops/sync-suggester/`. `config.json` and `catalog.json` are per-machine and
+never enter the state directory.
+
+Synced manifests contain hashed repository identities and status facts only — no names, paths, or
+URLs. What that boundary does *not* protect (an unsalted, brute-forceable `repo_id`; a published
+`head` SHA nothing reads; human-authored branch names) is analysed in
+[`knowledge/manifest-privacy.md`](knowledge/manifest-privacy.md) and needs a user decision. The
+complete product/design record remains in
 [`new-tool-sync-suggester.md`](new-tool-sync-suggester.md).
 
 ## Generated And Ignored State
@@ -216,16 +246,37 @@ If tests or `uv run` recreate `uv.lock` or egg-info metadata, remove or ignore t
 
 Useful checks:
 
+Run the whole offline suite with one command — every test file is synthetic, needs no network,
+and touches no real repository:
+
+```powershell
+uv run python tests\run_all.py
+```
+
+Individually, plus the compile and `--help` smoke checks:
+
 ```powershell
 uv run python -m py_compile setup_gitspecops.py git-archive-updater\archive_updater.py git-archive-updater\archive_manager.py github-org-duplicator\github_org_duplicator.py
 uv run python git-archive-updater\archive_updater.py --help
 uv run python git-archive-updater\archive_manager.py --help
 uv run python github-org-duplicator\github_org_duplicator.py --help
+uv run python git-sync-suggester\sync_suggester.py --help
 uv run python tests\test_selection.py
 uv run python tests\test_local_repos.py
-uv run python tests\test_sync_scaffold.py
 uv run python tests\test_batch_args.py
-uv run python git-sync-suggester\sync_suggester.py --help
+uv run python tests\test_sync_scaffold.py
+uv run python tests\test_sync_config.py
+uv run python tests\test_sync_aggregate.py
+uv run python tests\test_sync_watch.py
+```
+
+Sync Suggester is read-only, so it is also safe to smoke-test live against real roots — point it
+at a scratch config dir so it cannot disturb the real one:
+
+```powershell
+uv run python git-sync-suggester\sync_suggester.py --config-dir <scratch> init --machine-id test --root <path> --state-dir <scratch>\state
+uv run python git-sync-suggester\sync_suggester.py --config-dir <scratch> check
+uv run python git-sync-suggester\sync_suggester.py --config-dir <scratch> watch --interval 2 --heartbeat 0 --cycles 3
 ```
 
 Do not run live GitHub duplication, archive refreshes, or scheduled-task creation/removal as validation unless the user explicitly requests it.

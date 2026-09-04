@@ -3,7 +3,7 @@
 Living todo / scratch pad. Add items freely; **prune regularly**. When something is done, move it
 into [`work-log.md`](work-log.md) with an absolute date. Dates are always absolute.
 
-_Last tended: 2026-09-01_
+_Last tended: 2026-09-03_
 
 ## Open
 
@@ -11,26 +11,34 @@ _Last tended: 2026-09-01_
   `uv sync` a virtual project (`uv.lock` shows `source = { virtual = "." }`, no `.pth`). If a stray
   `pip install -e .` or a pyproject edit ever re-adds an `__editable__*.pth` / `git_spec_ops*.egg-info`,
   remove it. See [`knowledge/venv-and-editors.md`](knowledge/venv-and-editors.md).
-- [ ] **Duplicator modes 1-3 (download-one / upload / migrate): follow-ups.** They inherit the
-  `run_command` timeout + `GIT_TERMINAL_PROMPT=0` + jittered backoff, but (a) their retry loops
-  still retry a `CommandTimeout` twice (mode-4's clone loop re-raises it — a hang won't un-hang),
-  and (b) they have no CLI flags — only `--batch`/`--single` do; `--answers FILE` is the stopgap.
-  Both low priority; mode 4 is the hot path. Same `parse_args()` pattern if it's ever wanted.
-- [ ] **Sync Suggester scaffold is live; complete the first vertical slice.** The consolidated design
-  is in [`new-tool-sync-suggester.md`](new-tool-sync-suggester.md). Flat read-only modules now exist:
-  `sync_suggester.py` (CLI flow), `observer.py` (configured-root facts), `manifest.py` (privacy-safe
-  schema + atomic JSON), `folder_transport.py` (one file per machine), and `advice.py` (pure
-  classification + ASCII rendering); synthetic tests stay under root `tests/`. `check` supports
-  bounded roots, local readable tables, and optional atomic hash-only publication; `doctor` is
-  read-only. Next: persistent local config/catalog, peer-manifest aggregation + freshness rules,
-  then implement the reserved `init`, `watch`, and `handoff` flows. Continue to reuse
-  `shared/repo_discovery.py`, `shared/git_facts.py`, and `shared/remote_identity.py`; do not build a
-  second discovery/Git wrapper. No pull, push, commit, stash, patch transfer, tray, OAuth, or
-  Git-backed transport in the first slice. Decisions recorded: direct-child discovery by default
-  with per-root recursive opt-in; hashed repo identities in synced manifests plus an unsynced local
-  name/path catalog for readable tables; configurable freshness with initial 24-hour stale and 7-day
-  expired thresholds. Follow with visible polling/watch mode, semantic-change writes, heartbeat, and
-  best-effort final publish; source-remote fetching remains a separate policy decision.
+- [ ] **Duplicator modes 1-3 (download-one / upload / migrate): no CLI flags.** Only
+  `--batch`/`--single` have them; `--answers FILE` is the stopgap. Low priority — mode 4 is the hot
+  path — and the same `parse_args()` pattern applies if it is ever wanted. (The `CommandTimeout`
+  retry half of this item was fixed 2026-09-03.)
+- [ ] **Sync Suggester: what the first slice deliberately left out.** The slice shipped
+  2026-09-03 (see [`work-log.md`](work-log.md)) — `init`/`check`/`dashboard`/`alias`/`watch`/`doctor`
+  all run. Still open, roughly in priority order:
+  - `handoff` — the mutation flow (auto-commit, WIP branches, patch/untracked transfer). Needs its
+    own design pass first; it must never end up inside the watcher or a scheduled publisher, for
+    the same reason `--reconcile`/`--rename-folders` stay interactive-only in the archive tools.
+  - **Source-remote fetching.** Every ↑/↓ today comes from cached remote-tracking refs;
+    `upstream_observed_at` is carried through the schema but is always `null` because nothing
+    fetches. Whether `check` should fetch (never / opt-in / scheduled) is still the open decision
+    from the design doc. The dashboard already footnotes the uncertainty honestly.
+  - **Installing the watch** — login task, periodic timer, or tray, per OS. `watch` runs in the
+    foreground today and that is the honest starting point.
+  - Long-lived stashes: information, or do they block an "all clear"? Currently a `stashed` row
+    ranks above `unknown` but below `ahead`, so it surfaces without shouting.
+  - The **advice → apply** step (clean + behind-only + fresh fetch -> `git pull --ff-only`) is
+    still purely advisory and should stay that way until fetching is settled.
+
+- [ ] **Manifest privacy: `repo_id` is brute-forceable and `head` is an unused de-anonymizer.**
+  Verified during the first slice that no name/path/URL leaves the machine — but the unsalted
+  hash of `host/owner/name`, plus a published commit SHA nothing reads, plus human-authored
+  branch names, together let anyone holding the state folder recover which repositories a
+  machine has. Options and a recommendation (drop `head`; consider an HMAC identity; write down
+  the threat model) are in [`knowledge/manifest-privacy.md`](knowledge/manifest-privacy.md).
+  Needs a decision from the user because every option is a `schema_version` bump.
 
 ## Someday / deferred
 
