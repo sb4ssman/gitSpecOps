@@ -7,6 +7,26 @@ _Last tended: 2026-09-03_
 
 ## Open
 
+- [ ] **Outside fleet review (2026-09-04): keep integrations optional and fix Windows discovery
+  before expanding the watchdog.** gitSpecOps, org admin/agent repositories, Digital Cartography,
+  and BonusBrain are independent systems that should interoperate through small contracts; none
+  should become a required runtime dependency of Sync Suggester. Sync Suggester should own a local
+  stable machine ID and may optionally accept a human label or metadata exported by another tool.
+  A live `check` against `T:\Github\Sb4ssport-Alpha`, `T:\Github\moon-and-back`, and
+  `T:\Github\BonusBrain` returned an empty fleet on Windows. Root cause: `repo_discovery.py`
+  compares the root's `Path.stat().st_dev` with each child's
+  `os.scandir(...).stat().st_dev`; on this T: drive those reported `1154836881` and `0`
+  respectively, so every direct child was incorrectly rejected as cross-filesystem. Use one
+  consistent volume/device identity strategy and add a real Windows regression test. Once fixed,
+  the watchdog path remains: persistent per-root config and machine identity; peer-manifest
+  aggregation with stale/expired rules; optional bounded fetch with honest
+  `upstream_observed_at`; visible polling/watch with semantic-change writes and heartbeat;
+  notifications; then explicit handoff. Preserve compound facts in advice (for example dirty AND
+  ahead), rather than allowing precedence to hide relevant state. Org/agent policy may locally
+  annotate an intentionally dirty patch-ledger tree as recorded or drifted, but raw dirtiness must
+  still be published and must never become an all-clear. Run background operation as the
+  interactive user so Git ownership, credentials, configuration, and cloud-folder access match.
+
 - [ ] **`.venv` stays package-free — watch for regressions.** `[tool.uv] package = false` makes
   `uv sync` a virtual project (`uv.lock` shows `source = { virtual = "." }`, no `.pth`). If a stray
   `pip install -e .` or a pyproject edit ever re-adds an `__editable__*.pth` / `git_spec_ops*.egg-info`,
