@@ -20,6 +20,14 @@ from pathlib import Path
 from advice import render_table
 from aggregate import (build_rows, load_manifests, machine_views, render_dashboard,
                        split_by_fleet)
+from convergence import (
+    catalog_updates,
+    missing_from,
+    namespaces_from_catalog,
+    render_report,
+    resolve_missing,
+    roots_by_owner,
+)
 from config import (
     default_config,
     default_config_dir,
@@ -32,11 +40,16 @@ from config import (
     validate_config,
 )
 from folder_transport import FolderTransport
+from convergence import MissingRepo  # noqa: E402  (dataclass used in --no-resolve)
 from manifest import build_manifest, fleet_id_for, is_fleet_secret
 from observer import RootSpec, observe_roots
 from watcher import DEFAULT_HEARTBEAT_SECONDS, DEFAULT_INTERVAL_SECONDS, run_watch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from shared.providers import provider_for_host, registered_hosts  # noqa: E402
 PREVIEW_MACHINE_ID = "local-preview"
 
 
@@ -46,7 +59,8 @@ def _config_dir(args: argparse.Namespace) -> Path:
 
 def _not_ready(command: str) -> int:
     print(f"'{command}' is not implemented yet; it moves work between machines and needs its "
-          "own design pass. Use 'check', 'watch', 'dashboard', 'alias', or 'doctor'.")
+          "own design pass. Use 'check', 'watch', 'dashboard', 'converge', 'alias', "
+          "or 'doctor'.")
     return 2
 
 
@@ -335,6 +349,87 @@ def command_alias(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_converge(args: argparse.Namespace) -> int:
+    """Report which repositories peers have that this machine does not, and name them.
+
+    Read-only, including the network calls: it lists namespaces through the provider seam and
+    never clones. Cloning belongs to `archive_sync.py`, which already does it safely.
+    """
+    config_dir = _config_dir(args)
+    try:
+        config = load_config(config_dir)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if not config:
+        print("error: converge needs this machine's configuration. Run 'init' first.",
+              file=sys.stderr)
+        return 2
+    state_dir = args.state_dir or config.get("state_dir")
+    if not state_dir:
+        print("error: no state directory to read peer reports from.", file=sys.stderr)
+        return 2
+
+    secret = config["fleet_secret"]
+    transport = FolderTransport(state_dir)
+    manifests, issues = load_manifests(transport)
+    manifests, foreign = split_by_fleet(manifests, fleet_id_for(secret))
+    for issue in issues:
+        print(f"warning: {issue}", file=sys.stderr)
+    for manifest in foreign:
+        print(f"warning: {manifest.get('machine_label') or manifest['machine_id']} is on a "
+              f"different fleet secret and was excluded", file=sys.stderr)
+
+    now = datetime.now(timezone.utc)
+    views = machine_views(manifests, now, config["stale_hours"], config["expired_days"])
+    if not any(view.machine_id == config["machine_id"] for view in views):
+        print("error: this machine has not published yet — run 'check' first, otherwise every "
+              "repository would look missing.", file=sys.stderr)
+        return 2
+
+    missing = missing_from(views, config["machine_id"])
+    catalog = load_catalog(config_dir)
+    if args.namespace:
+        namespaces = [(args.host, owner) for owner in args.namespace]
+    else:
+        namespaces = namespaces_from_catalog(catalog)
+
+    resolved, errors = ([], [])
+    if missing and not args.no_resolve:
+        _register_providers()
+        def progress(host, owner, remaining):
+            print(f"  … listing {host}/{owner} ({remaining} still unnamed)", file=sys.stderr)
+        resolved, errors = resolve_missing(missing, namespaces, secret, provider_for_host,
+                                           known=catalog, progress=progress)
+        updates = catalog_updates(resolved)
+        if updates and not args.no_catalog:
+            save_catalog(config_dir, merge_catalog(catalog, updates))
+    elif missing:
+        resolved = [MissingRepo(repo_id=repo_id, machines=machines)
+                    for repo_id, machines in missing.items()]
+
+    print(render_report(resolved, errors, namespaces, roots_by_owner(catalog)))
+    return 0
+
+
+def _register_providers() -> None:
+    """Import the tool-side providers so the shared registry is populated.
+
+    `shared/` never imports tool folders, so somebody has to do this; for the archive tools it
+    happens at their own import time. Failing to load one host must not stop the others.
+    """
+    sys.path.insert(0, str(REPO_ROOT / "git-archive-updater"))
+    # remote_provider.py is the module that calls register_provider(); importing the
+    # provider class alone registers nothing.
+    try:
+        import remote_provider  # noqa: F401
+    except ImportError as exc:
+        print(f"warning: GitHub provider unavailable: {exc}", file=sys.stderr)
+    if not registered_hosts():
+        print("warning: no remote providers registered; unknown repositories cannot be named",
+              file=sys.stderr)
+
+
 def command_doctor(args: argparse.Namespace) -> int:
     config_dir = _config_dir(args)
     report: dict = {"config_dir": str(config_dir)}
@@ -433,6 +528,20 @@ def build_parser() -> argparse.ArgumentParser:
     watch.add_argument("--cycles", type=int, help="stop after this many cycles")
     watch.add_argument("--no-catalog", action="store_true", help="do not update the local catalog")
     watch.set_defaults(handler=command_watch)
+
+    converge = subparsers.add_parser(
+        "converge", help="report repositories peers have that this machine does not")
+    converge.add_argument("--state-dir", help="override the saved manifest folder")
+    converge.add_argument("--namespace", action="append",
+                          help="owner/org to search when naming unknown repositories "
+                               "(default: the namespaces this machine already works in)")
+    converge.add_argument("--host", default="github.com",
+                          help="host for --namespace values (default github.com)")
+    converge.add_argument("--no-resolve", action="store_true",
+                          help="do not contact any provider; report opaque ids only")
+    converge.add_argument("--no-catalog", action="store_true",
+                          help="do not record newly identified names locally")
+    converge.set_defaults(handler=command_converge)
 
     handoff = subparsers.add_parser("handoff", help="reserved: handoff workflow")
     handoff.set_defaults(handler=lambda _args: _not_ready("handoff"))

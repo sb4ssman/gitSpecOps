@@ -22,10 +22,13 @@ _Last tended: 2026-09-03_
   management. Ordered so schema-affecting work lands before any fleet exists:
   1. ~~Manifest schema v2~~ — **done 2026-09-03** (salted `repo_id`, `head` dropped, `fleet_id`
      mismatch detection). Any further schema change still belongs before a real fleet exists.
-  2. **Fleet convergence.** Detect "this machine is missing repositories that peers (or the org)
-     have" and hand off to `archive_sync.py`, which already discovers and clones through the
-     provider seam. Do not grow a second cloner inside Sync Suggester. Cloning is a mutation, so
-     it stays an explicit, confirmed action — never inside `watch`.
+  2. ~~Fleet convergence~~ — **done 2026-09-03** (`converge`; names peer hashes by enumerating
+     candidates through the provider seam and matching the deterministic HMAC). Still open on top
+     of it: convergence currently compares against *peers*, not against the org itself — "the org
+     has repos nobody in the fleet has" needs `list_repos` over configured namespaces compared to
+     the fleet union, which is a small addition to the same module. Also worth adding: the reverse
+     direction (repositories this machine has that no peer does — possibly unpushed local-only
+     work).
   3. **Source-remote fetching.** Every ↑/↓ today comes from cached remote-tracking refs;
      `upstream_observed_at` rides through the schema but is always `null` because nothing fetches.
      Open decision from the design doc: never / opt-in / scheduled. Opt-in is the safe default.
