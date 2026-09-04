@@ -286,6 +286,28 @@ Its rules:
   a status command.
 - Auth is the user's own `gh` login — nothing here stores or manages a credential.
 
+### Compression (`compress_manifests`, off by default)
+
+`init --compress-manifests` gzips published manifests. Measured on a real 20-repository
+manifest: 6425 -> 769 bytes, about 8:1, because status records are highly repetitive. That is
+what decides how many repositories fit inside one Contents API read at scale.
+
+**It stays off by default deliberately.** An uncompressed manifest is readable by anyone looking
+at the folder or the repository, and that inspectability is worth more than headroom most users
+never need.
+
+Two details that matter:
+
+- The file is named `<machine>.json.gz` when compressed, so the extension tells the truth. Both
+  extensions are listed and readable, and `decode_manifest` detects gzip by magic bytes rather
+  than filename, so a renamed file still reads.
+- **Toggling the setting changes the filename**, so the writers delete the counterpart — two
+  files for one machine would read as two machines' worth of state. `load_manifests` also keeps
+  only the newest manifest per `machine_id`, which makes that cleanup non-critical rather than
+  load-bearing.
+- `gzip.compress(..., mtime=0)` keeps output deterministic: identical content must produce
+  identical bytes, or every publish would look like a change.
+
 ### Fetching (the only network activity)
 
 `--fetch` on `check`/`watch` is opt-in and is the sole place this tool touches the network. Rules:

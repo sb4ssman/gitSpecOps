@@ -5,6 +5,25 @@ Append-only record of **completed** work. Newest first. Items that graduate from
 
 ## 2026-09-03
 
+- **Manifest compression as an opt-in setting (`compress_manifests`, default off).** Requested by
+  the user after the scale measurements. `init --compress-manifests` gzips published manifests:
+  6425 -> 769 bytes on a real 20-repository manifest, about 8:1, since status records are highly
+  repetitive. Off by default because an uncompressed manifest is readable by anyone looking at the
+  folder or repository, and that inspectability beats headroom most users never need.
+  - Compressed manifests are named `<machine>.json.gz` so the extension does not lie, but
+    `decode_manifest` detects gzip by magic bytes rather than filename, so a renamed file still
+    reads. Both transports list and read either extension.
+  - **Toggling the setting changes the filename**, which would otherwise leave one machine
+    publishing two files and reading as two machines. Both writers now delete the counterpart, and
+    `load_manifests` independently keeps only the newest manifest per `machine_id` — so the
+    cleanup is a tidiness measure rather than something correctness depends on. A cleanup failure
+    never fails a publish.
+  - `gzip.compress(..., mtime=0)` keeps the bytes deterministic; identical content must not look
+    like a change.
+  - Verified live in both directions: off -> on -> off leaves exactly one file each time.
+  - Also dropped the "personal vs org fleets" product speculation from the notes. It was not
+    blocking any code, and "fleet" simply means the machines sharing one `fleet_secret`.
+
 - **Manifest schema v3: the last clear-text fields are gone, and the record got smaller.**
   Agreed with the user before wiring change-detection hooks, on the same reasoning as v2 — a
   schema change is free while no fleet is deployed.

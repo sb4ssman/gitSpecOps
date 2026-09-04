@@ -36,7 +36,8 @@ if _REPO_ROOT not in sys.path:
 from shared.gh_cli import GhError, run_gh  # noqa: E402
 
 from folder_transport import SAFE_MACHINE_ID  # noqa: E402
-from manifest import decode_manifest, encode_manifest  # noqa: E402
+from manifest import (COMPRESSED_SUFFIX, MANIFEST_SUFFIX,  # noqa: E402
+                      decode_manifest, encode_manifest, manifest_filename)
 
 MANIFEST_DIR = "machines"
 # owner/name, each segment restricted to what GitHub actually allows.
@@ -88,11 +89,12 @@ class RepoTransport:
             return []
         return sorted(item["name"] for item in listing
                       if isinstance(item, dict) and item.get("type") == "file"
-                      and str(item.get("name", "")).endswith(".json"))
+                      and str(item.get("name", "")).endswith((MANIFEST_SUFFIX,
+                                                              COMPRESSED_SUFFIX)))
 
     def read_manifest(self, name: str) -> dict:
-        if Path(name).name != name or not name.endswith(".json"):
-            raise ValueError("manifest name must be a plain .json filename")
+        if Path(name).name != name or not name.endswith((MANIFEST_SUFFIX, COMPRESSED_SUFFIX)):
+            raise ValueError("manifest name must be a plain .json or .json.gz filename")
         payload, _sha = self._read_raw(f"{MANIFEST_DIR}/{name}")
         if payload is None:
             raise ValueError(f"no such manifest: {name}")
@@ -109,15 +111,16 @@ class RepoTransport:
             raise GhError(f"could not decode {path}: {exc}") from exc
         return raw, record.get("sha")
 
-    def write_own_manifest(self, machine_id: str, manifest: dict) -> str:
+    def write_own_manifest(self, machine_id: str, manifest: dict,
+                           compress: bool = False) -> str:
         """Replace this machine's manifest. Retries once if another writer got in first."""
         if not SAFE_MACHINE_ID.fullmatch(machine_id):
             raise ValueError("machine_id may contain only letters, digits, dot, underscore, "
                              "and dash")
         if manifest.get("machine_id") != machine_id:
             raise ValueError("manifest machine_id does not match the destination")
-        payload = encode_manifest(manifest)
-        path = f"{MANIFEST_DIR}/{machine_id}.json"
+        payload = encode_manifest(manifest, compress)
+        path = f"{MANIFEST_DIR}/{manifest_filename(machine_id, compress)}"
 
         for attempt in range(2):
             _existing, sha = self._read_raw(path)
@@ -131,6 +134,7 @@ class RepoTransport:
                 fields["branch"] = self.branch
             try:
                 self._api(f"contents/{path}", method="PUT", fields=fields)
+                self._remove_stale(machine_id, compress)
                 return f"{self.spec}:{path}"
             except GhError as exc:
                 # 409/422 here means the blob moved under us — another machine wrote, or our
@@ -139,6 +143,23 @@ class RepoTransport:
                     continue
                 raise
         raise GhError(f"could not write {path}: the remote kept changing under us")
+
+    def _remove_stale(self, machine_id: str, compress: bool) -> None:
+        """Delete this machine's manifest under the other extension, best effort.
+
+        Toggling compression changes the filename; leaving both behind would read as two
+        machines' worth of state for one machine. A failure here is not worth failing a
+        publish over — the reader also de-duplicates by machine id.
+        """
+        stale = f"{MANIFEST_DIR}/{manifest_filename(machine_id, not compress)}"
+        try:
+            _payload, sha = self._read_raw(stale)
+            if not sha:
+                return
+            self._api(f"contents/{stale}", method="DELETE",
+                      fields={"message": f"sync-suggester: drop stale {machine_id}", "sha": sha})
+        except (GhError, ValueError):
+            pass
 
     def doctor(self) -> dict:
         report: dict = {"kind": "repo", "spec": self.spec, "branch": self.branch}

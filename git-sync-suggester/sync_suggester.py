@@ -150,6 +150,8 @@ def command_init(args: argparse.Namespace) -> int:
         if health.get("permissions") is False:
             print(f"error: your gh login cannot write to {args.state_repo}.", file=sys.stderr)
             return 2
+    if args.compress_manifests:
+        config["compress_manifests"] = True
     if args.stale_hours is not None:
         config["stale_hours"] = args.stale_hours
     if args.expired_days is not None:
@@ -289,7 +291,8 @@ def command_check(args: argparse.Namespace) -> int:
 
     published = None
     if transport is not None and not args.no_publish:
-        published = transport.write_own_manifest(machine_id, manifest)
+        published = transport.write_own_manifest(
+            machine_id, manifest, compress=bool((config or {}).get("compress_manifests")))
 
     if args.json:
         print(json.dumps(manifest, indent=2, sort_keys=True))
@@ -344,9 +347,11 @@ def command_watch(args: argparse.Namespace) -> int:
 
     print(f"Watching {len(resolved.specs)} root(s) from {resolved.source} "
           f"every {args.interval}s (heartbeat {args.heartbeat}s). Ctrl-C to stop.")
+    compress = bool((resolved.config or {}).get("compress_manifests"))
     result = run_watch(
         observe,
-        lambda manifest: transport.write_own_manifest(resolved.machine_id, manifest),
+        lambda manifest: transport.write_own_manifest(resolved.machine_id, manifest,
+                                                      compress=compress),
         interval=args.interval,
         heartbeat=args.heartbeat,
         once=args.once,
@@ -555,6 +560,9 @@ def build_parser() -> argparse.ArgumentParser:
                            "read your machine status and branch names)")
     init.add_argument("--from-archives", action="store_true",
                       help="also register roots from the archive updater's local registry")
+    init.add_argument("--compress-manifests", action="store_true",
+                      help="gzip published manifests (~6x smaller, matters only for very large "
+                           "repository counts; off by default so manifests stay readable)")
     init.add_argument("--stale-hours", type=int, help="report older than this is stale (default 24)")
     init.add_argument("--expired-days", type=int, help="report older than this is expired (default 7)")
     init.add_argument("--force", action="store_true", help="replace an existing configuration")

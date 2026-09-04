@@ -34,7 +34,7 @@ DEFAULT_EXPIRED_DAYS = 7
 
 CONFIG_KEYS = frozenset({
     "schema_version", "fleet_secret", "machine_id", "machine_label", "state_dir",
-    "state_repo", "roots", "stale_hours", "expired_days",
+    "state_repo", "roots", "stale_hours", "expired_days", "compress_manifests",
 })
 ROOT_KEYS = frozenset({"path", "recursive"})
 
@@ -84,6 +84,9 @@ def default_config(machine_id: str | None = None, fleet_secret: str | None = Non
         "roots": [],
         "stale_hours": DEFAULT_STALE_HOURS,
         "expired_days": DEFAULT_EXPIRED_DAYS,
+        # Off by default: an uncompressed manifest is readable by anyone looking at the
+        # folder or repository, and that inspectability beats headroom most users never need.
+        "compress_manifests": False,
     }
 
 
@@ -131,6 +134,8 @@ def validate_config(value: object) -> dict:
         if key in seen:
             raise ValueError(f"duplicate root: {path}")
         seen.add(key)
+    if not isinstance(value.get("compress_manifests", False), bool):
+        raise ValueError("compress_manifests must be a boolean")
     for key, low in (("stale_hours", 1), ("expired_days", 1)):
         number = value.get(key)
         if not isinstance(number, int) or isinstance(number, bool) or number < low:
