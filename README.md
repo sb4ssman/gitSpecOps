@@ -268,6 +268,20 @@ Machines: DESKTOP current (4m ago), LAPTOP current (just now), OLDPI stale (3d a
 Legend: ✓ clean  ✎ uncommitted  ↑ ahead  ↓ behind  ↕ diverged  ⚑ stash  ⚠ attention  ? unknown  - not present
 ```
 
+By default every ↑/↓ is *cached* knowledge, read from remote-tracking refs that may be days old,
+and the dashboard says so. `check --fetch` refreshes them first:
+
+```bash
+python3 git-sync-suggester/sync_suggester.py check --fetch
+```
+
+That is the only network activity the tool performs. It updates remote-tracking refs and nothing
+else — never a branch, never your working tree — and it records *when* each repository was fetched,
+because a manifest written a second ago says nothing about how old its remote knowledge is. Those
+two kinds of freshness are tracked and displayed separately. A repository whose fetch fails keeps
+its cached counts and says so, rather than the run failing. 20 repositories take about four seconds
+over four workers (`--fetch-workers`, `--fetch-timeout`).
+
 It is an exceptions view: rows nothing can be done about are folded into that summary line, which
 still names any machine whose silence is the reason a row is quiet. **A report that is not current
 never produces an "all clear."** A stale clean report becomes *unknown*; a stale *dirty* or *ahead*

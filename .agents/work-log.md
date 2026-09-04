@@ -5,6 +5,36 @@ Append-only record of **completed** work. Newest first. Items that graduate from
 
 ## 2026-09-03
 
+- **Real remote knowledge: opt-in `--fetch`, and `operation` detection that was never wired up.**
+  - Until now every ↑/↓ came from remote-tracking refs that could be days old, and
+    `upstream_observed_at` rode through the schema always `null`. `check --fetch` / `watch --fetch`
+    now refresh refs first and stamp the time per repository. `git fetch` with no refspec moves
+    remote-tracking refs only — never a branch, never the working tree — which is what lets a
+    read-only tool do it at all. `GIT_TERMINAL_PROMPT=0` is forced, reusing the org duplicator's
+    hard-won lesson: expired credentials otherwise block on an invisible prompt until the timeout.
+    Bounded thread pool, per-fetch timeout; 20 real repositories take ~4s over 4 workers.
+  - The dashboard note is now precise instead of blanket: it counts exactly the ↑/↓ values that are
+    still cached and distinguishes "never fetched" from "fetched too long ago", evaluating
+    `upstream_observed_at` against its own thresholds. Machine freshness and remote freshness stay
+    two separate clocks.
+  - **`operation` was in the schema and the advice logic from the beginning but nothing ever set
+    it** — a repository left mid-rebase reported as merely clean or dirty. Now detected from marker
+    paths in the git dir (rebase-merge/rebase-apply/MERGE_HEAD/CHERRY_PICK_HEAD/REVERT_HEAD/
+    BISECT_LOG). A field the classifier handles is not the same as a field anyone populates.
+  - **Made fetch failures graceful.** A fetcher that *raised* took the entire observation down,
+    against this repo's own "failures are collected, never fatal" rule. Now caught per repository.
+    The test that first documented the bad behavior was rewritten to demand the good behavior
+    rather than enshrine what the code happened to do.
+  - **The fetch boundary is injectable** (`observe_roots(..., fetcher=...)`), the same discipline
+    that makes `watcher.py` testable. This was not cosmetic: the first version of the test used
+    real `example.test` remotes and an `insteadOf` rewrite, and both were wrong — a bogus host
+    still performs a DNS lookup (so an "offline" suite that fetches for real is not offline), and
+    `insteadOf` changes what `git remote get-url` reports, which silently destroyed the repository
+    identity and made repositories vanish from the observation.
+  - `tests/test_sync_observe.py` (offline): every operation marker, the opt-in boundary, fetch
+    success/failure/raise, unparseable origins being skipped with a reason, and progress reporting.
+    9/9 suite files pass.
+
 - **Fleet convergence: `converge`, and the deterministic-hash trick that makes it possible.**
   This is the half of the product that answers "which repositories do my other machines have that
   this one does not" — the thing GitKraken's grouping cannot do across machines.

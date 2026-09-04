@@ -29,9 +29,10 @@ _Last tended: 2026-09-03_
      the fleet union, which is a small addition to the same module. Also worth adding: the reverse
      direction (repositories this machine has that no peer does — possibly unpushed local-only
      work).
-  3. **Source-remote fetching.** Every ↑/↓ today comes from cached remote-tracking refs;
-     `upstream_observed_at` rides through the schema but is always `null` because nothing fetches.
-     Open decision from the design doc: never / opt-in / scheduled. Opt-in is the safe default.
+  3. ~~Source-remote fetching~~ — **done 2026-09-03** as opt-in `--fetch` on `check`/`watch`
+     (bounded pool, per-repo stamping, separate remote-freshness accounting). The *scheduled*
+     variant is still open: whether a periodic `watch --fetch` is wanted, and at what interval,
+     is a policy call now rather than a design one.
   4. **Joining a fleet in one step** on machines two and three, and **installing the watch**
      (login task / periodic timer / tray, per OS). `watch` is foreground-only today.
   5. `handoff` — the mutation flow (auto-commit, WIP branches, patch/untracked transfer). Needs

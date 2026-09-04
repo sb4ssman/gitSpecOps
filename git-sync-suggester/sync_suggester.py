@@ -42,7 +42,8 @@ from config import (
 from folder_transport import FolderTransport
 from convergence import MissingRepo  # noqa: E402  (dataclass used in --no-resolve)
 from manifest import build_manifest, fleet_id_for, is_fleet_secret
-from observer import RootSpec, observe_roots
+from observer import (DEFAULT_FETCH_TIMEOUT_SECONDS, DEFAULT_FETCH_WORKERS, RootSpec,
+                      observe_roots)
 from watcher import DEFAULT_HEARTBEAT_SECONDS, DEFAULT_INTERVAL_SECONDS, run_watch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -210,7 +211,17 @@ def command_check(args: argparse.Namespace) -> int:
     state_dir, machine_id, machine_label = (resolved.state_dir, resolved.machine_id,
                                             resolved.machine_label)
 
-    observation = observe_roots(specs, resolved.secret)
+    if args.fetch:
+        print(f"Fetching remote refs for repositories in {len(specs)} root(s) — this is the "
+              "only network activity check performs, and it never touches your working tree.")
+
+    def progress(done, total, path):
+        if args.fetch and (done == total or done % 25 == 0):
+            print(f"  … {done}/{total} observed", file=sys.stderr)
+
+    observation = observe_roots(specs, resolved.secret, fetch=args.fetch,
+                                fetch_workers=args.fetch_workers,
+                                fetch_timeout=args.fetch_timeout, progress=progress)
     manifest = build_manifest(resolved.fleet_id or "preview", machine_id, machine_label,
                               observation.repositories)
 
@@ -259,7 +270,9 @@ def command_watch(args: argparse.Namespace) -> int:
         print(f"\nsignal {signum} received — publishing a final observation, then stopping.")
 
     def observe() -> dict:
-        observation = observe_roots(resolved.specs, resolved.secret)
+        observation = observe_roots(resolved.specs, resolved.secret, fetch=args.fetch,
+                                    fetch_workers=args.fetch_workers,
+                                    fetch_timeout=args.fetch_timeout)
         if resolved.config and not args.no_catalog:
             save_catalog(resolved.config_dir,
                          merge_catalog(load_catalog(resolved.config_dir), observation.catalog))
@@ -304,7 +317,8 @@ def _dashboard_text(state_dir: str, config: dict | None, catalog: dict[str, dict
                    key=lambda view: (own is None or view.machine_id != own["machine_id"],
                                      view.label.lower()))
     text = render_dashboard(views, build_rows(views, catalog), now, show_all=show_all,
-                            foreign=foreign)
+                            foreign=foreign, stale_hours=stale_hours,
+                            expired_days=expired_days)
     for issue in issues:
         print(f"warning: {issue}", file=sys.stderr)
     return text
@@ -494,6 +508,13 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--all", action="store_true", help="list every repository, not just exceptions")
     check.add_argument("--no-publish", action="store_true", help="observe without writing a manifest")
     check.add_argument("--no-catalog", action="store_true", help="do not update the local catalog")
+    check.add_argument("--fetch", action="store_true",
+                       help="refresh remote-tracking refs first so ahead/behind are current "
+                            "(the only network activity; never touches the working tree)")
+    check.add_argument("--fetch-workers", type=int, default=DEFAULT_FETCH_WORKERS,
+                       help=f"parallel fetches (default {DEFAULT_FETCH_WORKERS})")
+    check.add_argument("--fetch-timeout", type=int, default=DEFAULT_FETCH_TIMEOUT_SECONDS,
+                       help=f"seconds per fetch (default {DEFAULT_FETCH_TIMEOUT_SECONDS})")
     check.add_argument("--json", action="store_true", help="print the privacy-minimized manifest")
     check.set_defaults(handler=command_check)
 
@@ -526,6 +547,13 @@ def build_parser() -> argparse.ArgumentParser:
                             f"(default {DEFAULT_HEARTBEAT_SECONDS})")
     watch.add_argument("--once", action="store_true", help="run a single cycle and exit")
     watch.add_argument("--cycles", type=int, help="stop after this many cycles")
+    watch.add_argument("--fetch", action="store_true",
+                       help="refresh remote-tracking refs first so ahead/behind are current "
+                            "(the only network activity; never touches the working tree)")
+    watch.add_argument("--fetch-workers", type=int, default=DEFAULT_FETCH_WORKERS,
+                       help=f"parallel fetches (default {DEFAULT_FETCH_WORKERS})")
+    watch.add_argument("--fetch-timeout", type=int, default=DEFAULT_FETCH_TIMEOUT_SECONDS,
+                       help=f"seconds per fetch (default {DEFAULT_FETCH_TIMEOUT_SECONDS})")
     watch.add_argument("--no-catalog", action="store_true", help="do not update the local catalog")
     watch.set_defaults(handler=command_watch)
 
