@@ -117,7 +117,7 @@ with tempfile.TemporaryDirectory() as tmp:
                                                 "path": str(tmp / "moved" / "alpha-repo")}})
     check(merged["a" * 64].get("alias") == "my name for it",
           "re-observation erased a user-supplied alias")
-    check(merged["a" * 64]["path"].endswith("moved/alpha-repo"),
+    check(Path(merged["a" * 64]["path"]) == tmp / "moved" / "alpha-repo",
           "re-observation did not update the local path")
     check("b" * 64 in merged, "merge dropped an entry that was not observed this run")
 

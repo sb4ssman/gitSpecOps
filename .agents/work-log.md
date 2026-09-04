@@ -20,7 +20,13 @@ Append-only record of **completed** work. Newest first. Items that graduate from
     code it fails with "found 0 of 3 repositories". It also pins that a genuinely different device
     is *still* excluded, so the fix is not just the check being disabled, and that
     `cross_filesystems=True` still bypasses it entirely.
-  - Not yet confirmed on the real Windows machine; that run is still wanted.
+  - Confirmed on the real Windows T: drive after landing: direct-child discovery found all 5
+    repositories under `Sb4ssport-Alpha`, all 8 under `moon-and-back`, and all 3 under
+    `BonusBrain`. A combined Sync Suggester check rendered 15 repositories (the sixteenth,
+    `BonusBrain/tools`, was correctly reported separately because it has no recognized origin).
+  - The full suite then exposed two POSIX-only test assertions, not product failures: one compared
+    a native Windows path to a slash-delimited suffix and one expected POSIX archive roots.
+    Rewrote both assertions with `pathlib.Path` so the offline suite is portable.
 
 - **Compound facts are no longer hidden by precedence** (also from the review). `classify_repository`
   returns one headline state, which severity ordering needs but which necessarily buries everything
