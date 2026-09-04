@@ -35,9 +35,10 @@ _Last tended: 2026-09-03_
      is a policy call now rather than a design one.
   4. **Joining a fleet in one step** on machines two and three, and **installing the watch**
      (login task / periodic timer / tray, per OS). `watch` is foreground-only today.
-  5. `handoff` — the mutation flow (auto-commit, WIP branches, patch/untracked transfer). Needs
-     its own design pass; it must never end up inside the watcher or a scheduled publisher, for
-     the same reason `--reconcile`/`--rename-folders` stay interactive-only in the archive tools.
+  5. `handoff` — **design pass written 2026-09-03** ([`handoff-design.md`](handoff-design.md));
+     still unbuilt, on purpose. Its recommendation is to not build it yet: most of "I left work on
+     the other machine" is unpushed commits, which `--publish` now covers. Three open questions
+     there need the user's answer before any code.
   6. Long-lived stashes: information, or do they block an "all clear"? Currently `stashed` ranks
      above `unknown` but below `ahead`, so it surfaces without shouting.
   7. The **advice → apply** step (clean + behind-only + fresh fetch -> `git pull --ff-only`) stays
@@ -57,8 +58,10 @@ _Last tended: 2026-09-03_
 
 - `--yes` shipped for the duplicator (2026-08-31, batch + single); no `--dry-run` yet.
   `_legacy_sources/` still left untouched.
-- Future direction: the push/"publish" direction for `archive_sync` — design captured in
-  [`README.md`](README.md#future-direction-the-push-direction-publish); not started.
+- Push/"publish" direction: **first slice shipped 2026-09-03** (`archive_sync.py --publish`,
+  ahead-only non-force). Not built: per-agent branches + `open_pr()` on the provider seam,
+  auto-commit behind a flag, protected-branch awareness, secret/size pre-flight checks. Ship those
+  only if the ahead-only slice proves insufficient.
 - Multi-host support is a stated goal: archive tools first via `shared/providers.py` (one
   `provider_<host>.py` + `register_provider(...)` per host; fix `remote_identity` URL-port
   parsing first). `github-org-duplicator` stays GitHub-specific by design. Auth stays

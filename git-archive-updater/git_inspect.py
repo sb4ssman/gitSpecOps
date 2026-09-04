@@ -29,11 +29,13 @@ _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from shared.git_facts import (  # noqa: E402
+from shared.git_facts import (  # noqa: E402,F401
     GIT_TIMEOUT_SECONDS,
+    ahead_behind,
     is_repo_root,
     git_stdout,
     git_top_level,
+    repo_facts,
     run_git,
     set_git_timeout,
 )

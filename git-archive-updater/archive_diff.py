@@ -147,6 +147,85 @@ def build_plan(
 
 
 # --------------------------------------------------------------------------------------
+# The push direction ("publish"). Pure classification only — no git, no network.
+#
+# Pull is safe because a fast-forward can never destroy data or require a choice. Push is
+# not: it needs write auth, it can trigger CI and other agents, and a careless force can
+# overwrite history. So this does NOT reuse the pull guarantees. The one provably safe
+# primitive is a push WITHOUT --force, which git itself refuses when it is not a
+# fast-forward — the mirror image of `pull --ff-only`.
+#
+# Everything here is a judgement about *eligibility*. Nothing is pushed by this module.
+# --------------------------------------------------------------------------------------
+
+@dataclass
+class PublishCandidate:
+    """One local repo's push-direction facts, as read by the caller."""
+    folder: str
+    branch: str | None = None
+    upstream: str | None = None
+    ahead: int | None = None
+    behind: int | None = None
+    dirty: bool = False
+
+    @property
+    def has_direction(self) -> bool:
+        """False when there is no upstream to compare against (or a detached HEAD)."""
+        return bool(self.branch and self.upstream
+                    and self.ahead is not None and self.behind is not None)
+
+
+@dataclass
+class PublishPlan:
+    to_push: list = field(default_factory=list)       # ahead-only, clean -> non-force push
+    dirty_ahead: list = field(default_factory=list)   # ahead but uncommitted work present
+    in_sync: list = field(default_factory=list)       # nothing to do
+    behind: list = field(default_factory=list)        # pull first; nothing to publish
+    diverged: list = field(default_factory=list)      # ahead AND behind -> human decision
+    no_upstream: list = field(default_factory=list)   # detached / no tracking -> direction unknown
+
+    def counts(self) -> dict[str, int]:
+        return {
+            "push": len(self.to_push),
+            "dirty_ahead": len(self.dirty_ahead),
+            "in_sync": len(self.in_sync),
+            "behind": len(self.behind),
+            "diverged": len(self.diverged),
+            "no_upstream": len(self.no_upstream),
+        }
+
+
+def build_publish_plan(candidates: list[PublishCandidate],
+                       include_dirty: bool = False) -> PublishPlan:
+    """Classify repos by push direction. Only ahead-only repos are ever eligible.
+
+    `include_dirty` moves ahead-but-dirty repos into `to_push`. Pushing from a dirty tree is
+    technically safe — a push moves commits, not the working tree — but it is excluded by
+    default because publishing work from a repository someone is still mid-edit in is
+    surprising, and surprise is the thing to avoid in the first slice of a write feature.
+    A dirty tree is NEVER auto-committed under any flag.
+    """
+    plan = PublishPlan()
+    for candidate in candidates:
+        if not candidate.has_direction:
+            plan.no_upstream.append(candidate)
+            continue
+        ahead, behind = candidate.ahead, candidate.behind
+        if ahead and behind:
+            plan.diverged.append(candidate)
+        elif ahead:
+            if candidate.dirty and not include_dirty:
+                plan.dirty_ahead.append(candidate)
+            else:
+                plan.to_push.append(candidate)
+        elif behind:
+            plan.behind.append(candidate)
+        else:
+            plan.in_sync.append(candidate)
+    return plan
+
+
+# --------------------------------------------------------------------------------------
 # Self-test: the real drift cases from the moon-and-back org (formerly solid-five-seven).
 # --------------------------------------------------------------------------------------
 def _self_test() -> int:
@@ -214,6 +293,35 @@ def _self_test() -> int:
             print(f"  - {f}")
         return 1
     print("archive_diff self-test passed: all drift buckets correct.")
+    # --- push direction ---------------------------------------------------------------
+    candidates = [
+        PublishCandidate("clean-ahead", "main", "origin/main", ahead=2, behind=0),
+        PublishCandidate("dirty-ahead", "main", "origin/main", ahead=1, behind=0, dirty=True),
+        PublishCandidate("in-sync", "main", "origin/main", ahead=0, behind=0),
+        PublishCandidate("behind-only", "main", "origin/main", ahead=0, behind=3),
+        PublishCandidate("diverged", "main", "origin/main", ahead=1, behind=1),
+        PublishCandidate("diverged-dirty", "main", "origin/main", ahead=1, behind=1, dirty=True),
+        PublishCandidate("detached", None, None, ahead=None, behind=None),
+        PublishCandidate("no-tracking", "main", None, ahead=None, behind=None),
+    ]
+    publish = build_publish_plan(candidates)
+    expected = {"push": 1, "dirty_ahead": 1, "in_sync": 1, "behind": 1, "diverged": 2,
+                "no_upstream": 2}
+    if publish.counts() != expected:
+        print(f"  FAIL publish counts: {publish.counts()} != {expected}")
+        return 1
+    if [c.folder for c in publish.to_push] != ["clean-ahead"]:
+        print(f"  FAIL only ahead-only clean repos may be pushed: {publish.to_push}")
+        return 1
+    with_dirty = build_publish_plan(candidates, include_dirty=True)
+    if sorted(c.folder for c in with_dirty.to_push) != ["clean-ahead", "dirty-ahead"]:
+        print(f"  FAIL --include-dirty did not admit the dirty ahead repo: {with_dirty.to_push}")
+        return 1
+    if any(c.folder.startswith("diverged") for c in with_dirty.to_push):
+        print("  FAIL a diverged repo became pushable")
+        return 1
+    print(f"  publish counts: {publish.counts()}")
+
     print(f"  plan counts: {plan.counts()}")
     print(f"  namespace renames: {plan.namespace_renames}")
     return 0

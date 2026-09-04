@@ -30,22 +30,48 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
 try:
-    from .archive_diff import LocalRepo, RepoRef, SyncPlan, build_plan, normalize_owner_name
+    from .archive_diff import (
+        LocalRepo,
+        PublishCandidate,
+        RepoRef,
+        SyncPlan,
+        build_plan,
+        build_publish_plan,
+        normalize_owner_name,
+    )
     from .git_inspect import (
         inspect_candidate,
+        is_repo_root,
         list_child_dirs,
+        repo_facts,
         run_git,
         set_git_timeout,
     )
     from .remote_provider import provider_for
 except ImportError:
-    from archive_diff import LocalRepo, RepoRef, SyncPlan, build_plan, normalize_owner_name
-    from git_inspect import inspect_candidate, list_child_dirs, run_git, set_git_timeout
+    from archive_diff import (
+        LocalRepo,
+        PublishCandidate,
+        RepoRef,
+        SyncPlan,
+        build_plan,
+        build_publish_plan,
+        normalize_owner_name,
+    )
+    from git_inspect import (
+        inspect_candidate,
+        is_repo_root,
+        list_child_dirs,
+        repo_facts,
+        run_git,
+        set_git_timeout,
+    )
     from remote_provider import provider_for
 
 APP_NAME = "Archive Sync"
@@ -316,6 +342,127 @@ def apply_rename_folders(root: Path, plan: SyncPlan, issues: list[Issue]) -> int
 # --------------------------------------------------------------------------------------
 # Phase 5: REVIEW
 # --------------------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------------------
+# Publish: the push direction. Its OWN apply class.
+#
+# This is the only code in gitSpecOps that writes to a remote, and it is deliberately
+# narrow. It pushes WITHOUT --force, so git itself refuses anything that is not a
+# fast-forward. It is never implied by --update or --sync, and the generated launchers and
+# scheduled tasks never pass it — the same rule that keeps --reconcile and --rename-folders
+# interactive-only.
+# --------------------------------------------------------------------------------------
+
+PUBLISH_CONFIRMATION = "PUBLISH"
+DEFAULT_PUBLISH_PAUSE_SECONDS = 1.0
+
+
+def _publish_dirty(path: Path, facts: dict) -> bool:
+    """Dirtiness for the publish decision, which is broader than the pull decision.
+
+    `repo_facts` reports tracked changes only, which is right for fast-forward eligibility —
+    untracked files never block a pull. For publishing, though, "is someone mid-edit here?"
+    is the question, and an untracked file answers it just as well as a modified one. So this
+    uses `git status --porcelain`, which sees untracked files too. Kept local to the publish
+    path on purpose: making the shared fact stricter would needlessly narrow pull eligibility.
+    """
+    if facts.get("dirty_work_tree") or facts.get("dirty_index"):
+        return True
+    status = run_git(path, ["status", "--porcelain"], env={"GIT_OPTIONAL_LOCKS": "0"})
+    if status.returncode != 0:
+        return True  # cannot prove it is clean, so do not publish from it
+    return bool(status.stdout.strip())
+
+
+def collect_publish_candidates(root: Path) -> list[PublishCandidate]:
+    """Read push-direction facts for every direct-child repo under root."""
+    candidates = []
+    for child in sorted(p for p in root.iterdir() if p.is_dir()):
+        if not is_repo_root(child):
+            continue
+        facts = repo_facts(child)
+        candidates.append(PublishCandidate(
+            folder=child.name,
+            branch=facts.get("branch"),
+            upstream=facts.get("upstream"),
+            ahead=facts.get("ahead"),
+            behind=facts.get("behind"),
+            dirty=_publish_dirty(child, facts),
+        ))
+    return candidates
+
+
+def render_publish_plan(root: Path, plan) -> None:
+    print()
+    print(f"PUBLISH PLAN for {root}")
+    print(f"  counts: {plan.counts()}")
+    if plan.to_push:
+        print("\n  Will push (ahead-only, non-force):")
+        for c in plan.to_push:
+            flag = "  [dirty tree]" if c.dirty else ""
+            print(f"    {c.folder}: {c.branch} -> {c.upstream}  ahead {c.ahead}{flag}")
+    if plan.dirty_ahead:
+        print("\n  Ahead but has uncommitted work — NOT pushed (use --include-dirty to push the "
+              "committed work anyway; nothing is ever auto-committed):")
+        for c in plan.dirty_ahead:
+            print(f"    {c.folder}: ahead {c.ahead}")
+    if plan.diverged:
+        print("\n  Diverged — human decision, never automatic:")
+        for c in plan.diverged:
+            print(f"    {c.folder}: ahead {c.ahead}, behind {c.behind}")
+    if plan.behind:
+        print(f"\n  Behind only ({len(plan.behind)}): pull first; nothing to publish.")
+    if plan.no_upstream:
+        print(f"\n  No upstream or detached ({len(plan.no_upstream)}): direction unknown, skipped.")
+    if plan.in_sync:
+        print(f"\n  Already in sync ({len(plan.in_sync)}).")
+    if not plan.to_push:
+        print("\n  Nothing to publish.")
+
+
+def _publish_one(path: Path, candidate: PublishCandidate) -> str:
+    """Fetch, re-check, then push without --force. Returns a result string."""
+    fetch = run_git(path, ["fetch", "origin"], env={"GIT_TERMINAL_PROMPT": "0"})
+    if fetch.returncode != 0:
+        return f"failed: fetch: {(fetch.stderr or '').strip().splitlines()[-1:] or ['error']}"
+
+    # The remote may have moved between planning and now. Re-read rather than trust the plan:
+    # a repo that became diverged in that window must not be pushed.
+    fresh = repo_facts(path)
+    ahead, behind = fresh.get("ahead"), fresh.get("behind")
+    if ahead is None or behind is None:
+        return "failed: upstream disappeared after fetch"
+    if behind:
+        return f"failed: remote moved (now behind {behind}) — needs a human"
+    if not ahead:
+        return "already current"
+
+    push = run_git(path, ["push"], env={"GIT_TERMINAL_PROMPT": "0"}, timeout=300)
+    if push.returncode != 0:
+        detail = ((push.stderr or push.stdout or "").strip().splitlines() or ["error"])[-1]
+        return f"failed: push: {detail[:160]}"
+    return f"pushed {ahead}"
+
+
+def apply_publish(root: Path, plan, issues: list[Issue],
+                  pause: float = DEFAULT_PUBLISH_PAUSE_SECONDS) -> int:
+    done = 0
+    for index, candidate in enumerate(plan.to_push):
+        path = root / candidate.folder
+        print(f"  [PUSH] {candidate.folder} ... ", end="", flush=True)
+        result = _publish_one(path, candidate)
+        print(result)
+        if result.startswith("failed:"):
+            issues.append(Issue(repo=candidate.folder, action="publish",
+                                detail=result.removeprefix("failed: ")))
+        else:
+            done += 1
+        # Deliberate pacing: a burst of pushes across an org can trigger a CI storm or a
+        # rate limit. Slower is fine; this is never on a hot path.
+        if pause and index < len(plan.to_push) - 1:
+            time.sleep(pause)
+    return done
+
 def review(issues: list[Issue]) -> None:
     if not issues:
         print("No issues. Everything applied cleanly.")
@@ -382,13 +529,72 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--sync", action="store_true", help="Update + clone repos missing locally.")
     p.add_argument("--reconcile", action="store_true", help="Also rewrite stale origin URLs.")
     p.add_argument("--rename-folders", action="store_true", help="Also rename folders to match upstream (guarded).")
+    p.add_argument("--publish", action="store_true",
+                   help="Push ahead-only repos (never --force). Its own apply class: never "
+                        "implied by --update/--sync, never used by generated launchers.")
+    p.add_argument("--include-dirty", action="store_true",
+                   help="With --publish, also push repos that are ahead but have uncommitted "
+                        "work. Nothing is ever auto-committed.")
+    p.add_argument("--dry-run", action="store_true",
+                   help="Show the publish plan and exit without pushing anything.")
+    p.add_argument("--publish-pause", type=float, default=DEFAULT_PUBLISH_PAUSE_SECONDS,
+                   help="Seconds between pushes, to avoid a CI storm (default 1.0).")
     p.add_argument("--yes", action="store_true", help="Apply without interactive confirmation (for cron).")
     p.add_argument("--no-report", action="store_true", help="Do not write a dated JSON report.")
     p.add_argument("--git-timeout", type=int, default=45, help="Per-git-command timeout seconds.")
     return p.parse_args()
 
 
+def run_publish(root: Path, args: argparse.Namespace) -> int:
+    """The push direction, kept entirely separate from the pull-direction flow.
+
+    Deliberately does not touch detect_plan: publishing needs no provider, no org discovery
+    and no network beyond the repositories themselves, and keeping the paths apart is what
+    stops a push from ever riding along with an update.
+    """
+    issues: list[Issue] = []
+    candidates = collect_publish_candidates(root)
+    plan = build_publish_plan(candidates, include_dirty=args.include_dirty)
+    render_publish_plan(root, plan)
+
+    if args.dry_run:
+        print("\nDry run: nothing was pushed.")
+        return 0
+    if not plan.to_push:
+        return 0
+
+    print()
+    print("This WRITES to remotes. Pushes are never forced, so git will refuse anything that "
+          "is not a fast-forward, but published commits can trigger CI and are visible to "
+          "anyone with access.")
+    if not args.yes:
+        answer = input(f"Type {PUBLISH_CONFIRMATION} to push {len(plan.to_push)} repo(s): ")
+        if answer.strip() != PUBLISH_CONFIRMATION:
+            print("Not confirmed; nothing was pushed.")
+            return 0
+    pushed = apply_publish(root, plan, issues, pause=args.publish_pause)
+    print(f"\nPublished {pushed}/{len(plan.to_push)} repo(s).")
+    review(issues)
+    if not args.no_report:
+        payload = {
+            "app": APP_NAME, "version": VERSION, "mode": "publish",
+            "root": str(root), "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "counts": plan.counts(), "pushed": pushed,
+            "issues": [{"repo": i.repo, "action": i.action, "detail": i.detail} for i in issues],
+        }
+        print(f"Report: {write_report(root, payload)}")
+    return 1 if issues else 0
+
+
 def run_one(root: Path, approved_prefixes: list[str], args: argparse.Namespace) -> int:
+    if args.publish:
+        # Publish is its own apply class and never combines with the pull-direction verbs.
+        if args.update or args.sync or args.reconcile or args.rename_folders:
+            print("error: --publish is its own apply class and cannot be combined with "
+                  "--update/--sync/--reconcile/--rename-folders. Run it separately.",
+                  file=sys.stderr)
+            return 2
+        return run_publish(root, args)
     result = detect_plan(root, approved_prefixes, owner_override=args.github_owner)
     render_plan(result)
     issues = list(result.errors)

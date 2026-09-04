@@ -5,6 +5,50 @@ Append-only record of **completed** work. Newest first. Items that graduate from
 
 ## 2026-09-03
 
+- **The push direction shipped: `archive_sync.py --publish`, first slice.** The only code in
+  gitSpecOps that writes to a remote, kept as narrow as the design notes demanded.
+  - `archive_diff.build_publish_plan()` is a separate pure classifier — the pull-direction
+    guarantees are explicitly not reused. Only ahead-only clean repositories are eligible;
+    diverged is a human decision, behind-only needs a pull, detached/no-upstream is
+    direction-unknown, in-sync is a no-op.
+  - Push is `git push` with no `--force`, so git itself refuses a non-fast-forward. Each
+    repository is fetched and **re-checked immediately before its push**, so a remote that moved
+    between planning and pushing reports "needs a human" instead of being forced. Pushes are paced
+    so a bulk publish cannot become a CI storm. `--dry-run` previews; a typed `PUBLISH` confirms.
+  - `--publish` is its own apply class and *refuses* to combine with
+    `--update/--sync/--reconcile/--rename-folders`; `archive_manager.py` never emits it, so
+    generated launchers and the scheduled task cannot push. Both invariants are asserted by tests
+    rather than left to memory.
+  - **Dirtiness had to be redefined for this direction.** `repo_facts` reports tracked changes
+    only — correct for fast-forward eligibility, since untracked files never block a pull. The
+    first test run caught the consequence: a repository whose only change was an untracked file
+    read as clean and got pushed. `_publish_dirty()` now uses `git status --porcelain` in the
+    publish path only; making the shared fact stricter would have needlessly narrowed pull
+    eligibility.
+  - `git_inspect.py` re-exports `repo_facts`/`ahead_behind` — the facade existed to re-export
+    shared primitives and was simply missing these.
+  - `tests/test_archive_publish.py` pushes for real, but every remote is a bare repository in a
+    temporary directory, so nothing leaves the machine. It proves the ahead-only commit reaches
+    the remote, a diverged repository is refused and its history left intact, a dirty repository
+    is held back and its uncommitted file untouched, a re-run is a clean no-op, and both
+    never-bundled / never-scheduled invariants hold. 10/10 suite files pass.
+  - Not built, and deliberately: per-agent branches with `open_pr()`, auto-commit behind a flag,
+    protected-branch awareness, secret/size pre-flight. Ship those only if this slice proves
+    insufficient.
+
+- **Wrote the handoff design pass** ([`handoff-design.md`](handoff-design.md)). `handoff` has been
+  a reserved subcommand since the scaffold; this is the document it was reserved for. Key points:
+  handoff would put **real source code into the state folder**, which today holds only hashes — so
+  content must live in a separately configured directory, be expiring by design, and never be on
+  by default. The five transferable things (unpushed commits, tracked changes, untracked files,
+  ignored files, stashes) carry sharply different risk; untracked files are the most likely way
+  this tool would ever leak a secret, and ignored files must never move. The public-fork
+  visibility constraint applies directly: a WIP branch in a public repository is world-readable,
+  so the tool must check visibility and refuse rather than assume. **Recommendation: do not build
+  handoff yet — build publish and see whether the remaining need is real**, since most of "I left
+  work on the other machine" is unpushed commits, which needs no new transport, no new privacy
+  boundary, and no patch machinery. Three open questions are listed for the user.
+
 - **Real remote knowledge: opt-in `--fetch`, and `operation` detection that was never wired up.**
   - Until now every ↑/↓ came from remote-tracking refs that could be days old, and
     `upstream_observed_at` rode through the schema always `null`. `check --fetch` / `watch --fetch`
