@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 from folder_transport import SAFE_MACHINE_ID, atomic_write_bytes
+from manifest import is_fleet_secret, new_fleet_secret
 
 CONFIG_SCHEMA_VERSION = 1
 CATALOG_SCHEMA_VERSION = 1
@@ -31,7 +32,7 @@ DEFAULT_STALE_HOURS = 24
 DEFAULT_EXPIRED_DAYS = 7
 
 CONFIG_KEYS = frozenset({
-    "schema_version", "machine_id", "machine_label", "state_dir", "roots",
+    "schema_version", "fleet_secret", "machine_id", "machine_label", "state_dir", "roots",
     "stale_hours", "expired_days",
 })
 ROOT_KEYS = frozenset({"path", "recursive"})
@@ -64,10 +65,14 @@ def default_machine_id() -> str:
     return cleaned[:80] if SAFE_MACHINE_ID.fullmatch(cleaned[:80] or "x") else "machine"
 
 
-def default_config(machine_id: str | None = None) -> dict:
+def default_config(machine_id: str | None = None, fleet_secret: str | None = None) -> dict:
+    """A fresh config. Generates a new fleet secret unless joining an existing fleet."""
     resolved = machine_id or default_machine_id()
     return {
         "schema_version": CONFIG_SCHEMA_VERSION,
+        # Never written into the transport: a state folder that also carried the secret would
+        # protect nothing. It reaches other machines by the user, out of band.
+        "fleet_secret": fleet_secret or new_fleet_secret(),
         "machine_id": resolved,
         "machine_label": resolved,
         "state_dir": None,
@@ -86,6 +91,8 @@ def validate_config(value: object) -> dict:
         raise ValueError(f"config has unknown fields: {sorted(extra)}")
     if value.get("schema_version") != CONFIG_SCHEMA_VERSION:
         raise ValueError(f"unsupported config schema_version: {value.get('schema_version')!r}")
+    if not is_fleet_secret(value.get("fleet_secret")):
+        raise ValueError("fleet_secret must be 64 hexadecimal characters")
     machine_id = value.get("machine_id")
     if not isinstance(machine_id, str) or not SAFE_MACHINE_ID.fullmatch(machine_id):
         raise ValueError("machine_id may contain only letters, digits, dot, underscore, and dash")
@@ -143,7 +150,12 @@ def save_config(config_dir: Path, config: dict) -> Path:
 
 
 def load_catalog(config_dir: Path | None = None) -> dict[str, dict]:
-    """Local-only repo_id -> {display_name, path, alias}. Missing/corrupt reads as empty."""
+    """Local-only repo_id -> {display_name, path, alias}. Missing/corrupt reads as empty.
+
+    Entries are keyed by the fleet-salted repo_id, so changing the fleet secret orphans the
+    old keys. They are harmless (nothing joins to them any more) and re-observation repopulates
+    the new ones; `prune_catalog` clears them out when the user wants a tidy file.
+    """
     path = catalog_path(config_dir or default_config_dir())
     if not path.is_file():
         return {}
@@ -210,3 +222,8 @@ def roots_from_archive_registry(repo_root: Path) -> list[str]:
         if isinstance(item, dict) and isinstance(item.get("root"), str) and item["root"]:
             roots.append(item["root"])
     return roots
+
+
+def prune_catalog(catalog: dict[str, dict], keep: set[str]) -> dict[str, dict]:
+    """Drop catalog entries no longer reachable, e.g. after a fleet-secret change."""
+    return {repo_id: entry for repo_id, entry in catalog.items() if repo_id in keep}

@@ -10,14 +10,16 @@ sys.path.insert(0, str(TOOL_DIR))
 
 from advice import classify_repository, render_table  # noqa: E402
 from folder_transport import FolderTransport  # noqa: E402
-from manifest import build_manifest, decode_manifest, encode_manifest, repository_id  # noqa: E402
+from manifest import (build_manifest, decode_manifest, encode_manifest, fleet_id_for,  # noqa: E402
+                      is_fleet_secret, new_fleet_secret, repository_id)
 from observer import RootSpec, observe_roots  # noqa: E402
 
-REPO_ID = repository_id("example.test", "sample-team", "alpha-repo")
+SECRET = "ab" * 32
+FLEET_ID = fleet_id_for(SECRET)
+REPO_ID = repository_id("example.test", "sample-team", "alpha-repo", SECRET)
 BASE = {
     "repo_id": REPO_ID,
     "branch": "main",
-    "head": "a" * 40,
     "upstream": "origin/main",
     "upstream_observed_at": None,
     "ahead": 0,
@@ -31,16 +33,71 @@ BASE = {
 
 failures = []
 
-if REPO_ID != repository_id("EXAMPLE.TEST", "SAMPLE-TEAM", "ALPHA-REPO"):
+if REPO_ID != repository_id("EXAMPLE.TEST", "SAMPLE-TEAM", "ALPHA-REPO", SECRET):
     failures.append("repository identity is not case-insensitive")
 
-manifest = build_manifest("machine-a", "workstation-a", [dict(BASE)], "2026-01-02T03:04:05Z")
+# --- v2: the identity must actually depend on the fleet secret ----------------------
+other = repository_id("example.test", "sample-team", "alpha-repo", "cd" * 32)
+if other == REPO_ID:
+    failures.append("a different fleet secret produced the same repository identity")
+unsalted = repository_id("example.test", "sample-team", "alpha-repo")
+if unsalted == REPO_ID:
+    failures.append("the salted identity matches the unsalted one — the secret is being ignored")
+if len(REPO_ID) != 64 or int(REPO_ID, 16) < 0:
+    failures.append("salted identity is not a 64-character hex digest")
+
+if fleet_id_for(SECRET) != FLEET_ID or fleet_id_for("cd" * 32) == FLEET_ID:
+    failures.append("fleet id is not a stable, secret-dependent label")
+if SECRET in FLEET_ID or FLEET_ID in SECRET:
+    failures.append("the public fleet id exposes part of the secret")
+
+for bad in (None, "", "xyz", "ab" * 31, "zz" * 32, 12345):
+    if is_fleet_secret(bad):
+        failures.append(f"is_fleet_secret accepted {bad!r}")
+# None is the documented "no fleet, local preview only" value and must stay allowed;
+# anything else malformed must raise rather than silently produce a weak identity.
+for bad in ("", "xyz", "ab" * 31, "zz" * 32, 12345):
+    try:
+        repository_id("h", "o", "n", bad)
+    except ValueError:
+        pass
+    else:
+        failures.append(f"repository_id accepted the malformed secret {bad!r}")
+
+generated = new_fleet_secret()
+if not is_fleet_secret(generated) or generated == new_fleet_secret():
+    failures.append("new_fleet_secret is not producing fresh, valid secrets")
+
+manifest = build_manifest(FLEET_ID, "machine-a", "workstation-a", [dict(BASE)],
+                          "2026-01-02T03:04:05Z")
 payload = encode_manifest(manifest)
 if decode_manifest(payload) != manifest:
     failures.append("manifest encode/decode round trip failed")
 for forbidden in (b"alpha-repo", b"sample-team", b"example.test", b"/synthetic/path"):
     if forbidden in payload:
         failures.append(f"manifest leaked: {forbidden!r}")
+# The secret must never ride along with the data it protects.
+if SECRET.encode() in payload:
+    failures.append("the fleet secret leaked into a published manifest")
+# v2 dropped the commit SHA: it identified public repositories and nothing read it.
+if b'"head"' in payload:
+    failures.append("the manifest still publishes a commit SHA")
+
+stale = {**manifest, "schema_version": 1}
+try:
+    encode_manifest(stale)
+except ValueError as exc:
+    if "re-run" not in str(exc):
+        failures.append(f"a v1 manifest was rejected without actionable guidance: {exc}")
+else:
+    failures.append("a v1 manifest was accepted by the v2 validator")
+
+try:
+    encode_manifest({**manifest, "repositories": [{**BASE, "head": "a" * 40}]})
+except ValueError:
+    pass
+else:
+    failures.append("a repository record carrying head was accepted")
 
 leaky = dict(manifest)
 leaky["local_path"] = "/synthetic/path"
@@ -72,7 +129,7 @@ with tempfile.TemporaryDirectory(prefix="observer-test-") as temp:
         check=True,
     )
     (repo_path / "draft.txt").write_text("synthetic\n", encoding="utf-8")
-    observation = observe_roots([RootSpec(collection)])
+    observation = observe_roots([RootSpec(collection)], SECRET)
     if len(observation.repositories) != 1:
         failures.append(f"observer repositories: {observation.repositories}")
     elif observation.repositories[0]["untracked"] != 1:
@@ -107,4 +164,4 @@ if failures:
         print(" -", failure)
     raise SystemExit(1)
 
-print(f"ALL-SYNC-SCAFFOLD-TESTS-PASS ({len(CASES)} advice cases)")
+print(f"ALL-SYNC-SCAFFOLD-TESTS-PASS ({len(CASES)} advice cases, v2 schema)")

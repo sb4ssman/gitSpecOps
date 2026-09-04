@@ -28,13 +28,15 @@ from aggregate import (  # noqa: E402
     render_dashboard,
 )
 from folder_transport import FolderTransport  # noqa: E402
-from manifest import build_manifest, repository_id  # noqa: E402
+from manifest import build_manifest, fleet_id_for, repository_id  # noqa: E402
 
 failures = []
 NOW = datetime(2026, 9, 3, 12, 0, 0, tzinfo=timezone.utc)
 STALE_HOURS, EXPIRED_DAYS = 24, 7
 
-IDS = {name: repository_id("example.test", "sample-team", name)
+SECRET = "ab" * 32
+FLEET_ID = fleet_id_for(SECRET)
+IDS = {name: repository_id("example.test", "sample-team", name, SECRET)
        for name in ("clean", "dirty", "ahead", "behind", "diverged", "noupstream",
                     "collide", "stashed", "busy", "peeronly")}
 
@@ -50,7 +52,7 @@ def stamp(delta):
 
 def repo(name, **overrides):
     base = {
-        "repo_id": IDS[name], "branch": "main", "head": "a" * 40, "upstream": "origin/main",
+        "repo_id": IDS[name], "branch": "main", "upstream": "origin/main",
         "upstream_observed_at": None, "ahead": 0, "behind": 0, "staged": 0, "unstaged": 0,
         "untracked": 0, "stashes": 0, "operation": None,
     }
@@ -60,7 +62,7 @@ def repo(name, **overrides):
 
 def views_for(machines, stale_hours=STALE_HOURS, expired_days=EXPIRED_DAYS):
     """machines: list of (machine_id, label, age_delta, [repo dicts])."""
-    manifests = [build_manifest(mid, label, repos, observed_at=stamp(age))
+    manifests = [build_manifest(FLEET_ID, mid, label, repos, observed_at=stamp(age))
                  for mid, label, age, repos in machines]
     return machine_views(manifests, NOW, stale_hours, expired_days)
 
@@ -241,7 +243,8 @@ check("No machine manifests" in render_dashboard([], [], NOW), "empty transport 
 # --- transport reading tolerates a bad file -----------------------------------------
 with tempfile.TemporaryDirectory() as tmp:
     transport = FolderTransport(tmp)
-    good = build_manifest("laptop", "LAPTOP", [repo("clean")], observed_at=stamp(FRESH))
+    good = build_manifest(FLEET_ID, "laptop", "LAPTOP", [repo("clean")],
+                          observed_at=stamp(FRESH))
     transport.write_own_manifest("laptop", good)
     (Path(tmp) / "machines" / "broken.json").write_text("{not json", encoding="utf-8")
     (Path(tmp) / "machines" / "leaky.json").write_text(
@@ -251,6 +254,25 @@ with tempfile.TemporaryDirectory() as tmp:
     check([m["machine_id"] for m in manifests] == ["laptop"],
           "a corrupt or boundary-violating manifest was not skipped")
     check(len(issues) == 2, f"expected two reported manifest issues, got {issues}")
+
+# --- a machine that joined with the wrong secret is called out, not silently empty ----
+from aggregate import split_by_fleet  # noqa: E402
+
+OTHER_FLEET = fleet_id_for("cd" * 32)
+ours = build_manifest(FLEET_ID, "laptop", "LAPTOP", [repo("clean")], observed_at=stamp(FRESH))
+theirs = build_manifest(OTHER_FLEET, "stray", "STRAY", [repo("clean")], observed_at=stamp(FRESH))
+mine, foreign = split_by_fleet([ours, theirs], FLEET_ID)
+check([m["machine_id"] for m in mine] == ["laptop"], "split_by_fleet kept a foreign manifest")
+check([m["machine_id"] for m in foreign] == ["stray"], "split_by_fleet lost the foreign manifest")
+check(split_by_fleet([ours, theirs], None) == ([ours, theirs], []),
+      "with no fleet id configured, nothing should be treated as foreign")
+
+only_mine = views_for([("laptop", "LAPTOP", FRESH, [repo("clean")])])
+warned = render_dashboard(only_mine, build_rows(only_mine, {}), NOW, show_all=True,
+                          foreign=[theirs])
+check("STRAY" in warned and "different fleet secret" in warned,
+      "a machine on a different fleet secret was not reported by name")
+check("re-run init" in warned, "the fleet mismatch warning does not say how to fix it")
 
 if failures:
     print("SYNC-AGGREGATE-TESTS FAILED:")

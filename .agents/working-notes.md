@@ -15,30 +15,39 @@ _Last tended: 2026-09-03_
   `--batch`/`--single` have them; `--answers FILE` is the stopgap. Low priority — mode 4 is the hot
   path — and the same `parse_args()` pattern applies if it is ever wanted. (The `CommandTimeout`
   retry half of this item was fixed 2026-09-03.)
-- [ ] **Sync Suggester: what the first slice deliberately left out.** The slice shipped
-  2026-09-03 (see [`work-log.md`](work-log.md)) — `init`/`check`/`dashboard`/`alias`/`watch`/`doctor`
-  all run. Still open, roughly in priority order:
-  - `handoff` — the mutation flow (auto-commit, WIP branches, patch/untracked transfer). Needs its
-    own design pass first; it must never end up inside the watcher or a scheduled publisher, for
-    the same reason `--reconcile`/`--rename-folders` stay interactive-only in the archive tools.
-  - **Source-remote fetching.** Every ↑/↓ today comes from cached remote-tracking refs;
-    `upstream_observed_at` is carried through the schema but is always `null` because nothing
-    fetches. Whether `check` should fetch (never / opt-in / scheduled) is still the open decision
-    from the design doc. The dashboard already footnotes the uncertainty honestly.
-  - **Installing the watch** — login task, periodic timer, or tray, per OS. `watch` runs in the
-    foreground today and that is the honest starting point.
-  - Long-lived stashes: information, or do they block an "all clear"? Currently a `stashed` row
-    ranks above `unknown` but below `ahead`, so it surfaces without shouting.
-  - The **advice → apply** step (clean + behind-only + fresh fetch -> `git pull --ff-only`) is
-    still purely advisory and should stay that way until fetching is settled.
+- [ ] **Sync Suggester roadmap toward the three-machine fleet.** The product goal is recorded in
+  [`new-tool-sync-suggester.md`](new-tool-sync-suggester.md#product-goal-stated-by-the-user-2026-09-03):
+  three machines point at their GitHub folder, converge on the same orgs/repos, and stay in sync
+  with each other and the cloud, making GitKraken's grouping obsolete for many-org sync
+  management. Ordered so schema-affecting work lands before any fleet exists:
+  1. ~~Manifest schema v2~~ — **done 2026-09-03** (salted `repo_id`, `head` dropped, `fleet_id`
+     mismatch detection). Any further schema change still belongs before a real fleet exists.
+  2. **Fleet convergence.** Detect "this machine is missing repositories that peers (or the org)
+     have" and hand off to `archive_sync.py`, which already discovers and clones through the
+     provider seam. Do not grow a second cloner inside Sync Suggester. Cloning is a mutation, so
+     it stays an explicit, confirmed action — never inside `watch`.
+  3. **Source-remote fetching.** Every ↑/↓ today comes from cached remote-tracking refs;
+     `upstream_observed_at` rides through the schema but is always `null` because nothing fetches.
+     Open decision from the design doc: never / opt-in / scheduled. Opt-in is the safe default.
+  4. **Joining a fleet in one step** on machines two and three, and **installing the watch**
+     (login task / periodic timer / tray, per OS). `watch` is foreground-only today.
+  5. `handoff` — the mutation flow (auto-commit, WIP branches, patch/untracked transfer). Needs
+     its own design pass; it must never end up inside the watcher or a scheduled publisher, for
+     the same reason `--reconcile`/`--rename-folders` stay interactive-only in the archive tools.
+  6. Long-lived stashes: information, or do they block an "all clear"? Currently `stashed` ranks
+     above `unknown` but below `ahead`, so it surfaces without shouting.
+  7. The **advice → apply** step (clean + behind-only + fresh fetch -> `git pull --ff-only`) stays
+     purely advisory until fetching is settled.
 
-- [ ] **Manifest privacy: `repo_id` is brute-forceable and `head` is an unused de-anonymizer.**
-  Verified during the first slice that no name/path/URL leaves the machine — but the unsalted
-  hash of `host/owner/name`, plus a published commit SHA nothing reads, plus human-authored
-  branch names, together let anyone holding the state folder recover which repositories a
-  machine has. Options and a recommendation (drop `head`; consider an HMAC identity; write down
-  the threat model) are in [`knowledge/manifest-privacy.md`](knowledge/manifest-privacy.md).
-  Needs a decision from the user because every option is a `schema_version` bump.
+- [ ] **Manifest privacy: `branch` and `upstream` are still published in the clear.** v2 closed
+  the big holes (salted `repo_id`, `head` dropped — see [`work-log.md`](work-log.md)). Branch names
+  were kept deliberately: a hashed branch could be compared but never displayed, and "same repo,
+  different branches on two machines" is a condition the fleet view should surface. But
+  `feature/acquire-northwind` is exactly the kind of string that should not sit in a cloud folder.
+  Options (HMAC it; publish only a configured safe list in the clear; or state plainly that the
+  state folder reveals your branch names) are in
+  [`knowledge/manifest-privacy.md`](knowledge/manifest-privacy.md). Decide before three machines
+  are publishing for real — it is another schema bump.
 
 ## Someday / deferred
 
