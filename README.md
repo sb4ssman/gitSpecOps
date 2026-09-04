@@ -275,7 +275,42 @@ report keeps its warning, because the last thing anyone knew was that unresolved
 Reports are current for 24 hours, stale for 7 days, and expired after that (`--stale-hours` /
 `--expired-days` at `init`).
 
-The other commands:
+### Converging a new machine
+
+`check` tells you the state of repositories you have. `converge` answers the other half — which
+repositories your *other* machines have that this one does not:
+
+```bash
+python3 git-sync-suggester/sync_suggester.py converge
+```
+
+```text
+17 repositor(ies) reported by peers are not on this machine.
+
+Repository                           Present on
+-----------------------------------  ----------
+sb4ssman/Chess_App                   ALPHA, BRAVO
+sb4ssman/Laboratory                  ALPHA, BRAVO
+...
+
+To clone them, hand each namespace to the archive engine, which already discovers and
+clones through the same provider seam:
+    python3 git-archive-updater/archive_sync.py --root /memory-lambda/Github/sb4ssman \
+      --github-owner sb4ssman --sync
+```
+
+There is a neat problem here worth knowing about. Peers publish only *hashed* identities, so a
+machine cannot clone what it cannot name. But the hash is deterministic: ask GitHub what exists in
+the namespaces you already work in, hash each candidate under the same fleet secret, and match.
+A repository you can see gets named without its name ever crossing the transport, and a repository
+you genuinely cannot see stays an opaque identifier — which is the correct answer, not a failure.
+Names the local catalog already knows cost no network call at all; `--namespace OWNER` searches
+somewhere else, and `--no-resolve` skips the provider entirely.
+
+`converge` never clones. Cloning is a mutation and it already has an owner — `archive_sync.py` —
+so this command reports the gap and hands over the exact command.
+
+### The other commands
 
 ```bash
 python3 git-sync-suggester/sync_suggester.py dashboard            # read peers, observe nothing

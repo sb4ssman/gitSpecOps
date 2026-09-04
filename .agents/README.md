@@ -198,12 +198,13 @@ machine's status manifest, and reads what other machines left behind. The flat m
 - `advice.py` - pure single-machine classification and the local ASCII table
 - `aggregate.py` - freshness, cross-machine advice, and the control-tower dashboard
 - `watcher.py` - the polling loop; pure enough to test with an injected clock
+- `convergence.py` - which repositories peers have that this machine lacks, and naming them
 
-`init`, `check`, `dashboard`, `alias`, `watch`, and `doctor` all run. **`handoff` stays reserved
+`init`, `check`, `dashboard`, `converge`, `alias`, `watch`, and `doctor` all run. **`handoff` stays reserved
 on purpose** — moving unfinished work between machines is a mutation flow and gets its own design
 pass rather than hiding inside the watcher.
 
-Three rules hold this design together; do not quietly relax any of them:
+Four rules hold this design together; do not quietly relax any of them:
 
 - **Silence is never good news.** A machine report that is not current can never produce an "all
   clear". A stale *clean* report becomes `unknown`; a stale *dirty*/*ahead*/*diverged*/*operation*
@@ -215,10 +216,37 @@ Three rules hold this design together; do not quietly relax any of them:
 - **The watch must not churn.** It republishes only on a semantic change (`semantic_fingerprint`
   deliberately ignores `observed_at`) plus a heartbeat, because a manifest rewritten every cycle
   would make the user's cloud client upload constantly and bury the write that mattered.
+- **Sync Suggester never mutates a repository — including cloning.** `converge` finds the gap and
+  prints the `archive_sync.py --sync` command that closes it. `archive_sync` already discovers and
+  clones through the provider seam with its own preview and confirmation; growing a second cloner
+  here would duplicate that logic *and* move a mutation into a tool whose entire safety story is
+  that it only reads.
 
 Local state lives outside the repo — `GITSPECOPS_SYNC_HOME`, else XDG on POSIX / `%APPDATA%` on
 Windows, under `gitspecops/sync-suggester/`. `config.json` and `catalog.json` are per-machine and
 never enter the state directory.
+
+### Convergence and the deterministic-hash trick
+
+`converge` answers "which repositories do my peers have that I do not?". The privacy boundary
+makes that harder than it sounds: a peer publishes only `HMAC(fleet_secret, host/owner/name)`, so
+a machine cannot clone what it cannot name.
+
+The resolution is that the hash is deterministic. Enumerate candidates through the provider seam
+for the namespaces this machine already works in, hash each under the same fleet secret, and match.
+Consequences worth preserving:
+
+- A repository the provider can see is named **without any name crossing the transport**.
+- A repository the user genuinely cannot see stays an opaque id. That is the correct answer; do
+  not add a guessing fallback.
+- The local catalog is consulted first, so a name already known costs no network call.
+- Namespaces default to the ones this machine already has repositories in — not "every org on the
+  account". The tool looks where the user already is rather than enumerating their whole presence.
+
+Namespace-level work has no repository URL to parse, so it resolves a provider by host through
+`shared/providers.provider_for_host()`; `provider_for(url)` is now a thin wrapper over it.
+Registration lives in `git-archive-updater/remote_provider.py` (importing `provider_github.py`
+alone registers nothing) — `_register_providers()` in the CLI imports that module.
 
 ### Manifest schema v2 and the fleet secret
 
@@ -290,6 +318,7 @@ uv run python tests\test_sync_scaffold.py
 uv run python tests\test_sync_config.py
 uv run python tests\test_sync_aggregate.py
 uv run python tests\test_sync_watch.py
+uv run python tests\test_sync_converge.py
 ```
 
 A fleet is testable on one box: give each simulated machine its own `--config-dir` pointed at one

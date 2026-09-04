@@ -54,16 +54,17 @@ def registered_hosts() -> list[str]:
     return sorted(_PROVIDERS)
 
 
-def provider_for(remote_url: str | None) -> RemoteProvider | None:
-    """Pick a provider for a remote URL's host, or None when no provider handles it.
+def provider_for_host(host: str | None) -> RemoteProvider | None:
+    """Pick a provider for a bare host, or None when no provider handles it.
 
-    Matches the registered host exactly and any subdomain ('*.github.com'). Callers
-    must handle None: an unknown host means host-agnostic behavior (update-only),
-    never an error.
+    Namespace-level work ("what repos exist under this owner?") has no repository URL to
+    parse yet, so it resolves by host directly. Matches the registered host exactly and any
+    subdomain ('*.github.com'). Callers must handle None: an unknown host means
+    host-agnostic behavior (update-only), never an error.
     """
-    host = remote_host(remote_url)
     if not host:
         return None
+    host = host.lower()
     if host in _PROVIDERS:
         entry = _PROVIDERS[host]
     else:
@@ -72,3 +73,12 @@ def provider_for(remote_url: str | None) -> RemoteProvider | None:
         if entry is None:
             return None
     return entry() if callable(entry) else entry
+
+
+def provider_for(remote_url: str | None) -> RemoteProvider | None:
+    """Pick a provider for a remote URL's host, or None when no provider handles it.
+
+    The URL must be a full repository remote; a namespace-only URL has no parseable host
+    here, so use `provider_for_host` for that.
+    """
+    return provider_for_host(remote_host(remote_url))

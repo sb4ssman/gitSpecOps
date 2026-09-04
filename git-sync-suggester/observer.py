@@ -105,7 +105,10 @@ def observe_roots(roots: list[RootSpec], secret: str | None = None) -> Observati
                 "stashes": int(stash_text) if stash_text and stash_text.isdigit() else 0,
                 "operation": None,
             })
-            catalog[repo_id] = {"display_name": name, "path": str(path)}
+            # Local-only: the catalog is never published, so it may hold the full identity.
+            # host/owner are what let `converge` ask a provider to name a peer's hash.
+            catalog[repo_id] = {"display_name": name, "path": str(path),
+                                "host": host, "owner": owner, "name": name}
 
     repositories.sort(key=lambda repo: catalog[repo["repo_id"]]["display_name"].lower())
     return Observation(repositories=repositories, catalog=catalog, issues=issues)

@@ -5,6 +5,39 @@ Append-only record of **completed** work. Newest first. Items that graduate from
 
 ## 2026-09-03
 
+- **Fleet convergence: `converge`, and the deterministic-hash trick that makes it possible.**
+  This is the half of the product that answers "which repositories do my other machines have that
+  this one does not" — the thing GitKraken's grouping cannot do across machines.
+  - The obstacle was self-inflicted and worth stating: after schema v2, peers publish only
+    `HMAC(fleet_secret, host/owner/name)`, so a machine **cannot clone what it cannot name**. The
+    resolution is that the hash is deterministic — enumerate candidates through the provider seam
+    for the namespaces this machine already works in, hash each under the same fleet secret, and
+    match. A repository the provider can see is named without any name crossing the transport; one
+    the user genuinely cannot see stays an opaque id, which is the correct answer rather than a
+    guess.
+  - The local catalog is consulted first, so names already known cost no network call; the catalog
+    now records host/owner/name (it is local-only, so it may hold the full identity) and gains
+    entries for identified peer repositories, deliberately *without* a `path` — that absence is
+    what distinguishes "known but absent" from "on disk".
+  - `converge` never clones. It prints the concrete `archive_sync.py --root <derived from where
+    that owner's repos already live> --github-owner <owner> --sync` command instead. Growing a
+    second cloner here would duplicate `archive_sync`'s preview/confirmation logic *and* move a
+    mutation into the one tool whose safety story is that it only reads.
+  - **Two real bugs found by running it live**, both silent failures rather than errors:
+    `_register_providers()` imported `provider_github.py`, which registers nothing — the
+    `register_provider()` call lives in `remote_provider.py`. And `provider_for()` needs a full
+    repository URL, so a namespace-only URL parsed to no host and returned `None`. Fixed the second
+    properly by adding `shared/providers.provider_for_host()` — namespace-level work legitimately
+    has no repository URL to parse — with `provider_for(url)` now a thin wrapper over it. Also
+    added a warning when no providers register at all, so this fails loudly next time.
+  - Verified live end to end: a machine with an empty catalog named all 20 peer repositories
+    through `gh`, and a machine whose catalog already knew them made zero provider calls.
+  - `tests/test_sync_converge.py` (offline, stub provider that records its calls): the missing-set
+    logic, peer attribution, catalog seeding proving the network was skipped, unresolvable ids
+    staying opaque, candidates hashed under the wrong secret never matching, provider errors and
+    unregistered hosts being reported rather than fatal, `roots_by_owner` choosing the common
+    parent, and the report emitting a real command. 8/8 suite files pass.
+
 - **Manifest schema v2: salted identities, and the fleet secret.** Done first and deliberately —
   the user's goal is three machines converging on one state folder, and a schema change is free
   today and expensive once a fleet is publishing.
