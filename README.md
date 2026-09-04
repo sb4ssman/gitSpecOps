@@ -214,33 +214,74 @@ clone, divergence, or a machine whose clean report is too stale to trust.
 It synchronizes **facts and advice**, not unfinished source content. It does not commit, stash, pull,
 push, patch, or copy working files.
 
-The initial scaffold already supports bounded local observation:
+Set the machine up once. `init` records who this machine is, which roots it may look at, and the
+folder your own sync client (OneDrive, Dropbox, Syncthing, a mounted share) replicates between
+machines:
 
 ```bash
-python3 git-sync-suggester/sync_suggester.py check --root /path/to/repositories
-```
-
-Roots scan direct children by default. Add `--recursive` explicitly for a nested development tree.
-To publish this machine's record into a folder managed by OneDrive, Dropbox, Syncthing, or another
-folder-sync tool, provide a stable non-personal machine ID:
-
-```bash
-python3 git-sync-suggester/sync_suggester.py check \
+python3 git-sync-suggester/sync_suggester.py init \
+  --machine-id machine-a --machine-label workstation-a \
   --root /path/to/repositories \
-  --state-dir /path/to/gitspecops-state \
-  --machine-id machine-a \
-  --machine-label workstation-a
+  --state-dir /path/to/gitspecops-state
 ```
+
+Roots scan direct children by default; use `--recursive-root` for a nested development tree, and
+`--from-archives` to reuse the roots Archive Updater already manages. Configuration lives in
+`~/.config/gitspecops/sync-suggester/` (`%APPDATA%` on Windows, or `GITSPECOPS_SYNC_HOME`).
+
+After that, `check` observes, publishes this machine's manifest, and prints the fleet view:
+
+```bash
+python3 git-sync-suggester/sync_suggester.py check
+```
+
+```text
+Repository    DESKTOP  LAPTOP  OLDPI    Advice
+------------  -------  ------  -------  ------------------------------------------------------
+notebooks     ✎3       ✎5      ✎5 (3d)  ⚠ COLLISION: uncommitted work on DESKTOP, LAPTOP, OLDPI
+website       ⚠rebase  ✓       ? (3d)   finish rebase on DESKTOP
+data-loader   ✓        ✓       ✎7 (3d)  last known uncommitted work on OLDPI (3d ago)
+api           ✓        ✓       ↑1 (3d)  PUSH OLDPI ↑1 (last seen 3d ago)
+experiments   ↕2/4     ✓       ? (3d)   ↕ diverged on DESKTOP — human decision
+toolbox       ↑3       ✓       ? (3d)   PUSH DESKTOP ↑3
+docs-site     ↓2       ✓       ? (3d)   PULL DESKTOP ↓2
+
+11 repositor(ies) need no action (use --all to list them) — clean on every current machine, but
+OLDPI has not reported, so their state there is unknown, not proven clean
+Machines: DESKTOP current (4m ago), LAPTOP current (just now), OLDPI stale (3d ago)
+Legend: ✓ clean  ✎ uncommitted  ↑ ahead  ↓ behind  ↕ diverged  ⚑ stash  ⚠ attention  ? unknown  - not present
+```
+
+It is an exceptions view: rows nothing can be done about are folded into that summary line, which
+still names any machine whose silence is the reason a row is quiet. **A report that is not current
+never produces an "all clear."** A stale clean report becomes *unknown*; a stale *dirty* or *ahead*
+report keeps its warning, because the last thing anyone knew was that unresolved work existed there.
+Reports are current for 24 hours, stale for 7 days, and expired after that (`--stale-hours` /
+`--expired-days` at `init`).
+
+The other commands:
+
+```bash
+python3 git-sync-suggester/sync_suggester.py dashboard            # read peers, observe nothing
+python3 git-sync-suggester/sync_suggester.py watch --interval 60  # keep publishing while you work
+python3 git-sync-suggester/sync_suggester.py alias <id> <name>    # name a repo only a peer has
+python3 git-sync-suggester/sync_suggester.py doctor               # inspect local state, change nothing
+```
+
+`watch` republishes only when the facts actually change, plus a periodic heartbeat proving the
+machine is alive, and makes a best-effort final observation when you stop it (Ctrl-C or SIGTERM,
+answered in well under a second). No tool can guarantee an external cloud client uploads that last
+write before abrupt sleep or power loss, which is why an explicit `check` before you walk away is
+still worth running.
 
 The synchronized manifest contains hashed canonical repository identities and status facts. It does
 not contain repository display names, remote URLs, absolute paths, filenames, diffs, commit messages,
-or source content. Readable names come from an unsynchronized local catalog/table.
+or source content. Readable names come from an unsynchronized local catalog. See
+[`.agents/knowledge/manifest-privacy.md`](.agents/knowledge/manifest-privacy.md) for exactly what
+that boundary does and does not protect.
 
-`check` and the read-only folder `doctor` are runnable today. Persistent configuration, peer-report
-aggregation, configurable freshness, and the reserved `watch`/`handoff` workflows are the next
-vertical slice. The intended watcher will publish semantic changes plus heartbeats and make a
-best-effort final observation—but no tool can guarantee that an external cloud client uploads a
-last-second write before abrupt sleep or power loss.
+`handoff` remains reserved: moving unfinished work between machines is a mutation flow and gets its
+own design pass rather than hiding inside the watcher.
 
 ## GitHub Organization Duplicator
 

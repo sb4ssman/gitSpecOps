@@ -138,6 +138,8 @@ def process_upload_repo(repo, dest_org, completed_file, success_log, error_log):
                 if good_refs:
                     run_command(['git', '-C', repo_path, 'push', push_url] + good_refs, check=True)
                 break
+            except CommandTimeout:
+                raise  # a hung command won't un-hang on a retry
             except RuntimeError:
                 if attempt < max_retries - 1:
                     print(f"  → Push attempt {attempt + 1} failed, retrying...")
@@ -198,6 +200,8 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
             try:
                 run_command(['git', 'clone', '--mirror', clone_url, repo_temp_path], check=True)
                 break
+            except CommandTimeout:
+                raise  # a hung command won't un-hang on a retry
             except RuntimeError:
                 if attempt < max_retries - 1:
                     print(f"  → Clone attempt {attempt + 1} failed, retrying...")
@@ -232,6 +236,8 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
                 if good_refs:
                     run_command(['git', '-C', repo_temp_path, 'push', push_url] + good_refs, check=True)
                 break
+            except CommandTimeout:
+                raise  # a hung command won't un-hang on a retry
             except RuntimeError:
                 if attempt < max_retries - 1:
                     print(f"  → Push attempt {attempt + 1} failed, retrying...")

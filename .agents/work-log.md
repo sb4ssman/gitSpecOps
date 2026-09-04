@@ -3,6 +3,55 @@
 Append-only record of **completed** work. Newest first. Items that graduate from
 [`working-notes.md`](working-notes.md) land here with an absolute date.
 
+## 2026-09-03
+
+- **Sync Suggester: the first vertical slice is complete and the tool is genuinely useful.**
+  `init`, `check`, `dashboard`, `alias`, `watch`, and `doctor` all run; only `handoff` is still
+  reserved, deliberately, because moving unfinished work between machines is a mutation flow that
+  needs its own design pass rather than hiding inside the watcher.
+  - **Persistent local state** (`config.py`): OS-appropriate config dir (`GITSPECOPS_SYNC_HOME`,
+    else XDG / `%APPDATA%`) holding `config.json` (machine identity, registered roots with a
+    per-root recursive flag, state dir, freshness thresholds) and the local-only `catalog.json`
+    (`repo_id` -> readable name, path, user alias). `init` is flag-driven and refuses to clobber
+    without `--force`; `--from-archives` imports the roots Archive Updater already manages.
+    `merge_catalog` lets re-observation update facts while user aliases survive.
+    `folder_transport.atomic_write_bytes` was factored out so config and manifests share one
+    atomic-replace implementation.
+  - **Cross-machine aggregation** (`aggregate.py`): freshness classification (current <= 24h,
+    stale <= 7d, expired beyond), per-machine cells, cross-machine advice, and the control-tower
+    dashboard from the design document. The rule that shapes it: **silence is never good news** —
+    a stale *clean* report becomes `unknown`, while a stale *dirty*/*ahead*/*diverged*/*operation*
+    report keeps its warning as last-known unresolved work. Everything except one manifest-reading
+    helper is pure, so a fixed clock drives every boundary in the tests.
+  - **The dashboard is an exceptions view.** Showing 20 clean rows plus "OLDPI unknown" on each was
+    unreadable, so rows needing no action fold into a counted summary — a summary that still names
+    the machine whose silence made them quiet, so a folded row is never mistaken for a proven
+    all-clear. `--all` lists everything. Any ↑/↓ on screen is footnoted as cached remote-tracking
+    knowledge, since no fetch has been run.
+  - **`watch`** (`watcher.py`): a visible polling loop that republishes only on a semantic change
+    (`semantic_fingerprint` ignores `observed_at`, so time passing is not a change) plus a periodic
+    heartbeat, survives a failing cycle instead of dying, and makes a best-effort final observation
+    on the way out. The loop takes its observation, publication, clock, and sleep as parameters, so
+    the tests drive hours of behavior instantly. The CLI stops on an `Event` rather than a flag, so
+    a SIGTERM mid-interval is answered in ~0.5s instead of waiting out a 30s sleep — measured.
+  - **Duplicator modes 1-3 timeout bug fixed.** Three retry loops in `operations.py` caught
+    `RuntimeError`, which `CommandTimeout` subclasses — so a command that had already burned the
+    full 3600s ceiling was retried twice more, turning a 1-hour hang into a 3-hour one. They now
+    re-raise like mode 4's clone loop. `tests/test_batch_args.py` gained an AST check asserting
+    every retry loop in that file handles `CommandTimeout` first; verified it fails when the guard
+    is removed.
+  - **Tests:** new `tests/test_sync_config.py`, `tests/test_sync_aggregate.py`,
+    `tests/test_sync_watch.py`, and `tests/run_all.py` (one command for the whole suite). All
+    offline and synthetic — invented repository names, temporary directories, injected clocks, no
+    network. 7/7 files pass. Live smoke was read-only only: `check`, `dashboard`, and `watch`
+    against real local roots via a scratch `--config-dir`.
+  - **Privacy finding, needs a user decision.** A real published manifest was verified to leak no
+    name, path, URL, or host. But `repo_id` is an unsalted hash of `host/owner/name` (a tiny,
+    brute-forceable input space), `head` publishes a commit SHA that de-anonymizes any public
+    repository and that *nothing in the tool reads*, and branch names are human-authored. Analysis,
+    options, and a recommendation are in [`knowledge/manifest-privacy.md`](knowledge/manifest-privacy.md);
+    each option is a `schema_version` bump, so it is the user's call.
+
 ## 2026-08-31
 
 - **Killed the editable install in `.venv` — it was crashing interpreter startup.** Running the

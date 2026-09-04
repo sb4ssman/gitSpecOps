@@ -161,6 +161,40 @@ check("format_size(-1)", gh_common.format_size(-1) == "size unknown")
 check("format_size('nope')", gh_common.format_size("nope") == "size unknown")
 check("format_size(2048) still works", gh_common.format_size(2048) == "2.0 MB")
 
+# --- a hung command must never be retried -------------------------------------------
+# `CommandTimeout` subclasses `RuntimeError`, so a bare `except RuntimeError:` in a retry
+# loop silently swallows it and re-runs a command that already burned the full timeout.
+# Every retry loop in operations.py must therefore handle CommandTimeout first and re-raise.
+import ast  # noqa: E402
+
+OPERATIONS = Path(__file__).resolve().parent.parent / "github-org-duplicator" / "operations.py"
+tree = ast.parse(OPERATIONS.read_text(encoding="utf-8"))
+
+
+def _handler_names(handler):
+    node = handler.type
+    if node is None:
+        return {"BARE"}
+    parts = [node] if not isinstance(node, ast.Tuple) else list(node.elts)
+    return {part.id for part in parts if isinstance(part, ast.Name)}
+
+
+_retry_loops = []
+for _node in ast.walk(tree):
+    if not isinstance(_node, (ast.For, ast.While)):
+        continue
+    for _inner in ast.walk(_node):
+        if not isinstance(_inner, ast.Try):
+            continue
+        _caught = [_handler_names(h) for h in _inner.handlers]
+        if not any("RuntimeError" in names or "BARE" in names for names in _caught):
+            continue
+        _retry_loops.append(_inner.lineno)
+        check(f"operations.py:{_inner.lineno} retry loop re-raises CommandTimeout first",
+              "CommandTimeout" in _caught[0])
+check("found every known retry loop in operations.py", len(_retry_loops) >= 4)
+
+
 if FAILS:
     print(f"\n{len(FAILS)} FAILED")
     sys.exit(1)

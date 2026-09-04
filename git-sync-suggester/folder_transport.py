@@ -16,6 +16,31 @@ from manifest import decode_manifest, encode_manifest
 SAFE_MACHINE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 
 
+def atomic_write_bytes(destination: Path, payload: bytes) -> Path:
+    """Replace `destination` in one step, never leaving a half-written file behind.
+
+    A cloud-sync client (or a peer reader) may look at this directory at any instant, so
+    the file must only ever appear complete. The temp file is created in the destination's
+    own directory so `os.replace` stays on one filesystem and stays atomic.
+    """
+    destination = Path(destination)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{destination.name}-", suffix=".tmp",
+                                     dir=destination.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, destination)
+    except BaseException:
+        try:
+            os.unlink(temp_name)
+        except OSError:
+            pass
+        raise
+    return destination
+
+
 class FolderTransport:
     def __init__(self, root: str | Path):
         self.root = Path(root)
@@ -38,22 +63,7 @@ class FolderTransport:
             raise ValueError("manifest machine_id does not match the destination")
         payload = encode_manifest(manifest)
         self.machines_dir.mkdir(parents=True, exist_ok=True)
-        destination = self.machines_dir / f"{machine_id}.json"
-        fd, temp_name = tempfile.mkstemp(prefix=f".{machine_id}-", suffix=".tmp",
-                                         dir=self.machines_dir)
-        try:
-            with os.fdopen(fd, "wb") as handle:
-                handle.write(payload)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temp_name, destination)
-        except BaseException:
-            try:
-                os.unlink(temp_name)
-            except OSError:
-                pass
-            raise
-        return destination
+        return atomic_write_bytes(self.machines_dir / f"{machine_id}.json", payload)
 
     def doctor(self) -> dict:
         return {
