@@ -16,6 +16,15 @@ this tool ever read it: classification works from ahead/behind, the dirty counts
 and `operation`. It was the single strongest de-anonymizer in the record and it was dead
 weight.
 
+**v3 closes the last two leaks and shrinks the record.** `branch` was a human-authored
+string — `feature/acquire-northwind` says more than a repository name does — so it becomes
+`branch_id`, an HMAC under the same fleet secret, with readable names kept in the local-only
+catalog exactly as repository names already are. `upstream` was a string but every consumer
+only ever tested it for truthiness, so it becomes the boolean `has_upstream`: strictly less
+information published, and nothing lost. Identifiers also shrink — 128 bits of HMAC for a
+repository and 64 for a branch are far beyond collision range here — which matters at scale,
+where the record size is what decides how many repositories fit in one manifest.
+
 See `.agents/knowledge/manifest-privacy.md` for the full analysis.
 """
 
@@ -27,15 +36,20 @@ import json
 import secrets
 from datetime import datetime, timezone
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 FLEET_SECRET_BYTES = 32
 FLEET_ID_LABEL = b"gitspecops-sync-suggester-fleet-id"
+BRANCH_LABEL = b"branch:"
+# 128 bits for a repository and 64 for a branch. Both are far beyond collision range for any
+# realistic fleet, and the saving is what keeps a large manifest inside one API read.
+REPO_ID_HEX = 32
+BRANCH_ID_HEX = 16
 
 MANIFEST_KEYS = frozenset({
     "schema_version", "fleet_id", "machine_id", "machine_label", "observed_at", "repositories",
 })
 REPOSITORY_KEYS = frozenset({
-    "repo_id", "branch", "upstream", "upstream_observed_at", "ahead", "behind",
+    "repo_id", "branch_id", "has_upstream", "upstream_observed_at", "ahead", "behind",
     "staged", "unstaged", "untracked", "stashes", "operation",
 })
 
@@ -72,6 +86,15 @@ def fleet_id_for(secret: str) -> str:
     return hmac.new(bytes.fromhex(secret), FLEET_ID_LABEL, hashlib.sha256).hexdigest()[:16]
 
 
+def _digest(data: bytes, secret: str | None, length: int) -> str:
+    """HMAC under the fleet secret, or a plain hash when previewing without a fleet."""
+    if secret is None:
+        return hashlib.sha256(data).hexdigest()[:length]
+    if not is_fleet_secret(secret):
+        raise ValueError("fleet secret must be 64 hexadecimal characters")
+    return hmac.new(bytes.fromhex(secret), data, hashlib.sha256).hexdigest()[:length]
+
+
 def repository_id(host: str, owner: str, name: str, secret: str | None = None) -> str:
     """Digest of a canonical, case-insensitive remote identity.
 
@@ -81,11 +104,18 @@ def repository_id(host: str, owner: str, name: str, secret: str | None = None) -
     cannot reach the transport.
     """
     identity = f"{host.lower()}/{owner.lower()}/{name.lower()}".encode("utf-8")
-    if secret is None:
-        return hashlib.sha256(identity).hexdigest()
-    if not is_fleet_secret(secret):
-        raise ValueError("fleet secret must be 64 hexadecimal characters")
-    return hmac.new(bytes.fromhex(secret), identity, hashlib.sha256).hexdigest()
+    return _digest(identity, secret, REPO_ID_HEX)
+
+
+def branch_id(branch: str | None, secret: str | None = None) -> str | None:
+    """Digest of a branch name, or None on a detached HEAD.
+
+    Branch names are case-sensitive in git, so unlike repository identities this is not
+    lowercased — `Feature/X` and `feature/x` are genuinely different branches.
+    """
+    if not branch:
+        return None
+    return _digest(BRANCH_LABEL + branch.encode("utf-8"), secret, BRANCH_ID_HEX)
 
 
 def build_manifest(fleet_id: str, machine_id: str, machine_label: str, repositories: list[dict],
@@ -103,7 +133,7 @@ def build_manifest(fleet_id: str, machine_id: str, machine_label: str, repositor
 
 
 def validate_manifest(value: object) -> dict:
-    """Validate the small v2 boundary and reject fields that could leak local metadata."""
+    """Validate the small v3 boundary and reject fields that could leak local metadata."""
     if not isinstance(value, dict):
         raise ValueError("manifest must be a JSON object")
     extra_manifest_keys = set(value) - MANIFEST_KEYS
@@ -112,7 +142,7 @@ def validate_manifest(value: object) -> dict:
     version = value.get("schema_version")
     if version != SCHEMA_VERSION:
         detail = (" (written by an older Sync Suggester; re-run 'check' on that machine)"
-                  if version == 1 else "")
+                  if version in (1, 2) else "")
         raise ValueError(f"unsupported schema_version: {version!r}{detail}")
     for key in ("fleet_id", "machine_id", "machine_label", "observed_at"):
         if not isinstance(value.get(key), str) or not value[key]:
@@ -126,14 +156,22 @@ def validate_manifest(value: object) -> dict:
         extra = set(repo) - REPOSITORY_KEYS
         if extra:
             raise ValueError(f"repositories[{index}] has forbidden/unknown fields: {sorted(extra)}")
-        repo_id = repo.get("repo_id")
-        if not isinstance(repo_id, str) or len(repo_id) != 64:
-            raise ValueError(f"repositories[{index}].repo_id must be a 64-character hex digest")
-        try:
-            int(repo_id, 16)
-        except ValueError as exc:
-            raise ValueError(f"repositories[{index}].repo_id is not hexadecimal") from exc
+        _require_digest(repo.get("repo_id"), REPO_ID_HEX, f"repositories[{index}].repo_id")
+        if repo.get("branch_id") is not None:
+            _require_digest(repo["branch_id"], BRANCH_ID_HEX,
+                            f"repositories[{index}].branch_id")
+        if not isinstance(repo.get("has_upstream", False), bool):
+            raise ValueError(f"repositories[{index}].has_upstream must be a boolean")
     return value
+
+
+def _require_digest(value: object, length: int, label: str) -> None:
+    if not isinstance(value, str) or len(value) != length:
+        raise ValueError(f"{label} must be a {length}-character hex digest")
+    try:
+        int(value, 16)
+    except ValueError as exc:
+        raise ValueError(f"{label} is not hexadecimal") from exc
 
 
 def encode_manifest(value: dict) -> bytes:

@@ -10,17 +10,20 @@ sys.path.insert(0, str(TOOL_DIR))
 
 from advice import classify_repository, render_table  # noqa: E402
 from folder_transport import FolderTransport  # noqa: E402
-from manifest import (build_manifest, decode_manifest, encode_manifest, fleet_id_for,  # noqa: E402
-                      is_fleet_secret, new_fleet_secret, repository_id)
+from manifest import (branch_id, build_manifest, decode_manifest,  # noqa: E402
+                      encode_manifest, fleet_id_for, is_fleet_secret, new_fleet_secret,
+                      repository_id)
 from observer import RootSpec, observe_roots  # noqa: E402
 
 SECRET = "ab" * 32
 FLEET_ID = fleet_id_for(SECRET)
 REPO_ID = repository_id("example.test", "sample-team", "alpha-repo", SECRET)
+BRANCH = "feature/private-plans"
+BRANCH_ID = branch_id(BRANCH, SECRET)
 BASE = {
     "repo_id": REPO_ID,
-    "branch": "main",
-    "upstream": "origin/main",
+    "branch_id": BRANCH_ID,
+    "has_upstream": True,
     "upstream_observed_at": None,
     "ahead": 0,
     "behind": 0,
@@ -43,8 +46,11 @@ if other == REPO_ID:
 unsalted = repository_id("example.test", "sample-team", "alpha-repo")
 if unsalted == REPO_ID:
     failures.append("the salted identity matches the unsalted one — the secret is being ignored")
-if len(REPO_ID) != 64 or int(REPO_ID, 16) < 0:
-    failures.append("salted identity is not a 64-character hex digest")
+from manifest import BRANCH_ID_HEX, REPO_ID_HEX  # noqa: E402
+if len(REPO_ID) != REPO_ID_HEX or int(REPO_ID, 16) < 0:
+    failures.append(f"salted identity is not a {REPO_ID_HEX}-character hex digest")
+if len(BRANCH_ID) != BRANCH_ID_HEX:
+    failures.append(f"branch identity is not a {BRANCH_ID_HEX}-character hex digest")
 
 if fleet_id_for(SECRET) != FLEET_ID or fleet_id_for("cd" * 32) == FLEET_ID:
     failures.append("fleet id is not a stable, secret-dependent label")
@@ -82,6 +88,13 @@ if SECRET.encode() in payload:
 # v2 dropped the commit SHA: it identified public repositories and nothing read it.
 if b'"head"' in payload:
     failures.append("the manifest still publishes a commit SHA")
+# v3: a human-authored branch name must never appear either.
+if BRANCH.encode() in payload or b'"branch"' in payload or b'"upstream"' in payload:
+    failures.append("the manifest still publishes a readable branch or upstream name")
+if branch_id(BRANCH, "cd" * 32) == BRANCH_ID:
+    failures.append("branch_id does not depend on the fleet secret")
+if branch_id(None, SECRET) is not None:
+    failures.append("a detached HEAD should produce no branch id")
 
 stale = {**manifest, "schema_version": 1}
 try:
@@ -145,7 +158,7 @@ CASES = [
     ({"ahead": 2}, "ahead"),
     ({"behind": 3}, "behind"),
     ({"ahead": 1, "behind": 1}, "diverged"),
-    ({"upstream": None, "ahead": None, "behind": None}, "unknown"),
+    ({"has_upstream": False, "ahead": None, "behind": None}, "unknown"),
 ]
 for changes, expected in CASES:
     repo = dict(BASE)
@@ -154,9 +167,15 @@ for changes, expected in CASES:
     if actual != expected:
         failures.append(f"classification {changes}: {actual}, expected {expected}")
 
-table = render_table(manifest, {REPO_ID: {"display_name": "alpha-repo", "path": "/local-only"}})
+table = render_table(manifest, {REPO_ID: {"display_name": "alpha-repo", "path": "/local-only"}},
+                     {BRANCH_ID: BRANCH})
 if "alpha-repo" not in table or "/local-only" in table:
     failures.append("local display-name table did not preserve the privacy boundary")
+if BRANCH not in table:
+    failures.append("a locally known branch name was not resolved for display")
+unknown_branch = render_table(manifest, {}, {})
+if BRANCH in unknown_branch or f"branch:{BRANCH_ID[:8]}" not in unknown_branch:
+    failures.append("a branch this machine has never seen should show as an opaque id")
 
 if failures:
     print("SYNC-SCAFFOLD-TESTS FAILED:")

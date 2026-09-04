@@ -23,7 +23,8 @@ from convergence import (  # noqa: E402
     resolve_missing,
     roots_by_owner,
 )
-from manifest import build_manifest, fleet_id_for, repository_id  # noqa: E402
+from manifest import (branch_id, build_manifest, fleet_id_for,  # noqa: E402
+                      repository_id)
 from shared.remote_identity import RepoRef  # noqa: E402
 
 failures = []
@@ -42,7 +43,8 @@ def check(condition, message):
 
 
 def repo(name):
-    return {"repo_id": IDS[name], "branch": "main", "upstream": "origin/main",
+    return {"repo_id": IDS[name], "branch_id": branch_id("main", SECRET),
+            "has_upstream": True,
             "upstream_observed_at": None, "ahead": 0, "behind": 0, "staged": 0,
             "unstaged": 0, "untracked": 0, "stashes": 0, "operation": None}
 

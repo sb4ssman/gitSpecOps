@@ -57,15 +57,28 @@ _Last tended: 2026-09-03_
   `rclone`), so auto-detection is a convenience, not a default. `rclone` remains a possible
   advanced escape hatch — 70+ backends, auth configured once — but its own setup is real tedium.
 
-- [ ] **Manifest privacy: `branch` and `upstream` are still published in the clear.** v2 closed
-  the big holes (salted `repo_id`, `head` dropped — see [`work-log.md`](work-log.md)). Branch names
-  were kept deliberately: a hashed branch could be compared but never displayed, and "same repo,
-  different branches on two machines" is a condition the fleet view should surface. But
-  `feature/acquire-northwind` is exactly the kind of string that should not sit in a cloud folder.
-  Options (HMAC it; publish only a configured safe list in the clear; or state plainly that the
-  state folder reveals your branch names) are in
-  [`knowledge/manifest-privacy.md`](knowledge/manifest-privacy.md). Decide before three machines
-  are publishing for real — it is another schema bump.
+- [ ] **Scale work for mega/enterprise users.** Measured 2026-09-03: a v3 record is ~321 B/repo,
+  so ~3,200 repositories fit the Contents API's 1 MB inline read. Open items, in order of value:
+  1. **Compress the manifest** — status data is highly repetitive and gzips to ~59 B/repo, i.e.
+     ~18,000 repositories per manifest. Cheap. Cost: the file stops being human-readable in the
+     repo, which the design doc valued; decide deliberately.
+  2. **Selective `--fetch`.** 20 repositories take ~4s at 4 workers, so 10,000 would take ~30
+     minutes. Needs to fetch only what is stale or recently touched, not everything.
+  3. **Discovery** over very large trees.
+  4. Beyond ~20k repositories, shard a manifest per namespace.
+  The dashboard already scales — the exceptions view shows only what needs action.
+
+- [ ] **Org / enterprise fleets: decide the trust boundary before building.** A state repo can be
+  org-owned, which makes provisioning trivial, but then everyone with repo access sees everyone's
+  machines — a different product, and one that edges toward surveillance. The middle option worth
+  considering: org-owned repo for provisioning, **per-person fleet secrets**, so members share the
+  transport but cannot de-anonymize each other's repository hashes. Needs the user's decision.
+
+- [ ] **Zero-friction join for the repo transport.** Because a private repo's access control is
+  already the boundary (see [`knowledge/manifest-privacy.md`](knowledge/manifest-privacy.md)), the
+  fleet key can live inside the state repo, making a second machine's setup just
+  `init --state-repo owner/name` with no secret to carry. Explicitly does NOT apply to the folder
+  transport. This is the piece that delivers "everything just works as long as gh is authed".
 
 ## Someday / deferred
 

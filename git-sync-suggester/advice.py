@@ -12,7 +12,7 @@ def classify_repository(repo: dict) -> tuple[str, str]:
         return "dirty", "COMMIT or preserve"
     if int(repo.get("stashes") or 0):
         return "stashed", f"review {repo['stashes']} stash(es)"
-    if ahead is None or behind is None or not repo.get("upstream"):
+    if ahead is None or behind is None or not repo.get("has_upstream"):
         return "unknown", "upstream unknown"
     if ahead and behind:
         return "diverged", "human decision"
@@ -23,13 +23,19 @@ def classify_repository(repo: dict) -> tuple[str, str]:
     return "synced", "clean and synchronized"
 
 
-def render_table(manifest: dict, catalog: dict[str, dict]) -> str:
+def render_table(manifest: dict, catalog: dict[str, dict],
+                 branches: dict[str, str] | None = None) -> str:
+    branches = branches or {}
     rows = []
     for repo in manifest["repositories"]:
         local = catalog.get(repo["repo_id"], {})
-        name = local.get("display_name") or f"repo:{repo['repo_id'][:8]}"
+        name = local.get("alias") or local.get("display_name") or f"repo:{repo['repo_id'][:8]}"
         state, action = classify_repository(repo)
-        rows.append((name, repo.get("branch") or "(detached)", state, action))
+        branch = repo.get("branch_id")
+        # A branch this machine has seen resolves to its name; one only a peer has stays an
+        # opaque id, exactly as an unknown repository does.
+        label = "(detached)" if not branch else branches.get(branch, f"branch:{branch[:8]}")
+        rows.append((name, label, state, action))
     widths = [len("Repository"), len("Branch"), len("State"), len("Advice")]
     for row in rows:
         widths = [max(width, len(str(value))) for width, value in zip(widths, row)]
