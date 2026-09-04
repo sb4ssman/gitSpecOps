@@ -40,6 +40,7 @@ from config import (
     validate_config,
 )
 from folder_transport import FolderTransport
+from repo_transport import RepoTransport, create_state_repo, repo_exists
 from convergence import MissingRepo  # noqa: E402  (dataclass used in --no-resolve)
 from manifest import build_manifest, fleet_id_for, is_fleet_secret
 from observer import (DEFAULT_FETCH_TIMEOUT_SECONDS, DEFAULT_FETCH_WORKERS, RootSpec,
@@ -52,6 +53,23 @@ if str(REPO_ROOT) not in sys.path:
 
 from shared.providers import provider_for_host, registered_hosts  # noqa: E402
 PREVIEW_MACHINE_ID = "local-preview"
+
+
+def open_transport(config: dict | None, args: argparse.Namespace | None = None):
+    """Return (transport, label) for whichever transport is configured, or (None, None).
+
+    Flags beat saved configuration, and a repo beats a folder when both are somehow given
+    on the command line — but the saved configuration can never hold both, so the normal
+    case is unambiguous.
+    """
+    config = config or {}
+    spec = getattr(args, "state_repo", None) or config.get("state_repo")
+    if spec:
+        return RepoTransport(spec), f"repo {spec}"
+    folder = getattr(args, "state_dir", None) or config.get("state_dir")
+    if folder:
+        return FolderTransport(folder), f"folder {folder}"
+    return None, None
 
 
 def _config_dir(args: argparse.Namespace) -> Path:
@@ -96,8 +114,41 @@ def command_init(args: argparse.Namespace) -> int:
     config = default_config(args.machine_id, args.fleet_secret)
     if args.machine_label:
         config["machine_label"] = args.machine_label
+    if args.state_dir and args.state_repo:
+        print("error: choose either --state-dir or --state-repo, not both.", file=sys.stderr)
+        return 2
     if args.state_dir:
         config["state_dir"] = str(Path(args.state_dir).expanduser())
+    if args.state_repo:
+        try:
+            RepoTransport(args.state_repo)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        config["state_repo"] = args.state_repo
+        if not repo_exists(args.state_repo):
+            if not args.create_state_repo:
+                print(f"error: {args.state_repo} does not exist or is not visible to your gh "
+                      "login. Re-run with --create-state-repo to create it as a private "
+                      "repository.", file=sys.stderr)
+                return 2
+            print(f"Creating private repository {args.state_repo} ...")
+            create_state_repo(args.state_repo)
+            print("Created.")
+        health = RepoTransport(args.state_repo).doctor()
+        if health.get("private") is False and not args.allow_public_state_repo:
+            # Refused, not warned. Machine status in a public repository is readable by
+            # anyone, and branch names alone say a great deal about what you are working on.
+            print(f"error: {args.state_repo} is PUBLIC. Machine status there would be visible "
+                  "to anyone, including your branch names. Use a private repository, or pass "
+                  "--allow-public-state-repo if you genuinely intend that.", file=sys.stderr)
+            return 2
+        if health.get("private") is False:
+            print(f"warning: publishing machine status to the PUBLIC repo {args.state_repo} "
+                  "because --allow-public-state-repo was given", file=sys.stderr)
+        if health.get("permissions") is False:
+            print(f"error: your gh login cannot write to {args.state_repo}.", file=sys.stderr)
+            return 2
     if args.stale_hours is not None:
         config["stale_hours"] = args.stale_hours
     if args.expired_days is not None:
@@ -156,11 +207,13 @@ class Resolution:
     """What `check` and `watch` both need: where to look, who we are, where to publish."""
 
     def __init__(self, config_dir: Path, config: dict | None, specs: list[RootSpec],
-                 source: str, machine_id: str, machine_label: str, state_dir: str | None):
+                 source: str, machine_id: str, machine_label: str, state_dir: str | None,
+                 transport=None, transport_label: str | None = None):
         self.config_dir, self.config = config_dir, config
         self.specs, self.source = specs, source
         self.machine_id, self.machine_label = machine_id, machine_label
         self.state_dir = state_dir
+        self.transport, self.transport_label = transport, transport_label
 
     @property
     def secret(self) -> str | None:
@@ -183,7 +236,8 @@ def _resolve(args: argparse.Namespace) -> Resolution | int:
     if not specs:
         print("error: no roots to observe. Run 'init --root PATH' or pass --root.", file=sys.stderr)
         return 2
-    state_dir = args.state_dir or (config or {}).get("state_dir")
+    transport, transport_label = open_transport(config, args)
+    state_dir = transport_label  # kept for messages; publication goes through `transport`
     machine_id = args.machine_id or (config or {}).get("machine_id") or PREVIEW_MACHINE_ID
     # An explicit --machine-id with no label should label itself, not inherit the saved label.
     machine_label = (args.machine_label
@@ -199,7 +253,8 @@ def _resolve(args: argparse.Namespace) -> Resolution | int:
         print("error: publishing needs a real machine id — run 'init' or pass --machine-id",
               file=sys.stderr)
         return 2
-    return Resolution(config_dir, config, specs, source, machine_id, machine_label, state_dir)
+    return Resolution(config_dir, config, specs, source, machine_id, machine_label, state_dir,
+                      transport, transport_label)
 
 
 def command_check(args: argparse.Namespace) -> int:
@@ -208,7 +263,7 @@ def command_check(args: argparse.Namespace) -> int:
         return resolved
     config_dir, config = resolved.config_dir, resolved.config
     specs, source = resolved.specs, resolved.source
-    state_dir, machine_id, machine_label = (resolved.state_dir, resolved.machine_id,
+    transport, machine_id, machine_label = (resolved.transport, resolved.machine_id,
                                             resolved.machine_label)
 
     if args.fetch:
@@ -231,13 +286,13 @@ def command_check(args: argparse.Namespace) -> int:
         save_catalog(config_dir, merged)
 
     published = None
-    if state_dir and not args.no_publish:
-        published = FolderTransport(state_dir).write_own_manifest(machine_id, manifest)
+    if transport is not None and not args.no_publish:
+        published = transport.write_own_manifest(machine_id, manifest)
 
     if args.json:
         print(json.dumps(manifest, indent=2, sort_keys=True))
-    elif state_dir and not args.local_only:
-        print(_dashboard_text(state_dir, config, merged, own=manifest, show_all=args.all))
+    elif transport is not None and not args.local_only:
+        print(_dashboard_text(transport, config, merged, own=manifest, show_all=args.all))
     else:
         print(render_table(manifest, merged))
 
@@ -253,11 +308,11 @@ def command_watch(args: argparse.Namespace) -> int:
     resolved = _resolve(args)
     if isinstance(resolved, int):
         return resolved
-    if not resolved.state_dir:
-        print("error: watch publishes, so it needs a state directory. "
-              "Run 'init --state-dir PATH' or pass --state-dir.", file=sys.stderr)
+    if resolved.transport is None:
+        print("error: watch publishes, so it needs somewhere to publish to. "
+              "Run 'init --state-dir PATH' or 'init --state-repo owner/name'.", file=sys.stderr)
         return 2
-    transport = FolderTransport(resolved.state_dir)
+    transport = resolved.transport
     # An Event rather than a flag so a signal arriving mid-interval wakes the sleep at once
     # instead of waiting it out — the last observation is the one worth not missing.
     stopping = threading.Event()
@@ -302,9 +357,8 @@ def command_watch(args: argparse.Namespace) -> int:
     return 1 if result.errors and result.publishes == 0 else 0
 
 
-def _dashboard_text(state_dir: str, config: dict | None, catalog: dict[str, dict],
+def _dashboard_text(transport, config: dict | None, catalog: dict[str, dict],
                     own: dict | None = None, show_all: bool = False) -> str:
-    transport = FolderTransport(state_dir)
     manifests, issues = load_manifests(transport)
     if own is not None:
         manifests = [m for m in manifests if m.get("machine_id") != own["machine_id"]] + [own]
@@ -331,12 +385,12 @@ def command_dashboard(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    state_dir = args.state_dir or (config or {}).get("state_dir")
-    if not state_dir:
-        print("error: no state directory. Run 'init --state-dir PATH' or pass --state-dir.",
-              file=sys.stderr)
+    transport, label = open_transport(config, args)
+    if transport is None:
+        print("error: no state location. Run 'init --state-dir PATH' or "
+              "'init --state-repo owner/name'.", file=sys.stderr)
         return 2
-    print(_dashboard_text(state_dir, config, load_catalog(config_dir), show_all=args.all))
+    print(_dashboard_text(transport, config, load_catalog(config_dir), show_all=args.all))
     return 0
 
 
@@ -379,13 +433,12 @@ def command_converge(args: argparse.Namespace) -> int:
         print("error: converge needs this machine's configuration. Run 'init' first.",
               file=sys.stderr)
         return 2
-    state_dir = args.state_dir or config.get("state_dir")
-    if not state_dir:
-        print("error: no state directory to read peer reports from.", file=sys.stderr)
+    transport, _label = open_transport(config, args)
+    if transport is None:
+        print("error: no state location to read peer reports from.", file=sys.stderr)
         return 2
 
     secret = config["fleet_secret"]
-    transport = FolderTransport(state_dir)
     manifests, issues = load_manifests(transport)
     manifests, foreign = split_by_fleet(manifests, fleet_id_for(secret))
     for issue in issues:
@@ -458,10 +511,9 @@ def command_doctor(args: argparse.Namespace) -> int:
         report["config"] = {**report["config"], "fleet_secret": "(set, hidden)"}
         report["fleet_id"] = fleet_id_for((config or {}).get("fleet_secret"))
     report["catalog_entries"] = len(load_catalog(config_dir))
-    state_dir = args.state_dir or (config or {}).get("state_dir")
-    report["state_dir"] = state_dir
-    if state_dir:
-        transport = FolderTransport(state_dir)
+    transport, label = open_transport(config, args)
+    report["state"] = label
+    if transport is not None:
         report["transport"] = transport.doctor()
         manifests, issues = load_manifests(transport)
         report["machines"] = sorted(m["machine_id"] for m in manifests)
@@ -490,6 +542,14 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--recursive-root", action="append",
                       help="root scanned recursively (repeatable)")
     init.add_argument("--state-dir", help="folder your sync client replicates between machines")
+    init.add_argument("--state-repo",
+                      help="private GitHub repo (owner/name) to hold machine state instead of "
+                           "a folder; read/written through your existing gh login, never cloned")
+    init.add_argument("--create-state-repo", action="store_true",
+                      help="with --state-repo, create it as a private repository if missing")
+    init.add_argument("--allow-public-state-repo", action="store_true",
+                      help="permit a PUBLIC state repository (refused by default: anyone could "
+                           "read your machine status and branch names)")
     init.add_argument("--from-archives", action="store_true",
                       help="also register roots from the archive updater's local registry")
     init.add_argument("--stale-hours", type=int, help="report older than this is stale (default 24)")
@@ -504,6 +564,7 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--machine-id", help="override the saved machine id")
     check.add_argument("--machine-label", help="override the saved readable label")
     check.add_argument("--state-dir", help="override the saved manifest folder")
+    check.add_argument("--state-repo", help="override the saved state repository (owner/name)")
     check.add_argument("--local-only", action="store_true", help="skip peers; show this machine only")
     check.add_argument("--all", action="store_true", help="list every repository, not just exceptions")
     check.add_argument("--no-publish", action="store_true", help="observe without writing a manifest")
@@ -520,6 +581,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     dashboard = subparsers.add_parser("dashboard", help="read peer manifests without observing")
     dashboard.add_argument("--state-dir", help="override the saved manifest folder")
+    dashboard.add_argument("--state-repo", help="override the saved state repository (owner/name)")
     dashboard.add_argument("--all", action="store_true", help="list every repository, not just exceptions")
     dashboard.set_defaults(handler=command_dashboard)
 
@@ -531,6 +593,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = subparsers.add_parser("doctor", help="inspect local state and transport, changing nothing")
     doctor.add_argument("--state-dir", help="override the saved manifest folder")
+    doctor.add_argument("--state-repo", help="override the saved state repository (owner/name)")
     doctor.set_defaults(handler=command_doctor)
 
     watch = subparsers.add_parser("watch", help="keep observing and republish when facts change")
@@ -540,6 +603,7 @@ def build_parser() -> argparse.ArgumentParser:
     watch.add_argument("--machine-id", help="override the saved machine id")
     watch.add_argument("--machine-label", help="override the saved readable label")
     watch.add_argument("--state-dir", help="override the saved manifest folder")
+    watch.add_argument("--state-repo", help="override the saved state repository (owner/name)")
     watch.add_argument("--interval", type=float, default=DEFAULT_INTERVAL_SECONDS,
                        help=f"seconds between observations (default {DEFAULT_INTERVAL_SECONDS})")
     watch.add_argument("--heartbeat", type=float, default=DEFAULT_HEARTBEAT_SECONDS,
@@ -560,6 +624,7 @@ def build_parser() -> argparse.ArgumentParser:
     converge = subparsers.add_parser(
         "converge", help="report repositories peers have that this machine does not")
     converge.add_argument("--state-dir", help="override the saved manifest folder")
+    converge.add_argument("--state-repo", help="override the saved state repository (owner/name)")
     converge.add_argument("--namespace", action="append",
                           help="owner/org to search when naming unknown repositories "
                                "(default: the namespaces this machine already works in)")

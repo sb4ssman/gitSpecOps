@@ -5,6 +5,32 @@ Append-only record of **completed** work. Newest first. Items that graduate from
 
 ## 2026-09-03
 
+- **Second transport: a private GitHub repo, without ever cloning it.** The user found the
+  designated-private-repo option (transport #2 in the design doc) correct but tedious. The tedium
+  is not inherent — it comes from assuming a repo must be cloned, committed to, pulled and merged.
+  For a few KB of JSON with one writer per file, none of that is needed.
+  - `repo_transport.py` uses the GitHub Contents API through the already-authenticated `gh`: read
+    is one GET, write is one PUT. The blob `sha` a read returns is exactly what the write must send
+    back, which buys optimistic concurrency for free — a concurrent write is rejected with 409, and
+    the code re-reads and retries once rather than forcing. No clone, no working copy, no local git
+    state, no merge logic, no new auth, no new dependency.
+  - Setup is one flag: `init --state-repo owner/name --create-state-repo`.
+  - **A public state repository is refused outright**, not merely warned about. First implementation
+    only warned; that is too weak for something whose whole premise is not leaking. Branch names are
+    still published in the clear, and in a public repo that is readable by anyone.
+    `--allow-public-state-repo` is the deliberate escape hatch. Verified against a real public repo.
+  - Creating the repository is a separate explicit act, never a side effect of a status command.
+  - `open_transport()` is now the single place that decides which transport is in play; config may
+    hold `state_dir` or `state_repo` but never both, and that is enforced in `validate_config`.
+  - `tests/test_repo_transport.py` fakes `gh` entirely (offline) and pins the concurrency contract:
+    a write carries the sha it read, a first write carries none, a 409 re-reads with the fresh sha,
+    a persistently rejected write gives up instead of clobbering, no force-like argument ever
+    reaches `gh`, unsafe machine ids and manifest names are rejected, the v2 boundary still applies
+    on the way out, and a 403 is not swallowed like a 404. 11/11 suite files pass.
+  - Decided with the user: `--fetch` stays opt-in and user-scheduled. The watchdog discussion
+    settled on git hooks via a chained global `core.hooksPath` as the zero-idle-cost change
+    detector, with an OS timer optional; see working-notes.
+
 - **The push direction shipped: `archive_sync.py --publish`, first slice.** The only code in
   gitSpecOps that writes to a remote, kept as narrow as the design notes demanded.
   - `archive_diff.build_publish_plan()` is a separate pure classifier — the pull-direction
