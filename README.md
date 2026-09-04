@@ -204,6 +204,28 @@ uv run python git-archive-updater\archive_manager.py --remove-task
 
 Task creation and removal are explicit. The manager does not silently install background jobs.
 
+### Publishing (the push direction)
+
+Everything else in the archive tools pulls. `--publish` is the one command that writes to a
+remote, and it only ever does the provably safe thing: a push **without** `--force`, which git
+refuses unless it is a fast-forward.
+
+```bash
+python3 git-archive-updater/archive_sync.py --root /path/to/archive --publish --dry-run
+python3 git-archive-updater/archive_sync.py --root /path/to/archive --publish
+```
+
+Only repositories that are **ahead-only and clean** are eligible. Diverged goes to a human,
+behind-only needs a pull first, and a detached HEAD or missing upstream is skipped as
+direction-unknown. A repository that is ahead but has uncommitted work — including untracked
+files — is reported and held back; `--include-dirty` pushes its committed work anyway. **Nothing
+is ever auto-committed.**
+
+Each repository is fetched and re-checked immediately before its push, so a remote that moved
+since planning is reported as "needs a human" rather than forced. `--publish` refuses to run
+alongside `--update`/`--sync`, and the generated launchers and scheduled task never pass it, so a
+background job can never push on your behalf.
+
 ## Sync Suggester
 
 Sync Suggester is a status and memory operation. On one machine it is a useful whole-folder Git

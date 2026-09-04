@@ -106,7 +106,36 @@ git-archive-updater/managed_archives.json
 
 Do not commit local registry contents.
 
-### Future direction: the push direction ("publish")
+### The push direction ("publish") — shipped 2026-09-03, first slice
+
+`archive_sync.py --publish` is the only code in gitSpecOps that writes to a remote. It is
+deliberately narrow, and the narrowness is the feature:
+
+- **Non-force push only.** `git push` with no `--force`, so git itself refuses anything that is
+  not a fast-forward — the mirror of `pull --ff-only`. The pull-direction guarantees are NOT
+  reused; `archive_diff.build_publish_plan()` is a separate pure classifier.
+- **Only ahead-only, clean repositories are eligible.** Diverged goes to a human; behind-only
+  needs a pull first; detached or no-upstream means the direction is unknown; in-sync is a no-op.
+- **`--publish` is its own apply class** and *refuses* to run alongside
+  `--update/--sync/--reconcile/--rename-folders`. `archive_manager.py` never emits it, so
+  generated launchers and the scheduled task can never push. `tests/test_archive_publish.py`
+  asserts both of those, so the invariant cannot rot quietly.
+- **Fetch, then re-check, then push.** The remote may move between planning and pushing; the
+  re-check catches that and reports "remote moved — needs a human" instead of forcing.
+- **Dirtiness is broader here than for pulling.** `repo_facts` reports tracked changes only,
+  which is correct for fast-forward eligibility — untracked files never block a pull. For
+  publishing, the question is "is someone mid-edit here?", and an untracked file answers it, so
+  `_publish_dirty()` uses `git status --porcelain`. Keep this policy in the publish path; making
+  the shared fact stricter would needlessly narrow pull eligibility. `--include-dirty` pushes the
+  committed work anyway. **Nothing is ever auto-committed, under any flag.**
+- `--dry-run` previews; a typed `PUBLISH` confirms; pushes are paced (`--publish-pause`) so a
+  bulk publish cannot become a CI storm.
+
+Still not built, from the original design notes: per-agent branches and `open_pr()` on the
+provider seam, auto-commit behind an explicit flag, protected-branch awareness, and secret/size
+pre-flight checks. Ship those only if the ahead-only slice proves insufficient.
+
+### Original design notes for the push direction
 
 Everything today is pull-only, fast-forward-only. A future need (e.g. an org where an agent
 edits many repos and that work must go back upstream) is the opposite direction. Notes for
@@ -344,6 +373,7 @@ uv run python tests\test_sync_aggregate.py
 uv run python tests\test_sync_watch.py
 uv run python tests\test_sync_converge.py
 uv run python tests\test_sync_observe.py
+uv run python tests\test_archive_publish.py
 ```
 
 A fleet is testable on one box: give each simulated machine its own `--config-dir` pointed at one
