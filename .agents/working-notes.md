@@ -17,7 +17,8 @@ _Last tended: 2026-09-03_
     `device_id()` / `entry_device_id()`, which pay for a real stat only when the cached value is
     absent. `tests/test_repo_discovery_devices.py` reproduces the Windows symptom on any platform
     by faking the cached-zero device; verified it fails ("found 0 of 3") against the old code.
-    **Still wanted: a run on the real Windows box against `<library-root>\...` to confirm.**
+    **Confirmed on the real Windows T: drive:** direct-child scans found all 5 Sb4ssport-Alpha
+    agent repos, all 8 example-org-2 repos, and all 3 example-org-1 repos.
   - ~~**Compound facts hidden by precedence.**~~ **Fixed 2026-09-04.** `classify_repository` is now
     documented as a headline for severity *ordering only*; anything that renders or advises uses
     `repository_flags` / `describe_repository` / `secondary_facts`, so a repository that is dirty

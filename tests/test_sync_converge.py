@@ -33,6 +33,9 @@ FLEET_ID = fleet_id_for(SECRET)
 NOW = datetime(2026, 9, 3, 12, 0, 0, tzinfo=timezone.utc)
 STAMP = "2026-09-03T11:55:00Z"
 
+SAMPLE_ROOT = Path("archive") / "sample-team"
+OTHER_ROOT = Path("archive") / "other-team"
+
 NAMES = ["alpha-tool", "beta-service", "gamma-notes", "hidden-thing"]
 IDS = {name: repository_id("example.test", "sample-team", name, SECRET) for name in NAMES}
 
@@ -159,16 +162,16 @@ check(all("path" not in entry for entry in updates.values()),
 
 # --- where a clone would go -------------------------------------------------------------
 catalog = {
-    "id1": {"owner": "sample-team", "path": "/archive/sample-team/one"},
-    "id2": {"owner": "sample-team", "path": "/archive/sample-team/two"},
-    "id3": {"owner": "sample-team", "path": "/elsewhere/three"},
-    "id4": {"owner": "other-team", "path": "/archive/other-team/four"},
+    "id1": {"owner": "sample-team", "path": str(SAMPLE_ROOT / "one")},
+    "id2": {"owner": "sample-team", "path": str(SAMPLE_ROOT / "two")},
+    "id3": {"owner": "sample-team", "path": str(Path("elsewhere") / "three")},
+    "id4": {"owner": "other-team", "path": str(OTHER_ROOT / "four")},
     "id5": {"owner": "no-path-team"},
 }
 roots = roots_by_owner(catalog)
-check(roots.get("sample-team") == "/archive/sample-team",
+check(roots.get("sample-team") == str(SAMPLE_ROOT),
       f"the common parent was not chosen: {roots.get('sample-team')}")
-check(roots.get("other-team") == "/archive/other-team", "a single-repo owner root was not found")
+check(roots.get("other-team") == str(OTHER_ROOT), "a single-repo owner root was not found")
 check("no-path-team" not in roots, "an owner with no local path should yield no suggestion")
 
 check(namespaces_from_catalog({"a": {"host": "example.test", "owner": "sample-team"},
@@ -180,10 +183,10 @@ check(namespaces_from_catalog({"a": {"host": "example.test", "owner": "sample-te
 
 # --- the report ---------------------------------------------------------------------------
 text = render_report(resolved, [], [("example.test", "sample-team")],
-                     {"sample-team": "/archive/sample-team"})
+                     {"sample-team": str(SAMPLE_ROOT)})
 check("sample-team/beta-service" in text, "the report omitted an identified repository")
 check("DESK" in text, "the report does not say which machines have it")
-check("--root /archive/sample-team" in text and "--github-owner sample-team" in text,
+check(f"--root {SAMPLE_ROOT}" in text and "--github-owner sample-team" in text,
       "the report does not emit a concrete archive_sync command")
 check("clones nothing itself" in text, "the report does not state that it will not clone")
 check("could not be named" in text, "the report does not explain the unidentified entry")
