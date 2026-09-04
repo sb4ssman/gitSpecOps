@@ -131,6 +131,29 @@ with tempfile.TemporaryDirectory(prefix="folder-transport-test-") as temp:
     if transport.read_manifest("machine-a.json") != manifest:
         failures.append("folder transport read failed")
 
+    # Compression is opt-in, names itself honestly, and replaces the counterpart so one
+    # machine can never read as two.
+    gz = transport.write_own_manifest("machine-a", manifest, compress=True)
+    if gz.name != "machine-a.json.gz":
+        failures.append(f"a compressed manifest was misnamed: {gz.name}")
+    if gz.read_bytes()[:2] != b"\x1f\x8b":
+        failures.append("the compressed manifest is not actually gzip")
+    if len(gz.read_bytes()) >= len(payload):
+        failures.append("the compressed manifest was not smaller")
+    if transport.list_manifests() != ["machine-a.json.gz"]:
+        failures.append(f"the uncompressed counterpart survived: {transport.list_manifests()}")
+    if transport.read_manifest("machine-a.json.gz") != manifest:
+        failures.append("a gzipped manifest did not round trip through the folder transport")
+
+    back = transport.write_own_manifest("machine-a", manifest, compress=False)
+    if transport.list_manifests() != ["machine-a.json"]:
+        failures.append(f"turning compression off left a stale file: {transport.list_manifests()}")
+    if back.read_bytes() != payload:
+        failures.append("the uncompressed rewrite did not match the plain encoding")
+
+    if decode_manifest(encode_manifest(manifest, compress=True)) != manifest:
+        failures.append("decode did not detect gzip by magic bytes")
+
 with tempfile.TemporaryDirectory(prefix="observer-test-") as temp:
     collection = Path(temp) / "collection"
     repo_path = collection / "alpha-repo"
@@ -183,4 +206,4 @@ if failures:
         print(" -", failure)
     raise SystemExit(1)
 
-print(f"ALL-SYNC-SCAFFOLD-TESTS-PASS ({len(CASES)} advice cases, v2 schema)")
+print(f"ALL-SYNC-SCAFFOLD-TESTS-PASS ({len(CASES)} advice cases, v3 schema)")

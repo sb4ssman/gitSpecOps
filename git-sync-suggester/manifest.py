@@ -30,6 +30,7 @@ See `.agents/knowledge/manifest-privacy.md` for the full analysis.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import hmac
 import json
@@ -174,12 +175,43 @@ def _require_digest(value: object, length: int, label: str) -> None:
         raise ValueError(f"{label} is not hexadecimal") from exc
 
 
-def encode_manifest(value: dict) -> bytes:
+GZIP_MAGIC = b"\x1f\x8b"
+MANIFEST_SUFFIX = ".json"
+COMPRESSED_SUFFIX = ".json.gz"
+
+
+def manifest_filename(machine_id: str, compress: bool = False) -> str:
+    """The filename a machine publishes under. The extension tells the truth about the bytes."""
+    return f"{machine_id}{COMPRESSED_SUFFIX if compress else MANIFEST_SUFFIX}"
+
+
+def encode_manifest(value: dict, compress: bool = False) -> bytes:
+    """Serialize a manifest, optionally gzipped.
+
+    Status manifests are highly repetitive and compress about 6:1, which is what decides how
+    many repositories fit inside a single API read at scale. It stays off by default because
+    an uncompressed manifest is readable by anyone looking at the folder or repository, and
+    that inspectability is worth more than headroom most users will never need.
+
+    `mtime=0` keeps the output deterministic: identical content must produce identical bytes,
+    or every publish would look like a change.
+    """
     validate_manifest(value)
-    return (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    raw = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    return gzip.compress(raw, compresslevel=9, mtime=0) if compress else raw
 
 
 def decode_manifest(payload: bytes) -> dict:
+    """Read a manifest, transparently handling a gzipped one.
+
+    Detection is by magic bytes rather than filename, so a manifest stays readable even if it
+    is renamed or served without its extension.
+    """
+    if payload[:2] == GZIP_MAGIC:
+        try:
+            payload = gzip.decompress(payload)
+        except (OSError, EOFError) as exc:
+            raise ValueError(f"could not decompress manifest: {exc}") from exc
     try:
         value = json.loads(payload.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:

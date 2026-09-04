@@ -267,6 +267,11 @@ command should ever do as a side effect.
 
 Pick one: `--state-dir` or `--state-repo`, never both.
 
+Add `--compress-manifests` if you track a very large number of repositories — it gzips published
+manifests (a real 20-repository manifest goes from 6425 to 769 bytes). It is **off by default**,
+because an uncompressed manifest is readable by anyone looking at the folder or repository, and
+that is worth more than headroom most people never need.
+
 That prints a **fleet secret**. Every other machine joins the same fleet with it:
 
 ```bash

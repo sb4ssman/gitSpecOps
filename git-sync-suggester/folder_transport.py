@@ -11,7 +11,8 @@ import re
 import tempfile
 from pathlib import Path
 
-from manifest import decode_manifest, encode_manifest
+from manifest import (COMPRESSED_SUFFIX, MANIFEST_SUFFIX, decode_manifest,
+                      encode_manifest, manifest_filename)
 
 SAFE_MACHINE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 
@@ -49,21 +50,34 @@ class FolderTransport:
     def list_manifests(self) -> list[str]:
         if not self.machines_dir.is_dir():
             return []
-        return sorted(path.name for path in self.machines_dir.glob("*.json") if path.is_file())
+        names = {path.name for path in self.machines_dir.iterdir()
+                 if path.is_file() and path.name.endswith((MANIFEST_SUFFIX, COMPRESSED_SUFFIX))}
+        return sorted(names)
 
     def read_manifest(self, name: str) -> dict:
-        if Path(name).name != name or not name.endswith(".json"):
-            raise ValueError("manifest name must be a plain .json filename")
+        if Path(name).name != name or not name.endswith((MANIFEST_SUFFIX, COMPRESSED_SUFFIX)):
+            raise ValueError("manifest name must be a plain .json or .json.gz filename")
         return decode_manifest((self.machines_dir / name).read_bytes())
 
-    def write_own_manifest(self, machine_id: str, manifest: dict) -> Path:
+    def write_own_manifest(self, machine_id: str, manifest: dict,
+                           compress: bool = False) -> Path:
         if not SAFE_MACHINE_ID.fullmatch(machine_id):
             raise ValueError("machine_id may contain only letters, digits, dot, underscore, and dash")
         if manifest.get("machine_id") != machine_id:
             raise ValueError("manifest machine_id does not match the destination")
-        payload = encode_manifest(manifest)
+        payload = encode_manifest(manifest, compress)
         self.machines_dir.mkdir(parents=True, exist_ok=True)
-        return atomic_write_bytes(self.machines_dir / f"{machine_id}.json", payload)
+        written = atomic_write_bytes(self.machines_dir / manifest_filename(machine_id, compress),
+                                     payload)
+        # Toggling compression changes the filename, so the old one must go: two files for one
+        # machine would read as two machines' worth of state.
+        stale = self.machines_dir / manifest_filename(machine_id, not compress)
+        if stale.exists():
+            try:
+                stale.unlink()
+            except OSError:
+                pass
+        return written
 
     def doctor(self) -> dict:
         return {

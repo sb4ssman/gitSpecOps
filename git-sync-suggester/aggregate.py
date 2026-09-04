@@ -143,7 +143,30 @@ def load_manifests(transport, skip_invalid: bool = True) -> tuple[list[dict], li
             issues.append(f"unreadable manifest {name}: {exc}")
             if not skip_invalid:
                 raise
-    return manifests, issues
+    return _newest_per_machine(manifests, issues), issues
+
+
+def _newest_per_machine(manifests: list[dict], issues: list[str]) -> list[dict]:
+    """One manifest per machine, keeping the most recent.
+
+    A machine that toggles compression changes its filename, and a stale counterpart that
+    failed to delete would otherwise be counted as a second machine reporting older state.
+    The writers clean up after themselves; this makes that cleanup non-critical.
+    """
+    newest: dict[str, dict] = {}
+    for manifest in manifests:
+        machine = manifest.get("machine_id")
+        current = newest.get(machine)
+        if current is None:
+            newest[machine] = manifest
+            continue
+        keep, drop = ((manifest, current)
+                      if str(manifest.get("observed_at")) > str(current.get("observed_at"))
+                      else (current, manifest))
+        newest[machine] = keep
+        issues.append(f"ignored an older duplicate manifest for {machine} "
+                      f"(observed {drop.get('observed_at')})")
+    return list(newest.values())
 
 
 def split_by_fleet(manifests: list[dict], fleet_id: str | None) -> tuple[list[dict], list[dict]]:

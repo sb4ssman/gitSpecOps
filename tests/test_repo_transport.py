@@ -70,6 +70,10 @@ class FakeGh:
         args = self.calls[index]
         return args[args.index("--method") + 1] if "--method" in args else "GET"
 
+    def indexes(self, method):
+        """Call indexes issued with the given HTTP method."""
+        return [i for i in range(len(self.calls)) if self.method(i) == method]
+
 
 def install(responses):
     fake = FakeGh(responses)
@@ -150,8 +154,9 @@ try:
                     encoded(payload, sha="fresh"),
                     {"content": {}}])
     repo_transport.RepoTransport("o/r").write_own_manifest("laptop", manifest)
-    check(len(fake.calls) == 4, f"expected read/put/read/put, got {len(fake.calls)} calls")
-    check(fake.fields(3).get("sha") == "fresh",
+    puts = fake.indexes("PUT")
+    check(len(puts) == 2, f"expected exactly two PUT attempts, got {len(puts)}")
+    check(fake.fields(puts[1]).get("sha") == "fresh",
           "the retry did not use the freshly re-read sha")
     check(all("--force" not in " ".join(call) for call in fake.calls),
           "a force-like argument reached gh")
@@ -190,6 +195,45 @@ try:
         failures.append("published a record carrying a field outside the v2 boundary")
     except ValueError:
         pass
+
+    # --- compression is opt-in and honest about the filename --------------------------
+    fake = install([GhError("gh api failed: HTTP 404: Not Found"), {"content": {}},
+                    GhError("gh api failed: HTTP 404: Not Found")])
+    where = repo_transport.RepoTransport("o/r").write_own_manifest("laptop", manifest,
+                                                                   compress=True)
+    check(where.endswith("laptop.json.gz"),
+          f"a compressed manifest must say so in its name: {where}")
+    body = base64.b64decode(fake.fields(fake.indexes("PUT")[0])["content"])
+    check(body[:2] == b"\x1f\x8b", "the compressed write did not actually send gzip")
+    check(len(body) < len(payload), "the compressed write was not smaller")
+
+    # switching compression must delete the counterpart, or one machine reads as two
+    fake = install([GhError("gh api failed: HTTP 404: Not Found"), {"content": {}},
+                    encoded(payload, sha="old-plain-sha"), {}])
+    repo_transport.RepoTransport("o/r").write_own_manifest("laptop", manifest, compress=True)
+    deletes = fake.indexes("DELETE")
+    check(len(deletes) == 1, f"the stale uncompressed manifest was not deleted: {fake.calls}")
+    check(fake.fields(deletes[0]).get("sha") == "old-plain-sha",
+          "the delete did not carry the stale blob's sha")
+    check("laptop.json" in fake.calls[deletes[0]][1]
+          and not fake.calls[deletes[0]][1].endswith(".gz"),
+          f"the wrong path was deleted: {fake.calls[deletes[0]]}")
+
+    # a failure while cleaning up must not fail the publish
+    fake = install([GhError("gh api failed: HTTP 404: Not Found"), {"content": {}},
+                    GhError("gh api failed: HTTP 500: Server Error")])
+    repo_transport.RepoTransport("o/r").write_own_manifest("laptop", manifest, compress=True)
+
+    # both extensions are listed and readable
+    fake = install([[{"name": "a.json", "type": "file"}, {"name": "b.json.gz", "type": "file"},
+                     {"name": "c.txt", "type": "file"}]])
+    check(repo_transport.RepoTransport("o/r").list_manifests() == ["a.json", "b.json.gz"],
+          "listing did not include compressed manifests")
+
+    import gzip as _gzip
+    fake = install([encoded(_gzip.compress(payload, mtime=0))])
+    check(repo_transport.RepoTransport("o/r").read_manifest("laptop.json.gz") == manifest,
+          "a gzipped manifest did not round trip")
 
     # --- doctor -----------------------------------------------------------------------
     fake = install([{"private": False, "permissions": {"push": True}}, []])

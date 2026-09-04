@@ -59,20 +59,13 @@ _Last tended: 2026-09-03_
 
 - [ ] **Scale work for mega/enterprise users.** Measured 2026-09-03: a v3 record is ~321 B/repo,
   so ~3,200 repositories fit the Contents API's 1 MB inline read. Open items, in order of value:
-  1. **Compress the manifest** — status data is highly repetitive and gzips to ~59 B/repo, i.e.
-     ~18,000 repositories per manifest. Cheap. Cost: the file stops being human-readable in the
-     repo, which the design doc valued; decide deliberately.
+  1. ~~Compress the manifest~~ — **done 2026-09-03** as the opt-in `compress_manifests` setting,
+     off by default (8:1 measured on real data).
   2. **Selective `--fetch`.** 20 repositories take ~4s at 4 workers, so 10,000 would take ~30
      minutes. Needs to fetch only what is stale or recently touched, not everything.
   3. **Discovery** over very large trees.
   4. Beyond ~20k repositories, shard a manifest per namespace.
   The dashboard already scales — the exceptions view shows only what needs action.
-
-- [ ] **Org / enterprise fleets: decide the trust boundary before building.** A state repo can be
-  org-owned, which makes provisioning trivial, but then everyone with repo access sees everyone's
-  machines — a different product, and one that edges toward surveillance. The middle option worth
-  considering: org-owned repo for provisioning, **per-person fleet secrets**, so members share the
-  transport but cannot de-anonymize each other's repository hashes. Needs the user's decision.
 
 - [ ] **Zero-friction join for the repo transport.** Because a private repo's access control is
   already the boundary (see [`knowledge/manifest-privacy.md`](knowledge/manifest-privacy.md)), the
