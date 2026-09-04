@@ -28,7 +28,8 @@ from aggregate import (  # noqa: E402
     render_dashboard,
 )
 from folder_transport import FolderTransport  # noqa: E402
-from manifest import build_manifest, fleet_id_for, repository_id  # noqa: E402
+from manifest import (branch_id, build_manifest, fleet_id_for,  # noqa: E402
+                      repository_id)
 
 failures = []
 NOW = datetime(2026, 9, 3, 12, 0, 0, tzinfo=timezone.utc)
@@ -52,7 +53,7 @@ def stamp(delta):
 
 def repo(name, **overrides):
     base = {
-        "repo_id": IDS[name], "branch": "main", "upstream": "origin/main",
+        "repo_id": IDS[name], "branch_id": branch_id("main", SECRET), "has_upstream": True,
         "upstream_observed_at": None, "ahead": 0, "behind": 0, "staged": 0, "unstaged": 0,
         "untracked": 0, "stashes": 0, "operation": None,
     }
@@ -140,7 +141,7 @@ row = advice_for([("laptop", "LAPTOP", FRESH, [repo("diverged", ahead=1, behind=
 check(row.severity_key == "diverged" and "human" in row.advice,
       f"diverged gave {row.severity_key}: {row.advice}")
 
-row = advice_for([("laptop", "LAPTOP", FRESH, [repo("noupstream", upstream=None,
+row = advice_for([("laptop", "LAPTOP", FRESH, [repo("noupstream", has_upstream=False,
                                                     ahead=None, behind=None)])], "noupstream")
 check(row.severity_key == "unknown" and "upstream" in row.advice,
       f"no upstream gave {row.severity_key}: {row.advice}")

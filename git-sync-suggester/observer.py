@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
@@ -15,7 +15,7 @@ from shared.git_facts import git_stdout, repo_facts, run_git  # noqa: E402
 from shared.remote_identity import parse_remote_url  # noqa: E402
 from shared.repo_discovery import find_repos  # noqa: E402
 
-from manifest import repository_id, utc_now  # noqa: E402
+from manifest import branch_id, repository_id, utc_now  # noqa: E402
 
 DEFAULT_FETCH_WORKERS = 4
 DEFAULT_FETCH_TIMEOUT_SECONDS = 60
@@ -44,6 +44,10 @@ class Observation:
     repositories: list[dict]
     catalog: dict[str, dict]
     issues: list[str]
+    # Local-only branch_id -> readable name. Branch names are published as digests, so this
+    # is what lets a table show "main" instead of an opaque id — the same arrangement that
+    # already keeps repository names off the wire.
+    branches: dict[str, str] = field(default_factory=dict)
 
 
 def _status_counts(repo_path: Path) -> tuple[int, int, int]:
@@ -145,6 +149,7 @@ def observe_roots(roots: list[RootSpec], secret: str | None = None, fetch: bool 
     fetcher = fetcher or _fetch
     repositories: list[dict] = []
     catalog: dict[str, dict] = {}
+    branches: dict[str, str] = {}
     issues: list[str] = []
 
     paths = _discover(roots, issues)
@@ -181,8 +186,8 @@ def observe_roots(roots: list[RootSpec], secret: str | None = None, fetch: bool 
         stash_text = git_stdout(path, ["rev-list", "--walk-reflogs", "--count", "refs/stash"])
         repositories.append({
             "repo_id": repo_id,
-            "branch": facts.get("branch"),
-            "upstream": facts.get("upstream"),
+            "branch_id": branch_id(facts.get("branch"), secret),
+            "has_upstream": bool(facts.get("upstream")),
             "upstream_observed_at": fetched_at.get(path),
             "ahead": facts.get("ahead"),
             "behind": facts.get("behind"),
@@ -196,6 +201,10 @@ def observe_roots(roots: list[RootSpec], secret: str | None = None, fetch: bool 
         # host/owner are what let `converge` ask a provider to name a peer's hash.
         catalog[repo_id] = {"display_name": name, "path": str(path),
                             "host": host, "owner": owner, "name": name}
+        local_branch = facts.get("branch")
+        if local_branch:
+            branches[branch_id(local_branch, secret)] = local_branch
 
     repositories.sort(key=lambda repo: catalog[repo["repo_id"]]["display_name"].lower())
-    return Observation(repositories=repositories, catalog=catalog, issues=issues)
+    return Observation(repositories=repositories, catalog=catalog, issues=issues,
+                       branches=branches)

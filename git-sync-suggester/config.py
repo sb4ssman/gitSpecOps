@@ -185,10 +185,29 @@ def load_catalog(config_dir: Path | None = None) -> dict[str, dict]:
     }
 
 
-def save_catalog(config_dir: Path, catalog: dict[str, dict]) -> Path:
+def load_branches(config_dir: Path | None = None) -> dict[str, str]:
+    """Local-only branch_id -> readable branch name. Missing/corrupt reads as empty."""
+    path = catalog_path(config_dir or default_config_dir())
+    if not path.is_file():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    entries = value.get("branches") if isinstance(value, dict) else None
+    if not isinstance(entries, dict):
+        return {}
+    return {k: v for k, v in entries.items() if isinstance(k, str) and isinstance(v, str)}
+
+
+def save_catalog(config_dir: Path, catalog: dict[str, dict],
+                 branches: dict[str, str] | None = None) -> Path:
+    """Write the local-only catalog. Existing branch names survive when none are supplied."""
     path = catalog_path(config_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"schema_version": CATALOG_SCHEMA_VERSION, "repositories": catalog}
+    merged_branches = {**load_branches(config_dir), **(branches or {})}
+    payload = {"schema_version": CATALOG_SCHEMA_VERSION, "repositories": catalog,
+               "branches": merged_branches}
     atomic_write_bytes(path, (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8"))
     return path
 

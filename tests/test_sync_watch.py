@@ -12,7 +12,8 @@ from pathlib import Path
 TOOL_DIR = Path(__file__).resolve().parent.parent / "git-sync-suggester"
 sys.path.insert(0, str(TOOL_DIR))
 
-from manifest import build_manifest, fleet_id_for, repository_id  # noqa: E402
+from manifest import (branch_id, build_manifest, fleet_id_for,  # noqa: E402
+                      repository_id)
 from watcher import run_watch, semantic_fingerprint  # noqa: E402
 
 failures = []
@@ -28,7 +29,8 @@ def check(condition, message):
 
 def repo(**overrides):
     base = {
-        "repo_id": REPO_ID, "branch": "main", "upstream": "origin/main",
+        "repo_id": REPO_ID, "branch_id": branch_id("main", SECRET),
+        "has_upstream": True,
         "upstream_observed_at": None, "ahead": 0, "behind": 0, "staged": 0, "unstaged": 0,
         "untracked": 0, "stashes": 0, "operation": None,
     }

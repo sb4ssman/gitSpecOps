@@ -50,24 +50,51 @@ Options 1 and 2 were taken, before any fleet existed and while the change was fr
 Verified live across three machine configs: two sharing a secret correlate 20/20 repositories,
 the third (wrong secret) correlates 0/20 and is reported by name rather than silently excluded.
 
-## What is still published in the clear
+## Closed in schema v3 (2026-09-03)
 
-**`branch` is still a plaintext, human-authored string**, and it is now the strongest remaining
-correlator: `main` says nothing, `feature/acquire-northwind` says a great deal. It was kept rather
-than dropped because, unlike `head`, it has obvious near-term value — "the same repository is on
-different branches on two machines" is a condition the fleet view should eventually surface, and a
-hashed branch could be compared but never *displayed*.
+The last two clear-text fields are gone.
 
-That is a trade-off, not an oversight. The options if it should change:
+- **`branch` -> `branch_id`**, an HMAC under the same fleet secret. Readable names live in the
+  local-only catalog (`catalog.json` gained a `branches` map) exactly as repository names already
+  do: a branch this machine has seen renders as `main`, one only a peer has renders as
+  `branch:1a2b3c4d`. Branch ids are *not* lowercased — git branch names are case-sensitive.
+- **`upstream` -> `has_upstream`** (boolean). Every consumer only ever tested it for truthiness,
+  so publishing the ref name was pure surplus. Strictly less information, nothing lost.
+- Identifiers also shrank: 128 bits for a repository, 64 for a branch. Both are far beyond
+  collision range for any realistic fleet, and at scale the record size is what decides how many
+  repositories fit in one manifest.
 
-- publish `HMAC(secret, branch)` and accept that peer branches become unnameable;
-- publish the branch only when it matches a configured safe list (`main`, `master`, `develop`)
-  and a digest otherwise — more faithful, more moving parts;
-- keep it and state plainly that the state folder reveals your branch names.
+Verified against a real 20-repository manifest: `main`, `origin`, the account name and the archive
+path are all absent from the published bytes, while the local table still shows real branch names.
 
-Either way, `upstream` (e.g. `origin/main`) carries the same exposure and should be decided with it.
+A published record is now:
 
-## Options (a design decision, not a bug fix)
+```json
+{"repo_id": "ab15809c…", "branch_id": "f235eee1…", "has_upstream": true,
+ "upstream_observed_at": null, "ahead": 0, "behind": 0,
+ "staged": 0, "unstaged": 0, "untracked": 0, "stashes": 0, "operation": null}
+```
+
+Salted digests and small integers. There is nothing left in it that names anything.
+
+## The transport determines how much the salt is worth
+
+Worth stating plainly, because an earlier version of this note said "a secret stored beside the
+data it protects protects nothing" as though it were universal. It is not — it is
+transport-dependent:
+
+- **Cloud-synced folder** (Dropbox/OneDrive/Drive): the provider can read every byte, including a
+  key stored alongside. The fleet secret must travel out of band, by the user. The rule holds.
+- **Private GitHub repository**: access is already gated by GitHub auth, and GitHub already hosts
+  the repositories being described. Anyone who could read a key stored there could read the
+  manifests anyway, so storing it there adds no reader. The salt still helps against a narrower
+  case — someone granted read access to only the state repo — but it is no longer load-bearing.
+
+This is what makes a zero-friction join possible for the repo transport specifically: the fleet
+key can live in the private repo, so a second machine needs only `--state-repo owner/name`. Do not
+generalise that to the folder transport.
+
+## Options (a design decision, not a bug fix)## Options (a design decision, not a bug fix)
 
 1. **Salt the identity.** `HMAC-SHA256(secret, host/owner/name)` with the secret stored only in
    local config and never in a manifest. Closes the brute-force hole cheaply. Costs: the secret

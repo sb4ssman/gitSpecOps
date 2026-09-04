@@ -31,6 +31,7 @@ from convergence import (
 from config import (
     default_config,
     default_config_dir,
+    load_branches,
     load_catalog,
     load_config,
     merge_catalog,
@@ -282,8 +283,9 @@ def command_check(args: argparse.Namespace) -> int:
 
     catalog = load_catalog(config_dir)
     merged = merge_catalog(catalog, observation.catalog)
+    branches = {**load_branches(config_dir), **observation.branches}
     if config and not args.no_catalog:
-        save_catalog(config_dir, merged)
+        save_catalog(config_dir, merged, branches)
 
     published = None
     if transport is not None and not args.no_publish:
@@ -294,7 +296,7 @@ def command_check(args: argparse.Namespace) -> int:
     elif transport is not None and not args.local_only:
         print(_dashboard_text(transport, config, merged, own=manifest, show_all=args.all))
     else:
-        print(render_table(manifest, merged))
+        print(render_table(manifest, merged, branches))
 
     print(f"\nObserved {len(observation.repositories)} repositor(ies) from {source}.")
     if published:
@@ -330,7 +332,8 @@ def command_watch(args: argparse.Namespace) -> int:
                                     fetch_timeout=args.fetch_timeout)
         if resolved.config and not args.no_catalog:
             save_catalog(resolved.config_dir,
-                         merge_catalog(load_catalog(resolved.config_dir), observation.catalog))
+                         merge_catalog(load_catalog(resolved.config_dir), observation.catalog),
+                         observation.branches)
         return build_manifest(resolved.fleet_id, resolved.machine_id, resolved.machine_label,
                               observation.repositories)
 

@@ -330,7 +330,7 @@ Namespace-level work has no repository URL to parse, so it resolves a provider b
 Registration lives in `git-archive-updater/remote_provider.py` (importing `provider_github.py`
 alone registers nothing) — `_register_providers()` in the CLI imports that module.
 
-### Manifest schema v2 and the fleet secret
+### Manifest schema v3 and the fleet secret
 
 Synced manifests identify repositories by `HMAC-SHA256(fleet_secret, host/owner/name)` — no names,
 paths, URLs, or commit SHAs. Three rules govern the secret; none of them are negotiable:
@@ -348,10 +348,19 @@ secret is *detected*. Without it, that machine's every `repo_id` would simply di
 look like it shared no repositories with anyone — a configuration error disguised as a data error.
 `split_by_fleet` separates those manifests and the dashboard names the machine and the fix.
 
-`branch` and `upstream` are still published in the clear. That is a deliberate trade-off (a hashed
-branch could be compared but never displayed, and "these two machines are on different branches" is
-worth showing), not an oversight — it is the main remaining exposure and is written up with options
-in [`knowledge/manifest-privacy.md`](knowledge/manifest-privacy.md).
+**v3 closed the last clear-text fields.** `branch` became `branch_id` (HMAC under the fleet
+secret, readable names in the local-only catalog's `branches` map), and `upstream` became the
+boolean `has_upstream` because every consumer only tested it for truthiness. Identifiers shrank to
+128 bits for a repository and 64 for a branch — beyond collision range here, and record size is
+what decides how many repositories fit in one manifest at scale. A published record is now salted
+digests and small integers; nothing in it names anything.
+
+**How much the salt is worth depends on the transport**, and that is not a contradiction of the
+"never store the secret beside the data" rule — it is the scope of it. A cloud folder's provider
+reads everything, so the secret must travel out of band. A private repo's access is already gated
+and GitHub already hosts the repositories being described, so a key stored there adds no reader.
+That asymmetry is what allows a zero-friction join for the repo transport and forbids it for the
+folder one. See [`knowledge/manifest-privacy.md`](knowledge/manifest-privacy.md).
 
 Changing the schema again once several machines publish into one folder is expensive, so
 schema-affecting work goes first. `validate_manifest` refuses an unknown `schema_version` — with a

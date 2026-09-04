@@ -5,6 +5,33 @@ Append-only record of **completed** work. Newest first. Items that graduate from
 
 ## 2026-09-03
 
+- **Manifest schema v3: the last clear-text fields are gone, and the record got smaller.**
+  Agreed with the user before wiring change-detection hooks, on the same reasoning as v2 — a
+  schema change is free while no fleet is deployed.
+  - **`branch` -> `branch_id`**, HMAC under the fleet secret. `feature/acquire-northwind` says more
+    than a repository name does. Readable names moved to the local-only catalog (`catalog.json`
+    gained a `branches` map), so a branch this machine has seen still renders as `main` and one
+    only a peer has renders as `branch:1a2b3c4d` — the same arrangement repository names already
+    used. Branch ids are not lowercased: git branch names are case-sensitive.
+  - **`upstream` -> `has_upstream`** (boolean). Grepping every consumer first showed the string was
+    only ever tested for truthiness, so publishing the ref name was pure surplus.
+  - **Identifiers shrank** to 128 bits (repository) and 64 bits (branch). Beyond collision range
+    here, and at scale record size is what decides how many repositories fit in one manifest.
+  - Verified live: `main`, `origin`, the account name and the archive path are all absent from a
+    real 20-repository manifest, while the local table still shows real branch names. 11/11 pass.
+  - **Corrected an over-broad claim of my own.** The note "a secret stored beside the data it
+    protects protects nothing" is transport-dependent, not universal. A cloud provider reads both,
+    so the folder transport must carry the secret out of band. A private repo's access is already
+    gated and GitHub already hosts the repositories being described, so a key stored there adds no
+    reader — which is what makes a zero-friction join possible for the repo transport specifically.
+  - **Scale measured, not guessed** (the user asked whether this suits enterprise/mega users):
+    361 B/repo before, 321 after, so ~3,200 repositories fit the Contents API's 1 MB inline read.
+    Compression is the real lever — status manifests are highly repetitive and gzip to ~59 B/repo,
+    which is ~18,000 repositories in one manifest. Rate limits are a non-issue (5,000/hr against
+    ~2 calls per publish). What does *not* scale yet is `--fetch` over tens of thousands of repos
+    (20 took 4s at 4 workers) and discovery over a very large tree; the dashboard is already fine
+    because the exceptions view shows only what needs action.
+
 - **Second transport: a private GitHub repo, without ever cloning it.** The user found the
   designated-private-repo option (transport #2 in the design doc) correct but tedious. The tedium
   is not inherent — it comes from assuming a repo must be cloned, committed to, pulled and merged.

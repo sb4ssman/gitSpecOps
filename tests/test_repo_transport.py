@@ -17,7 +17,8 @@ sys.path.insert(0, str(ROOT / "git-sync-suggester"))
 sys.path.insert(0, str(ROOT))
 
 import repo_transport  # noqa: E402
-from manifest import build_manifest, fleet_id_for, repository_id  # noqa: E402
+from manifest import (branch_id, build_manifest, fleet_id_for,  # noqa: E402
+                      repository_id)
 from shared.gh_cli import GhError  # noqa: E402
 
 failures = []
@@ -32,7 +33,8 @@ def check(condition, message):
 
 def make_manifest(machine_id="laptop", **over):
     repo = {"repo_id": repository_id("example.test", "team", "one", SECRET),
-            "branch": "main", "upstream": "origin/main", "upstream_observed_at": None,
+            "branch_id": branch_id("main", SECRET), "has_upstream": True,
+            "upstream_observed_at": None,
             "ahead": 0, "behind": 0, "staged": 0, "unstaged": 0, "untracked": 0,
             "stashes": 0, "operation": None}
     repo.update(over)
