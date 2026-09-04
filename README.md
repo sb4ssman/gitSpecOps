@@ -225,6 +225,22 @@ python3 git-sync-suggester/sync_suggester.py init \
   --state-dir /path/to/gitspecops-state
 ```
 
+That prints a **fleet secret**. Every other machine joins the same fleet with it:
+
+```bash
+python3 git-sync-suggester/sync_suggester.py init \
+  --machine-id machine-b --machine-label laptop \
+  --root /path/to/repositories \
+  --state-dir /path/to/gitspecops-state \
+  --fleet-secret <the 64-character value machine-a printed>
+```
+
+Carry that secret yourself — a password manager, or typed by hand. **Do not put it in the state
+directory.** It is what stops anyone who obtains that folder from working out which repositories
+you have, and a secret stored beside the data it protects protects nothing. A machine that joins
+with the wrong secret is detected and named on the dashboard rather than silently appearing to
+share nothing.
+
 Roots scan direct children by default; use `--recursive-root` for a nested development tree, and
 `--from-archives` to reuse the roots Archive Updater already manages. Configuration lives in
 `~/.config/gitspecops/sync-suggester/` (`%APPDATA%` on Windows, or `GITSPECOPS_SYNC_HOME`).
@@ -274,9 +290,11 @@ answered in well under a second). No tool can guarantee an external cloud client
 write before abrupt sleep or power loss, which is why an explicit `check` before you walk away is
 still worth running.
 
-The synchronized manifest contains hashed canonical repository identities and status facts. It does
-not contain repository display names, remote URLs, absolute paths, filenames, diffs, commit messages,
-or source content. Readable names come from an unsynchronized local catalog. See
+The synchronized manifest (schema v2) identifies repositories by `HMAC-SHA256(fleet secret,
+host/owner/name)`. It contains no display names, remote URLs, absolute paths, filenames, diffs,
+commit messages, commit SHAs, or source content; readable names come from an unsynchronized local
+catalog. Branch names *are* still published in the clear — a deliberate trade-off, since knowing
+which branch each machine sits on is worth showing. See
 [`.agents/knowledge/manifest-privacy.md`](.agents/knowledge/manifest-privacy.md) for exactly what
 that boundary does and does not protect.
 

@@ -9,6 +9,34 @@ ideas, constraints, transport alternatives, and how the tool could fit the gitSp
 current leading direction is to build a small status/advice vertical slice before a tray application,
 watch service, automatic push, or WIP transfer.
 
+## Product goal (stated by the user, 2026-09-03)
+
+This is the target the roadmap now serves, and it is more ambitious than the original
+status-dashboard framing:
+
+> Make this a real, useful, publishable and published toolset and application. Point three
+> machines at "this is where my GitHub folder is", have all three converge on the same orgs and
+> repositories, and have them stay in sync with each other and with the cloud. GitKraken's
+> repository grouping was nice; Sync Suggester should make it obsolete for many-org, many-repo
+> sync management.
+
+Three consequences for the design:
+
+1. **Convergence is the product, not just observation.** Telling a machine "DESKTOP has twelve
+   repositories you do not have" is only half an answer. The other half — cloning them — is
+   already built: `archive_sync.py` discovers an org's full repo set through the provider seam and
+   clones what is missing. Sync Suggester should *detect* the gap and hand off to that engine
+   rather than growing a second cloner. This is the seam that makes the fleet self-assembling.
+2. **Setup has to be trivial on machine two and three.** "Here is my GitHub folder" must be
+   roughly the whole conversation. `init --from-archives` already imports Archive Updater's roots;
+   joining an existing fleet needs to be equally short.
+3. **Published means someone else runs it.** Anything relying on a path, a hostname, or a habit
+   that only exists on one of these machines is a defect. The offline synthetic test suite is what
+   keeps that honest, since none of it can touch a real machine.
+
+Ordering follows from this: any change to the manifest schema is cheap *now* and expensive once
+three machines are publishing into a shared folder. Schema-affecting work therefore comes first.
+
 ## The problem
 
 A person works across several Git repositories and several computers. Before leaving one machine or

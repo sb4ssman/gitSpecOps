@@ -5,6 +5,33 @@ Append-only record of **completed** work. Newest first. Items that graduate from
 
 ## 2026-09-03
 
+- **Manifest schema v2: salted identities, and the fleet secret.** Done first and deliberately —
+  the user's goal is three machines converging on one state folder, and a schema change is free
+  today and expensive once a fleet is publishing.
+  - `repo_id` is now `HMAC-SHA256(fleet_secret, host/owner/name)`. The secret is 32 random bytes
+    made by `init` on the first machine, kept only in that machine's local config, and carried to
+    the others by the user via `init --fleet-secret`. It is never written into the state directory,
+    because a secret stored beside the data it protects protects nothing.
+  - **`head` dropped.** A commit SHA identifies any public repository outright and nothing in the
+    tool ever read it — classification works from ahead/behind, dirty counts, stashes, operation.
+  - **`fleet_id` added** (a public HMAC-derived label). Without it, a machine that joined with the
+    wrong secret produces valid manifests whose every `repo_id` differs, so it silently looks like
+    it shares no repositories — a configuration error disguised as a data error. `split_by_fleet`
+    now separates those and the dashboard names the machine and the fix.
+  - Publishing without a fleet secret is refused rather than falling back to weaker unsalted
+    identities; unsalted ids remain only for a local preview that never reaches the transport.
+    `doctor` and the config dump print `(set, hidden)` and the public `fleet_id`, never the secret.
+  - Verified live with three machine configs against one state folder: two sharing a secret
+    correlate 20/20 repositories, the third (wrong secret) correlates 0/20 and is reported by name.
+    Confirmed the published manifest contains no secret, no `head`, and no name/path/URL.
+  - **Still in the clear: `branch` and `upstream`.** Kept on purpose — a hashed branch could be
+    compared but never displayed, and cross-machine branch differences are worth showing — but it
+    is now the main remaining correlator. Options recorded in `knowledge/manifest-privacy.md`.
+  - Tests updated to v2 across the three sync suites, plus new coverage: the identity must change
+    with the secret, must differ from the unsalted form, malformed secrets must raise, the secret
+    must not appear in a manifest, `head` must be rejected, a v1 manifest must be refused with
+    actionable guidance, and the wrong-fleet machine must be named on the dashboard. 7/7 pass.
+
 - **Sync Suggester: the first vertical slice is complete and the tool is genuinely useful.**
   `init`, `check`, `dashboard`, `alias`, `watch`, and `doctor` all run; only `handoff` is still
   reserved, deliberately, because moving unfinished work between machines is a mutation flow that

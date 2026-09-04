@@ -12,11 +12,13 @@ from pathlib import Path
 TOOL_DIR = Path(__file__).resolve().parent.parent / "git-sync-suggester"
 sys.path.insert(0, str(TOOL_DIR))
 
-from manifest import build_manifest, repository_id  # noqa: E402
+from manifest import build_manifest, fleet_id_for, repository_id  # noqa: E402
 from watcher import run_watch, semantic_fingerprint  # noqa: E402
 
 failures = []
-REPO_ID = repository_id("example.test", "sample-team", "watched-repo")
+SECRET = "ab" * 32
+FLEET_ID = fleet_id_for(SECRET)
+REPO_ID = repository_id("example.test", "sample-team", "watched-repo", SECRET)
 
 
 def check(condition, message):
@@ -26,7 +28,7 @@ def check(condition, message):
 
 def repo(**overrides):
     base = {
-        "repo_id": REPO_ID, "branch": "main", "head": "a" * 40, "upstream": "origin/main",
+        "repo_id": REPO_ID, "branch": "main", "upstream": "origin/main",
         "upstream_observed_at": None, "ahead": 0, "behind": 0, "staged": 0, "unstaged": 0,
         "untracked": 0, "stashes": 0, "operation": None,
     }
@@ -35,7 +37,7 @@ def repo(**overrides):
 
 
 def manifest_at(second, **overrides):
-    return build_manifest("laptop", "LAPTOP", [repo(**overrides)],
+    return build_manifest(FLEET_ID, "laptop", "LAPTOP", [repo(**overrides)],
                           observed_at=f"2026-09-03T12:00:{second:02d}Z")
 
 
@@ -75,7 +77,8 @@ check(semantic_fingerprint(manifest_at(0)) != semantic_fingerprint(manifest_at(0
       "an actual working-tree change did not change the fingerprint")
 check(semantic_fingerprint(manifest_at(0)) != semantic_fingerprint(manifest_at(0, ahead=1)),
       "an ahead-count change did not change the fingerprint")
-unordered = build_manifest("laptop", "LAPTOP", [], observed_at="2026-09-03T12:00:00Z")
+unordered = build_manifest(FLEET_ID, "laptop", "LAPTOP", [],
+                           observed_at="2026-09-03T12:00:00Z")
 check(semantic_fingerprint(unordered) == semantic_fingerprint(unordered),
       "the fingerprint is not stable for the same input")
 

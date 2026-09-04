@@ -60,7 +60,9 @@ def _status_counts(repo_path: Path) -> tuple[int, int, int]:
     return staged, unstaged, untracked
 
 
-def observe_roots(roots: list[RootSpec]) -> Observation:
+def observe_roots(roots: list[RootSpec], secret: str | None = None) -> Observation:
+    """Read every configured root. `secret` salts repository identities for publication;
+    omit it only for a local preview that is never published."""
     repositories: list[dict] = []
     catalog: dict[str, dict] = {}
     issues: list[str] = []
@@ -87,13 +89,12 @@ def observe_roots(roots: list[RootSpec]) -> Observation:
                 issues.append(f"missing or unrecognized origin: {path}")
                 continue
             host, owner, name = parsed
-            repo_id = repository_id(host, owner, name)
+            repo_id = repository_id(host, owner, name, secret)
             staged, unstaged, untracked = _status_counts(path)
             stash_text = git_stdout(path, ["rev-list", "--walk-reflogs", "--count", "refs/stash"])
             repositories.append({
                 "repo_id": repo_id,
                 "branch": facts.get("branch"),
-                "head": git_stdout(path, ["rev-parse", "HEAD"]),
                 "upstream": facts.get("upstream"),
                 "upstream_observed_at": None,
                 "ahead": facts.get("ahead"),

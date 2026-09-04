@@ -18,7 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from advice import render_table
-from aggregate import build_rows, load_manifests, machine_views, render_dashboard
+from aggregate import (build_rows, load_manifests, machine_views, render_dashboard,
+                       split_by_fleet)
 from config import (
     default_config,
     default_config_dir,
@@ -31,7 +32,7 @@ from config import (
     validate_config,
 )
 from folder_transport import FolderTransport
-from manifest import build_manifest
+from manifest import build_manifest, fleet_id_for, is_fleet_secret
 from observer import RootSpec, observe_roots
 from watcher import DEFAULT_HEARTBEAT_SECONDS, DEFAULT_INTERVAL_SECONDS, run_watch
 
@@ -73,7 +74,11 @@ def command_init(args: argparse.Namespace) -> int:
               "Re-run with --force to replace it, or edit the file directly.", file=sys.stderr)
         return 2
 
-    config = default_config(args.machine_id)
+    if args.fleet_secret and not is_fleet_secret(args.fleet_secret):
+        print("error: --fleet-secret must be 64 hexadecimal characters (copy it from the "
+              "machine that created the fleet)", file=sys.stderr)
+        return 2
+    config = default_config(args.machine_id, args.fleet_secret)
     if args.machine_label:
         config["machine_label"] = args.machine_label
     if args.state_dir:
@@ -117,7 +122,18 @@ def command_init(args: argparse.Namespace) -> int:
 
     written = save_config(config_dir, config)
     print(f"Configuration written: {written}")
-    print(json.dumps(config, indent=2, sort_keys=True))
+    shown = {**config, "fleet_secret": "(hidden — see below)"}
+    print(json.dumps(shown, indent=2, sort_keys=True))
+    print()
+    if args.fleet_secret:
+        print(f"Joined fleet {fleet_id_for(config['fleet_secret'])}.")
+    else:
+        print(f"Created fleet {fleet_id_for(config['fleet_secret'])}. To add another machine, "
+              "run init there with:")
+        print(f"\n    --fleet-secret {config['fleet_secret']}\n")
+        print("Carry that value yourself (password manager, typed by hand). Do NOT put it in the "
+              "state directory — the secret is what stops anyone who obtains that folder from "
+              "recovering which repositories you have.")
     return 0
 
 
@@ -130,6 +146,14 @@ class Resolution:
         self.specs, self.source = specs, source
         self.machine_id, self.machine_label = machine_id, machine_label
         self.state_dir = state_dir
+
+    @property
+    def secret(self) -> str | None:
+        return (self.config or {}).get("fleet_secret")
+
+    @property
+    def fleet_id(self) -> str | None:
+        return fleet_id_for(self.secret) if self.secret else None
 
 
 def _resolve(args: argparse.Namespace) -> Resolution | int:
@@ -150,6 +174,12 @@ def _resolve(args: argparse.Namespace) -> Resolution | int:
     machine_label = (args.machine_label
                      or (None if args.machine_id else (config or {}).get("machine_label"))
                      or machine_id)
+    if state_dir and not (config or {}).get("fleet_secret"):
+        # Without a fleet secret the identities would be unsalted, which is exactly the v1
+        # weakness v2 exists to close. Refuse rather than publish a weaker manifest.
+        print("error: publishing needs a fleet secret — run 'init' on this machine first "
+              "(add --fleet-secret to join an existing fleet)", file=sys.stderr)
+        return 2
     if state_dir and machine_id == PREVIEW_MACHINE_ID:
         print("error: publishing needs a real machine id — run 'init' or pass --machine-id",
               file=sys.stderr)
@@ -166,8 +196,9 @@ def command_check(args: argparse.Namespace) -> int:
     state_dir, machine_id, machine_label = (resolved.state_dir, resolved.machine_id,
                                             resolved.machine_label)
 
-    observation = observe_roots(specs)
-    manifest = build_manifest(machine_id, machine_label, observation.repositories)
+    observation = observe_roots(specs, resolved.secret)
+    manifest = build_manifest(resolved.fleet_id or "preview", machine_id, machine_label,
+                              observation.repositories)
 
     catalog = load_catalog(config_dir)
     merged = merge_catalog(catalog, observation.catalog)
@@ -214,11 +245,11 @@ def command_watch(args: argparse.Namespace) -> int:
         print(f"\nsignal {signum} received — publishing a final observation, then stopping.")
 
     def observe() -> dict:
-        observation = observe_roots(resolved.specs)
+        observation = observe_roots(resolved.specs, resolved.secret)
         if resolved.config and not args.no_catalog:
             save_catalog(resolved.config_dir,
                          merge_catalog(load_catalog(resolved.config_dir), observation.catalog))
-        return build_manifest(resolved.machine_id, resolved.machine_label,
+        return build_manifest(resolved.fleet_id, resolved.machine_id, resolved.machine_label,
                               observation.repositories)
 
     for name in ("SIGINT", "SIGTERM"):
@@ -250,13 +281,16 @@ def _dashboard_text(state_dir: str, config: dict | None, catalog: dict[str, dict
     manifests, issues = load_manifests(transport)
     if own is not None:
         manifests = [m for m in manifests if m.get("machine_id") != own["machine_id"]] + [own]
+    secret = (config or {}).get("fleet_secret")
+    manifests, foreign = split_by_fleet(manifests, fleet_id_for(secret) if secret else None)
     stale_hours = (config or {}).get("stale_hours", 24)
     expired_days = (config or {}).get("expired_days", 7)
     now = datetime.now(timezone.utc)
     views = sorted(machine_views(manifests, now, stale_hours, expired_days),
                    key=lambda view: (own is None or view.machine_id != own["machine_id"],
                                      view.label.lower()))
-    text = render_dashboard(views, build_rows(views, catalog), now, show_all=show_all)
+    text = render_dashboard(views, build_rows(views, catalog), now, show_all=show_all,
+                            foreign=foreign)
     for issue in issues:
         print(f"warning: {issue}", file=sys.stderr)
     return text
@@ -310,6 +344,10 @@ def command_doctor(args: argparse.Namespace) -> int:
         report["config_error"] = None
     except ValueError as exc:
         config, report["config"], report["config_error"] = None, None, str(exc)
+    if report.get("config"):
+        # The fleet id is a public label; the secret itself must never be printed.
+        report["config"] = {**report["config"], "fleet_secret": "(set, hidden)"}
+        report["fleet_id"] = fleet_id_for((config or {}).get("fleet_secret"))
     report["catalog_entries"] = len(load_catalog(config_dir))
     state_dir = args.state_dir or (config or {}).get("state_dir")
     report["state_dir"] = state_dir
@@ -318,6 +356,9 @@ def command_doctor(args: argparse.Namespace) -> int:
         report["transport"] = transport.doctor()
         manifests, issues = load_manifests(transport)
         report["machines"] = sorted(m["machine_id"] for m in manifests)
+        report["foreign_fleet_machines"] = sorted(
+            m["machine_id"] for m in manifests
+            if report.get("fleet_id") and m.get("fleet_id") != report["fleet_id"])
         report["manifest_issues"] = issues
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
@@ -332,6 +373,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     init = subparsers.add_parser("init", help="write this machine's saved configuration")
     init.add_argument("--machine-id", help="stable non-personal id (default: this hostname)")
+    init.add_argument("--fleet-secret",
+                      help="join an existing fleet (64 hex chars, printed by the first machine); "
+                           "omit to create a new fleet")
     init.add_argument("--machine-label", help="readable label (default: the machine id)")
     init.add_argument("--root", action="append", help="root scanned by direct children (repeatable)")
     init.add_argument("--recursive-root", action="append",

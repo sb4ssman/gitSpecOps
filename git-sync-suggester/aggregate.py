@@ -146,6 +146,20 @@ def load_manifests(transport, skip_invalid: bool = True) -> tuple[list[dict], li
     return manifests, issues
 
 
+def split_by_fleet(manifests: list[dict], fleet_id: str | None) -> tuple[list[dict], list[dict]]:
+    """Separate manifests belonging to this fleet from ones written under a different secret.
+
+    A machine that joined with the wrong fleet secret produces valid manifests whose every
+    `repo_id` differs, so it would silently appear to share no repositories with anyone. That
+    reads as a data problem when it is a configuration problem, so it is called out by name.
+    """
+    if fleet_id is None:
+        return list(manifests), []
+    ours = [m for m in manifests if m.get("fleet_id") == fleet_id]
+    theirs = [m for m in manifests if m.get("fleet_id") != fleet_id]
+    return ours, theirs
+
+
 def machine_views(manifests: list[dict], now: datetime, stale_hours: int,
                   expired_days: int) -> list[MachineView]:
     views = []
@@ -288,7 +302,7 @@ def cell_text(cell: Cell) -> str:
 
 
 def render_dashboard(views: list[MachineView], rows: list[Row], now: datetime,
-                     show_all: bool = False) -> str:
+                     show_all: bool = False, foreign: list[dict] | None = None) -> str:
     """The control-tower table: one column per machine, one advice column.
 
     By default this is an exceptions view — rows nothing can be done about are folded into
@@ -328,6 +342,11 @@ def render_dashboard(views: list[MachineView], rows: list[Row], now: datetime,
            for row in shown for cell in row.cells.values()):
         lines.append("Note: ↑/↓ come from cached remote-tracking refs — no fetch has been run, "
                      "so they may be out of date.")
+    for manifest in foreign or []:
+        lines.append(
+            f"⚠ {manifest.get('machine_label') or manifest.get('machine_id')} published under a "
+            f"different fleet secret (fleet {manifest.get('fleet_id')}) and is excluded — "
+            "re-run init on that machine with this fleet's secret.")
     lines.append("Legend: ✓ clean  ✎ uncommitted  ↑ ahead  ↓ behind  ↕ diverged  "
                  "⚑ stash  ⚠ attention  ? unknown  - not present")
     return "\n".join(lines)
