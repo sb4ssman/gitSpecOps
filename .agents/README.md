@@ -211,8 +211,10 @@ Four rules hold this design together; do not quietly relax any of them:
   report keeps its warning as last-known unresolved work. `WORK_STATES` and `_effective_state()`
   in `aggregate.py` are where that lives, and `tests/test_sync_aggregate.py` pins every case.
 - **Machine freshness and remote freshness are separate.** A manifest written a second ago says
-  nothing about how old its remote-tracking refs are. `upstream_observed_at` is carried
-  independently, and the dashboard footnotes any ↑/↓ it shows while no fetch has been run.
+  nothing about how old its remote-tracking refs are. `upstream_observed_at` is stamped per
+  repository by `--fetch` and evaluated against its own freshness thresholds, so the dashboard
+  footnote counts exactly the ↑/↓ values that are actually cached and says how stale they are.
+  Never collapse these two clocks into one.
 - **The watch must not churn.** It republishes only on a semantic change (`semantic_fingerprint`
   deliberately ignores `observed_at`) plus a heartbeat, because a manifest rewritten every cycle
   would make the user's cloud client upload constantly and bury the write that mattered.
@@ -225,6 +227,28 @@ Four rules hold this design together; do not quietly relax any of them:
 Local state lives outside the repo — `GITSPECOPS_SYNC_HOME`, else XDG on POSIX / `%APPDATA%` on
 Windows, under `gitspecops/sync-suggester/`. `config.json` and `catalog.json` are per-machine and
 never enter the state directory.
+
+### Fetching (the only network activity)
+
+`--fetch` on `check`/`watch` is opt-in and is the sole place this tool touches the network. Rules:
+
+- It runs `git fetch --quiet` with **no refspec**, which moves remote-tracking refs only — never a
+  local branch, never the working tree. That is what keeps a read-only tool read-only.
+- `GIT_TERMINAL_PROMPT=0` is forced. This is the lesson the org duplicator already paid for: a
+  repository whose credentials expired otherwise blocks on an invisible prompt until the timeout
+  instead of failing in under a second.
+- Bounded: a small thread pool (network-bound, so parallelism is a large win) with a per-fetch
+  timeout. A failure is collected and the repository keeps its cached counts; a fetcher that
+  *raises* is caught too, because one repository must never cost the observation of the rest.
+- `upstream_observed_at` is stamped only for repositories that actually succeeded. Never stamp
+  optimistically — the whole point is to be able to distinguish measured from remembered.
+- The fetch boundary is injectable (`observe_roots(..., fetcher=...)`), which is how the tests
+  exercise success and failure with no connection at all. A real fetch of even a bogus host still
+  performs a DNS lookup, so an "offline" suite that fetches for real is not offline.
+
+`operation` (rebase/merge/cherry-pick/revert/bisect in progress) is detected from marker paths in
+the git dir. It had been in the schema and the advice logic from the start but was never populated
+— worth remembering that a field the classifier handles is not the same as a field anyone sets.
 
 ### Convergence and the deterministic-hash trick
 
@@ -319,6 +343,7 @@ uv run python tests\test_sync_config.py
 uv run python tests\test_sync_aggregate.py
 uv run python tests\test_sync_watch.py
 uv run python tests\test_sync_converge.py
+uv run python tests\test_sync_observe.py
 ```
 
 A fleet is testable on one box: give each simulated machine its own `--config-dir` pointed at one

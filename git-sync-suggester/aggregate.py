@@ -302,7 +302,8 @@ def cell_text(cell: Cell) -> str:
 
 
 def render_dashboard(views: list[MachineView], rows: list[Row], now: datetime,
-                     show_all: bool = False, foreign: list[dict] | None = None) -> str:
+                     show_all: bool = False, foreign: list[dict] | None = None,
+                     stale_hours: int = 24, expired_days: int = 7) -> str:
     """The control-tower table: one column per machine, one advice column.
 
     By default this is an exceptions view — rows nothing can be done about are folded into
@@ -337,11 +338,22 @@ def render_dashboard(views: list[MachineView], rows: list[Row], now: datetime,
         lines.append(summary)
     lines.append("Machines: " + ", ".join(
         f"{view.label} {view.freshness} ({age_phrase(view.age)})" for view in views))
-    if any(cell.present and (cell.repo.get("ahead") or cell.repo.get("behind"))
-           and not cell.repo.get("upstream_observed_at")
-           for row in shown for cell in row.cells.values()):
-        lines.append("Note: ↑/↓ come from cached remote-tracking refs — no fetch has been run, "
-                     "so they may be out of date.")
+    # Machine freshness and remote freshness are different things: a manifest written a
+    # second ago says nothing about how old its remote-tracking refs are. Only warn about the
+    # counts that are actually cached, and say how stale they are when it is known.
+    unfetched = [
+        cell for row in shown for cell in row.cells.values()
+        if cell.present and (cell.repo.get("ahead") or cell.repo.get("behind"))
+        and freshness(cell.repo.get("upstream_observed_at"), now,
+                      stale_hours, expired_days) != CURRENT
+    ]
+    if unfetched:
+        never = sum(1 for cell in unfetched if not cell.repo.get("upstream_observed_at"))
+        detail = ("no fetch has been run" if never == len(unfetched)
+                  else f"{never} never fetched, the rest last fetched over {stale_hours}h ago")
+        lines.append(f"Note: {len(unfetched)} ↑/↓ count(s) come from cached remote-tracking "
+                     f"refs ({detail}), so they may be out of date. Run check --fetch to "
+                     "refresh them.")
     for manifest in foreign or []:
         lines.append(
             f"⚠ {manifest.get('machine_label') or manifest.get('machine_id')} published under a "
