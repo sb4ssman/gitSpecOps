@@ -256,6 +256,22 @@ with tempfile.TemporaryDirectory() as tmp:
           "a corrupt or boundary-violating manifest was not skipped")
     check(len(issues) == 2, f"expected two reported manifest issues, got {issues}")
 
+# --- cross-machine advice must not hide compound state --------------------------------
+row = advice_for([("laptop", "LAPTOP", FRESH, [repo("dirty", unstaged=2, ahead=3)]),
+                  ("desk", "DESK", FRESH, [repo("dirty")])], "dirty")
+check(row.severity_key == "dirty", f"headline changed: {row.severity_key}")
+check("ahead 3" in row.advice,
+      f"a dirty repository that is also ahead lost its unpushed commits: {row.advice}")
+
+row = advice_for([("laptop", "LAPTOP", FRESH, [repo("behind", behind=2, stashes=1)])], "behind")
+check("stash" in row.advice, f"a stash was hidden behind a pull suggestion: {row.advice}")
+
+row = advice_for([("laptop", "LAPTOP", FRESH, [repo("ahead", ahead=1)]),
+                  ("desk", "DESK", FRESH, [repo("ahead")])], "ahead")
+check("also" not in row.advice,
+      f"advice invented extras for a repository with nothing else pending: {row.advice}")
+
+
 # --- a machine that joined with the wrong secret is called out, not silently empty ----
 from aggregate import split_by_fleet  # noqa: E402
 

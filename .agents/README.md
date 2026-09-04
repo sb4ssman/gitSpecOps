@@ -55,7 +55,11 @@ standalone read-only CLI:
 
 - `shared/remote_identity.py` — parse any git remote URL into canonical host/owner/name
 - `shared/git_facts.py` — `run_git` with timeouts + per-repo facts (branch, origin, dirty, ahead/behind)
-- `shared/repo_discovery.py` — find repos on disk (worktrees, `.git`-file links, bare); the scanner
+- `shared/repo_discovery.py` — find repos on disk (worktrees, `.git`-file links, bare); the
+  scanner. **Cross-filesystem exclusion happens only on positive evidence** — an unknown
+  device id never means "skip". Windows is why: `os.DirEntry.stat()` there returns a cached
+  record with `st_dev == 0`, and comparing that against the root's real device number once
+  made an entire drive scan come back empty.
 - `shared/gh_cli.py` — one `gh` subprocess wrapper (`run_gh` / `GhError`)
 
 `git_inspect.py` and `archive_diff.py` are thin facades re-exporting their shared primitives, so
@@ -226,7 +230,10 @@ machine's status manifest, and reads what other machines left behind. The flat m
   Contents API through `gh` — never cloned
 - `config.py` - persistent local config + the local-only catalog (the privacy pressure point:
   it is the file mapping an opaque `repo_id` back to a readable name and a path on this disk)
-- `advice.py` - pure single-machine classification and the local ASCII table
+- `advice.py` - pure single-machine classification and the local ASCII table.
+  `classify_repository` gives one **headline** state for severity ordering; anything that renders
+  or advises must use `repository_flags`/`describe_repository`/`secondary_facts`, because a single
+  state necessarily hides the rest (dirty AND ahead reported only "dirty" until 2026-09-04)
 - `aggregate.py` - freshness, cross-machine advice, and the control-tower dashboard
 - `watcher.py` - the polling loop; pure enough to test with an injected clock
 - `convergence.py` - which repositories peers have that this machine lacks, and naming them
