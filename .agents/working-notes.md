@@ -33,8 +33,14 @@ _Last tended: 2026-09-03_
      (bounded pool, per-repo stamping, separate remote-freshness accounting). The *scheduled*
      variant is still open: whether a periodic `watch --fetch` is wanted, and at what interval,
      is a policy call now rather than a design one.
-  4. **Joining a fleet in one step** on machines two and three, and **installing the watch**
-     (login task / periodic timer / tray, per OS). `watch` is foreground-only today.
+  4. **Change detection via git hooks (tier 1)** — the "no running junk" mechanism, decided
+     2026-09-03 and written up in [`knowledge/change-detection.md`](knowledge/change-detection.md).
+     A chained global `core.hooksPath` dispatcher that publishes local state on
+     `post-commit`/`post-checkout`/`post-merge`/`post-rewrite`. Must chain to each repo's own
+     hooks, must always exit 0, and must never do network I/O — so with the repo transport the
+     hook writes locally and something else uploads. An OS timer stays optional (tier 2) because
+     the freshness model already degrades to "unknown" rather than lying.
+     Also still open: **joining a fleet in one step** on machines two and three.
   5. `handoff` — **design pass written 2026-09-03** ([`handoff-design.md`](handoff-design.md));
      still unbuilt, on purpose. Its recommendation is to not build it yet: most of "I left work on
      the other machine" is unpushed commits, which `--publish` now covers. Three open questions
@@ -43,6 +49,13 @@ _Last tended: 2026-09-03_
      above `unknown` but below `ahead`, so it surfaces without shouting.
   7. The **advice → apply** step (clean + behind-only + fresh fetch -> `git pull --ff-only`) stays
      purely advisory until fetching is settled.
+
+- [ ] **Transports: `state_dir` and `state_repo` both ship; folder auto-detection is not built.**
+  The user chose "both, gh-backed first" — the gh Contents API transport landed 2026-09-03. Still
+  to do: probe the known OneDrive/Dropbox/Drive/Syncthing/iCloud locations per OS at `init` so a
+  machine with a sync client needs no path typed. Note this machine has *no* such folder (only
+  `rclone`), so auto-detection is a convenience, not a default. `rclone` remains a possible
+  advanced escape hatch — 70+ backends, auth configured once — but its own setup is real tedium.
 
 - [ ] **Manifest privacy: `branch` and `upstream` are still published in the clear.** v2 closed
   the big holes (salted `repo_id`, `head` dropped — see [`work-log.md`](work-log.md)). Branch names

@@ -22,6 +22,7 @@ from pathlib import Path
 
 from folder_transport import SAFE_MACHINE_ID, atomic_write_bytes
 from manifest import is_fleet_secret, new_fleet_secret
+from repo_transport import SAFE_REPO_SPEC
 
 CONFIG_SCHEMA_VERSION = 1
 CATALOG_SCHEMA_VERSION = 1
@@ -32,8 +33,8 @@ DEFAULT_STALE_HOURS = 24
 DEFAULT_EXPIRED_DAYS = 7
 
 CONFIG_KEYS = frozenset({
-    "schema_version", "fleet_secret", "machine_id", "machine_label", "state_dir", "roots",
-    "stale_hours", "expired_days",
+    "schema_version", "fleet_secret", "machine_id", "machine_label", "state_dir",
+    "state_repo", "roots", "stale_hours", "expired_days",
 })
 ROOT_KEYS = frozenset({"path", "recursive"})
 
@@ -76,6 +77,10 @@ def default_config(machine_id: str | None = None, fleet_secret: str | None = Non
         "machine_id": resolved,
         "machine_label": resolved,
         "state_dir": None,
+        # Exactly one transport at a time: a folder your sync client replicates, or a
+        # private repository addressed through `gh`. Never both — two places to publish
+        # means two disagreeing sources of truth.
+        "state_repo": None,
         "roots": [],
         "stale_hours": DEFAULT_STALE_HOURS,
         "expired_days": DEFAULT_EXPIRED_DAYS,
@@ -101,6 +106,12 @@ def validate_config(value: object) -> dict:
     state_dir = value.get("state_dir")
     if state_dir is not None and (not isinstance(state_dir, str) or not state_dir):
         raise ValueError("state_dir must be a non-empty string or null")
+    state_repo = value.get("state_repo")
+    if state_repo is not None:
+        if not isinstance(state_repo, str) or not SAFE_REPO_SPEC.fullmatch(state_repo):
+            raise ValueError("state_repo must look like owner/name, or be null")
+    if state_dir and state_repo:
+        raise ValueError("set either state_dir or state_repo, not both")
     roots = value.get("roots")
     if not isinstance(roots, list):
         raise ValueError("roots must be a list")

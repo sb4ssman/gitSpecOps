@@ -247,6 +247,26 @@ python3 git-sync-suggester/sync_suggester.py init \
   --state-dir /path/to/gitspecops-state
 ```
 
+Prefer not to depend on a cloud-sync client? Point it at a private GitHub repository instead —
+it is **never cloned**, so there is no working copy, no commit/pull/push cycle and no conflict
+resolution to think about:
+
+```bash
+python3 git-sync-suggester/sync_suggester.py init \
+  --machine-id machine-a --root /path/to/repositories \
+  --state-repo yourname/gitSpecOps-state --create-state-repo
+```
+
+Each machine reads and writes only its own small JSON file through the GitHub Contents API,
+using the `gh` login you already have. The blob SHA returned by a read is what the write sends
+back, so if another machine wrote in between, GitHub rejects the write and this re-reads rather
+than clobbering. A **public** state repository is refused outright — machine status and branch
+names should not be world-readable — and creating the repository requires the explicit
+`--create-state-repo`, because making a repository on your account is not something a status
+command should ever do as a side effect.
+
+Pick one: `--state-dir` or `--state-repo`, never both.
+
 That prints a **fleet secret**. Every other machine joins the same fleet with it:
 
 ```bash

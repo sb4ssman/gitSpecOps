@@ -222,6 +222,8 @@ machine's status manifest, and reads what other machines left behind. The flat m
 - `manifest.py` - salted identities, fleet secret/id, v2 privacy boundary, JSON validation
 - `folder_transport.py` - one manifest per machine, same-directory atomic replacement
   (`atomic_write_bytes` is the shared primitive; `config.py` uses it too)
+- `repo_transport.py` - the same interface backed by a private GitHub repo via the
+  Contents API through `gh` — never cloned
 - `config.py` - persistent local config + the local-only catalog (the privacy pressure point:
   it is the file mapping an opaque `repo_id` back to a readable name and a path on this disk)
 - `advice.py` - pure single-machine classification and the local ASCII table
@@ -256,6 +258,33 @@ Four rules hold this design together; do not quietly relax any of them:
 Local state lives outside the repo — `GITSPECOPS_SYNC_HOME`, else XDG on POSIX / `%APPDATA%` on
 Windows, under `gitspecops/sync-suggester/`. `config.json` and `catalog.json` are per-machine and
 never enter the state directory.
+
+### Transports
+
+Two, behind one small interface (`list_manifests` / `read_manifest` / `write_own_manifest` /
+`doctor`). `open_transport()` in the CLI is the single place that decides which is in play, and a
+config may hold `state_dir` **or** `state_repo`, never both — two places to publish means two
+disagreeing sources of truth.
+
+**The property both must preserve: one file per machine, single writer.** That is why there is no
+conflict-resolution code anywhere in this codebase, and any shared-document design would import
+that entire bug class. Do not add a transport that breaks it.
+
+`repo_transport.py` uses the GitHub Contents API rather than cloning, because a clone means a
+working copy on every machine plus a commit/pull/push cycle plus merge handling, for what is a few
+KB of JSON. Read returns the blob `sha`; the write sends that `sha` back, so a concurrent write is
+rejected with 409 and re-read rather than clobbered. Retries once, then gives up — it never forces.
+
+Its rules:
+
+- **Never call it from a git hook.** A network round trip inside `git commit` is unacceptable. A
+  hook writes local state; upload happens elsewhere.
+- **A public state repository is refused**, not warned about (`--allow-public-state-repo` is the
+  deliberate escape hatch). Branch names alone say a great deal about what someone is working on.
+- **Creating the repository is a separate, explicitly requested act** (`create_state_repo()` /
+  `--create-state-repo`). Making a repository on someone's account must never be a side effect of
+  a status command.
+- Auth is the user's own `gh` login — nothing here stores or manages a credential.
 
 ### Fetching (the only network activity)
 
@@ -374,6 +403,7 @@ uv run python tests\test_sync_watch.py
 uv run python tests\test_sync_converge.py
 uv run python tests\test_sync_observe.py
 uv run python tests\test_archive_publish.py
+uv run python tests\test_repo_transport.py
 ```
 
 A fleet is testable on one box: give each simulated machine its own `--config-dir` pointed at one
