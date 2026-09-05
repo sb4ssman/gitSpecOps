@@ -649,10 +649,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     handoff = subparsers.add_parser("handoff", help="reserved: handoff workflow")
     handoff.set_defaults(handler=lambda _args: _not_ready("handoff"))
+    fleet = subparsers.add_parser("fleet", help="foreground Tailscale app and browser dashboard",
+                                  add_help=False)
+    fleet.add_argument("fleet_args", nargs=argparse.REMAINDER)
+    def run_fleet(args):
+        from fleet_app import main as fleet_main
+        prefix = ["--config-dir", args.config_dir] if args.config_dir else []
+        return fleet_main(prefix + args.fleet_args)
+    fleet.set_defaults(handler=run_fleet)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    # The foreground app owns its own small parser and lifecycle. Existing scripts remain flat.
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "fleet":
+        from fleet_app import main as fleet_main
+        return fleet_main(argv[1:])
     args = build_parser().parse_args(argv)
     if args.handler is command_alias and args.repo_id and not args.name and not args.list:
         print("error: alias needs both a repo id and a name (or use --list)", file=sys.stderr)

@@ -55,5 +55,14 @@ Tiers 0+1 alone give a correct system.
 
 ## Status
 
-Not implemented. Tier 0 exists today. Tier 1 is the next piece of work and is what makes the
-"no running junk" goal real; Tier 3 (`watch`) already exists for the live case.
+Amended 2026-09-05 for the persistent Fleet app: native filesystem notification is implemented in
+`fleet_events.py` with Linux inotify and Windows `ReadDirectoryChangesW`. It blocks in the kernel
+while idle, debounces change bursts, and `fleet_observer.py` refreshes only the deepest known
+checkout containing an event. One acknowledged inventory runs at startup; there is no timed full
+scan. `fleet rescan` handles new/removed repository inventory deliberately. A cached network
+heartbeat proves the process is online without reading repositories.
+
+Tier 1 Git hooks remain useful for ref-only changes in linked worktrees and Git operations whose
+metadata lives outside a selected library. They are not needed to remove polling and are still
+unimplemented. The older legacy `watch` command remains interval-based; the Fleet app no longer
+uses it.

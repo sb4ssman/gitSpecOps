@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gitSpecOps Sync-Suggester Fleet Management</title>
+<link rel="stylesheet" href="/assets/fleet_standard.css">
+<script type="module" src="/assets/fleet_standard.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#workspace">Skip to repositories</a>
+<header class="app-header"><div><div class="brand">gitSpecOps <span class="preview">Development preview</span></div><h1>Sync-Suggester Fleet Management</h1></div><div class="connection-tools"><span id="connection" role="status">Connecting…</span><button id="theme" type="button">Light mode</button><button id="refresh" type="button">Refresh view</button></div></header>
+<div id="connection-warning" class="banner warning" role="alert" hidden></div>
+<nav class="tabs" aria-label="Fleet views"><button type="button" data-tab="repositories" aria-pressed="true">Repositories</button><button type="button" data-tab="machines" aria-pressed="false">Machines</button><button type="button" data-tab="about" aria-pressed="false">App &amp; setup</button></nav>
+<section id="summary" class="summary-grid" aria-label="Fleet overview"></section>
+<main id="workspace" tabindex="-1">
+<section id="repositories-panel" aria-label="Repositories">
+<div class="section-title"><h2>Repository inventory</h2><p>Find unfinished work and compare reports across your machines.</p></div>
+<div class="filter-bar"><label class="search-field">Search<input id="search" type="search" placeholder="Repository, organization, or host" autocomplete="off"></label><label>Show<select id="status-filter"><option value="attention">Needs attention</option></select></label><label>Machine<select id="machine-filter"><option value="all">All machines</option></select></label><label>Order<select id="sort"><option value="attention">Attention first</option><option value="name">Repository name</option></select></label><button id="clear-filters" type="button" class="quiet">Reset filters</button></div>
+<div class="list-tools"><span id="result-count" role="status">Waiting for inventory…</span><div><button id="expand" type="button" class="quiet">Expand all</button><button id="collapse" type="button" class="quiet">Collapse all</button></div></div>
+<p class="context-note">Groups reflect observed organizations. Missing reports do not mean that a repository should be cloned.</p>
+<div class="repository-workspace"><div id="repository-list" aria-label="Grouped repository table"></div><aside id="detail" class="detail-panel" aria-label="Repository details" hidden></aside></div>
+<div id="notices" class="notices"></div>
+</section>
+<section id="machines-panel" aria-label="Machines" hidden><div class="section-title"><h2>Reporting machines</h2><p>A machine appears after its observer sends a report. Reachability alone does not establish repository state.</p></div><div id="machine-list" class="machine-grid"></div><div id="issues"></div></section>
+<section id="about-panel" aria-label="Application and setup" hidden><div class="section-title"><h2>App &amp; setup</h2><p id="product-version"></p></div><div class="about-grid"><article class="card"><h3>This installation</h3><dl id="app-facts"></dl><p>This dashboard is the development preview. A desktop installer and automatic updates are not available yet.</p><p>Adding a machine should use an installed app with first-run setup. Source ZIP downloads have been removed.</p></article><article class="card"><h3>Integration levels</h3><div id="integrations"></div></article><article class="card"><h3>Action and recovery features</h3><div id="features"></div></article><article class="card"><h3>What is available</h3><div id="capabilities"></div></article></div></section>
+</main>
+<footer><span>Standard interface</span><span id="last-updated">No report received</span></footer>
+<noscript><p class="banner warning">JavaScript is required to display the live fleet view.</p></noscript>
+</body></html>

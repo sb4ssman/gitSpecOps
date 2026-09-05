@@ -147,9 +147,6 @@ def observe_roots(roots: list[RootSpec], secret: str | None = None, fetch: bool 
     without a network — the same discipline that makes `watcher.py` testable.
     """
     fetcher = fetcher or _fetch
-    repositories: list[dict] = []
-    catalog: dict[str, dict] = {}
-    branches: dict[str, str] = {}
     issues: list[str] = []
 
     paths = _discover(roots, issues)
@@ -172,9 +169,32 @@ def observe_roots(roots: list[RootSpec], secret: str | None = None, fetch: bool 
                 else:
                     issues.append(f"fetch failed, using cached refs: {path.name}: {error}")
 
-    for index, path in enumerate(paths, start=1):
+    observed = observe_paths(paths, secret, fetched_at=fetched_at, progress=progress)
+    observed.issues = issues + observed.issues
+    return observed
+
+
+def observe_paths(paths: list[Path], secret: str | None = None,
+                  fetched_at: dict[Path, str] | None = None, progress=None) -> Observation:
+    """Inspect known repository roots without rediscovering their parent libraries.
+
+    This is the event-driven observer's targeted path: a filesystem event identifies the
+    affected checkout, then only that checkout pays for Git status commands. It performs no
+    network activity and never mutates the repository.
+    """
+    repositories: list[dict] = []
+    catalog: dict[str, dict] = {}
+    branches: dict[str, str] = {}
+    issues: list[str] = []
+    fetched_at = fetched_at or {}
+    normalized = [Path(path).expanduser().resolve() for path in paths]
+
+    for index, path in enumerate(normalized, start=1):
         if progress is not None:
-            progress(index, len(paths), path)
+            progress(index, len(normalized), path)
+        if not path.is_dir():
+            issues.append(f"repository disappeared: {path}")
+            continue
         facts = repo_facts(path)
         parsed = parse_remote_url(facts.get("origin"))
         if not parsed:
