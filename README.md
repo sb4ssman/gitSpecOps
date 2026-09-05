@@ -10,16 +10,17 @@ Small, cautious special operations for whole collections of Git repositories.
   do that across computers. It wants every clone to be safely synchronized, remembers the last facts
   each machine reported, and explains what needs attention before you move from one computer to another.
 
-The repository is intentionally plain and stdlib-first. There is no package CLI, hidden service, or
-database. The tools are regular Python scripts; optional convenience launchers are generated locally
-by setup and are never committed.
+The repository is intentionally plain and stdlib-first. The tools are regular Python scripts;
+optional convenience launchers are generated locally by setup and are never committed. The optional
+foreground fleet app keeps its shared view in a local SQLite database; it installs no service.
 
 > Working on this repo (human or agent)? Start with [`.agents/README.md`](.agents/README.md) — the primary project brief — and the living [`.agents/working-notes.md`](.agents/working-notes.md).
 
 ## Quick Start
 
 Install Python 3.11+ and `git`. GitHub CLI (`gh`) is required for the organization duplicator and
-GitHub-aware archive discovery; `uv` is optional but recommended for setup. Authentication remains
+GitHub-aware archive discovery. The live fleet app requires an existing working `gh` login and
+Tailscale on every machine; `uv` is optional but recommended for setup. Authentication remains
 yours to manage:
 
 ```powershell
@@ -33,6 +34,21 @@ python3 github-org-duplicator/github_org_duplicator.py
 python3 git-archive-updater/archive_manager.py --help
 python3 git-sync-suggester/sync_suggester.py --help
 ```
+
+To set up near-live monitoring across your own Tailscale devices, run
+`python3 git-sync-suggester/sync_suggester.py fleet setup`. It walks through hosting or joining a
+fleet and optional folder/GitHub replica schedules. The host serves a browser dashboard with
+repository groups and machine status. One startup inventory is followed by native filesystem
+events and targeted per-repository checks; there is no periodic library scan. See
+[the live fleet guide](git-sync-suggester/FLEET.md)
+for Windows setup, authentication boundaries, and the pilot's current limitations.
+
+This remains a developer preview: a second machine currently needs a matching source checkout.
+The intended public product is an installed, self-contained desktop app with graphical first run
+and channel-appropriate updates. The concrete release path is recorded in
+[`.agents/knowledge/distribution.md`](.agents/knowledge/distribution.md).
+An OS-specific PyInstaller preview recipe is available in
+[`git-sync-suggester/BUILD-DESKTOP.md`](git-sync-suggester/BUILD-DESKTOP.md).
 
 For convenience, `run_setup` also writes one launcher per tool into the repo root — only for your OS (`.sh` on Linux/macOS, `.ps1` + a `.bat` double-click shim on Windows):
 

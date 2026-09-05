@@ -3,6 +3,96 @@
 Append-only record of **completed** work. Newest first. Items that graduate from
 [`working-notes.md`](working-notes.md) land here with an absolute date.
 
+## 2026-09-05
+
+- **Removed perpetual fleet scanning and deployed native event-driven observation on prime.**
+  Configuration v2 performs one acknowledged startup inventory, then Linux inotify or Windows
+  `ReadDirectoryChangesW` wakes the observer only for filesystem changes. Events are debounced and
+  mapped to the deepest known checkout; only that repository is inspected. The 30-second heartbeat
+  updates authenticated presence without Git or directory scans. `fleet rescan` is the deliberate local
+  inventory command for added/removed repositories. The former v1 polling configuration migrates
+  automatically. A real temporary-repository test confirms idle silence and targeted untracked-file
+  detection; the prime host migrated and restarted with 105 repositories and no periodic scan.
+  Live create/delete smoke checks each inspected exactly one repository. Full offline validation
+  passes 14/14 files; Python compilation, JavaScript syntax and whitespace checks pass.
+  The live heartbeat was further reduced to one authenticated timestamp: no full report crosses the
+  network or gets rewritten merely to prove that an observer is online.
+- **Added and validated the desktop-preview build boundary.** `fleet_desktop.py` owns only first-run
+  launch and opening the browser; `GitSpecOpsSync.spec` embeds Python and the standard UI without
+  moving fleet policy into the shell. A clean Linux PyInstaller 6.22.2 one-folder build completed
+  at 24 MiB and reached isolated first-run setup. The same recipe must be built on Windows to make
+  the Windows executable. Existing configurations can now add, create, change, or clear scheduled
+  folder/GitHub replicas explicitly with `fleet replicas` while the observer is stopped.
+  Prime was then switched from the source command to the built bundle; its embedded dashboard,
+  SQLite host and native observer reported all 105 repositories in a live smoke check.
+
+- **Made the live Fleet Management dashboard dark by default and fixed group-collapse state.**
+  The standard skin now has an immediate dark theme with a saved light/dark preference. Closed
+  repository groups survive the three-second display refresh and browser reloads. App & setup now
+  shows the live Tailscale, synchronized-folder and GitHub-replica levels plus the actual
+  availability of continuous observation, remote actions and unfinished-work recovery snapshots;
+  planned controls are not rendered as working toggles.
+- **Made continuous discovery explicit and reduced its cadence.** Interactive setup names every
+  recursive root and requires the user to type `SCAN`; direct setup requires
+  `--acknowledge-continuous-scan`, and existing configurations use `fleet acknowledge-scan`.
+  Changed the default and this moonbase-prime pilot from five to 30 seconds after each scan. The
+  earlier five-second pilot measured about 34 MiB RSS and 11.2% of one CPU while observing 105
+  repositories; a scan itself normally takes 3.2–3.4 seconds. The scanner reads Git metadata and
+  status only and does not copy repository content into the fleet store.
+- Live verification: `xenomorph2b` answered a direct Tailscale ping at `100.96.18.7` in 13 ms;
+  `moonbase-node1-w` timed out and appears offline/asleep. The restarted dashboard reports 105
+  repositories through display contract v1 at `http://100.85.195.87:8765/`.
+
+- **Established the Fleet Management display boundary and replaced the prototype dashboard.**
+  `fleet_display.py` now emits versioned `gitspecops.fleet.display` v1 with explicit attention,
+  tones, tags, facts, notices and capability availability. The standard responsive UI consumes
+  it through separate transport and selector modules; repository, machine, detail and app/setup
+  views contain no Git classification rules. `DISPLAY-CONTRACT.md` defines compatibility and
+  gives a future LCARS skin the same source of truth. The source-ZIP endpoint was removed after
+  user feedback; `/download` now returns 404.
+- **Recorded the desktop distribution and update direction.** A normal user installs a
+  self-contained app, uses graphical first run, and does not clone source or install Python.
+  Developer checkouts remain the current preview. `knowledge/distribution.md` records staged
+  bundling/signing, per-channel signed release metadata, store/direct update ownership, rollback,
+  and the remaining release work. Verified the corrected `xenomorph2b` Tailscale name.
+- Validation: display/authorization tests pass, all three JavaScript modules pass syntax checks,
+  pure selectors pass Node fixture checks, static routes and display v1 respond live, the removed
+  download responds 404, and the full offline suite passes 13/13 files. The host remains running
+  at `http://100.85.195.87:8765/` with the new interface.
+
+- **Implemented and started the personal Tailscale fleet pilot on moonbase-prime.** New
+  foreground app with guided setup, stable device identity, per-peer write authorization,
+  SQLite persistence, browser namespace/status dashboard, and source-only observer ZIP.
+  Existing gh auth is checked without configuring or forwarding credentials. Private tailnet
+  reports share repository names; scheduled folder/GitHub replicas contain only v3 manifests.
+  Replica clocks do not perform early runtime reads/writes or retry immediately on failure.
+- Live smoke: host HTML, dashboard JSON and ZIP returned 200; prime observed 105 repositories
+  and detected this session's own uncommitted work. Browser screenshot inspected. Added tests
+  for authorization, stale/old reports, metadata validation, scheduling, locking and bundle
+  contents. Full offline suite passed 13/13 files before final documentation updates.
+  Windows observers remain pending; no source sync, remote commits, content capture or
+  GitHub publication was performed. See git-sync-suggester/FLEET.md for usage and limitations.
+
+- Retried fleet connectivity: both Windows devices answered Tailscale ping; former xenomorph2b
+  now advertises moonbase-node1-w-1 at its previous IP. Old hostname no longer resolves.
+  Reviewed official GitHub permission/API guidance, Obsidian Headless Sync, Tailscale grants,
+  and OCI free-instance reclamation constraints for the continuing transport/auth discussion.
+
+- Reviewed exchange and distribution options at the user’s request before fleet deployment.
+  Verified Microsoft Store MSIX versus MSI/EXE update routes, Apple sandbox/notarization
+  constraints, Flathub requirements and GitHub REST content-write limits against official docs.
+  Recommendations are proposals, not approved architecture or implemented desktop features.
+
+- **Fleet readiness audit on moonbase-prime.** Read the project brief, roadmap and transport
+  implementation. Confirmed existing GitHub authentication and Tailscale reachability to both
+  Windows laptops outside the sandbox. Remote-management probes (22/5985/5986) timed out.
+- Ran a read-only recursive Sync Suggester check against `/memory-lambda/Github` using isolated
+  config/state under `/tmp/gitspecops-fleet-audit-9sp2xmx5`: 105 repositories observed, dirty
+  Chassis and FlowNode surfaced, FlowNode stash surfaced, and one unrecognized-origin warning
+  for the moon-and-back root. Ahead/behind readings remain cached; no fetch was requested.
+- Validation: `python3 tests/run_all.py` passed all 12 test files. No repository synchronization,
+  remote state publication, persistent configuration or background service was performed.
+
 ## 2026-09-04
 
 - **Fixed the Windows discovery bug reported in the outside fleet review — the tool found nothing

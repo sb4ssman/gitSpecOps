@@ -3,9 +3,41 @@
 Living todo / scratch pad. Add items freely; **prune regularly**. When something is done, move it
 into [`work-log.md`](work-log.md) with an absolute date. Dates are always absolute.
 
-_Last tended: 2026-09-03_
+_Last tended: 2026-09-05_
 
 ## Open
+
+- [ ] **Live fleet deployment (2026-09-05).** Foreground app implemented and prime deployed;
+  see [knowledge/live-fleet.md](knowledge/live-fleet.md). User approved existing gh auth as a
+  hard prerequisite and Tailscale-first deployment on the three local machines.
+  - Prime observes 105 repos under `/memory-lambda/Github`; dashboard http://100.85.195.87:8765/ .
+    The validated Linux PyInstaller bundle is the live process. SQLite is local to the host app;
+    no startup entry, synchronized-folder replica, or GitHub replica is configured.
+  - Need both Windows observers running, and a real uncommitted-change check across devices.
+    Windows library paths requested. Prototype dashboard ZIP onboarding was rejected by the user
+    and removed. The cross-platform PyInstaller recipe is built/tested on Linux; a Windows machine
+    must build the matching `.exe` because PyInstaller does not cross-compile.
+    Both devices ping; current names: moonbase-node1-w (100.71.128.54), xenomorph2b (100.96.18.7).
+  - Core next: real baskets/subscriptions (namespace groups are not baskets), safe library
+    convergence/actions, guided no-Tailscale fallback, replica reconciliation and commit-only
+    publication. Existing folder/GitHub transports remain usable independently.
+  - Event-driven observation is shipped: one acknowledged initial inventory, then native inotify /
+    ReadDirectoryChangesW with targeted status checks and timestamp-only heartbeats. No recurring
+    scan. `fleet rescan` deliberately refreshes repository membership.
+  - Productization decision: Alice installs a self-contained desktop app and uses graphical first
+    run; she does not clone the repo, install Python or execute downloaded scripts. Build/release
+    direction is in `knowledge/distribution.md`. Implement portable Windows builds only after
+    the native lifecycle/first-run boundary is ready enough to improve onboarding.
+  - Later: enterprise device/user authorization, remote commit/push jobs, opt-in recovery
+    snapshots. User wants automatic capture on selected baskets; content must be separate
+    from status, with acknowledged remote durability and verified retirement after publication.
+  - User confirmed the action goal: fetch/refresh, pull, commit, push and conflict-resolution
+    workflows from the dashboard, executed on the machine that owns the working tree. Preserve
+    preview/revalidation and typed confirmation boundaries; do not expose a generic remote shell.
+  - Integration UX decision: show three encouraged levels (Tailscale live, synced-folder medium,
+    scheduled GitHub durable) but never require Obsidian or require all three. First run checks
+    hard prerequisites and guides each selected optional integration. Recovery snapshots and
+    remote actions are visible as planned settings but cannot be toggled until implemented.
 
 - [ ] **Outside fleet review (2026-09-04) — status.** Recorded by the user; two items were acted
   on the same day, the rest are still open.
@@ -88,6 +120,20 @@ _Last tended: 2026-09-03_
      above `unknown` but below `ahead`, so it surfaces without shouting.
   7. The **advice → apply** step (clean + behind-only + fresh fetch -> `git pull --ff-only`) stays
      purely advisory until fetching is settled.
+
+- [ ] **Actionable Fleet dashboard, in safety order.** The user wants dashboard-wide and per-repo
+  fetch, fast-forward pull, commit and push, plus conflict help and remote execution on an online
+  source machine. Build a narrow device job protocol rather than a generic remote shell. Start with
+  fetch; allow pull only after a fresh fetch and only for a clean behind-only checkout using
+  `--ff-only`; allow push only for a clean ahead-only checkout after revalidation and never force;
+  require diff/file review and an entered message for commits. Diverged or conflicted work needs an
+  explicit merge/rebase workflow or launch into an installed Git client, not a one-click guess.
+- [ ] **Recovery snapshots (user names: stealth-stash / stealth-sync).** This means an opt-in,
+  encrypted snapshot of staged, unstaged and selected untracked work that survives the source
+  machine going offline, can be previewed/applied elsewhere, and expires after the real commit is
+  safely published. It is separate from remote actions and must have retention, size, ignore,
+  secret-scan and deletion controls. The dashboard display contract exposes it as unavailable until
+  content capture and restoration are implemented; do not present a cosmetic toggle.
 
 - [ ] **Transports: `state_dir` and `state_repo` both ship; folder auto-detection is not built.**
   The user chose "both, gh-backed first" — the gh Contents API transport landed 2026-09-03. Still

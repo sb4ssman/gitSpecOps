@@ -218,6 +218,28 @@ Keep output and tracking files there. Do not move them back to the repo root.
 
 ## Sync Suggester
 
+**Live personal fleet (2026-09-05):** `sync_suggester.py fleet setup` now walks through
+foreground host/client setup. Flat `fleet_app.py`, `fleet_net.py`, `fleet_store.py` and
+`fleet_dashboard.html` provide a Tailscale-authenticated, SQLite-backed browser dashboard.
+The new app requires existing gh auth, shares repo names within the authorized private fleet,
+and supports optional scheduled privacy-minimized folder/GitHub replicas. It installs no
+service and never mutates source repos. Stable Tailscale node ids survive hostname changes.
+Configuration v2 performs one acknowledged inventory, then `fleet_events.py` uses Linux inotify
+or Windows `ReadDirectoryChangesW`; `fleet_observer.py` maps debounced file events to known
+checkouts and inspects only those repositories. Heartbeats contain cached facts and do not scan.
+New or removed repositories require the explicit local `fleet rescan` request.
+See [knowledge/live-fleet.md](knowledge/live-fleet.md) and
+[the user guide](../git-sync-suggester/FLEET.md). Legacy transport/config rules below still
+apply to legacy commands; the new app has a distinct configuration with one live authority
+and explicitly scheduled replicas. It is a personal pilot, not enterprise authorization.
+
+**Display boundary (2026-09-05):** `fleet_display.py` is the pure, versioned display-model
+builder. It owns presentation semantics such as attention, tones, filter tags, notices and
+capability availability. `fleet_client.js` owns transport/compatibility; `fleet_view.js` owns
+generic selectors; `fleet_dashboard.html` + `fleet_standard.*` are only the standard skin.
+Future skins, including LCARS, must consume the same `gitspecops.fleet.display` contract and
+must not reimplement Git/freshness policy. See `git-sync-suggester/DISPLAY-CONTRACT.md`.
+
 `sync_suggester.py` is the read-only entry point. Nothing in this tool pulls, pushes, commits,
 stashes, or otherwise touches an observed repository — it reads local Git facts, publishes this
 machine's status manifest, and reads what other machines left behind. The flat modules are:
