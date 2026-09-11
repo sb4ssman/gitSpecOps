@@ -34,7 +34,7 @@ from manifest import fleet_id_for
 from repo_transport import RepoTransport
 from watcher import semantic_fingerprint
 
-PEER_POLL_SECONDS = 20.0
+PEER_POLL_SECONDS = 30.0
 
 
 def _log(message: str) -> None:

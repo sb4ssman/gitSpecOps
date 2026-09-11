@@ -3,6 +3,23 @@
 Append-only record of **completed** work. Newest first. Items that graduate from
 [`working-notes.md`](working-notes.md) land here with an absolute date.
 
+## 2026-09-11 (later) — history audit, handoff, tailnet poll 30s
+
+- **Audited the whole git history properly, and stated the confidence honestly.** The first pass
+  used `git log -p --all | grep`, which covers only diff text on reachable refs and skips binary
+  blobs — not good enough to make a claim. The second enumerated every object
+  (`git rev-list --objects --all`) and scanned the content of **every blob**: 566 objects, 355
+  blobs, seven secret shapes. **No secrets in history.** The one credential-shaped hit is a test
+  fixture asserting that `http://user:password@...` is rejected. Personal data *is* in history
+  (3 addresses, 4 machine names, 5 namespaces, 1 Windows path) and was sanitized forward only.
+  Method, confidence limits, and the full "what to do if a secret is ever found" procedure —
+  rotate first, rewrite second, purge GitHub fork/cache last — are recorded in
+  [knowledge/repo-privacy-and-history.md](knowledge/repo-privacy-and-history.md).
+- **Wrote [HANDOFF.md](HANDOFF.md)** for the next session: current state, the one important
+  unbuilt thing (the tier ladder), decisions owed by the user, and the traps this codebase has
+  already fallen into once each.
+- Tailnet peer poll moved from 20s to 30s at the user's request.
+
 ## 2026-09-11 (later) — new-repository detection, and the tier design
 
 - **A repository cloned into the library was invisible until someone ran `fleet rescan`.**

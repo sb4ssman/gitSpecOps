@@ -27,11 +27,13 @@ _Last tended: 2026-09-11_
   only selector. This is the basket work above, and it is the main usability gap once more than
   one machine is real.
 
-- [ ] **History still holds the pre-sanitization details (2026-09-11).** Tracked files are clean,
-  but earlier commits still contain real machine names, tailnet addresses, archive paths and
-  private namespaces. A rewrite (`git filter-repo`) is the only complete fix and it breaks every
-  existing clone and fork. Not done, deliberately — the exposed values are private-range
-  addresses and folder names, not credentials. **Decision still owed by the user.**
+- [ ] **History holds personal data but no secrets — verified (2026-09-11).** Every blob in
+  history was scanned (566 objects, 355 blobs, seven secret shapes): **no secrets**. Personal
+  data is there: 3 Tailscale addresses, 4 machine names, 5 private namespaces, 1 Windows path.
+  A rewrite is the only complete fix and breaks every clone and fork; not done deliberately,
+  since there is nothing to rotate. **Decision still owed by the user.** Method and the
+  if-a-secret-is-found procedure:
+  [knowledge/repo-privacy-and-history.md](knowledge/repo-privacy-and-history.md).
 
 - [ ] **First release is not cut.** `shared/version.py` says 0.2.0 and the update check works,
   but there are **no tags and no GitHub release**, so `version --check` correctly reports
