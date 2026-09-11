@@ -17,6 +17,12 @@ from pathlib import Path
 from typing import NoReturn
 
 TOOL_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = str(TOOL_DIR.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from shared.console import enable_unicode_output  # noqa: E402
+
 RUNS_DIR = TOOL_DIR / "runs"
 PRINT_LOCK = threading.Lock()
 

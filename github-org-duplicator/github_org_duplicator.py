@@ -27,6 +27,7 @@ from pathlib import Path
 
 from gh_common import (
     RUNS_DIR,
+    enable_unicode_output,
     format_size,
     parse_selection,
     prompt_clone_format,
@@ -517,6 +518,8 @@ def parse_args(argv=None):
 
 
 def main():
+    # ✓/✗/⚠/→ are not cp1252-encodable; widen the streams before a redirected run prints.
+    enable_unicode_output()
     args = parse_args()
 
     if args.answers is not None:

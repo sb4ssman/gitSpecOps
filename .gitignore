@@ -2,8 +2,8 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-build/
-dist/
+/build/
+/dist/
 .venv/
 venv/
 uv.lock
@@ -19,6 +19,8 @@ archive_updater_registry.json
 git-archive-updater/managed_archives.json
 git-archive-updater/runs/
 git-archive-updater/refresh-managed-archives.*
+# Stale pre-rename folder; archive_manager.py used to generate launchers here.
+gitArchiveUpdater/
 github-org-duplicator/runs/
 completed_repos.txt
 migration_errors.txt
@@ -31,6 +33,13 @@ uploaded_repos.txt
 upload_errors.txt
 upload_log.txt
 batch_*.json
+
+# Agent workspace: tools are fetched per-machine, output is always local.
+# The READMEs are tracked so the folders explain themselves on a fresh clone.
+.agents/tools/*
+!.agents/tools/README.md
+.agents/output/*
+!.agents/output/README.md
 
 # Local/editor
 .env
