@@ -1,7 +1,11 @@
-"""Foreground personal-fleet app: Tailscale reports, SQLite dashboard, paced replicas.
+"""Fleet app CLI. One kind of machine: a peer.
 
-Run directly, or through sync_suggester.py fleet. No OS service, Git mutations, credential
-configuration, or implicit cloud failover. The existing gh login is a hard prerequisite.
+Every peer observes itself, publishes to whichever transports it has, serves its own dashboard
+on loopback, and talks to other peers when Tailscale happens to be up. There is no host and no
+client; see fleet_peer.py for why that matters and fleet_config.py for the schema.
+
+`gh` is required only for the GitHub state-repo transport. Everything else — observation, a
+synced folder, and the local dashboard — works without it.
 """
 from __future__ import annotations
 
@@ -10,37 +14,31 @@ import json
 import signal
 import sys
 import threading
-import time
 from contextlib import contextmanager
 from pathlib import Path
 
 TOOL_DIR = Path(__file__).resolve().parent.parent
 if str(TOOL_DIR) not in sys.path:
     sys.path.insert(0, str(TOOL_DIR))
-from _paths import UI_DIR, bootstrap  # noqa: E402
+from _paths import bootstrap  # noqa: E402
 
 bootstrap()  # core/, fleet/, app/ and the repo root (for shared/)
 
 from shared.console import enable_unicode_output  # noqa: E402
-from shared.gh_cli import GhError, run_gh
-from config import default_config_dir
-from fleet_display import build_display
-from ui_assets import load_ui_assets
-from fleet_events import NativeEvents
-from fleet_net import FleetClient, discover_hosts, local_identity, make_server
-from fleet_observer import IncrementalObserver
-from fleet_store import FleetStore, MAX_REPORT_BYTES
-from folder_transport import FolderTransport, atomic_write_bytes
-from manifest import fleet_id_for, is_fleet_secret, new_fleet_secret
-from repo_transport import RepoTransport, create_state_repo
-from watcher import semantic_fingerprint
-
-APP_CONFIG = "fleet-app.json"
+from shared.gh_cli import GhError, run_gh  # noqa: E402
+from config import default_config_dir, default_machine_id  # noqa: E402
+from fleet_config import (APP_CONFIG, DEFAULT_FOLDER_SECONDS, DEFAULT_LOCAL_PORT,  # noqa: E402
+                          DEFAULT_REPO_SECONDS, DEFAULT_TAILNET_PORT, describe, migrate,
+                          new_config, validate)
+from fleet_peer import run_peer  # noqa: E402
+from folder_transport import atomic_write_bytes  # noqa: E402
+from manifest import fleet_id_for, is_fleet_secret, new_fleet_secret  # noqa: E402
+from repo_transport import RepoTransport, create_state_repo  # noqa: E402
 
 
 @contextmanager
 def app_lock(directory):
-    """One observer per local setup; OS releases the lock after crashes too."""
+    """One peer per local configuration; the OS releases the lock after a crash too."""
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / "fleet-app.lock").open("a+b") as handle:
         handle.write(b"0")
@@ -70,156 +68,47 @@ def write_json(path: Path, value):
     atomic_write_bytes(path, (json.dumps(value, indent=2) + "\n").encode())
 
 
+def load_saved(directory: Path) -> dict:
+    path = directory / APP_CONFIG
+    if not path.exists():
+        raise ValueError("no saved configuration; run 'fleet setup' first")
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    config = validate(migrate(saved))
+    if config != saved:
+        write_json(path, config)
+        print("Updated the saved configuration to the peer model (v3).", flush=True)
+    return config
+
+
 def require_gh():
     # Capture output: gh status can include credential metadata. Never print or store it.
     proc = run_gh(["auth", "status"], check=False, timeout=30)
     if proc.returncode:
-        raise ValueError("an existing working gh login is required; check 'gh auth status'")
+        raise ValueError("a working gh login is required for the GitHub state repository; "
+                         "check 'gh auth status'")
 
 
-class ReplicaSchedule:
-    """Independent clocks. No cloud calls, including reads, before the next scheduled slot."""
-    def __init__(self, entries, clock=time.monotonic):
-        self.clock = clock
-        now = clock()
-        self.entries = [{"transport": t, "interval": seconds, "next": now + seconds,
-                         "label": label} for t, seconds, label in entries]
+def resolve_machine_identity(want_tailnet: bool) -> tuple[str, str]:
+    """A stable id for this peer, preferring Tailscale's node id when the tier is wanted.
 
-    def tick(self, report, log=print):
-        for entry in self.entries:
-            now = self.clock()
-            if now < entry["next"]:
-                continue
-            # A failed slot waits the full configured interval too, avoiding a retry storm.
-            entry["next"] = now + entry["interval"]
-            try:
-                if isinstance(entry["transport"], RepoTransport):
-                    health = entry["transport"].doctor()
-                    if not health.get("private") or not health.get("permissions"):
-                        raise ValueError("GitHub replica is no longer private and writable")
-                entry["transport"].write_own_manifest(
-                    report["manifest"]["machine_id"], report["manifest"], compress=True)
-                log(f"scheduled {entry['label']} replica published")
-            except (OSError, ValueError, GhError) as exc:
-                log(f"scheduled {entry['label']} replica failed: {exc}")
-
-
-def run_observer(config, config_dir, publish, stopping, once=False, event_source=None,
-                 heartbeat=None):
-    """Discover once, then refresh only repositories touched by native filesystem events."""
-    entries = []
-    if config.get("replica_folder"):
-        entries.append((FolderTransport(config["replica_folder"]),
-                        config["folder_seconds"], "folder"))
-    if config.get("replica_repo"):
-        entries.append((RepoTransport(config["replica_repo"]),
-                        config["github_seconds"], "GitHub"))
-    schedule = ReplicaSchedule(entries)
-    observer = IncrementalObserver(config)
-    started = time.monotonic()
-    count = observer.inventory()
-    print(f"Initial inventory found {count} repositories in {time.monotonic() - started:.1f}s. "
-          "Native filesystem events now trigger targeted status checks; no periodic full scan. "
-          "No source-repository fetches or writes. Ctrl-C stops the app.", flush=True)
-    source = event_source or NativeEvents([Path(root) for root in config["roots"]])
-    fingerprint, published_at = None, 0.0
-    request_path = config_dir / "fleet-rescan.request"
-    heartbeat = heartbeat or (lambda observed_at: None)
-
-    def share(report, reason):
-        nonlocal fingerprint, published_at
-        raw = json.dumps(report).encode()
-        if len(raw) > MAX_REPORT_BYTES:
-            raise ValueError("report exceeds the pilot size limit")
-        atomic_write_bytes(config_dir / "fleet-latest.json", raw)
+    Falls back to the Sync Suggester machine id (hostname-derived, overridable) so that a peer
+    can exist with Tailscale absent — which is the whole point of the peer model.
+    """
+    if want_tailnet:
         try:
-            publish(report)
-            fingerprint = semantic_fingerprint(report["manifest"]) + json.dumps(
-                [report["names"], report["issues"]], sort_keys=True)
-            published_at = time.monotonic()
-            print(f"Shared {len(report['manifest']['repositories'])} repos ({reason}).", flush=True)
+            from fleet_net import local_identity
+
+            identity = local_identity()
+            return identity["machine_id"], identity["label"]
         except (OSError, ValueError) as exc:
-            print(f"Host unavailable; latest observation saved locally: {exc}", flush=True)
-
-    try:
-        report = observer.report()
-        share(report, "initial inventory")
-        if once:
-            return
-        while not stopping.is_set():
-            try:
-                changed = source.wait(timeout=1.0, debounce=config["debounce_seconds"])
-                reason = None
-                if request_path.exists():
-                    request_path.unlink(missing_ok=True)
-                    started = time.monotonic()
-                    count = observer.inventory()
-                    reason = f"manual inventory: {count} repos in {time.monotonic() - started:.1f}s"
-                elif changed:
-                    count = observer.refresh(changed)
-                    if count:
-                        reason = f"filesystem change: checked {count} repo(s)"
-
-                now = time.monotonic()
-                report = observer.report()
-                current = semantic_fingerprint(report["manifest"]) + json.dumps(
-                    [report["names"], report["issues"]], sort_keys=True)
-                if reason and current != fingerprint:
-                    share(report, reason)
-                elif now - published_at >= config["heartbeat"]:
-                    try:
-                        heartbeat(report["manifest"]["observed_at"])
-                        published_at = now
-                    except (OSError, ValueError) as exc:
-                        print(f"Host unavailable; heartbeat retained locally: {exc}", flush=True)
-                schedule.tick(report)
-            except (OSError, ValueError) as exc:
-                print(f"Observation event failed; last report retained: {exc}", flush=True)
-    finally:
-        source.close()
+            print(f"note: Tailscale is not usable right now ({exc}); this peer will use its "
+                  "local machine id and enable the tailnet tier when Tailscale returns.",
+                  flush=True)
+    name = default_machine_id()
+    return name, name
 
 
-def validate_app_config(config):
-    if config.get("version") != 2 or config.get("mode") not in ("host", "connect"):
-        raise ValueError("unsupported fleet app configuration")
-    if not is_fleet_secret(config.get("fleet_secret")):
-        raise ValueError("invalid fleet identity")
-    if config.get("inventory_notice_acknowledged") is not True:
-        raise ValueError("initial inventory discovery has not been acknowledged")
-    if config.get("observation_mode") != "filesystem-events":
-        raise ValueError("unsupported observation mode")
-    if not config.get("roots") or any(not Path(p).is_dir() for p in config["roots"]):
-        raise ValueError("every configured repository root must exist")
-    for key in ("heartbeat", "folder_seconds", "github_seconds"):
-        value = config.get(key)
-        if type(value) is not int or value < 1:
-            raise ValueError(f"{key} must be a positive number of seconds")
-    debounce = config.get("debounce_seconds")
-    if not isinstance(debounce, (int, float)) or isinstance(debounce, bool) or debounce < 0:
-        raise ValueError("debounce_seconds must be zero or greater")
-    if config["heartbeat"] > 60:
-        raise ValueError("live heartbeat must be <= 60 seconds (stale threshold is 120 seconds)")
-    if config["mode"] == "host" and not 1024 <= config.get("port", 0) <= 65535:
-        raise ValueError("port must be between 1024 and 65535")
-    if config.get("replica_repo"):
-        RepoTransport(config["replica_repo"])
-    return config
-
-
-def migrate_app_config(config):
-    """Move the short-lived polling preview to native event observation."""
-    if config.get("version") == 1:
-        config = dict(config)
-        config["version"] = 2
-        config["inventory_notice_acknowledged"] = bool(
-            config.pop("scan_notice_acknowledged", False))
-        config["observation_mode"] = "filesystem-events"
-        config["debounce_seconds"] = 0.75
-        config.pop("interval", None)
-    return config
-
-
-def configure(args, directory, identity):
+def configure(args, directory: Path) -> dict:
     path = directory / APP_CONFIG
     if path.exists():
         raise ValueError(f"configuration exists at {path}; use 'run' to resume, or edit it")
@@ -228,292 +117,206 @@ def configure(args, directory, identity):
     if not args.acknowledge_initial_scan:
         raise ValueError("setup performs one recursive inventory of every selected root. Review "
                          "the scope and pass --acknowledge-initial-scan, or use 'fleet setup'")
-    config = {"version": 2, "mode": args.command,
-              "roots": [str(Path(p).expanduser().resolve()) for p in args.root],
-              "machine_id": identity["machine_id"], "label": args.label or identity["label"],
-              "heartbeat": 30, "observation_mode": "filesystem-events",
-              "debounce_seconds": args.debounce_seconds,
-              "inventory_notice_acknowledged": True,
-              "replica_folder": args.replica_folder, "folder_seconds": args.folder_seconds,
-              "replica_repo": args.replica_repo, "github_seconds": args.github_seconds}
-    if args.command == "host":
-        config.update(fleet_secret=new_fleet_secret(), allowed_login=identity["login"], port=args.port)
-    else:
-        client = FleetClient(args.server)
-        session = client.request("/v1/session")
-        if session["machine_id"] != identity["machine_id"]:
-            raise ValueError("host resolved a different device identity")
-        config.update(fleet_secret=session["fleet_secret"], server=client.url)
-    validate_app_config(config)
-    if config.get("replica_repo"):
-        # Explicit setup validation only; runtime repo I/O is strictly on its own schedule.
-        health = RepoTransport(config["replica_repo"]).doctor()
-        if not health.get("exists") and args.create_replica_repo:
-            create_state_repo(config["replica_repo"])
-            health = RepoTransport(config["replica_repo"]).doctor()
+    transports = {}
+    if args.folder:
+        folder = Path(args.folder).expanduser().resolve()
+        if not folder.is_dir():
+            raise ValueError("--folder must already exist and be managed by your sync client")
+        transports["folder"] = {"path": str(folder), "seconds": args.folder_seconds}
+    if args.repo:
+        require_gh()
+        transport = RepoTransport(args.repo)
+        health = transport.doctor()
+        if not health.get("exists") and args.create_repo:
+            create_state_repo(args.repo)
+            health = transport.doctor()
         if not health.get("exists") or not health.get("private") or not health.get("permissions"):
-            raise ValueError("replica repo must already exist, be private, and be writable "
-                             "by the active gh login; pass --create-replica-repo to create it")
-    if config.get("replica_folder") and not Path(config["replica_folder"]).is_dir():
-        raise ValueError("replica folder must already exist and be managed by your sync client")
+            raise ValueError("--repo must exist, be private, and be writable by your gh login; "
+                             "add --create-repo to create it")
+        transports["repo"] = {"name": args.repo, "seconds": args.repo_seconds}
+    if not args.no_tailnet:
+        transports["tailnet"] = {"port": args.tailnet_port, "allowed_login": None}
+
+    machine_id, label = resolve_machine_identity("tailnet" in transports)
+    secret = args.fleet_secret or new_fleet_secret()
+    if not is_fleet_secret(secret):
+        raise ValueError("--fleet-secret must be 64 hexadecimal characters")
+    config = new_config(machine_id, args.label or label, args.root, secret,
+                        debounce_seconds=args.debounce_seconds, local_port=args.local_port,
+                        transports=transports)
+    validate(config)
     write_json(path, config)
-    print(f"Saved setup: {path}. Resume with 'fleet run'.", flush=True)
+    print(f"Saved: {path}\nTransports:\n{describe(config)}")
+    if not args.fleet_secret:
+        print(f"\nCreated fleet {fleet_id_for(secret)}. To add another machine, run setup there "
+              f"with:\n\n    --fleet-secret {secret}\n\nCarry that value yourself. A peer on the "
+              "tailnet can also hand it over automatically once you are connected.")
     return config
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config-dir", type=Path, default=default_config_dir())
     commands = parser.add_subparsers(dest="command", required=True)
-    setup = commands.add_parser("setup",
-                                help="walk through live host/client setup and optional replica schedules")
+
+    setup = commands.add_parser("setup", help="guided first-run setup for this peer")
     setup.add_argument("--configure-only", action="store_true",
-                       help="save the configuration and exit instead of starting the app")
-    for name in ("host", "connect"):
-        command = commands.add_parser(name, help="configure and start this foreground app")
-        command.add_argument("--root", action="append", help="repository library, scanned recursively")
-        command.add_argument("--label", help="display name; independent of stable device identity")
-        command.add_argument("--debounce-seconds", type=float, default=0.75,
-                             help="quiet time before a targeted status check (default 0.75)")
-        command.add_argument("--acknowledge-initial-scan", action="store_true",
-                             help="confirm one recursive inventory of every selected root")
-        command.add_argument("--acknowledge-continuous-scan", action="store_true",
-                             dest="acknowledge_initial_scan", help=argparse.SUPPRESS)
-        command.add_argument("--configure-only", action="store_true",
-                             help="save the configuration and exit instead of starting the app")
-        command.add_argument("--replica-folder", help="optional folder already replicated by your sync client")
-        command.add_argument("--folder-seconds", type=int, default=300)
-        command.add_argument("--replica-repo", help="optional existing private owner/repo; any accessible org")
-        command.add_argument("--create-replica-repo", action="store_true",
-                             help="create --replica-repo privately after this explicit request")
-        command.add_argument("--github-seconds", type=int, default=1800,
-                             help="GitHub replica schedule, including reads; default 1800 seconds")
-        if name == "host":
-            command.add_argument("--port", type=int, default=8765)
-        else:
-            command.add_argument("--server", required=True, help="host's numeric Tailscale URL")
-    commands.add_parser("run", help="resume the saved app; no service installation")
-    commands.add_parser("tray", help="resume the saved app behind a system tray icon "
-                                     "(falls back to 'run' where no tray exists)")
-    autostart = commands.add_parser("autostart",
-                                    help="inspect or change start-at-login for this user")
+                       help="save the configuration and exit instead of starting")
+
+    peer = commands.add_parser("peer", help="configure this peer non-interactively and start it")
+    peer.add_argument("--root", action="append", help="repository library, inventoried once")
+    peer.add_argument("--label", help="display name; independent of the stable machine id")
+    peer.add_argument("--fleet-secret", help="join an existing fleet (64 hex characters)")
+    peer.add_argument("--debounce-seconds", type=float, default=0.75)
+    peer.add_argument("--acknowledge-initial-scan", action="store_true",
+                      help="confirm one recursive inventory of every selected root")
+    peer.add_argument("--acknowledge-continuous-scan", action="store_true",
+                      dest="acknowledge_initial_scan", help=argparse.SUPPRESS)
+    peer.add_argument("--local-port", type=int, default=DEFAULT_LOCAL_PORT,
+                      help=f"loopback dashboard port (default {DEFAULT_LOCAL_PORT})")
+    peer.add_argument("--folder", help="a directory your sync client already replicates")
+    peer.add_argument("--folder-seconds", type=int, default=DEFAULT_FOLDER_SECONDS)
+    peer.add_argument("--repo", help="a private GitHub owner/name to publish manifests into")
+    peer.add_argument("--create-repo", action="store_true",
+                      help="create --repo privately after this explicit request")
+    peer.add_argument("--repo-seconds", type=int, default=DEFAULT_REPO_SECONDS)
+    peer.add_argument("--no-tailnet", action="store_true",
+                      help="do not talk to peers over Tailscale")
+    peer.add_argument("--tailnet-port", type=int, default=DEFAULT_TAILNET_PORT)
+    peer.add_argument("--configure-only", action="store_true")
+
+    commands.add_parser("run", help="resume this peer; installs no service")
+    commands.add_parser("tray", help="resume behind a tray icon (falls back to 'run')")
+    commands.add_parser("doctor", help="show configuration and reachability; hides the secret")
+    commands.add_parser("rescan", help="request one deliberate local inventory refresh")
+
+    autostart = commands.add_parser("autostart", help="inspect or change start-at-login")
     autostart.add_argument("action", choices=("status", "enable", "disable"), nargs="?",
                            default="status")
     autostart.add_argument("--systemd", action="store_true",
                            help="Linux: use a systemd --user unit instead of an autostart entry")
-    commands.add_parser("doctor", help="show setup and connectivity without revealing secrets")
-    commands.add_parser("rescan", help="request one deliberate local inventory refresh")
-    replicas = commands.add_parser("replicas", help="configure optional folder/GitHub replicas while stopped")
-    replicas.add_argument("--folder", help="existing directory managed by a folder-sync client")
-    replicas.add_argument("--clear-folder", action="store_true")
-    replicas.add_argument("--folder-seconds", type=int)
-    replicas.add_argument("--repo", help="private writable GitHub owner/repo")
-    replicas.add_argument("--create-repo", action="store_true",
-                          help="create --repo privately after this explicit request")
-    replicas.add_argument("--clear-repo", action="store_true")
-    replicas.add_argument("--github-seconds", type=int)
+
+    transports = commands.add_parser("transports", help="add or remove transports while stopped")
+    transports.add_argument("--folder")
+    transports.add_argument("--clear-folder", action="store_true")
+    transports.add_argument("--folder-seconds", type=int)
+    transports.add_argument("--repo")
+    transports.add_argument("--create-repo", action="store_true")
+    transports.add_argument("--clear-repo", action="store_true")
+    transports.add_argument("--repo-seconds", type=int)
+    transports.add_argument("--tailnet", action="store_true", help="enable the tailnet tier")
+    transports.add_argument("--clear-tailnet", action="store_true")
+    transports.add_argument("--tailnet-port", type=int)
     return parser
 
 
-def _choose_host() -> str:
-    """Offer the tailnet peers that are actually serving, rather than demanding a typed IP."""
-    try:
-        candidates = discover_hosts()
-    except (OSError, ValueError):
-        candidates = []
-    serving = [host for host in candidates if host["serving"]]
-    if serving:
-        print("\nFleet hosts found on your tailnet:")
-        for number, host in enumerate(serving, 1):
-            print(f"  {number}. {host['label']:<20} {host['url']}")
-        answer = input("Choose a number, or type a host URL: ").strip()
-        if answer.isdigit() and 1 <= int(answer) <= len(serving):
-            return serving[int(answer) - 1]["url"]
-        if answer:
-            return answer
-        raise ValueError("a host is required to connect")
-    if candidates:
-        # Naming the machines that exist but are not serving is the useful half of the answer.
-        print("\nNo device on your tailnet is currently serving the fleet on port 8765.")
-        for host in candidates[:6]:
-            print(f"  {host['label']:<20} {'online' if host['online'] else 'offline'}"
-                  f" — {host['url']}")
-        print("Start the host app there first ('fleet tray', or 'fleet host --root PATH'),\n"
-              "or host the fleet on this machine instead.")
-    return input("Host URL (http://TAILSCALE-IP:8765): ").strip()
-
-
-def setup_arguments(directory, configure_only=False):
-    """Interactive front door; the same validated configuration as the noninteractive flags."""
-    print("Live fleet setup: keep one host app running and connect each observer to it.\n"
-          "Uses the existing gh login and Tailscale account. No source files are uploaded.\n"
-          "Repository names and status will be visible to your authorized fleet devices.")
-    mode = input("Host the fleet here, or connect to an existing host? [connect]: ").strip() or "connect"
-    if mode not in ("host", "connect"):
-        raise ValueError("choose host or connect")
-    arguments = ["--config-dir", str(directory), mode]
-    if mode == "connect":
-        arguments += ["--server", _choose_host()]
+def setup_arguments(directory: Path, configure_only=False):
+    """Interactive first run. Offers every transport; requires none."""
+    print("Fleet setup. Every machine is a peer: it watches its own repositories, publishes\n"
+          "what it sees, and shows you a dashboard. Nothing here needs another machine to be\n"
+          "running, and no machine is in charge of any other.\n")
+    arguments = ["--config-dir", str(directory), "peer"]
     root = input("Repository library folder (inventoried once, recursively): ").strip().strip('"')
     if not root:
         raise ValueError("a repository library folder is required")
-    print(f"\nInitial inventory will recursively discover repositories under:\n  {root}\n"
-          "Afterward native filesystem notifications inspect only a changed repository.\n"
-          "There is no timed full scan. No source contents are copied or modified.")
+    print(f"\nOne recursive inventory will run over:\n  {root}\n"
+          "After that, filesystem notifications inspect only a repository that changed.\n"
+          "No source content is copied, sent, or modified.")
     if input("Type SCAN to allow the initial inventory: ").strip() != "SCAN":
         raise ValueError("initial inventory was not acknowledged")
     arguments += ["--root", root, "--acknowledge-initial-scan"]
-    folder = input("Optional already-synced folder for timed replicas [none]: ").strip().strip('"')
+
+    print("\nHow should this machine share status with your others?\n"
+          "These are complements — set up as many as you can. Press Enter to skip any.")
+    secret = input("Fleet key from a machine you already set up [new fleet]: ").strip()
+    if secret:
+        arguments += ["--fleet-secret", secret]
+    folder = input("A folder your sync client already replicates [none]: ").strip().strip('"')
     if folder:
-        arguments += ["--replica-folder", folder, "--folder-seconds",
-                      input("Folder publication interval in seconds [300]: ").strip() or "300"]
-    repo = input("Optional existing private GitHub state owner/repo [none]: ").strip()
+        arguments += ["--folder", folder]
+    repo = input("A private GitHub repo for durable status, owner/name [none]: ").strip()
     if repo:
-        arguments += ["--replica-repo", repo]
+        arguments += ["--repo", repo]
         if input("Create it privately if it does not exist? [y/N]: ").strip().lower() == "y":
-            arguments.append("--create-replica-repo")
-        arguments += ["--github-seconds",
-                      input("GitHub publication interval in seconds [1800]: ").strip() or "1800"]
+            arguments.append("--create-repo")
+    if input("Talk directly to your other machines over Tailscale? [Y/n]: ").strip().lower() \
+            in ("n", "no"):
+        arguments.append("--no-tailnet")
     if configure_only:
         arguments.append("--configure-only")
     return build_parser().parse_args(arguments)
 
 
-def _main(argv=None, stopping=None, on_ready=None):
-    """``stopping``/``on_ready`` are the shell seam used by fleet_tray.py.
-
-    A caller that supplies ``stopping`` owns the lifecycle and is not necessarily on the main
-    thread, so signal handlers are registered only for a plain foreground run -- ``signal.signal``
-    raises off the main thread. ``on_ready`` receives read-only accessors once the app is live;
-    it must never be handed classification duties, because only fleet_display.py may decide
-    what fleet state means (see DISPLAY-CONTRACT.md).
-    """
-    enable_unicode_output()
-    args = build_parser().parse_args(argv)
-    directory = args.config_dir.expanduser()
-    try:
-        if args.command == "rescan":
-            if not (directory / APP_CONFIG).exists():
-                raise ValueError("no saved fleet configuration")
-            atomic_write_bytes(directory / "fleet-rescan.request", b"inventory requested\n")
-            print("Requested one local inventory refresh. The running observer will perform it.")
-            return 0
+def command_transports(args, directory: Path) -> int:
+    config = load_saved(directory)
+    transports = dict(config.get("transports") or {})
+    if args.folder and args.clear_folder:
+        raise ValueError("choose --folder or --clear-folder")
+    if args.repo and args.clear_repo:
+        raise ValueError("choose --repo or --clear-repo")
+    if args.folder:
+        folder = Path(args.folder).expanduser().resolve()
+        if not folder.is_dir():
+            raise ValueError("--folder must already exist")
+        transports["folder"] = {"path": str(folder),
+                                "seconds": args.folder_seconds or DEFAULT_FOLDER_SECONDS}
+    elif args.clear_folder:
+        transports.pop("folder", None)
+    elif args.folder_seconds and transports.get("folder"):
+        transports["folder"]["seconds"] = args.folder_seconds
+    if args.repo:
         require_gh()
-        identity = local_identity()
-        if args.command == "setup":
-            args = setup_arguments(directory, args.configure_only)
-        if args.command == "replicas":
-            path = directory / APP_CONFIG
-            if not path.exists():
-                raise ValueError("no saved fleet configuration")
-            config = migrate_app_config(json.loads(path.read_text(encoding="utf-8")))
-            if args.folder and args.clear_folder:
-                raise ValueError("choose --folder or --clear-folder")
-            if args.repo and args.clear_repo:
-                raise ValueError("choose --repo or --clear-repo")
-            if args.folder:
-                folder = Path(args.folder).expanduser().resolve()
-                if not folder.is_dir():
-                    raise ValueError("--folder must already exist and be managed by a sync client")
-                config["replica_folder"] = str(folder)
-            elif args.clear_folder:
-                config["replica_folder"] = None
-            if args.folder_seconds is not None:
-                config["folder_seconds"] = args.folder_seconds
-            if args.repo:
-                transport = RepoTransport(args.repo)
-                health = transport.doctor()
-                if not health.get("exists") and args.create_repo:
-                    create_state_repo(args.repo)
-                    health = transport.doctor()
-                if not health.get("exists") or not health.get("private") or not health.get("permissions"):
-                    raise ValueError("--repo must be private and writable; add --create-repo to create it")
-                config["replica_repo"] = args.repo
-            elif args.clear_repo:
-                config["replica_repo"] = None
-            if args.github_seconds is not None:
-                config["github_seconds"] = args.github_seconds
-            validate_app_config(config)
-            write_json(path, config)
-            print("Replica settings saved. Start the app with 'fleet run'.")
-            return 0
-        if args.command in ("host", "connect"):
-            config = configure(args, directory, identity)
-            if args.configure_only:
-                # Lets a graphical shell run first-run setup and then start the app under a
-                # tray icon, instead of the terminal owning the process for the whole session.
-                return 0
-        else:
-            path = directory / APP_CONFIG
-            if not path.exists():
-                raise ValueError("run 'fleet host --root PATH' or 'fleet connect --server URL --root PATH' first")
-            saved = json.loads(path.read_text(encoding="utf-8"))
-            config = validate_app_config(migrate_app_config(saved))
-            if config != saved:
-                write_json(path, config)
-                print("Updated the saved observer from timed scans to filesystem events.", flush=True)
-        if config["machine_id"] != identity["machine_id"]:
-            raise ValueError("Tailscale device identity changed; review enrollment before rejoining")
-        if args.command == "doctor":
-            print(json.dumps({k: v for k, v in config.items() if k != "fleet_secret"}, indent=2))
-            print("gh authenticated; Tailscale connected; fleet key set (hidden)")
-            if config["mode"] == "connect":
-                print(f"Host reports {len(FleetClient(config['server']).request('/v1/dashboard')['machines'])} machine(s)")
-            return 0
-        if stopping is None:
-            stopping = threading.Event()
-            for name in ("SIGINT", "SIGTERM"):
-                signal.signal(getattr(signal, name), lambda *_: stopping.set())
-        server = None
-        if config["mode"] == "host":
-            if identity["login"] != config["allowed_login"]:
-                raise ValueError("Tailscale user changed; host authorization needs review")
-            store = FleetStore(directory / "fleet.sqlite3", fleet_id_for(config["fleet_secret"]))
-            server = make_server((identity["ip"], config["port"]), store,
-                                 config["fleet_secret"], config["allowed_login"], load_ui_assets(),
-                                 display_settings={"observation_mode": config["observation_mode"],
-                                                   "debounce_seconds": config["debounce_seconds"],
-                                                   "root_count": len(config["roots"]),
-                                                   "replica_folder": config.get("replica_folder"),
-                                                   "folder_seconds": config.get("folder_seconds"),
-                                                   "replica_repo": config.get("replica_repo"),
-                                                   "github_seconds": config.get("github_seconds")})
-            threading.Thread(target=server.serve_forever, daemon=True).start()
-            print(f"Dashboard: http://{identity['ip']}:{config['port']}/", flush=True)
-            print("Private Tailscale listener; only devices owned by the host's Tailscale user may join.", flush=True)
-            publish = lambda report: store.put(config["machine_id"], report)
-            heartbeat = lambda observed_at: store.touch(config["machine_id"], observed_at)
-            url = f"http://{identity['ip']}:{config['port']}/"
-            # The host owns the store, so it renders the same document it serves over HTTP.
-            dashboard = lambda: build_display(store.reports(), store.fleet_id,
-                                              settings=display_settings)
-        else:
-            client = FleetClient(config["server"])
-            publish = lambda report: client.request("/v1/report", report)
-            heartbeat = lambda observed_at: client.request(
-                "/v1/heartbeat", {"observed_at": observed_at})
-            url = config["server"] + "/"
-            dashboard = lambda: client.request("/v1/dashboard")
-            print(f"Dashboard: {config['server']}/", flush=True)
-        if on_ready is not None:
-            on_ready({"url": url, "mode": config["mode"], "label": config["label"],
-                      "config_dir": directory, "dashboard": dashboard,
-                      "rescan": lambda: atomic_write_bytes(
-                          directory / "fleet-rescan.request", b"inventory requested\n")})
+        transport = RepoTransport(args.repo)
+        health = transport.doctor()
+        if not health.get("exists") and args.create_repo:
+            create_state_repo(args.repo)
+            health = transport.doctor()
+        if not health.get("exists") or not health.get("private") or not health.get("permissions"):
+            raise ValueError("--repo must be private and writable; add --create-repo to create it")
+        transports["repo"] = {"name": args.repo,
+                              "seconds": args.repo_seconds or DEFAULT_REPO_SECONDS}
+    elif args.clear_repo:
+        transports.pop("repo", None)
+    elif args.repo_seconds and transports.get("repo"):
+        transports["repo"]["seconds"] = args.repo_seconds
+    if args.tailnet:
+        transports["tailnet"] = {"port": args.tailnet_port or DEFAULT_TAILNET_PORT,
+                                 "allowed_login": None}
+    elif args.clear_tailnet:
+        transports.pop("tailnet", None)
+    elif args.tailnet_port and transports.get("tailnet"):
+        transports["tailnet"]["port"] = args.tailnet_port
+    config["transports"] = transports
+    validate(config)
+    write_json(directory / APP_CONFIG, config)
+    print(f"Transports now:\n{describe(config)}\nStart with 'fleet run'.")
+    return 0
+
+
+def command_doctor(config: dict) -> int:
+    shown = {k: v for k, v in config.items() if k != "fleet_secret"}
+    print(json.dumps(shown, indent=2))
+    print(f"\nfleet id: {fleet_id_for(config['fleet_secret'])}  (key is set and hidden)")
+    print(f"dashboard: http://127.0.0.1:{config['local_port']}/  — local, always available")
+    if (config.get("transports") or {}).get("tailnet"):
         try:
-            run_observer(config, directory, publish, stopping, heartbeat=heartbeat)
-        finally:
-            if server:
-                server.shutdown()
-                server.server_close()
-        return 0
-    except (OSError, ValueError, KeyError, GhError, EOFError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+            from fleet_net import discover_hosts
+
+            port = config["transports"]["tailnet"]["port"]
+            peers = discover_hosts(port=port, timeout=0.6)
+            for peer in peers:
+                state = "answering" if peer["serving"] else (
+                    "online, not running the app" if peer["online"] else "offline")
+                print(f"  peer {peer['label']:<20} {state}")
+            if not peers:
+                print("  no tailnet peers found")
+        except (OSError, ValueError) as exc:
+            print(f"  tailnet unavailable: {exc}")
+    return 0
 
 
 def run_autostart(args) -> int:
-    """Start-at-login is only ever changed by this explicit command or the tray's menu item."""
     import fleet_autostart
 
     enable_unicode_output()
@@ -523,12 +326,13 @@ def run_autostart(args) -> int:
             target = fleet_autostart.systemd_enable(
                 fleet_autostart.launch_command(inner, script=__file__))
             print(f"Start at login enabled via systemd --user: {target}\n"
-                  "Note: without 'loginctl enable-linger', this runs only while you are logged in.")
+                  "Without 'loginctl enable-linger' this runs only while you are logged in.")
         elif args.action == "disable":
             print(f"Removed: {fleet_autostart.systemd_disable()}")
         else:
             print(json.dumps({"method": "systemd --user",
-                              "enabled": fleet_autostart._systemd_unit_path().is_file()}, indent=2))
+                              "enabled": fleet_autostart._systemd_unit_path().is_file()},
+                             indent=2))
         return 0
     if args.action == "enable":
         print(json.dumps(fleet_autostart.enable(inner, script=__file__), indent=2))
@@ -539,7 +343,59 @@ def run_autostart(args) -> int:
     return 0
 
 
+def _main(argv=None, stopping=None, on_ready=None):
+    """`stopping`/`on_ready` are the shell seam used by fleet_tray.py.
+
+    A caller supplying `stopping` owns the lifecycle and may not be on the main thread, so
+    signal handlers are registered only for a plain foreground run — `signal.signal` raises
+    off the main thread.
+    """
+    enable_unicode_output()
+    args = build_parser().parse_args(argv)
+    directory = args.config_dir.expanduser()
+    try:
+        if args.command == "rescan":
+            if not (directory / APP_CONFIG).exists():
+                raise ValueError("no saved fleet configuration")
+            atomic_write_bytes(directory / "fleet-rescan.request", b"inventory requested\n")
+            print("Requested one local inventory refresh; the running peer will perform it.")
+            return 0
+        if args.command == "transports":
+            return command_transports(args, directory)
+        if args.command == "setup":
+            args = setup_arguments(directory, args.configure_only)
+        if args.command == "peer":
+            config = configure(args, directory)
+            if args.configure_only:
+                return 0
+        else:
+            config = load_saved(directory)
+        if args.command == "doctor":
+            return command_doctor(config)
+
+        if stopping is None:
+            stopping = threading.Event()
+            for name in ("SIGINT", "SIGTERM"):
+                signal.signal(getattr(signal, name), lambda *_: stopping.set())
+        return run_peer(config, directory, stopping, on_ready=on_ready)
+    except (OSError, ValueError, KeyError, GhError, EOFError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
+RETIRED = {"host", "connect"}
+
+
 def main(argv=None, stopping=None, on_ready=None):
+    enable_unicode_output()  # before argparse, which may print and exit on --help
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if any(token in RETIRED for token in argv):
+        print("error: 'host' and 'connect' are gone — every machine is now a peer.\n"
+              "  first run : fleet setup\n"
+              "  scripted  : fleet peer --root PATH --acknowledge-initial-scan\n"
+              "An existing host or client configuration migrates automatically on 'fleet run'.",
+              file=sys.stderr)
+        return 2
     args = build_parser().parse_args(argv)
     if args.command == "autostart":
         try:
@@ -554,8 +410,6 @@ def main(argv=None, stopping=None, on_ready=None):
         try:
             return run_tray(inner)
         except TrayUnavailable as exc:
-            # The same autostart command is registered on every OS, so a platform without a
-            # tray must still start the observer rather than fail at login.
             print(f"note: {exc}; running in the foreground instead", flush=True)
             return main(inner, stopping, on_ready)
     if args.command in ("doctor", "rescan"):

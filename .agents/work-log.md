@@ -3,6 +3,33 @@
 Append-only record of **completed** work. Newest first. Items that graduate from
 [`working-notes.md`](working-notes.md) land here with an absolute date.
 
+## 2026-09-11 (later) — the peer model
+
+- **Collapsed host/connect into one kind of machine: a peer.** The old split was the design
+  mistake behind every symptom: one machine owned the SQLite store and served the dashboard,
+  clients pushed reports to it, and when it was off nobody could publish and nobody had a
+  dashboard. Now every machine observes itself, publishes to every transport it has, serves its
+  own loopback dashboard, and talks to peers only when Tailscale happens to be up.
+- **Peers pull; they never push.** `make_peer_server` is GET-only (`/v1/manifest`, plus
+  `/v1/session` for painless joining); POST is 405. That deletes the write path entirely — no
+  write authorization to model, and an unreachable peer is simply not polled rather than an
+  error. The old `make_server` remains only for the retired host.
+- **Tailscale is now strictly optional and strictly last.** `resolve_machine_identity` falls
+  back to the Sync Suggester machine id, and `PeerNetwork.start()` degrades with a message
+  saying what still works. A peer with no network observes, publishes to a synced folder, and
+  shows a dashboard.
+- New `app/fleet_config.py` (schema v3 + migration), `app/fleet_peer.py` (runtime),
+  `fleet/ui_assets.py`, `fleet/local_view.py`, `app/local_dashboard.py`. Transports became a
+  dict because they are complements, not alternatives. `fleet transports` replaces `replicas`.
+- **Bugs found by running it, not reading it:** the multi-source merge counted one machine
+  twice (`load_manifests` dedupes internally; my merge bypassed it — fixed with a public
+  `newest_per_machine` that stays silent across sources, since a duplicate there is expected
+  rather than a defect), and peer logging did not flush, leaving an empty log exactly when the
+  process runs under the tray or at login with stdout redirected.
+- v1 and v2 configurations migrate automatically; `host`/`connect` print a migration message
+  instead of an argparse error. Validation 19/19, plus a live no-Tailscale peer and a rebuilt
+  Windows bundle.
+
 ## 2026-09-11 (later) — public-repo readiness
 
 - **Sanitization is now a test, not a habit.** `tests/repo/test_repo_hygiene.py` scans every

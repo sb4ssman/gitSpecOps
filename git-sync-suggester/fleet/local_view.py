@@ -15,7 +15,7 @@ which remains the only module permitted to decide what fleet state means.
 """
 from __future__ import annotations
 
-from aggregate import load_manifests, split_by_fleet
+from aggregate import load_manifests, newest_per_machine, split_by_fleet
 from fleet_display import build_display
 
 
@@ -54,18 +54,44 @@ def reports_from_manifests(manifests: list[dict], catalog: dict | None = None,
     return reports
 
 
-def display_from_transport(transport, config: dict, catalog: dict | None = None,
-                           now=None, settings: dict | None = None) -> dict:
-    """Read every peer manifest from one transport and render the display document."""
-    manifests, issues = load_manifests(transport)
-    fleet_id = config.get("fleet_id")
+def display_from_manifests(manifests: list[dict], fleet_id: str | None = None,
+                           catalog: dict | None = None, names: dict | None = None,
+                           issues: list[str] | None = None, now=None,
+                           settings: dict | None = None) -> dict:
+    """Render the display from manifests gathered from *any* mix of sources.
+
+    A peer reads the same machine from several places at once — its own observation, a synced
+    folder, a private repo, a live pull — and those copies disagree by design, because they were
+    written at different moments. `machine_views` keeps the newest per machine, so more
+    transports can only ever improve freshness, never conflict. That is what makes the tiers
+    complements rather than alternatives.
+
+    `names` carries readable identities learned from live peers (which may share them inside a
+    private tailnet); `catalog` carries the ones this machine knows itself. Neither is required.
+    """
+    issues = list(issues or [])
     if fleet_id:
         # A machine that joined with the wrong secret is reported, never silently merged.
         mine, strangers = split_by_fleet(manifests, fleet_id)
         if strangers:
-            issues = list(issues) + [
-                f"{len(strangers)} manifest(s) belong to a different fleet id and were ignored"]
+            labels = sorted({m.get("machine_label") or m.get("machine_id") or "?"
+                             for m in strangers})
+            issues.append(f"{len(strangers)} manifest(s) belong to a different fleet id and "
+                          f"were ignored: {', '.join(labels)}")
         manifests = mine
-    reports = reports_from_manifests(manifests, catalog, issues)
-    document = build_display(reports, fleet_id or "local", now=now, settings=settings)
-    return document
+    # One view per machine: the same machine legitimately arrives from several sources at once
+    # (its own observation, a synced folder, a state repo, a live pull). Newest wins, silently.
+    manifests = newest_per_machine(manifests)
+    combined = dict(catalog or {})
+    for repo_id, identity in (names or {}).items():
+        combined.setdefault(repo_id, identity)
+    reports = reports_from_manifests(manifests, combined, issues)
+    return build_display(reports, fleet_id or "local", now=now, settings=settings)
+
+
+def display_from_transport(transport, config: dict, catalog: dict | None = None,
+                           now=None, settings: dict | None = None) -> dict:
+    """Read every peer manifest from one transport and render the display document."""
+    manifests, issues = load_manifests(transport)
+    return display_from_manifests(manifests, fleet_id=config.get("fleet_id"), catalog=catalog,
+                                  issues=issues, now=now, settings=settings)

@@ -146,12 +146,20 @@ def load_manifests(transport, skip_invalid: bool = True) -> tuple[list[dict], li
     return _newest_per_machine(manifests, issues), issues
 
 
-def _newest_per_machine(manifests: list[dict], issues: list[str]) -> list[dict]:
-    """One manifest per machine, keeping the most recent.
+def newest_per_machine(manifests: list[dict], issues: list[str] | None = None) -> list[dict]:
+    """One manifest per machine, keeping the most recent. Duplicates are reported only if asked.
 
-    A machine that toggles compression changes its filename, and a stale counterpart that
-    failed to delete would otherwise be counted as a second machine reporting older state.
-    The writers clean up after themselves; this makes that cleanup non-critical.
+    Whether a duplicate deserves an issue depends entirely on where the manifests came from:
+
+    - Within **one** transport it is a defect — two files claiming to be the same machine — so
+      `_newest_per_machine` passes a list and the dashboard says so.
+    - Across **several** sources it is the normal case, and the whole point of having more than
+      one: a peer reads its own live observation, the copy in a synced folder, and the copy in a
+      state repo, all of the same machine, written at different moments. Reporting that as a
+      problem would bury the real issues under one line per machine per refresh.
+
+    Either way the newest observation wins, which is why adding transports can only improve
+    freshness.
     """
     newest: dict[str, dict] = {}
     for manifest in manifests:
@@ -164,9 +172,15 @@ def _newest_per_machine(manifests: list[dict], issues: list[str]) -> list[dict]:
                       if str(manifest.get("observed_at")) > str(current.get("observed_at"))
                       else (current, manifest))
         newest[machine] = keep
-        issues.append(f"ignored an older duplicate manifest for {machine} "
-                      f"(observed {drop.get('observed_at')})")
+        if issues is not None:
+            issues.append(f"ignored an older duplicate manifest for {machine} "
+                          f"(observed {drop.get('observed_at')})")
     return list(newest.values())
+
+
+def _newest_per_machine(manifests: list[dict], issues: list[str]) -> list[dict]:
+    """Single-transport variant: a duplicate there is a real defect, so it is reported."""
+    return newest_per_machine(manifests, issues)
 
 
 def split_by_fleet(manifests: list[dict], fleet_id: str | None) -> tuple[list[dict], list[dict]]:

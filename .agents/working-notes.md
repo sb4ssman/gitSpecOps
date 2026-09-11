@@ -7,26 +7,6 @@ _Last tended: 2026-09-11_
 
 ## Open
 
-- [ ] **The fleet model: peers, not a host (corrected 2026-09-11).** The user's model, stated
-  plainly: the three transports are **complements** and setting up all three is the goal; the
-  **dashboard belongs to each machine** and must never depend on Tailscale; machines that are
-  online talk to each other **directly**, and whether they do or not they leave fingerprints in
-  the other tiers, so an offline machine still shows its last known state.
-  - **Done:** `dashboard --serve` (`app/local_dashboard.py` + `fleet/local_view.py`) serves the
-    browser skin on loopback from published manifests alone — no host, no Tailscale, offline
-    machines visible with honest freshness. `tests/fleet/test_local_dashboard.py` pins it.
-  - **Still wrong:** `fleet_app.py` is host/connect. One machine owns the SQLite store and
-    serves the dashboard; clients POST to it and can publish nowhere else when it is down. That
-    asymmetry is the remaining piece of the old model.
-  - **Next:** collapse host/connect into a single `peer` mode — every machine observes, publishes
-    to every configured transport, serves its own local dashboard, and *additionally* discovers
-    and queries tailnet peers directly for fresher data. SQLite becomes a local cache of what
-    this machine has learned, not the fleet's authority. The tray then sits on the local
-    dashboard and works with or without Tailscale.
-  - Note the honest trade-off to preserve: the durable/medium tiers publish salted digests, so
-    peer repositories show as opaque ids until `converge` resolves them; the tailnet tier shares
-    readable names inside the private fleet. Do not "fix" this by weakening the salt.
-
 - [ ] **History still holds the pre-sanitization details (2026-09-11).** Tracked files are clean,
   but earlier commits still contain real machine names, tailnet addresses, archive paths and
   private namespaces. A rewrite (`git filter-repo`) is the only complete fix and it breaks every

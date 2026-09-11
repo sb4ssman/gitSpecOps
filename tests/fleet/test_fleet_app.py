@@ -14,8 +14,10 @@ from _bootstrap import setup  # noqa: E402
 
 setup("sync")
 
-from fleet_app import (ReplicaSchedule, app_lock, load_ui_assets, migrate_app_config,
-                       require_gh, setup_arguments, validate_app_config)
+from fleet_app import app_lock, require_gh, setup_arguments
+from fleet_config import migrate, validate
+from fleet_peer import TransportPublisher
+from ui_assets import load_ui_assets
 from fleet_display import CONTRACT_NAME, CONTRACT_VERSION, PRODUCT_NAME, build_display
 from fleet_net import make_server, peer_identity, validate_server_url
 from fleet_store import FleetStore, validate_report
@@ -123,43 +125,70 @@ def main():
     rejected(lambda: validate_server_url("http://user:password@100.64.0.1:8765"))
     with patch("fleet_app.run_gh", return_value=Mock(returncode=1)):
         rejected(require_gh)
-    with patch("builtins.input", side_effect=["connect", "http://100.64.0.1:8765",
-                                               "T:/Github", "SCAN", "", ""]):
+    # Setup asks for the library, the scan acknowledgement, then each optional transport.
+    with patch("builtins.input", side_effect=["/libraries/code", "SCAN", "", "", "", ""]):
         setup = setup_arguments(Path("test-config"))
-        assert setup.command == "connect" and setup.root == ["T:/Github"]
+        assert setup.command == "peer" and setup.root == ["/libraries/code"]
         assert setup.acknowledge_initial_scan is True
-        assert setup.replica_repo is None and setup.replica_folder is None
+        assert setup.repo is None and setup.folder is None
+        assert setup.no_tailnet is False  # blank answer keeps the tailnet tier
 
     with tempfile.TemporaryDirectory() as root:
-        migrated = migrate_app_config({
+        # A v1 host configuration migrates all the way to a v3 peer, keeping its identity,
+        # its fleet key and its transports. A saved setup is never silently discarded.
+        migrated = migrate({
             "version": 1, "mode": "host", "roots": [root], "fleet_secret": SECRET,
             "machine_id": "ts-one", "label": "one", "interval": 30, "heartbeat": 30,
-            "scan_notice_acknowledged": True, "replica_folder": None,
+            "scan_notice_acknowledged": True, "replica_folder": root,
             "folder_seconds": 300, "replica_repo": None, "github_seconds": 1800,
             "allowed_login": "owner", "port": 8765,
         })
-        assert migrated["version"] == 2 and "interval" not in migrated
+        assert migrated["version"] == 3 and migrated["mode"] == "peer"
+        assert "interval" not in migrated and "port" not in migrated
         assert migrated["observation_mode"] == "filesystem-events"
         assert migrated["inventory_notice_acknowledged"] is True
-        validate_app_config(migrated)
+        assert migrated["transports"]["folder"] == {"path": root, "seconds": 300}
+        assert migrated["transports"]["tailnet"]["port"] == 8765
+        assert migrated["fleet_secret"] == SECRET and migrated["machine_id"] == "ts-one"
+        validate(migrated)
 
+        # A former client migrates too, and loses the server it used to push to.
+        client = migrate({
+            "version": 2, "mode": "connect", "roots": [root], "fleet_secret": SECRET,
+            "machine_id": "ts-two", "label": "two", "heartbeat": 30,
+            "observation_mode": "filesystem-events", "debounce_seconds": 0.75,
+            "inventory_notice_acknowledged": True, "replica_folder": None,
+            "folder_seconds": 300, "replica_repo": None, "github_seconds": 1800,
+            "server": "http://100.64.0.1:8765",
+        })
+        assert client["mode"] == "peer" and "server" not in client
+        validate(client)
+
+    # Publishing is paced per transport: a change reaches a synced folder quickly while the
+    # GitHub API stays within budget, and one transport failing never stops the other.
     clock = [0]
     folder, github = Mock(), Mock()
-    schedule = ReplicaSchedule([(folder, 10, "folder"), (github, 60, "GitHub")], lambda: clock[0])
-    for tick in (0, 1, 9):
-        clock[0] = tick
-        schedule.tick(report(), log=lambda *_: None)
-    assert not folder.write_own_manifest.called and not github.write_own_manifest.called
-    clock[0] = 10
-    schedule.tick(report(), log=lambda *_: None)
-    assert folder.write_own_manifest.call_count == 1 and not github.write_own_manifest.called
-    clock[0] = 60
+    publisher = TransportPublisher({}, clock=lambda: clock[0])
+    publisher.entries = [
+        {"name": "folder", "transport": folder, "seconds": 10, "next": 0.0},
+        {"name": "github", "transport": github, "seconds": 60, "next": 0.0},
+    ]
+    manifest = report()["manifest"]
+    assert set(publisher.publish(manifest, changed=True, log=lambda *_: None)) == {"folder",
+                                                                                   "github"}
+    clock[0] = 5
+    assert publisher.publish(manifest, changed=True, log=lambda *_: None) == []
+    clock[0] = 12
+    assert publisher.publish(manifest, changed=True, log=lambda *_: None) == ["folder"]
+    clock[0] = 30
+    # Nothing new to say: the slot is kept rather than spent republishing identical state.
+    assert publisher.publish(manifest, changed=False, log=lambda *_: None) == []
+    clock[0] = 100
     github.write_own_manifest.side_effect = OSError("offline")
-    schedule.tick(report(), log=lambda *_: None)
-    clock[0] = 61
-    schedule.tick(report(), log=lambda *_: None)
-    assert github.write_own_manifest.call_count == 1  # failure must not trigger early retry
-    assert set(folder.write_own_manifest.call_args.args[1]) == set(report()["manifest"])
+    assert "github" not in publisher.publish(manifest, changed=True, log=lambda *_: None)
+    clock[0] = 105
+    assert publisher.publish(manifest, changed=True, log=lambda *_: None) == []  # no early retry
+    assert set(folder.write_own_manifest.call_args.args[1]) == set(manifest)
 
     assets = load_ui_assets()
     assert set(assets) == {"/", "/assets/fleet_standard.css", "/assets/fleet_client.js",
