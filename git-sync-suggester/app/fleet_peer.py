@@ -203,9 +203,16 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
 
     def document():
         manifests, issues, names = sources()
+        if pending_new:
+            listed = ", ".join(sorted(p.name for p in sorted(pending_new))[:5])
+            more = "" if len(pending_new) <= 5 else f" (+{len(pending_new) - 5} more)"
+            issues = list(issues) + [
+                f"{len(pending_new)} new repository(ies) appeared in your library and are not "
+                f"observed yet: {listed}{more}. Run 'fleet rescan' to include them."]
         return display_from_manifests(manifests, fleet_id=fleet_id, names=names, issues=issues,
                                       settings={"transports": describe(config),
-                                                "root_count": len(config["roots"])})
+                                                "root_count": len(config["roots"]),
+                                                "new_repositories": len(pending_new)})
 
     from local_dashboard import make_local_server
     from ui_assets import load_ui_assets
@@ -224,6 +231,8 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                   "config_dir": config_dir, "dashboard": document,
                   "rescan": lambda: atomic_write_bytes(
                       config_dir / "fleet-rescan.request", b"inventory requested\n")})
+
+    pending_new: set = set()
 
     started = time.monotonic()
     count = observer.inventory()
@@ -264,11 +273,20 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                     request_path.unlink(missing_ok=True)
                     started = time.monotonic()
                     count = observer.inventory()
+                    pending_new.clear()
                     reason = f"manual inventory: {count} repos in {time.monotonic() - started:.1f}s"
                 elif changed:
                     touched = observer.refresh(changed)
                     if touched:
                         reason = f"filesystem change: checked {touched} repo(s)"
+                    # Events that mapped to no known checkout used to be dropped entirely, so a
+                    # freshly cloned repository stayed invisible until someone ran rescan.
+                    appeared = observer.detect_new_checkouts(changed) - pending_new
+                    if appeared:
+                        pending_new.update(appeared)
+                        log(f"Noticed {len(appeared)} new repository(ies) in your library: "
+                            + ", ".join(sorted(path.name for path in appeared)[:5])
+                            + ". Run 'fleet rescan' to start observing them.")
                 if reason:
                     observe(reason)
                 now = time.monotonic()

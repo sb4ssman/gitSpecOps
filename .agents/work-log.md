@@ -3,6 +3,23 @@
 Append-only record of **completed** work. Newest first. Items that graduate from
 [`working-notes.md`](working-notes.md) land here with an absolute date.
 
+## 2026-09-11 (later) — new-repository detection, and the tier design
+
+- **A repository cloned into the library was invisible until someone ran `fleet rescan`.**
+  The events always fired; `affected_repositories` maps an event only to a *known* checkout, so
+  they were dropped. `IncrementalObserver.detect_new_checkouts` now walks up from an unmatched
+  event to the enclosing directory containing `.git`, and the peer logs it and raises it as a
+  dashboard issue. It detects without adding — membership stays explicit, per
+  detect -> alert -> approve. The defect was the silence, not the confirmation step.
+- **Recorded the tier design** in [knowledge/tiers-and-capture.md](knowledge/tiers-and-capture.md):
+  the three tiers should differ in what they can *rescue*, not only in latency, and today they
+  all carry the same status manifest. Includes the finding that VS Code already persists dirty
+  editor buffers to `%APPDATA%\Code\Backups`, which — if written eagerly rather than at exit —
+  means unsaved work can be observed without any editor plugin. Flagged as needing an empirical
+  test before anything is built on it.
+- Also recorded: there is no scanning anywhere (one inventory, then kernel notifications), and
+  the only periodic work in a peer is a 20s tailnet poll plus change-gated transport publishes.
+
 ## 2026-09-11 (later) — the peer model
 
 - **Collapsed host/connect into one kind of machine: a peer.** The old split was the design

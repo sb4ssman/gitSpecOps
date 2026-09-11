@@ -69,7 +69,45 @@ def main():
                     break
             assert events.wait(timeout=0.3, debounce=0) == set(), "watcher never became idle"
 
+    test_new_checkout_is_detected_not_dropped()
     print("ALL-FLEET-EVENT-TESTS-PASS")
+
+
+
+def test_new_checkout_is_detected_not_dropped():
+    """A repository cloned into the library fires events that map to no known checkout.
+
+    Those events used to be discarded, so a new repository stayed invisible until someone
+    remembered to run `fleet rescan`. Detection must notice it; adding it stays explicit.
+    """
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "library"
+        existing = root / "already-known"
+        existing.mkdir(parents=True)
+        git(existing, "init")
+        git(existing, "remote", "add", "origin", "https://github.com/example/known.git")
+        config = {"roots": [str(root)], "fleet_secret": "22" * 32,
+                  "machine_id": "test-machine", "label": "Test machine"}
+        observer = IncrementalObserver(config)
+        assert observer.inventory() == 1
+
+        fresh = root / "freshly-cloned"
+        fresh.mkdir()
+        git(fresh, "init")
+        (fresh / "README.md").write_text("new\n", encoding="utf-8")
+
+        events = {fresh / "README.md", fresh / ".git" / "HEAD"}
+        assert observer.affected_repositories(events) == set(), \
+            "a new checkout is not a known one"
+        found = observer.detect_new_checkouts(events)
+        assert found == {fresh.resolve()}, f"the new checkout must be detected: {found}"
+
+        # An event inside a repository already observed is not a new checkout.
+        assert observer.detect_new_checkouts({existing / "file.txt"}) == set()
+        # Nor is something outside every configured root.
+        assert observer.detect_new_checkouts({Path(temp) / "elsewhere" / "x"}) == set()
+
+    print("new-checkout detection OK")
 
 
 if __name__ == "__main__":

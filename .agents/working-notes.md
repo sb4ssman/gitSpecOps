@@ -7,6 +7,26 @@ _Last tended: 2026-09-11_
 
 ## Open
 
+- [ ] **The tier ladder is not built yet (design recorded 2026-09-11).** See
+  [knowledge/tiers-and-capture.md](knowledge/tiers-and-capture.md). Today all three tiers carry
+  the *same* v3 status manifest, so they differ only in latency. They are supposed to differ in
+  what they can rescue: durable = committed + status; medium = **saved but uncommitted content**;
+  live = **unsaved editor buffers**. Ordered next steps:
+  1. **Guided durable setup** — setup should propose a repo name, explain that gitSpecOps owns
+     that repo, and state the publication conditions. Creating it stays explicit.
+  2. **Content capture on the medium tier** (the user's *stealth-stash*): a patch bundle per
+     repository, encrypted, size-capped, expiring after the real commit is published, separate
+     from the manifest. Needs retention/size/ignore/secret-scan controls before any code.
+  3. **Unsaved buffers on the live tier.** Test first, build second: VS Code writes dirty
+     buffers to `%APPDATA%\Code\Backups`. If they appear within seconds of typing, no editor
+     plugin is needed for VS Code — we read what the editor already wrote.
+  4. **Baskets**, keeping observe / publish / capture as three separate scopes. Capture never
+     defaults on.
+
+- [ ] **Selecting which repositories a machine syncs is still all-or-nothing.** Roots are the
+  only selector. This is the basket work above, and it is the main usability gap once more than
+  one machine is real.
+
 - [ ] **History still holds the pre-sanitization details (2026-09-11).** Tracked files are clean,
   but earlier commits still contain real machine names, tailnet addresses, archive paths and
   private namespaces. A rewrite (`git filter-repo`) is the only complete fix and it breaks every
