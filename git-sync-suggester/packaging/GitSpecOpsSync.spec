@@ -19,7 +19,8 @@ analysis = Analysis(
     # The tray and start-at-login shells are imported lazily, inside functions, so static
     # analysis never sees them and the frozen build would fail only at the moment a user
     # clicks the tray menu. Name them explicitly.
-    hiddenimports=["fleet_tray", "fleet_autostart", "shared.console"],
+    hiddenimports=["fleet_tray", "fleet_autostart", "fleet_peer", "local_dashboard",
+                   "local_view", "ui_assets", "shared.console", "shared.version"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

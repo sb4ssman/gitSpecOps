@@ -136,6 +136,85 @@ class FleetClient:
             raise ValueError(f"fleet request refused ({exc.code})") from None
 
 
+def make_peer_server(address, own_report, secret: str, allowed_login: str, authenticate=None):
+    """A peer's tailnet endpoint: **read-only**, and it serves only this machine's own state.
+
+    The v2 host accepted `POST /v1/report` from clients, which is what made it an authority --
+    and made the fleet stop when it did. A peer publishes nothing to anyone; it answers
+    `GET /v1/manifest` and lets other peers pull. Consequences worth keeping:
+
+    - There is no write path to attack or to get wrong, and no write authorization to model.
+    - A peer that is off is simply not pulled from. Nobody is blocked, and its last manifest is
+      still readable through the folder and repo transports.
+    - Every peer is symmetric, so there is no "which machine is the real one" question.
+
+    `GET /v1/session` still hands the fleet key to an authenticated peer owned by the same
+    Tailscale user, because that is what makes joining a second machine painless. It is the one
+    piece of the old host that was worth keeping.
+    """
+    authenticate = authenticate or (lambda ip: peer_identity(ip, allowed_login))
+
+    class Handler(BaseHTTPRequestHandler):
+        def setup(self):
+            super().setup()
+            self.connection.settimeout(20)
+
+        def log_message(self, *args):
+            pass
+
+        def send(self, status, value):
+            data = json.dumps(value).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self):
+            try:
+                peer = authenticate(self.client_address[0])
+                if self.path == "/v1/manifest":
+                    report = own_report()
+                    if report is None:
+                        self.send(503, {"error": "no observation yet"})
+                        return
+                    self.send(200, report)
+                    return
+                if self.path == "/v1/session":
+                    self.send(200, {**peer, "fleet_secret": secret})
+                    return
+                self.send(404, {"error": "unknown endpoint"})
+            except PermissionError:
+                self.send(403, {"error": "device not authorized"})
+            except (ValueError, KeyError, TypeError):
+                self.send(400, {"error": "unavailable Tailscale identity"})
+            except (OSError, TimeoutError):
+                self.close_connection = True
+
+        def do_POST(self):
+            # Peers pull; nothing is ever pushed to a peer.
+            self.send(405, {"error": "peers are read-only; pull from /v1/manifest"})
+
+    server = ThreadingHTTPServer(address, Handler)
+    server.daemon_threads = True
+    return server
+
+
+def fetch_peer_report(ip: str, port: int, timeout: int = 10) -> dict | None:
+    """Pull one peer's current report. Returns None for any failure — being off is normal."""
+    try:
+        client = FleetClient(f"http://{ip}:{port}")
+        report = client.request("/v1/manifest")
+    except (OSError, ValueError) as exc:  # unreachable, refused, malformed, not a fleet peer
+        del exc
+        return None
+    if not isinstance(report, dict) or "manifest" not in report:
+        return None
+    return report
+
+
 def make_server(address, store, secret: str, allowed_login: str, assets: dict,
                 authenticate=None, display_settings=None):
     authenticate = authenticate or (lambda ip: peer_identity(ip, allowed_login))
