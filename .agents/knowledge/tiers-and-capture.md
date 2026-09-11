@@ -67,7 +67,7 @@ inspected. The observer blocks in the kernel while the library is quiet.
 
 The only periodic work in a running peer:
 
-- peer poll every 20s (a tailnet round trip, no disk)
+- peer poll every 30s (a tailnet round trip, no disk)
 - folder transport publish, default 300s, and only when something changed
 - repo transport publish, default 1800s, same condition
 

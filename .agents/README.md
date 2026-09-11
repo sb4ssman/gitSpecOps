@@ -8,7 +8,8 @@ knowledge the code and git history do not capture.
 
 ### Start every session by looking, not remembering
 
-1. **Read this file**, then [`working-notes.md`](working-notes.md) for open items.
+1. **Read this file**, then [`HANDOFF.md`](HANDOFF.md) for where the project stands right
+   now, then [`working-notes.md`](working-notes.md) for open items.
 2. **Map the tree with the tool**, do not reconstruct it from memory or a few `ls` calls:
 
    ```bash
