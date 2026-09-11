@@ -5,13 +5,14 @@ reads whichever transports this machine has configured and renders what every ma
 published, including machines that are currently offline. Nothing here classifies Git state --
 the document comes from `fleet_display` through `local_view`.
 
-Loopback-only is the whole security model, and it is why there is no authentication: the page
-is reachable exactly by someone already on this machine as this user. It must never be bound to
-0.0.0.0, and a request whose peer is not loopback is refused rather than served.
+The optional desktop-client actions are local only: strict Host/Origin checks plus a per-run
+request token prevent another website from launching applications. Loopback is not isolation
+between OS users sharing this machine. Tailnet peer endpoints remain GET-only.
 """
 from __future__ import annotations
 
 import json
+import secrets
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,7 +25,11 @@ LOOPBACK = "127.0.0.1"
 DEFAULT_PORT = 8760
 
 
-def make_local_server(address, build_document, assets):
+def make_local_server(address, build_document, assets, desktop_action=None):
+    if address[0] != LOOPBACK:
+        raise ValueError("the local dashboard must bind to loopback")
+    action_token = secrets.token_urlsafe(32)
+
     class Handler(BaseHTTPRequestHandler):
         def setup(self):
             super().setup()
@@ -49,15 +54,18 @@ def make_local_server(address, build_document, assets):
 
         def do_GET(self):
             try:
-                if self.client_address[0] != LOOPBACK:
-                    self.send(403, {"error": "local dashboard is loopback-only"})
+                if not self.local_request():
+                    self.send(403, {"error": "invalid local dashboard address"})
                     return
                 if self.path in assets:
                     data, kind = assets[self.path]
                     self.send(200, data, kind)
                     return
                 if self.path == "/v1/dashboard":
-                    self.send(200, build_document())
+                    document = build_document()
+                    if desktop_action is not None:
+                        document = {**document, "local_actions": {"token": action_token}}
+                    self.send(200, document)
                     return
                 self.send(404, {"error": "unknown endpoint"})
             except (OSError, ValueError, KeyError) as exc:
@@ -65,9 +73,35 @@ def make_local_server(address, build_document, assets):
                 self.send(200, {"contract": {"name": CONTRACT_NAME, "version": 1},
                                 "error": str(exc)})
 
+        def local_request(self):
+            expected = f"{LOOPBACK}:{self.server.server_address[1]}"
+            return self.client_address[0] == LOOPBACK and self.headers.get("Host") == expected
+
         def do_POST(self):
-            # This endpoint never accepts reports; peers publish through transports.
-            self.send(405, {"error": "the local dashboard is read-only"})
+            if desktop_action is None or self.path not in ("/v1/git-client", "/v1/open-git-client"):
+                self.send(405, {"error": "this endpoint accepts no actions"})
+                return
+            origin = f"http://{LOOPBACK}:{self.server.server_address[1]}"
+            if not self.local_request() or self.headers.get("Origin") != origin \
+                    or not secrets.compare_digest(self.headers.get("X-GitSpecOps-Token", "").encode(),
+                                                  action_token.encode()):
+                self.send(403, {"error": "open this action from the local dashboard"})
+                return
+            if self.headers.get_content_type() != "application/json":
+                self.send(415, {"error": "JSON required"})
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 1024 or self.headers.get("Transfer-Encoding"):
+                    raise ValueError("invalid action size")
+                payload = json.loads(self.rfile.read(length))
+                if not isinstance(payload, dict):
+                    raise ValueError("expected a JSON object")
+                self.send(200, desktop_action(self.path.removeprefix("/v1/"), payload))
+            except (OSError, ValueError, KeyError):
+                # Never echo paths from a launch error into the browser document.
+                self.send(400, {"error": "Could not complete the desktop action. Check the client "
+                                         "selection and that this checkout still exists locally."})
 
     server = ThreadingHTTPServer(address, Handler)
     server.daemon_threads = True

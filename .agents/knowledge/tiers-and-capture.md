@@ -22,7 +22,7 @@ rung may be on by default.
 
 ### Durable: a repository the app deliberately owns
 
-Setup should *guide* naming and creating it, not merely accept a name. It is a normal private
+Guided setup now proposes a name and requires named CREATE/USE confirmation. It is a normal private
 repo the user can inspect, containing one small JSON file per machine — never cloned, written
 through the Contents API. Publication conditions: on semantic change, rate-limited to the
 configured interval (default 1800s) so a busy machine cannot become an API storm. A **public**
@@ -37,8 +37,10 @@ user's files. This is the "recovery snapshot" / user's *stealth-stash* idea, and
 
 Shape: `git diff HEAD` (staged + unstaged) plus explicitly selected untracked files, as one
 patch bundle per repository, encrypted, size-capped, expiring once the real commit is published.
-It must be a **separate artifact from the manifest** — the manifest stays names-free — and must
-have retention, size, ignore-file, and secret-scan controls. Not built.
+It must be a **separate artifact from the manifest** — the manifest stays names-free.
+The [implementation contract](../../git-sync-suggester/docs/RECOVERY-DESIGN.md)
+specifies separate staged/unstaged patches (a HEAD diff alone loses staging), limits,
+exclusions, encryption, restore and retirement. Capture is not yet implemented.
 
 ### Live: unsaved editor buffers — probably without a plugin
 
@@ -50,7 +52,9 @@ editor already wrote** — no extension, no editor API, nothing to install per e
 
 This is unverified in one respect that matters: whether a backup exists *before* an abrupt power
 loss. Test empirically — type into an unsaved editor buffer, do not save, and watch that folder.
-If backups appear within seconds, the plugin question is settled for VS Code.
+Use the [manual probe](../../tests/probes/vscode_hot_exit/README.md) to test this.
+Eager backups justify evaluating a reader; they do not establish a stable public
+format or support for all profiles and remote workspaces. The probe is not yet run.
 
 A plugin would still be the answer for editors that do not persist dirty buffers, and for
 intent a file cannot express (which buffer is focused, cursor position). Start by reading what
@@ -91,14 +95,16 @@ tool already knows.
 
 ## Baskets: choosing what a machine syncs
 
-Not built. The requirement: pick which orgs / repo-sets a given machine participates in, without
-editing JSON. Three scopes must stay distinct or the feature becomes dangerous:
+**Built 2026-09-11** (`app/baskets.py`, config v4, `fleet baskets`) — at namespace granularity,
+configured from the CLI rather than by editing JSON. Path globs and explicit per-repository
+lists are not implemented. Three scopes stay distinct or the feature becomes dangerous:
 
 1. **Observe** — what this machine watches at all.
 2. **Publish** — what it shares with the fleet.
 3. **Capture** — what may have *content* preserved (medium/live tiers).
 
-Capture must never default on, and must never be implied by the other two. A basket is a named
-selection over discovered repositories (by namespace, path glob, or explicit list) that a
-machine subscribes to, with those three flags per subscription. Namespace groups in the
-dashboard today are observed inventory, not baskets — the display contract already says so.
+Capture must never default on, and must never be implied by the other two. As built, it is
+stronger than that: `validate_scopes` *refuses* any capture selection but `none` while there is
+no capture implementation, and the CLI cannot set it at all. Namespace groups in the dashboard
+remain observed inventory, not baskets — the display contract already says so; the configured
+baskets are reported separately, alongside how many repositories they withhold or exclude.

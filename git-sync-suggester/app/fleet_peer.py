@@ -19,6 +19,7 @@ the folder and repo transports.
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 import threading
 import time
 from pathlib import Path
@@ -28,6 +29,7 @@ from fleet_events import NativeEvents
 from fleet_net import fetch_peer_report, local_identity, make_peer_server
 from fleet_observer import IncrementalObserver
 from fleet_store import FleetStore, MAX_REPORT_BYTES
+from git_client import DesktopIntegration
 from folder_transport import FolderTransport, atomic_write_bytes
 from local_view import display_from_manifests
 from manifest import fleet_id_for
@@ -65,14 +67,23 @@ class TransportPublisher:
                                  "seconds": int(repo["seconds"]), "next": 0.0})
 
     def publish(self, manifest: dict, changed: bool, log=_log) -> list[str]:
+        # A change may arrive before a transport's next slot. Keep the latest snapshot for
+        # each transport until that particular writer succeeds, including across failures.
+        for entry in self.entries:
+            if changed or entry["next"] == 0.0:
+                entry["pending"] = deepcopy(manifest)
+        return self.flush(log=log)
+
+    def flush(self, log=_log) -> list[str]:
+        """Deliver due cached status; never inspect a repository or advance its timestamp."""
         published = []
         now = self.clock()
         for entry in self.entries:
             due = now >= entry["next"]
             if not due:
                 continue
-            if not changed and entry["next"] != 0.0:
-                # Nothing new to say; keep the slot for when there is.
+            manifest = entry.get("pending")
+            if manifest is None:
                 continue
             entry["next"] = now + entry["seconds"]
             try:
@@ -82,6 +93,7 @@ class TransportPublisher:
                         raise ValueError("state repository is no longer private and writable")
                 entry["transport"].write_own_manifest(manifest["machine_id"], manifest,
                                                       compress=True)
+                entry["pending"] = None
                 published.append(entry["name"])
             except Exception as exc:  # noqa: BLE001 - a transport may never break the peer
                 log(f"{entry['name']} transport failed (will retry at its next slot): {exc}")
@@ -185,20 +197,38 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     store = FleetStore(config_dir / "fleet.sqlite3", fleet_id)
     publisher = TransportPublisher(config.get("transports") or {})
     observer = IncrementalObserver(config)
-    latest = {"report": None}
+    # `local` is everything this machine observes and is only ever rendered here; `report` is
+    # the filtered view peers and transports receive. Keeping them apart is the whole point of
+    # a publish basket: withheld work must still be visible to the person sitting at the machine.
+    latest = {"report": None, "local": None, "withheld": set()}
+
+    def save_client(choice):
+        # Only local UI choices reach here; executable paths never cross a transport.
+        updated = {**config, "git_client": choice}
+        atomic_write_bytes(config_dir / "fleet-app.json",
+                           (json.dumps(updated, indent=2) + "\n").encode())
+        config["git_client"] = choice
+
+    desktop = DesktopIntegration(config.get("git_client"), observer.local_repositories, save_client)
 
     network = PeerNetwork(config, lambda: latest["report"], store, log=log)
 
     def sources() -> tuple[list[dict], list[str], dict]:
         """Everything this machine can currently see, newest-per-machine resolved downstream."""
         manifests, issues = publisher.read_all()
+        # Drop this machine's own manifest as read back from a transport. It is at best a stale
+        # echo of what `latest["local"]` already holds, and with a publish basket it is also a
+        # *narrower* one -- letting it win would hide withheld repositories from their owner.
+        if latest["local"] is not None:
+            manifests = [item for item in manifests
+                         if item.get("machine_id") != config["machine_id"]]
         names = {}
         for cached in store.reports():
             manifests.append(cached["manifest"])
             names.update(cached.get("names") or {})
-        if latest["report"] is not None:
-            manifests.append(latest["report"]["manifest"])
-            names.update(latest["report"].get("names") or {})
+        if latest["local"] is not None:
+            manifests.append(latest["local"]["manifest"])
+            names.update(latest["local"].get("names") or {})
         return manifests, issues, names
 
     def document():
@@ -212,13 +242,20 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         return display_from_manifests(manifests, fleet_id=fleet_id, names=names, issues=issues,
                                       settings={"transports": describe(config),
                                                 "root_count": len(config["roots"]),
-                                                "new_repositories": len(pending_new)})
+                                                "git_client": desktop.settings(),
+                                                "local_repo_ids": list(observer.local_repositories()),
+                                                "new_repositories": len(pending_new),
+                                                "baskets": config["baskets"],
+                                                "withheld_repo_ids": sorted(latest["withheld"]),
+                                                "unobserved_count":
+                                                    observer.excluded_from_observation})
 
     from local_dashboard import make_local_server
     from ui_assets import load_ui_assets
 
     local_port = int(config["local_port"])
-    dashboard = make_local_server(("127.0.0.1", local_port), document, load_ui_assets())
+    dashboard = make_local_server(("127.0.0.1", local_port), document, load_ui_assets(),
+                                  desktop_action=desktop.handle)
     threading.Thread(target=dashboard.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{local_port}/"
     log(f"Dashboard: {url}")
@@ -245,19 +282,23 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
 
     def observe(reason: str):
         nonlocal fingerprint
-        report = observer.report()
-        raw = json.dumps(report).encode()
+        local = observer.report()
+        shared, withheld = observer.shared_report(local)
+        raw = json.dumps(shared).encode()
         if len(raw) > MAX_REPORT_BYTES:
             raise ValueError("report exceeds the size limit")
         atomic_write_bytes(config_dir / "fleet-latest.json", raw)
-        latest["report"] = report
-        current = semantic_fingerprint(report["manifest"]) + json.dumps(
-            [report["names"], report["issues"]], sort_keys=True)
+        latest["local"], latest["report"], latest["withheld"] = local, shared, withheld
+        # Fingerprinted on the shared view, so a change confined to a withheld namespace
+        # correctly publishes nothing instead of writing an identical manifest.
+        current = semantic_fingerprint(shared["manifest"]) + json.dumps(
+            [shared["names"], shared["issues"]], sort_keys=True)
         changed = current != fingerprint
         fingerprint = current
-        published = publisher.publish(report["manifest"], changed, log=log)
+        published = publisher.publish(shared["manifest"], changed, log=log)
         if changed:
-            log(f"Observed {len(report['manifest']['repositories'])} repos ({reason})"
+            held = f", {len(withheld)} withheld by baskets" if withheld else ""
+            log(f"Observed {len(local['manifest']['repositories'])} repos ({reason}){held}"
                 + (f"; published to {', '.join(published)}" if published else ""))
         return changed
 
@@ -289,6 +330,9 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                             + ". Run 'fleet rescan' to start observing them.")
                 if reason:
                     observe(reason)
+                published = publisher.flush(log=log)
+                if published:
+                    log(f"Published pending status to {', '.join(published)}")
                 now = time.monotonic()
                 if now >= next_poll:
                     next_poll = now + PEER_POLL_SECONDS

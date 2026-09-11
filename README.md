@@ -177,7 +177,7 @@ than a choice you have to make:
 
 | Tier | What carries your status | Needs | Gives you |
 |---|---|---|---|
-| **Durable** | a private GitHub repo, via the Contents API — never cloned | your `gh` login | works from anywhere, survives everything |
+| **Durable** | a private GitHub repo, via the Contents API — never cloned | your `gh` login | retains published status when a peer is offline |
 | **Medium** | a folder your own sync client already replicates | any sync client | fast, no API budget |
 | **Live** | machines talking directly over Tailscale | Tailscale | near-real-time, readable peer names |
 
@@ -197,11 +197,11 @@ old" — because the freshness rules treat an old report as old, never as an all
 That is the point of publishing to more than one transport: a machine that is unreachable right
 now has usually still left a fingerprint somewhere you *can* read.
 
-**Status of the live tier:** it currently runs as one host that others connect to
-(`fleet setup`), which means the dashboard it serves goes away when that machine does. The local
-dashboard above is unaffected. Making the live tier peer-to-peer — machines discovering and
-querying each other directly, with no host — is the next change, and the durable and medium
-tiers already work this way.
+**The peer runtime ships:** `fleet setup` configures an independent machine, and `fleet run`
+resumes it. Each peer observes through native filesystem events, serves its own loopback
+dashboard, publishes to its configured transports, and optionally pulls from tailnet peers.
+No central host is required. Existing host/client configurations migrate automatically.
+See [the fleet guide](git-sync-suggester/docs/FLEET.md) for setup and transport commands.
 
 ### What crosses the wire
 

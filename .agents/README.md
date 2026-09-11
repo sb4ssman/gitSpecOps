@@ -195,7 +195,7 @@ pre-flight checks. Ship those only if the ahead-only slice proves insufficient.
 
 ### Original design notes for the push direction
 
-Everything today is pull-only, fast-forward-only. A future need (e.g. an org where an agent
+Historical design rationale, superseded by the shipped `--publish` slice above. A need (e.g. an org where an agent
 edits many repos and that work must go back upstream) is the opposite direction. Notes for
 whoever builds it, so the safety model is not broken:
 
@@ -272,20 +272,24 @@ Keep output and tracking files there. Do not move them back to the repo root.
 
 ## Sync Suggester
 
-**Live personal fleet (2026-09-05):** `sync_suggester.py fleet setup` now walks through
-foreground host/client setup. Flat `fleet_app.py`, `fleet_net.py`, `fleet_store.py` and
-`fleet_dashboard.html` provide a Tailscale-authenticated, SQLite-backed browser dashboard.
-The new app requires existing gh auth, shares repo names within the authorized private fleet,
-and supports optional scheduled privacy-minimized folder/GitHub replicas. It installs no
-service and never mutates source repos. Stable Tailscale node ids survive hostname changes.
-Configuration v2 performs one acknowledged inventory, then `fleet_events.py` uses Linux inotify
-or Windows `ReadDirectoryChangesW`; `fleet_observer.py` maps debounced file events to known
-checkouts and inspects only those repositories. Heartbeats contain cached facts and do not scan.
-New or removed repositories require the explicit local `fleet rescan` request.
-See [knowledge/live-fleet.md](knowledge/live-fleet.md) and
-[the user guide](../git-sync-suggester/docs/FLEET.md). Legacy transport/config rules below still
-apply to legacy commands; the new app has a distinct configuration with one live authority
-and explicitly scheduled replicas. It is a personal pilot, not enterprise authorization.
+**Current fleet model (2026-09-11):** every machine is an independent peer. There is no
+host authority and no client enrollment dependency. `fleet setup` guides first run;
+`fleet peer` configures directly, and `fleet run` resumes. Old v1/v2 configurations migrate
+to v3 while preserving the fleet key. `host` and `connect` are retired commands.
+
+`app/fleet_peer.py` observes locally, publishes to configured folder/GitHub transports,
+serves a loopback dashboard, and optionally pulls reports from tailnet peers every 30 seconds.
+`app/fleet_config.py` owns peer configuration. SQLite is a local cache, never an authority.
+`gh` is required only for the GitHub transport; Tailscale is optional and independent.
+One acknowledged inventory is followed by native filesystem events and targeted checks;
+there is no periodic repository scan. Newly detected checkouts are announced, then included
+only after `fleet rescan`. All transports currently carry status, not recovery content.
+See [the current user guide](../git-sync-suggester/docs/FLEET.md) and
+[the tier roadmap](knowledge/tiers-and-capture.md).
+
+The folders `core/`, `fleet/`, and `app/` group plain modules; `_paths.py` handles imports.
+The legacy `init`/`check`/`watch` commands below use a separate `config.json` and a single
+transport. Their polling and transport exclusivity rules do not describe the peer runtime.
 
 **Lifecycle shell (2026-09-11):** `fleet_tray.py` (native Windows tray via ctypes; no runtime
 dependency) and `fleet_autostart.py` (per-user start-at-login: registry Run key / XDG autostart /
@@ -510,6 +514,10 @@ and touches no real repository:
 uv run python tests\run_all.py
 ```
 
+Manual experiments live in tracked `tests/probes/`, with synthetic fixtures and their own
+instructions. The runner explicitly excludes probes. Their generated profiles, raw logs and
+results stay in temporary storage or ignored `.agents/output/`; never track personal output.
+
 Tests are grouped by area — `tests/archive/`, `tests/duplicator/`, `tests/sync/`,
 `tests/fleet/`, `tests/repo/` — and each bootstraps imports through `tests/_bootstrap.py`
 (`setup("sync")`, `setup("duplicator")`, ...), which adds only the tool folders that file
@@ -531,17 +539,17 @@ uv run python git-archive-updater\archive_updater.py --help
 uv run python git-archive-updater\archive_manager.py --help
 uv run python github-org-duplicator\github_org_duplicator.py --help
 uv run python git-sync-suggester\sync_suggester.py --help
-uv run python tests\test_selection.py
-uv run python tests\test_local_repos.py
-uv run python tests\test_batch_args.py
-uv run python tests\test_sync_scaffold.py
-uv run python tests\test_sync_config.py
-uv run python tests\test_sync_aggregate.py
-uv run python tests\test_sync_watch.py
-uv run python tests\test_sync_converge.py
-uv run python tests\test_sync_observe.py
-uv run python tests\test_archive_publish.py
-uv run python tests\test_repo_transport.py
+uv run python tests\duplicator\test_selection.py
+uv run python tests\duplicator\test_local_repos.py
+uv run python tests\duplicator\test_batch_args.py
+uv run python tests\sync\test_sync_scaffold.py
+uv run python tests\sync\test_sync_config.py
+uv run python tests\sync\test_sync_aggregate.py
+uv run python tests\sync\test_sync_watch.py
+uv run python tests\sync\test_sync_converge.py
+uv run python tests\sync\test_sync_observe.py
+uv run python tests\archive\test_archive_publish.py
+uv run python tests\sync\test_repo_transport.py
 ```
 
 A fleet is testable on one box: give each simulated machine its own `--config-dir` pointed at one

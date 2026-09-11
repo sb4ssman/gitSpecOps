@@ -1,4 +1,4 @@
-"""Fleet app configuration: schema v3, the peer model.
+"""Fleet app configuration: schema v4, the peer model with baskets.
 
 v2 had two kinds of machine — a `host` that owned the database and served the dashboard, and
 `connect` clients that pushed reports to it. That asymmetry was the design mistake: when the
@@ -11,15 +11,22 @@ transport is a precondition for any other.
 
 Transports are a dict rather than flat keys because they are complements, not alternatives:
 a peer is expected to have several, and adding a fourth should not mean four more top-level keys.
+
+v4 adds `baskets`: per-scope repository selection (see `baskets.py`). Roots remain the
+filesystem boundary; baskets narrow what is observed, published and captured *within* it. The
+v3 defaults are "all" for observe and publish, so migrating changes no behavior.
 """
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 
+import baskets
 from manifest import is_fleet_secret
+from git_client import validate_choice
 
 APP_CONFIG = "fleet-app.json"
-CONFIG_VERSION = 3
+CONFIG_VERSION = 4
 DEFAULT_LOCAL_PORT = 8760
 DEFAULT_TAILNET_PORT = 8765
 DEFAULT_FOLDER_SECONDS = 300
@@ -61,10 +68,16 @@ def migrate(config: dict) -> dict:
             config.pop(key, None)
         config.update(version=3, mode="peer", transports=transports,
                       local_port=int(config.get("local_port") or DEFAULT_LOCAL_PORT))
+    if config.get("version") == 3:
+        # Defaults reproduce v3 behavior exactly: observe and publish everything the roots
+        # find. Capture is 'none' and stays there until the medium tier can actually capture.
+        config = {**config, "version": 4,
+                  "baskets": config.get("baskets") or copy.deepcopy(baskets.DEFAULT_SCOPES)}
     return config
 
 
 def validate(config: dict) -> dict:
+    validate_choice(config.get("git_client"))
     if config.get("version") != CONFIG_VERSION or config.get("mode") != "peer":
         raise ValueError("unsupported fleet app configuration")
     if not is_fleet_secret(config.get("fleet_secret")):
@@ -77,6 +90,7 @@ def validate(config: dict) -> dict:
         raise ValueError("unsupported observation mode")
     if not config.get("roots") or any(not Path(p).is_dir() for p in config["roots"]):
         raise ValueError("every configured repository root must exist")
+    baskets.validate_scopes(config.get("baskets"))
     heartbeat = config.get("heartbeat")
     if type(heartbeat) is not int or heartbeat < 1:
         raise ValueError("heartbeat must be a positive number of seconds")
@@ -119,9 +133,11 @@ def validate(config: dict) -> dict:
 
 def new_config(machine_id: str, label: str, roots, fleet_secret: str, *,
                debounce_seconds: float = 0.75, local_port: int = DEFAULT_LOCAL_PORT,
-               transports: dict | None = None) -> dict:
+               transports: dict | None = None, scopes: dict | None = None) -> dict:
     return {
         "version": CONFIG_VERSION, "mode": "peer",
+        "baskets": baskets.validate_scopes(scopes) if scopes
+                   else copy.deepcopy(baskets.DEFAULT_SCOPES),
         "machine_id": machine_id, "label": label,
         "fleet_secret": fleet_secret,
         "roots": [str(Path(root).expanduser().resolve()) for root in roots],

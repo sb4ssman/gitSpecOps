@@ -10,6 +10,9 @@ const node = (tag, text, className) => {
   return element;
 };
 const state = {data: null, selected: null, receivedAt: null, expansion: new GroupExpansion(savedCollapsedGroups())};
+const desktopMessages = new Map();
+const desktopPending = new Set();
+let desktopDraft = null;
 const controls = {
   query: byId('search'), status: byId('status-filter'), machine: byId('machine-filter'),
   sort: byId('sort'), refresh: byId('refresh'), warning: byId('connection-warning'),
@@ -82,6 +85,30 @@ function showDetail(row) {
   close.onclick = () => { state.selected = null; panel.hidden = true; renderRepositories(); };
   head.append(identity, close); panel.append(head);
   panel.append(node('p', row.advice, 'detail-advice'));
+  if (row.publication && !row.publication.published) {
+    panel.append(node('p', row.publication.reason, 'tone-text-warning'));
+  }
+  if (row.desktop_action) {
+    const action = row.desktop_action;
+    const button = node('button', action.label);
+    button.type = 'button';
+    button.disabled = !action.available || desktopPending.has(row.id) || !state.data.local_actions;
+    button.title = action.reason;
+    const message = node('p', desktopMessages.get(row.id) || action.reason, 'host-note');
+    message.setAttribute('role', 'status');
+    button.onclick = async () => {
+      desktopPending.add(row.id); button.disabled = true;
+      try {
+        desktopMessages.set(row.id, await connection.desktopAction('open-git-client',
+          {repo_id: row.id}, state.data.local_actions.token));
+      } catch (error) { desktopMessages.set(row.id, error.message); }
+      finally {
+        desktopPending.delete(row.id);
+        if (state.selected === row.id) showDetail(row);
+      }
+    };
+    panel.append(button, message);
+  }
   for (const machine of state.data.machines) {
     const cell = row.cells[machine.id];
     const section = node('section', undefined, 'detail-machine'); section.append(node('h4', machine.label), cellBadge(cell));
@@ -131,7 +158,12 @@ function renderRepositories() {
       const line = node('tr'); line.dataset.repoId = row.id;
       if (row.id === state.selected) line.classList.add('selected');
       const nameCell = node('td'); const link = node('button', row.identity.name, 'repo-link'); link.type = 'button';
-      link.onclick = () => showDetail(row); nameCell.append(link, node('span', row.identity.host, 'host-note')); line.append(nameCell);
+      link.onclick = () => showDetail(row); nameCell.append(link, node('span', row.identity.host, 'host-note'));
+      if (row.publication && !row.publication.published) {
+        const held = node('span', 'not published', 'badge tone-warning');
+        held.title = row.publication.reason; nameCell.append(held);
+      }
+      line.append(nameCell);
       for (const machine of data.machines) {
         const machineCell = node('td'); machineCell.append(cellBadge(row.cells[machine.id])); line.append(machineCell);
       }
@@ -173,6 +205,52 @@ function renderAbout() {
     const item = node('div', undefined, 'capability');
     item.append(node('strong', `${capability.available ? 'Available' : 'Unavailable'} · ${id.replaceAll('_', ' ')}`),
       node('p', capability.reason)); block.append(item);
+  }
+  if (state.data.baskets && state.data.baskets.configured) {
+    const {scopes, withheld, unobserved} = state.data.baskets;
+    const section = node('div', undefined, 'capability');
+    section.append(node('strong', 'Baskets on this machine'),
+      node('p', 'Observing, publishing and capture are separate. Change them with "fleet baskets".'));
+    const facts = node('dl');
+    for (const scope of ['observe', 'publish', 'capture']) {
+      const selection = scopes[scope] || {};
+      const listed = (selection.namespaces || []).join(', ');
+      facts.append(node('dt', scope), node('dd', listed ? `${selection.mode} ${listed}` : selection.mode || 'unknown'));
+    }
+    section.append(facts);
+    if (withheld) section.append(node('p', `${withheld} repository(ies) here are published to nothing.`, 'tone-text-warning'));
+    if (unobserved) section.append(node('p', `${unobserved} repository(ies) under your roots are not observed.`, 'host-note'));
+    block.append(section);
+  }
+  if (state.data.desktop_client && state.data.local_actions) {
+    const client = state.data.desktop_client;
+    const section = node('div', undefined, 'capability');
+    section.append(node('strong', 'Primary desktop Git client'),
+      node('p', 'Open a local checkout in your preferred app for commits, merges, rebases, and conflict resolution.'));
+    const label = node('label', 'Use on this machine ');
+    const select = node('select');
+    select.append(option('', 'Disabled'), ...client.choices.map(item => option(item.id, item.label)));
+    if (client.id && !client.choices.some(item => item.id === client.id)) {
+      select.append(option(client.id, `${client.label} (unavailable)`));
+    }
+    select.value = desktopDraft ?? client.id;
+    select.onchange = () => { desktopDraft = select.value; };
+    label.append(select);
+    const save = node('button', 'Save preference'); save.type = 'button';
+    const result = node('p', desktopMessages.get('settings') || '', 'host-note');
+    result.setAttribute('role', 'status');
+    save.onclick = async () => {
+      save.disabled = true;
+      try {
+        desktopMessages.set('settings', await connection.desktopAction('git-client',
+          {client_id: select.value}, state.data.local_actions.token));
+        desktopDraft = null;
+        await connection.refresh();
+      } catch (error) {
+        desktopMessages.set('settings', error.message); result.textContent = error.message;
+      } finally { save.disabled = false; }
+    };
+    section.append(label, save, result); block.append(section);
   }
   renderSettingCards(byId('integrations'), integrations);
   renderSettingCards(byId('features'), features);
@@ -226,10 +304,10 @@ connection.addEventListener('loading', () => { controls.refresh.disabled = true;
 connection.addEventListener('idle', () => { controls.refresh.disabled = false; });
 connection.addEventListener('display', event => {
   state.data = event.detail.data; state.receivedAt = event.detail.receivedAt;
-  controls.warning.hidden = true; byId('connection').textContent = 'Host connected'; renderAll();
+  controls.warning.hidden = true; byId('connection').textContent = 'Dashboard connected'; renderAll();
 });
 connection.addEventListener('unavailable', event => {
-  byId('connection').textContent = 'Host unavailable'; controls.warning.hidden = false;
+  byId('connection').textContent = 'Dashboard unavailable'; controls.warning.hidden = false;
   controls.warning.textContent = `Displayed data has been retained and may be stale. ${event.detail.message}`;
 });
 connection.start();

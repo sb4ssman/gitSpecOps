@@ -2,7 +2,8 @@
 
 Build on the operating system that will run the app; PyInstaller does not cross-compile.
 The output embeds Python and the dashboard assets, while Git, GitHub CLI and Tailscale remain
-explicit system prerequisites.
+external tools: Git is required, GitHub CLI is needed for the GitHub transport, and
+Tailscale is optional for direct peer access.
 
 From the repository root, in a disposable build environment with PyInstaller installed:
 
@@ -16,7 +17,7 @@ diagnostics are still terminal-driven. It opens the private fleet dashboard auto
 
 With no arguments the bundle runs first-run setup (once) and then hands the process to the
 tray. **It is also the full CLI** — `GitSpecOpsSync.exe doctor`, `... autostart enable`,
-`... replicas --folder PATH` — which is how the login entry re-launches it (`... tray`) and
+`... transports --folder PATH` — which is how the login entry re-launches it (`... tray`) and
 how the build is smoke-tested without a configured fleet.
 
 Two things in the spec are load-bearing:

@@ -14,8 +14,8 @@ from _bootstrap import setup  # noqa: E402
 
 setup("sync")
 
-from fleet_app import app_lock, require_gh, setup_arguments
-from fleet_config import migrate, validate
+from fleet_app import app_lock, guided_durable_arguments, require_gh, setup_arguments
+from fleet_config import CONFIG_VERSION, migrate, validate
 from fleet_peer import TransportPublisher
 from ui_assets import load_ui_assets
 from fleet_display import CONTRACT_NAME, CONTRACT_VERSION, PRODUCT_NAME, build_display
@@ -126,12 +126,46 @@ def main():
     with patch("fleet_app.run_gh", return_value=Mock(returncode=1)):
         rejected(require_gh)
     # Setup asks for the library, the scan acknowledgement, then each optional transport.
-    with patch("builtins.input", side_effect=["/libraries/code", "SCAN", "", "", "", ""]):
+    with patch("builtins.input", side_effect=["/libraries/code", "SCAN", "", "", "", ""]), \
+            patch("fleet_app.run_gh", side_effect=AssertionError("GitHub is optional")):
         setup = setup_arguments(Path("test-config"))
         assert setup.command == "peer" and setup.root == ["/libraries/code"]
         assert setup.acknowledge_initial_scan is True
         assert setup.repo is None and setup.folder is None
         assert setup.no_tailnet is False  # blank answer keeps the tailnet tier
+
+    # A suggested name is not permission to create or publish. No mutation occurs while
+    # collecting setup arguments, even when the user explicitly selects creation.
+    from contextlib import redirect_stdout
+    for exists, answer, expected in [
+        (False, "", []),
+        (False, "yes", []),
+        (False, "CREATE example/gitspecops-fleet-state",
+         ["--repo", "example/gitspecops-fleet-state", "--create-repo"]),
+        (True, "USE example/gitspecops-fleet-state",
+         ["--repo", "example/gitspecops-fleet-state"]),
+    ]:
+        output = io.StringIO()
+        with patch("builtins.input", side_effect=["y", "", answer]), \
+                patch("fleet_app.require_gh"), \
+                patch("fleet_app.run_gh", return_value=Mock(stdout="example\n")), \
+                patch("fleet_app.RepoTransport.doctor", return_value={
+                    "exists": exists, "private": True, "permissions": True}), \
+                patch("fleet_app.create_state_repo") as create, redirect_stdout(output):
+            assert guided_durable_arguments() == expected
+            create.assert_not_called()
+        assert "30 minutes" in output.getvalue()
+        assert "status only" in output.getvalue()
+        assert "machines/" in output.getvalue()
+    for private, writable in [(False, True), (True, False)]:
+        with patch("builtins.input", side_effect=["y", "example/existing"]), \
+                patch("fleet_app.require_gh"), \
+                patch("fleet_app.run_gh", return_value=Mock(stdout="example\n")), \
+                patch("fleet_app.RepoTransport.doctor", return_value={
+                    "exists": True, "private": private, "permissions": writable}), \
+                patch("fleet_app.create_state_repo") as create, redirect_stdout(io.StringIO()):
+            rejected(guided_durable_arguments)
+            create.assert_not_called()
 
     with tempfile.TemporaryDirectory() as root:
         # A v1 host configuration migrates all the way to a v3 peer, keeping its identity,
@@ -143,7 +177,7 @@ def main():
             "folder_seconds": 300, "replica_repo": None, "github_seconds": 1800,
             "allowed_login": "owner", "port": 8765,
         })
-        assert migrated["version"] == 3 and migrated["mode"] == "peer"
+        assert migrated["version"] == CONFIG_VERSION and migrated["mode"] == "peer"
         assert "interval" not in migrated and "port" not in migrated
         assert migrated["observation_mode"] == "filesystem-events"
         assert migrated["inventory_notice_acknowledged"] is True

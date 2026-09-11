@@ -1,192 +1,154 @@
-# Live personal fleet
+# Personal fleet: every machine is a peer
 
-The foreground fleet app observes your repositories and serves a browser dashboard. Run it
-as your normal user in a terminal or VS Code. Nothing installs a service or startup task.
-Closing the app stops observation; the host's SQLite database survives restarts.
+Every peer observes its own repositories, serves a dashboard on loopback, and publishes status
+through its configured transports. It can also pull from other peers over Tailscale. There is
+no central host. Closing a peer stops that machine's observation; other peers keep working and
+retain its last published state. Stale unfinished work remains visible.
 
-Prerequisites on **every machine**: Python 3.11+, Git, an already-authenticated `gh`, and
-connected Tailscale. The app checks the existing `gh auth status`; it never logs in, changes
-accounts, reads tokens, or sends a GitHub credential to another machine.
+## Set up a machine
 
-## Start the host
-
-For an interactive walkthrough:
-
-```sh
-python3 git-sync-suggester/sync_suggester.py fleet setup
-```
-
-Or configure and start directly:
+Run as your normal user with Python 3.11+ and Git. Use the repository's virtual environment
+when available. GitHub CLI with an existing login is required only for the GitHub transport;
+connected Tailscale is required only for direct peer access. The app never manages credentials.
 
 ```sh
-python3 git-sync-suggester/sync_suggester.py fleet host --root /path/to/Github --acknowledge-initial-scan
+python git-sync-suggester/sync_suggester.py fleet setup
 ```
 
-The app prints a numeric Tailscale dashboard URL, normally `http://100.x.y.z:8765/`.
-It binds **only** that interface. HTTP travels inside Tailscale's encrypted connection.
-Use the printed numeric URL: the pilot rejects other HTTP Host headers.
-
-The server verifies the TCP peer with `tailscale whois`, allows only the configured host
-Tailscale user's untagged devices, and binds each report to that peer's stable node ID.
-Changing a hostname does not change the report identity. Removing and re-enrolling a
-Tailscale device may change it and requires reviewing the saved app configuration.
-
-This is personal-fleet authorization. It does not distinguish different OS users sharing
-one Tailscale node, and it is not a public HTTP service or enterprise role system.
-
-## Connect another development checkout
-
-The current deployment is a developer preview, so another machine needs its own checkout of
-this repository at the same revision. A source-download endpoint was briefly prototyped and
-removed: an arbitrary ZIP plus a Python command is not acceptable product onboarding.
-
-From the checkout in a terminal:
-
-```powershell
-python git-sync-suggester/sync_suggester.py fleet connect --server http://100.x.y.z:8765 --root "<library-root>" --acknowledge-initial-scan
-```
-
-Replace the URL and root with the actual values. `--root` can be repeated. The app validates
-that the directories exist. It obtains the fleet identity over the authenticated Tailscale
-connection; no copying secrets or configuring SSH is needed. Observe disjoint roots without
-multiple checkouts of the same origin: duplicate identities currently stop a report rather
-than silently discard one worktree.
-
-`fleet setup` offers the tailnet peers that are actually serving on port 8765, so the URL
-normally does not have to be typed. If nothing is serving it says so and names the machines it
-can see, because "the host app is not running" is the usual reason enrolment fails — and the
-old prompt reported that as a bare connection error.
-
-## Keep it running: the tray and start-at-login
-
-The app is a foreground process. If nothing keeps it alive, the fleet goes dark the moment a
-terminal closes, every observer's report goes nowhere, and the dashboard is simply refused.
+Or configure directly, with no Tailscale:
 
 ```sh
-python git-sync-suggester/sync_suggester.py fleet tray        # run behind a tray icon
+python git-sync-suggester/sync_suggester.py fleet peer --root /path/to/library --acknowledge-initial-scan --no-tailnet
+```
+
+`--root` is repeatable. Setup names the library and requires `SCAN` before its initial recursive
+inventory. `--configure-only` saves setup without starting the runtime. Another machine uses
+the same fleet key, entered in setup or supplied through `--fleet-secret`; keep the key local
+and carry it privately. Starting another peer does not require any other machine to be online.
+Avoid overlapping roots or multiple checkouts with the same remote identity in this pilot.
+
+The dashboard is normally `http://127.0.0.1:8760/` on each machine. It combines local status,
+cached peer reports, and readable manifests from configured transports, newest per machine.
+`dashboard --serve` is also available for legacy `init`/`check` configurations, independently
+of the fleet runtime. Legacy commands use `config.json`; the peer app uses `fleet-app.json`.
+
+## Choose complementary transports
+
+All transports currently carry status. They do not back up repository history or unfinished
+file content. Saved-work capture and unsaved editor buffers are planned separate features.
+
+- **Durable:** a private, writable GitHub state repository accessed through your `gh` login.
+  The app writes one names-free v3 manifest per machine through the Contents API; it never
+  clones that state repository. Creating it requires an explicit setup choice or `--create-repo`.
+- **Medium:** an existing folder managed by your own sync client. No particular client is
+  required; gitSpecOps does not install or configure one.
+- **Live:** optional Tailscale peer discovery and pulls every 30 seconds. Peers expose GET-only
+  reports and an authenticated session endpoint. Nothing is pushed to another peer. The live
+  report includes readable repository identities within the authorized personal fleet.
+
+To add or remove transports, stop the local peer and run:
+
+```sh
+python git-sync-suggester/sync_suggester.py fleet transports --folder /path/to/synced-folder --folder-seconds 300 --repo example/private-fleet-state --create-repo --repo-seconds 1800
+python git-sync-suggester/sync_suggester.py fleet run
+```
+
+`--clear-folder`, `--clear-repo`, and `--clear-tailnet` remove individual integrations;
+`--tailnet` enables direct peers. No transport is authoritative. Keep configuration, fleet
+keys, catalogs, and SQLite databases outside synchronized state folders.
+
+Guided setup offers durable status first. After you opt in, it uses the current `gh` login to
+suggest `owner/gitspecops-fleet-state`. Enter another accessible owner/name to override it.
+The walkthrough explains the app-managed `machines/` files and publication conditions.
+Type `CREATE owner/name` to request creation or `USE owner/name` to approve an existing private,
+writable repository. Enter skips that choice. Merely accepting a suggested name creates nothing.
+
+Publication sends initial status and then semantic changes at each transport's minimum interval
+(folder 300 seconds, GitHub 1800 seconds by default). Each transport keeps its latest pending
+status during cooldown and retries failures after the interval. Pending delivery runs without
+another filesystem event or Git scan. The queue is in memory; startup inventories again and
+publishes current status. Do not infer remote delivery from a successful local observation.
+No last-second upload is promised on shutdown or power loss.
+
+## Observe and resume
+
+```sh
+python git-sync-suggester/sync_suggester.py fleet run
+python git-sync-suggester/sync_suggester.py fleet doctor
+python git-sync-suggester/sync_suggester.py fleet rescan
+```
+
+Startup performs one inventory. Linux inotify or Windows `ReadDirectoryChangesW` then triggers
+targeted Git status checks only for changed repositories. There is no periodic repository scan.
+New checkouts raise a notice; `fleet rescan` explicitly refreshes membership. The current peer
+runtime does not implement the retired host/client timestamp-heartbeat protocol; a quiet
+report's observation time can age even while its process remains reachable.
+
+Local configuration is stored under the usual Sync Suggester config directory. Each peer has
+`fleet-app.json`, `fleet.sqlite3`, and `fleet-latest.json`. `fleet --config-dir PATH ...` selects
+another configuration. An OS lock prevents concurrent peers using the same configuration.
+Old v1/v2/v3 configurations migrate to peer v4 on resume, preserving the fleet key and taking
+the default baskets (observe and publish everything, capture nothing). `host`,
+`connect`, and `replicas` are retired; use `setup`/`peer` and `transports`.
+
+## Baskets: what this machine takes part in
+
+```sh
+python git-sync-suggester/sync_suggester.py fleet baskets
+python git-sync-suggester/sync_suggester.py fleet baskets --scope observe --mode except --namespace github.com/some-owner
+python git-sync-suggester/sync_suggester.py fleet baskets --scope publish --mode only --namespace github.com/some-owner
+```
+
+Roots are the filesystem boundary; baskets narrow what happens inside it, per scope:
+
+| Scope | Effect |
+|---|---|
+| `observe` | whether this machine inspects the repository at all |
+| `publish` | whether its status is written where other machines can read it |
+| `capture` | whether its uncommitted content is snapshotted — **not implemented**, stays `none` |
+
+The scopes are independent and never imply one another. Widening `observe` does not widen
+`publish`, and nothing widens `capture` implicitly; `fleet baskets` cannot set it, and a
+configuration that tries is refused rather than silently accepted as a toggle that protects
+nothing.
+
+Selection is by namespace (`host/owner`), with modes `all`, `none`, `only` and `except`.
+Matching happens locally, from repository names that never leave the machine: a manifest carries
+salted digests, so no peer can see, apply, or infer another machine's baskets.
+
+Narrowing is never silent. A withheld repository stays on this machine's own dashboard, marked
+*not published*, and the dashboard states how many repositories are withheld or unobserved.
+`observe` changes apply at the next `fleet rescan` or restart; `publish` changes apply at the
+next observation.
+
+## Tray and start-at-login
+
+```sh
+python git-sync-suggester/sync_suggester.py fleet tray
 python git-sync-suggester/sync_suggester.py fleet autostart status
 python git-sync-suggester/sync_suggester.py fleet autostart enable
 python git-sync-suggester/sync_suggester.py fleet autostart disable
 ```
 
-The tray icon shows one reported state — grey starting, green clear, amber attention, red
-cannot read the dashboard — with the counts in its tooltip and menu. Every number comes from
-the host's display document; the tray classifies nothing itself and refuses an unrecognized
-contract version rather than guessing. Its menu opens the dashboard, requests a `rescan`,
-toggles start-at-login, and quits. It offers **no** Git actions.
+The Windows tray reads the local display contract, opens the dashboard, requests a rescan,
+and controls per-user start-at-login. It offers no Git mutations. Off Windows, `tray` falls
+back to a foreground run. Linux also supports `fleet autostart --systemd enable` as a user
+unit. Run as the interactive user so Git ownership, credentials, and sync-folder access match.
+Use a durable installation location before enabling startup for a packaged build.
+See [BUILD-DESKTOP.md](../packaging/BUILD-DESKTOP.md).
 
-`tray` falls back to a plain foreground run wherever no stdlib tray exists (Linux, macOS), so
-the same registered command works on every machine. On a headless Linux host use
-`fleet autostart --systemd enable` instead; note that without `loginctl enable-linger` a user
-unit still runs only while you are logged in.
+## Boundaries
 
-Start-at-login is **per-user, never system-wide and never a service**: the app must run as the
-interactive user so Git ownership, the `gh` login, the Tailscale identity and any synchronized
-folder are the ones you actually use. It is reversible from the same command or the tray menu.
+The peer observes staged, unstaged, untracked, stashed, operation, and cached ahead/behind
+facts. It never fetches, pulls, clones, commits, stashes, pushes, or transfers unfinished files.
+Namespace groups in the dashboard are a display grouping, not a basket; baskets are configured
+with `fleet baskets` and shown in App & setup. Recovery snapshots and remote jobs remain
+unavailable until implemented. Cached refs do not prove exact equality between machines.
 
-## Resume or diagnose
+Tailscale authorization allows the configured login's untagged devices. This is a personal
+fleet, not enterprise roles or isolation between OS users sharing a device. The loopback
+dashboard is local to the machine, not an authentication boundary between its OS users.
 
-```sh
-python3 git-sync-suggester/sync_suggester.py fleet run
-python3 git-sync-suggester/sync_suggester.py fleet doctor
-```
-
-Use `python` on Windows. Configuration is separate from legacy `init`:
-`fleet-app.json` under the usual Sync Suggester config directory. The host also keeps
-`fleet.sqlite3`; every observer keeps `fleet-latest.json`. These files stay outside the repo.
-`fleet --config-dir PATH ...` selects another directory. An OS file lock prevents two app
-instances from using the same setup concurrently. Edit the saved config while stopped to
-change roots, label, debounce time, or replica schedule. Do not copy another device's config.
-
-Startup performs one recursive inventory. Afterward Linux inotify or Windows
-`ReadDirectoryChangesW` blocks in the kernel while the library is quiet. A filesystem event is
-debounced for 0.75 seconds and runs Git status commands only in the affected known repository.
-There is no periodic inventory or repository-status scan. A 30-second authenticated heartbeat sends
-only a timestamp so an online observer remains current without touching its repositories or
-resending its report. The
-browser refreshes every three seconds. Reports older than 120 seconds are stale; unresolved
-dirty/ahead/stashed work stays visible. No last-second upload is promised on shutdown or power loss.
-
-Setup names each recursively inventoried root and requires an explicit `SCAN` acknowledgement.
-The equivalent direct command requires `--acknowledge-initial-scan`. Existing polling-preview
-configuration migrates automatically on its next start. Adding or removing repositories requires
-one deliberate local inventory request while the app is running:
-
-```sh
-python3 git-sync-suggester/sync_suggester.py fleet rescan
-```
-
-Use `python` on Windows. This request does not enable a schedule. The dashboard's App & setup view
-reports event observation and integration status.
-The standard dashboard starts in dark mode and remembers the light/dark choice. It also remembers
-which organization groups are collapsed across live refreshes and browser reloads.
-
-The desktop-preview PyInstaller recipe is documented in [BUILD-DESKTOP.md](../packaging/BUILD-DESKTOP.md).
-It produces an OS-specific one-folder application with embedded Python and dashboard assets. It is
-build input for the signed installer, not itself a public installer.
-
-## Scheduled replicas
-
-Optional flags at setup:
-
-```sh
---replica-folder /path/to/already-synced-folder --folder-seconds 300
---replica-repo SomeOrganization/private-fleet-state --github-seconds 1800
-```
-
-Both may be configured as replicas of the same fleet. The live host remains authoritative.
-Any accessible owner/org is accepted, independently of the owners of observed repositories.
-The GitHub repo must be private and writable by the active `gh` login. Setup can create it only
-after the explicit interactive choice or `--create-replica-repo`; otherwise it must already exist.
-Afterward all state-repo reads and writes happen only on its
-configured schedule; the first runtime slot is one full interval after app startup. Failed
-slots wait another interval. Source-repository fetches are not part of this loop.
-
-To add replicas to an existing setup, stop its running app and use:
-
-```sh
-python3 git-sync-suggester/sync_suggester.py fleet replicas \
-  --folder /path/to/existing/synced-folder --folder-seconds 300 \
-  --repo SomeOrganization/private-fleet-state --create-repo --github-seconds 1800
-python3 git-sync-suggester/sync_suggester.py fleet run
-```
-
-Creation is private and occurs only when `--create-repo` is supplied. `--clear-folder` and
-`--clear-repo` remove either optional level from the local configuration.
-
-Each device replicates only its own **privacy-minimized v3 manifest**, not readable names,
-local paths, source, or diffs. The live tailnet report separately includes host/owner/name
-so the dashboard can display a readable tree. Do not place `fleet-app.json` or the SQLite
-database in the replica folder. Obsidian or another sync client must already be configured
-to replicate the folder and JSON/gzip files; the app does not install or operate that client.
-
-Replicas currently provide saved manifests, **not automatic failover** or a second writable
-authority. The legacy folder/GitHub tools can read these manifests when configured with the
-same fleet key. A guided no-Tailscale mode, merged replica dashboard, commit-triggered-only
-publication, and persisted scheduling across app restarts remain follow-up work.
-
-## Interface boundary
-
-The browser consumes the versioned `gitspecops.fleet.display` contract. Business logic emits
-explicit status, attention, tone, tags, notices and capabilities. The standard UI only renders
-and filters those fields. A future LCARS skin can replace the presentation without copying Git
-classification or freshness rules. See [DISPLAY-CONTRACT.md](DISPLAY-CONTRACT.md).
-
-## What this pilot does and does not establish
-
-- Observes staged, unstaged and untracked counts, stashes, operations, and cached ahead/behind.
-- Groups the inventory by namespace. These groups are not yet configurable basket subscriptions.
-- Shares status and repo names within the authorized personal tailnet fleet.
-- Never fetches, pulls, clones, commits, stashes, pushes, or transfers unfinished source files.
-- Cached refs do not establish exact commit equality between machines. Different edits with
-  unchanged counts remain "dirty" without producing a new content snapshot.
-- Custom baskets, repository actions, remote jobs and recovery snapshots remain separate work.
-  The dashboard shows their availability but offers no nonfunctional toggles.
-
-## Validation
-
-`python3 tests/run_all.py` includes a real native-event/targeted-Git check plus synthetic checks for device/fleet impersonation refusal,
-stale dirty reports, old-report rejection, malformed report rejection, browser-origin/Host
-checks, replica clocks/backoff, and archive privacy. A live host smoke check should verify the
-HTML page, static assets and dashboard API. Testing actual Windows observation still requires
-running an observer on Windows; a passing synthetic test does not substitute for it.
+All skins consume `gitspecops.fleet.display`; they must not reclassify Git facts. See
+[DISPLAY-CONTRACT.md](DISPLAY-CONTRACT.md). Validate with `python tests/run_all.py` using a
+supported interpreter on the claimed platform; synthetic tests do not prove actual deployment.
