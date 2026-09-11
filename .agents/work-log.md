@@ -3,16 +3,139 @@
 Append-only record of **completed** work. Newest first. Items that graduate from
 [`working-notes.md`](working-notes.md) land here with an absolute date.
 
+## 2026-09-11 (later) — public-repo readiness
+
+- **Sanitization is now a test, not a habit.** `tests/repo/test_repo_hygiene.py` scans every
+  *tracked* file for secrets, local paths, real Tailscale addresses, tracked generated
+  launchers, leaked `.agents/tools|output` files, and a missing LICENSE. Every pattern maps to
+  something this repo shipped or nearly shipped today. It found two real problems on its first
+  run (an unsanitized path in `FLEET.md`, and LICENSE not yet tracked). It audits the working
+  tree only — no test can clean history.
+- **Tests grouped by area**: `tests/{archive,duplicator,sync,fleet,repo}/`, with
+  `tests/_bootstrap.py` replacing five different hand-rolled `sys.path` incantations. `setup()`
+  takes the areas a file needs, because all three tools are flat script directories and loading
+  them all could shadow same-named modules. `run_all.py` recurses and labels by folder.
+
+- **Licensed the project.** Was MIT in `pyproject.toml` with **no `LICENSE` file at all**, which
+  on a public repository means nobody had permission to use it. Now Apache-2.0 (`LICENSE` +
+  `NOTICE`): permissive like MIT, but adds an explicit patent grant, contribution terms, and a
+  trademark clause — worth having for a tool that operates on other people's repositories. Done
+  now because there are no releases and no outside contributors, so it is still free to change.
+
+- **Security / disclosure audit of every tracked file, and of the full git history.**
+  - **No secrets, in the working tree or in history** — no tokens, no 64-hex fleet secrets, no
+    keys. SQL is fully parameterized; no `shell=True`, `eval`, `exec`, or `pickle` anywhere; the
+    fleet listener binds to the Tailscale address only, not `0.0.0.0`; asset serving is an exact
+    URL map with no traversal. The fleet secret is printed only where intended and `doctor`
+    still hides it.
+  - **Caught before it shipped:** a generated launcher (`gitArchiveUpdater/refresh-managed-…bat`)
+    containing an absolute personal path was **staged for commit** — `.gitignore` covered the
+    post-rename folder but not the old-cased one. Unstaged and ignored.
+  - **`archive_diff.py`'s self-test used a real organization and real repository names**, against
+    this repo's own stated rule that fixtures never do. Replaced with invented ones
+    (`old-team`/`new-team`); the rename changed a `sorted()` expectation, which was fixed rather
+    than papered over.
+  - Sanitized tracked docs: real machine names, tailnet addresses, archive paths, and private
+    namespaces are now placeholders (`machine-a`, `<library-root>`, `<archive-root>`).
+    **History still contains the originals** — a rewrite was not done, and would break clones.
+  - `_legacy_sources/` removed from tracking (reference-only snapshots; still in history).
+
+- **Rebuilt the README** around what the tool actually *does*: three special operations (org
+  duplication, archive updating, cross-machine sync suggestion), then requirements and the one
+  hard assumption that explains most of the design — **authentication is the user's and stays
+  theirs**. Corrected a stale privacy claim that still described schema v2 and said branch names
+  were published in the clear; v3 salts them.
+
+- **Version contract (`shared/version.py`).** The version had been typed into two files with no
+  tags and no releases, so "am I current?" had no answer. One constant now feeds `pyproject.toml`
+  and the display contract, with `--version` / `version --check` on the CLI and a line in the
+  tray menu. The check is **read-only**: it reports, never downloads or self-replaces. Every
+  failure — offline, no `gh`, rate limited, no release yet — reports **unknown**, never "up to
+  date"; `tests/test_version.py` pins that, and caught `check_for_update` propagating an
+  unexpected exception, which was then fixed in the code.
+
+- **Reorganized `git-sync-suggester/`** from 25 flat files into `core/` `fleet/` `app/` `ui/`
+  `packaging/` `docs/`, with `_paths.py` as the single place that widens `sys.path`. Still flat
+  scripts — no package, no console-script entry point. A folder named `build/` was renamed to
+  `packaging/` after discovering `.gitignore`'s `build/` pattern silently ignored it at any
+  depth; the root patterns are now anchored (`/build/`, `/dist/`). Caught during the move: the
+  deleted `REPO_ROOT` was still referenced by `--from-archives`, a path no test covers.
+
+- **`.agents/` directives rewritten.** Sessions kept working from remembered layouts, so the
+  brief now opens with: map the tree using `.agents/tools/generate_folder_structure.py` (fetched
+  per-machine, gitignored) and *read the output* before reasoning about structure. Added the
+  privacy directive — no local paths, machine names, addresses, or real namespaces in any
+  tracked file — plus "validate on the platform you claim". `tools/` and `output/` are now
+  untracked except their READMEs.
+
+- Validation: offline suite **16/16**; all four entry points; `archive_diff` self-test; Windows
+  bundle rebuilt from the new layout and smoke-tested.
+
+## 2026-09-11
+
+- **Built the lifecycle shell the fleet was missing: tray, start-at-login, Windows build.**
+  The app had no way to outlive a terminal, so the host was simply not running and no machine
+  could enrol — `fleet connect` cannot reach a host that is down. New `fleet_tray.py` is a
+  stdlib-only native Windows tray (ctypes; the project carries no runtime dependencies) showing
+  one reported state with counts, a menu (open dashboard / rescan / start-at-login / quit), and
+  balloon notifications on real transitions only. It is a **skin**: every number comes from the
+  `gitspecops.fleet.display` document and an unknown contract version is refused, not parsed.
+  New `fleet_autostart.py` does per-user start-at-login (registry Run key, XDG autostart,
+  LaunchAgent, plus explicit systemd `--user`), reversible from the same API. `fleet tray`
+  degrades to a foreground run where no tray exists, so one registered command works on every
+  machine. Added `fleet_app` commands `tray` and `autostart`, a `stopping`/`on_ready` seam
+  (`signal.signal` cannot run off the main thread, and the Win32 message loop owns it), and
+  `--configure-only` so a graphical shell can finish setup and then start under the tray.
+
+- **Fixed three real bugs found by building and running the above, not by reading it.**
+  - **Windows filesystem observation never fired.** `WindowsEvents._read` tested the ignore list
+    against the *absolute* path, so a root that merely sat under an ignored name — `AppData`,
+    any folder called `Library`, `env` or `venv` — discarded every event and observed nothing,
+    silently, forever. Linux prunes while walking and was unaffected. This was failing at HEAD
+    on Windows before any of today's work. Extracted `ignored_relative()` and pinned it with a
+    cross-platform regression test so the Linux suite cannot hide it again.
+  - **`UnicodeEncodeError` on every redirected run.** Status glyphs are not cp1252-encodable,
+    which is what Python picks for a redirected stream on Windows, so `check > file`, a pipe or
+    a launcher log crashed *after* the work succeeded. Affected the org duplicator too. New
+    `shared/console.py` (`enable_unicode_output()`) is called first in each entry point.
+  - **Intermittent 64-bit ctypes overflow in the tray.** `restype` was set without `argtypes`,
+    so ctypes marshalled GDI/window handles as C `int`; handle values grow during a session, so
+    the first icon built and a later one raised "int too long to convert" inside the window
+    procedure. Every signature is now declared explicitly.
+  Also: `launch_command` no longer guesses the entry point from `sys.argv[0]` — the same tray
+  menu item can be clicked from `sync_suggester.py fleet tray`, from `fleet_app.py`, or from the
+  frozen build, and registering an argv the target cannot parse yields a login entry that fails
+  silently every boot. Callers pass the script explicitly.
+
+- **Produced the Windows executable that was blocking deployment.** PyInstaller 6.22.2,
+  one-folder, 25 MiB, built on `machine-c` (PyInstaller does not cross-compile, which is why
+  only the Linux bundle existed). `GitSpecOpsSync.spec` now names `fleet_tray`,
+  `fleet_autostart` and `shared.console` as `hiddenimports` — all three are imported lazily, so
+  static analysis missed them and the frozen build would have failed only when a user clicked a
+  tray menu item. The bundle is also the full CLI, which is how it is smoke-tested.
+
+- **Setup no longer demands a hand-typed Tailscale URL.** `fleet_net.discover_hosts()` lists
+  tailnet peers and marks which are actually serving; `fleet setup` offers those and, when none
+  are, names the machines it can see and says the host app is not running — previously that
+  appeared as a bare connection error. Verified live: machine-a reported online but not serving.
+
+- Validation: full offline suite **15/15** including the previously failing
+  `test_fleet_events.py`; new `tests/test_fleet_tray.py` (14 checks: contract handling, stale
+  reports, autostart against an in-memory backend so no real registry entry is ever written,
+  discovery ranking). Unicode fix verified under both pipe and file redirection. Frozen exe
+  verified for hidden imports and a clean exit path. No start-at-login entry was registered and
+  no fleet configuration was created on this machine during this work.
+
 ## 2026-09-05
 
-- **Removed perpetual fleet scanning and deployed native event-driven observation on prime.**
+- **Removed perpetual fleet scanning and deployed native event-driven observation on machine-a.**
   Configuration v2 performs one acknowledged startup inventory, then Linux inotify or Windows
   `ReadDirectoryChangesW` wakes the observer only for filesystem changes. Events are debounced and
   mapped to the deepest known checkout; only that repository is inspected. The 30-second heartbeat
   updates authenticated presence without Git or directory scans. `fleet rescan` is the deliberate local
   inventory command for added/removed repositories. The former v1 polling configuration migrates
   automatically. A real temporary-repository test confirms idle silence and targeted untracked-file
-  detection; the prime host migrated and restarted with 105 repositories and no periodic scan.
+  detection; the machine-a host migrated and restarted with 105 repositories and no periodic scan.
   Live create/delete smoke checks each inspected exactly one repository. Full offline validation
   passes 14/14 files; Python compilation, JavaScript syntax and whitespace checks pass.
   The live heartbeat was further reduced to one authenticated timestamp: no full report crosses the
@@ -35,13 +158,13 @@ Append-only record of **completed** work. Newest first. Items that graduate from
 - **Made continuous discovery explicit and reduced its cadence.** Interactive setup names every
   recursive root and requires the user to type `SCAN`; direct setup requires
   `--acknowledge-continuous-scan`, and existing configurations use `fleet acknowledge-scan`.
-  Changed the default and this moonbase-prime pilot from five to 30 seconds after each scan. The
+  Changed the default and this machine-a pilot from five to 30 seconds after each scan. The
   earlier five-second pilot measured about 34 MiB RSS and 11.2% of one CPU while observing 105
   repositories; a scan itself normally takes 3.2–3.4 seconds. The scanner reads Git metadata and
   status only and does not copy repository content into the fleet store.
-- Live verification: `xenomorph2b` answered a direct Tailscale ping at `100.96.18.7` in 13 ms;
-  `moonbase-node1-w` timed out and appears offline/asleep. The restarted dashboard reports 105
-  repositories through display contract v1 at `http://100.85.195.87:8765/`.
+- Live verification: `machine-c` answered a direct Tailscale ping at `<machine-c-tailscale-ip>` in 13 ms;
+  `machine-b` timed out and appears offline/asleep. The restarted dashboard reports 105
+  repositories through display contract v1 at `http://<machine-a-tailscale-ip>:8765/`.
 
 - **Established the Fleet Management display boundary and replaced the prototype dashboard.**
   `fleet_display.py` now emits versioned `gitspecops.fleet.display` v1 with explicit attention,
@@ -54,27 +177,27 @@ Append-only record of **completed** work. Newest first. Items that graduate from
   self-contained app, uses graphical first run, and does not clone source or install Python.
   Developer checkouts remain the current preview. `knowledge/distribution.md` records staged
   bundling/signing, per-channel signed release metadata, store/direct update ownership, rollback,
-  and the remaining release work. Verified the corrected `xenomorph2b` Tailscale name.
+  and the remaining release work. Verified the corrected `machine-c` Tailscale name.
 - Validation: display/authorization tests pass, all three JavaScript modules pass syntax checks,
   pure selectors pass Node fixture checks, static routes and display v1 respond live, the removed
   download responds 404, and the full offline suite passes 13/13 files. The host remains running
-  at `http://100.85.195.87:8765/` with the new interface.
+  at `http://<machine-a-tailscale-ip>:8765/` with the new interface.
 
-- **Implemented and started the personal Tailscale fleet pilot on moonbase-prime.** New
+- **Implemented and started the personal Tailscale fleet pilot on machine-a.** New
   foreground app with guided setup, stable device identity, per-peer write authorization,
   SQLite persistence, browser namespace/status dashboard, and source-only observer ZIP.
   Existing gh auth is checked without configuring or forwarding credentials. Private tailnet
   reports share repository names; scheduled folder/GitHub replicas contain only v3 manifests.
   Replica clocks do not perform early runtime reads/writes or retry immediately on failure.
-- Live smoke: host HTML, dashboard JSON and ZIP returned 200; prime observed 105 repositories
+- Live smoke: host HTML, dashboard JSON and ZIP returned 200; machine-a observed 105 repositories
   and detected this session's own uncommitted work. Browser screenshot inspected. Added tests
   for authorization, stale/old reports, metadata validation, scheduling, locking and bundle
   contents. Full offline suite passed 13/13 files before final documentation updates.
   Windows observers remain pending; no source sync, remote commits, content capture or
-  GitHub publication was performed. See git-sync-suggester/FLEET.md for usage and limitations.
+  GitHub publication was performed. See git-sync-suggester/docs/FLEET.md for usage and limitations.
 
-- Retried fleet connectivity: both Windows devices answered Tailscale ping; former xenomorph2b
-  now advertises moonbase-node1-w-1 at its previous IP. Old hostname no longer resolves.
+- Retried fleet connectivity: both Windows devices answered Tailscale ping; former machine-c
+  now advertises machine-b at its previous IP. Old hostname no longer resolves.
   Reviewed official GitHub permission/API guidance, Obsidian Headless Sync, Tailscale grants,
   and OCI free-instance reclamation constraints for the continuing transport/auth discussion.
 
@@ -83,20 +206,20 @@ Append-only record of **completed** work. Newest first. Items that graduate from
   constraints, Flathub requirements and GitHub REST content-write limits against official docs.
   Recommendations are proposals, not approved architecture or implemented desktop features.
 
-- **Fleet readiness audit on moonbase-prime.** Read the project brief, roadmap and transport
+- **Fleet readiness audit on machine-a.** Read the project brief, roadmap and transport
   implementation. Confirmed existing GitHub authentication and Tailscale reachability to both
   Windows laptops outside the sandbox. Remote-management probes (22/5985/5986) timed out.
-- Ran a read-only recursive Sync Suggester check against `/memory-lambda/Github` using isolated
+- Ran a read-only recursive Sync Suggester check against `<archive-root>/Github` using isolated
   config/state under `/tmp/gitspecops-fleet-audit-9sp2xmx5`: 105 repositories observed, dirty
   Chassis and FlowNode surfaced, FlowNode stash surfaced, and one unrecognized-origin warning
-  for the moon-and-back root. Ahead/behind readings remain cached; no fetch was requested.
+  for the <namespace-b> root. Ahead/behind readings remain cached; no fetch was requested.
 - Validation: `python3 tests/run_all.py` passed all 12 test files. No repository synchronization,
   remote state publication, persistent configuration or background service was performed.
 
 ## 2026-09-04
 
 - **Fixed the Windows discovery bug reported in the outside fleet review — the tool found nothing
-  at all on a Windows drive.** A `check` against `T:\Github\...` returned an empty fleet. The
+  at all on a Windows drive.** A `check` against `<library-root>\...` returned an empty fleet. The
   review's diagnosis was exactly right: `os.DirEntry.stat()` on Windows serves data cached from
   the directory scan, and that cached record carries `st_dev == 0`, while the root statted
   directly reports a real device number. The cross-filesystem guard compared the two, found them
@@ -111,9 +234,9 @@ Append-only record of **completed** work. Newest first. Items that graduate from
     is *still* excluded, so the fix is not just the check being disabled, and that
     `cross_filesystems=True` still bypasses it entirely.
   - Confirmed on the real Windows T: drive after landing: direct-child discovery found all 5
-    repositories under `Sb4ssport-Alpha`, all 8 under `moon-and-back`, and all 3 under
-    `BonusBrain`. A combined Sync Suggester check rendered 15 repositories (the sixteenth,
-    `BonusBrain/tools`, was correctly reported separately because it has no recognized origin).
+    repositories under `<namespace-a>`, all 8 under `<namespace-b>`, and all 3 under
+    `<namespace-c>`. A combined Sync Suggester check rendered 15 repositories (the sixteenth,
+    `<namespace-c>/tools`, was correctly reported separately because it has no recognized origin).
   - The full suite then exposed two POSIX-only test assertions, not product failures: one compared
     a native Windows path to a slash-delimited suffix and one expected POSIX archive roots.
     Rewrote both assertions with `pathlib.Path` so the offline suite is portable.
@@ -454,8 +577,8 @@ Append-only record of **completed** work. Newest first. Items that graduate from
   Modes 1-3 stay flag-less (use `--answers`) — noted in working-notes.
 
 - **First live run of the org duplicator Mode 4 (batch download).** Backed up all 9 GitHub
-  namespaces (`sb4ssman` + 8 orgs) to the `memory-lambda` archive drive at
-  `/memory-lambda/Github/<namespace>/<repo>` — 153 repos, working clones, private + archived +
+  namespaces (`<account>` + 8 orgs) to the external archive drive at
+  `<archive-root>/Github/<namespace>/<repo>` — 153 repos, working clones, private + archived +
   forks included, 3 parallel per org. **153/153 succeeded, 0 failures**, ~16 min, ~69 GB on disk
   (GitHub's reported 26.8 GB understates full object/history size). Batch manifest:
   `github-org-duplicator/runs/batch_20260831_173958.json`.
@@ -470,7 +593,7 @@ Append-only record of **completed** work. Newest first. Items that graduate from
     pointers.
   - **Post-run trim (per user):** the `true-bots` org was not wanted — `True-Bots-Inc` is the
     keeper. Removed `true-bots` from the archive (moved to
-    `/memory-lambda/Github/.trash-true-bots-20260831`, ~37 GB — final `rm -rf` left for the user
+    `<archive-root>/Github/.trash-<namespace>-<date>`, ~37 GB — final `rm -rf` left for the user
     to run; the sandbox refuses recursive delete outside `/tmp`) and deleted its four
     `runs/*__true-bots.txt` resume files. Also fully removed git-lfs again: `git lfs uninstall`
     (global config + repo hooks) and deleted `~/.local/bin/git-lfs`. Active archive is now 8

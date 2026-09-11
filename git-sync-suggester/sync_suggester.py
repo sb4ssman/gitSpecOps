@@ -17,7 +17,11 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from advice import render_table
+from _paths import REPO_ROOT, bootstrap  # this file sits at the tool root, so it imports directly
+
+bootstrap()  # must precede every sibling import: they live in core/, fleet/ and app/
+
+from advice import render_table  # noqa: E402
 from aggregate import (build_rows, load_manifests, machine_views, render_dashboard,
                        split_by_fleet)
 from convergence import (
@@ -48,12 +52,21 @@ from observer import (DEFAULT_FETCH_TIMEOUT_SECONDS, DEFAULT_FETCH_WORKERS, Root
                       observe_roots)
 from watcher import DEFAULT_HEARTBEAT_SECONDS, DEFAULT_INTERVAL_SECONDS, run_watch
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
+from shared.console import enable_unicode_output  # noqa: E402
+from shared.version import VERSION, check_for_update, version_line  # noqa: E402
 from shared.providers import provider_for_host, registered_hosts  # noqa: E402
 PREVIEW_MACHINE_ID = "local-preview"
+
+
+def command_version(args: argparse.Namespace) -> int:
+    """Report-only. An update check must never be the reason a command fails."""
+    print(version_line())
+    if args.check:
+        status = check_for_update()
+        print(status["message"])
+        if status["state"] == "outdated":
+            print(status["url"])
+    return 0
 
 
 def open_transport(config: dict | None, args: argparse.Namespace | None = None):
@@ -538,7 +551,14 @@ def build_parser() -> argparse.ArgumentParser:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config-dir", help="override the local state directory "
                                              f"(default: {default_config_dir()})")
+    parser.add_argument("--version", action="version", version=version_line())
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    version = subparsers.add_parser("version", help="show the version, and optionally "
+                                                    "whether a newer release exists")
+    version.add_argument("--check", action="store_true",
+                         help="ask GitHub for the latest release (read-only; never downloads)")
+    version.set_defaults(handler=command_version)
 
     init = subparsers.add_parser("init", help="write this machine's saved configuration")
     init.add_argument("--machine-id", help="stable non-personal id (default: this hostname)")
@@ -661,6 +681,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Status glyphs are not cp1252-encodable, so a redirected stream must be widened before
+    # anything prints; otherwise a successful scan dies on its own output. See shared/console.py.
+    enable_unicode_output()
     # The foreground app owns its own small parser and lifecycle. Existing scripts remain flat.
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "fleet":

@@ -1,7 +1,7 @@
 # Live personal fleet — 2026-09-05
 
-User authorized the first deployment on moonbase-prime (Linux host), moonbase-node1-w and
-xenmorph2b (Windows; user calls this xenomorph2b). Existing gh authentication is a hard
+User authorized the first deployment on machine-a (Linux host), machine-b and
+machine-c (Windows; user calls this machine-c). Existing gh authentication is a hard
 prerequisite for the new fleet app, and remains user-owned. No gh tokens are read or sent.
 
 ## Implemented boundary
@@ -37,7 +37,7 @@ only at configured slots (default 1800 seconds). Failed slots wait the full inte
 No automatic cloud failover, source fetching, commit hooks, remote jobs or content capture.
 
 Setup requires explicit acknowledgement after naming every recursive inventory root. The first
-prime preview ran at five seconds and measured about 11.2% average CPU and 34 MiB RSS across 105
+machine-a preview ran at five seconds and measured about 11.2% average CPU and 34 MiB RSS across 105
 repos. A temporary 30-second cadence was also rejected by the user. Configuration v2 removes the
 scan interval entirely, migrates the preview automatically, and adds the deliberate `fleet rescan`
 request for newly added or removed repositories.
@@ -46,12 +46,31 @@ request for newly added or removed repositories.
 
 Prime configuration is under the normal user config directory, in fleet-app.json, separate
 from legacy config.json. Host database: fleet.sqlite3. Latest observation: fleet-latest.json.
-Dashboard URL: http://100.85.195.87:8765/ . Host started from the agent's foreground terminal;
+Dashboard URL: http://<machine-a-tailscale-ip>:8765/ . Host started from the agent's foreground terminal;
 resume independently in VS Code with `python3 git-sync-suggester/sync_suggester.py fleet run`.
-Only prime is verified publishing (105 repos). Windows endpoints were pingable; observer
+Only machine-a is verified publishing (105 repos). Windows endpoints were pingable; observer
 installation awaits a matching development checkout and local command because SSH was
 unavailable. The prototype source-download endpoint was removed on the user's feedback; an
 installed app is the required public onboarding path.
+
+## Lifecycle shell (2026-09-11)
+
+The pilot's real gap was not a feature but a lifecycle: a foreground-only app meant the host
+was usually not running, and a fleet whose host is down accepts no reports and serves no
+dashboard. `fleet_tray.py` (stdlib ctypes, Windows) and `fleet_autostart.py` (per-user
+start-at-login) close that. The tray consumes the display contract and classifies nothing; it
+exposes no Git mutations. Start-at-login is per-user and never a service, so the app keeps the
+interactive user's gh login, Git ownership and Tailscale identity — the correctness trap
+recorded in the outside review. `fleet tray` degrades to a foreground run off Windows.
+
+Building it surfaced that **Windows observation had never actually worked**: the native watcher
+filtered events against the absolute path, so any root beneath a name in the ignore list
+(`AppData`, `Library`, `env`, `venv`) silently discarded everything. The Linux suite could not
+see it. Treat "the test suite passes on machine-a" as evidence about Linux only.
+
+The Windows executable now exists (PyInstaller 6.22.2, 25 MiB, built on machine-c). Neither
+Windows machine is enrolled yet, because no host is running — that is a deployment decision,
+and starting a host on a second machine would mint a second fleet secret and fork the fleet.
 
 ## Follow-up
 
@@ -63,4 +82,4 @@ never become competing authorities. Native tray, deployment packaging and enterp
 remain separate work. The display contract is now versioned and independent of the standard
 skin; see DISPLAY-CONTRACT.md. User instructions supersede older notes that no observer may run.
 
-See git-sync-suggester/FLEET.md for the user guide and tests/test_fleet_app.py for boundaries.
+See git-sync-suggester/docs/FLEET.md for the user guide and tests/test_fleet_app.py for boundaries.

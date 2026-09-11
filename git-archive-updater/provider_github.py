@@ -10,8 +10,8 @@ module imports `gh`.
 
 Standalone:
 
-    python provider_github.py list moon-and-back
-    python provider_github.py resolve solid-five-seven/ggm-wedding.com
+    python provider_github.py list some-org
+    python provider_github.py resolve old-org/renamed-repo
 """
 
 from __future__ import annotations

@@ -226,29 +226,30 @@ def build_publish_plan(candidates: list[PublishCandidate],
 
 
 # --------------------------------------------------------------------------------------
-# Self-test: the real drift cases from the moon-and-back org (formerly solid-five-seven).
+# Self-test: synthetic drift cases modelled on a real namespace rename.
+# Names are invented on purpose -- fixtures must never carry a real account, org, or repo.
 # --------------------------------------------------------------------------------------
 def _self_test() -> int:
     remote = [
-        RepoRef(id="R_agent", owner="moon-and-back", name="Agent-Moon-Back",
-                url="https://github.com/moon-and-back/Agent-Moon-Back"),
-        RepoRef(id="R_wed", owner="moon-and-back", name="ggm-wedding-site",
-                url="https://github.com/moon-and-back/ggm-wedding-site"),
-        RepoRef(id="R_fam", owner="moon-and-back", name="Family-Clock",
-                url="https://github.com/moon-and-back/Family-Clock"),
-        RepoRef(id="R_new", owner="moon-and-back", name="Brand-New-Repo",
-                url="https://github.com/moon-and-back/Brand-New-Repo"),
+        RepoRef(id="R_agent", owner="new-team", name="Agent-New-Team",
+                url="https://github.com/new-team/Agent-New-Team"),
+        RepoRef(id="R_wed", owner="new-team", name="event-site",
+                url="https://github.com/new-team/event-site"),
+        RepoRef(id="R_fam", owner="new-team", name="Shared-Clock",
+                url="https://github.com/new-team/Shared-Clock"),
+        RepoRef(id="R_new", owner="new-team", name="Brand-New-Repo",
+                url="https://github.com/new-team/Brand-New-Repo"),
     ]
     local = [
         # org-only rename: folder matches new name, origin owner is stale; id supplied by caller
-        LocalRepo(folder="Family-Clock", origin="https://github.com/solid-five-seven/Family-Clock",
-                  owner_name="solid-five-seven/family-clock", remote_id="R_fam"),
+        LocalRepo(folder="Shared-Clock", origin="https://github.com/old-team/Shared-Clock",
+                  owner_name="old-team/shared-clock", remote_id="R_fam"),
         # org + repo rename: folder and origin both stale; id supplied
-        LocalRepo(folder="ggm-wedding.com", origin="https://github.com/solid-five-seven/ggm-wedding.com",
-                  owner_name="solid-five-seven/ggm-wedding.com", remote_id="R_wed"),
-        # triple drift: folder Agent-Five-Seven, origin hwh-AGENT, upstream Agent-Moon-Back; id supplied
-        LocalRepo(folder="Agent-Five-Seven", origin="https://github.com/solid-five-seven/hwh-AGENT",
-                  owner_name="solid-five-seven/hwh-agent", remote_id="R_agent", dirty=True),
+        LocalRepo(folder="event-site.example", origin="https://github.com/old-team/event-site.example",
+                  owner_name="old-team/event-site.example", remote_id="R_wed"),
+        # triple drift: folder Agent-Old-Team, origin legacy-AGENT, upstream Agent-New-Team; id supplied
+        LocalRepo(folder="Agent-Old-Team", origin="https://github.com/old-team/legacy-AGENT",
+                  owner_name="old-team/legacy-agent", remote_id="R_agent", dirty=True),
         # a genuine local-only orphan, not in the org at all
         LocalRepo(folder="Old-Experiment", origin="https://github.com/someone-else/Old-Experiment",
                   owner_name="someone-else/old-experiment", remote_id=None),
@@ -264,26 +265,26 @@ def _self_test() -> int:
     check("clone == Brand-New-Repo", [r.name for r in plan.to_clone], ["Brand-New-Repo"])
     check("local_only == Old-Experiment", [l.folder for l in plan.local_only], ["Old-Experiment"])
     check("reconcile count", len(plan.to_reconcile), 3)
-    check("Family-Clock origin_stale, folder OK",
-          [(i.origin_stale, i.folder_mismatch) for i in plan.to_reconcile if i.local.folder == "Family-Clock"],
+    check("Shared-Clock origin_stale, folder OK",
+          [(i.origin_stale, i.folder_mismatch) for i in plan.to_reconcile if i.local.folder == "Shared-Clock"],
           [(True, False)])
-    check("ggm-wedding.com origin_stale + folder drift",
-          [(i.origin_stale, i.folder_mismatch) for i in plan.to_reconcile if i.local.folder == "ggm-wedding.com"],
+    check("event-site.example origin_stale + folder drift",
+          [(i.origin_stale, i.folder_mismatch) for i in plan.to_reconcile if i.local.folder == "event-site.example"],
           [(True, True)])
     check("Agent dirty -> skipped, not pulled",
-          [l.folder for l in plan.skipped_dirty], ["Agent-Five-Seven"])
+          [l.folder for l in plan.skipped_dirty], ["Agent-Old-Team"])
     check("pull excludes dirty Agent",
-          sorted(l.folder for l in plan.to_pull), ["Family-Clock", "ggm-wedding.com"])
+          sorted(l.folder for l in plan.to_pull), ["Shared-Clock", "event-site.example"])
     check("namespace rename detected",
-          plan.namespace_renames, [("solid-five-seven", "moon-and-back")])
+          plan.namespace_renames, [("old-team", "new-team")])
 
     # Non-authoritative remote (no provider, or a failed/timed-out listing): we must fall back
     # to update-only and pull every clean repo, never mislabel them as orphans/local-only.
     loose = build_plan(local, [], remote_authoritative=False)
     check("non-authoritative pulls all clean repos",
           sorted(l.folder for l in loose.to_pull),
-          ["Family-Clock", "Old-Experiment", "ggm-wedding.com"])
-    check("non-authoritative skips dirty", [l.folder for l in loose.skipped_dirty], ["Agent-Five-Seven"])
+          ["Old-Experiment", "Shared-Clock", "event-site.example"])
+    check("non-authoritative skips dirty", [l.folder for l in loose.skipped_dirty], ["Agent-Old-Team"])
     check("non-authoritative invents no clones/orphans",
           (len(loose.to_clone), len(loose.local_only), len(loose.to_reconcile)), (0, 0, 0))
 

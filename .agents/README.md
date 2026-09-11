@@ -6,19 +6,67 @@ knowledge the code and git history do not capture.
 
 ## Directives (how to work in this repo)
 
-- **Read this file first**, then check `working-notes.md` for open items before starting work.
+### Start every session by looking, not remembering
+
+1. **Read this file**, then [`working-notes.md`](working-notes.md) for open items.
+2. **Map the tree with the tool**, do not reconstruct it from memory or a few `ls` calls:
+
+   ```bash
+   python .agents/tools/generate_folder_structure.py --path . --out .agents/output/folder_structure.md
+   ```
+
+   If the script is not there, fetch it first — [`tools/README.md`](tools/README.md) has the
+   one-line `curl`. It is gitignored on purpose and takes seconds to retrieve on any machine.
+   Then **read the output file.** This repo has been reorganized; a session working from a
+   remembered layout will confidently reference files that moved.
+3. **Verify before asserting.** Anything you state about this codebase — a path, a flag, a
+   behavior — gets checked against the working tree in the same turn you claim it. A memory or
+   an older note is a lead, never evidence.
+
+### This is a PUBLIC repository — never write personal information into it
+
+Applies to **every tracked file**: code, comments, docstrings, tests, `working-notes.md`,
+`work-log.md`, `knowledge/`, and commit messages. Never commit:
+
+- **Absolute local paths** (`T:\…`, `/home/<you>`, `/srv/<drive>`, `C:\Users\…`) — use
+  `<library-root>`, `/path/to/archive`, or a clearly invented example.
+- **Real machine names, IP addresses (Tailscale `100.x` included), or tailnet topology** — use
+  `<prime-tailscale-ip>`, `machine-a`.
+- **Real account, organization, or repository names** — fixtures and self-tests use invented
+  names (`old-team`, `new-team`, `example/work`). A real namespace in a self-test is still a
+  disclosure, and `archive_diff.py` shipped with one for months before it was caught.
+- **Secrets of any kind.** The fleet secret, tokens, anything 64-hex. `doctor` and config dumps
+  must keep printing `(set, hidden)`.
+
+Write the *shape* of the finding, not the specimen: "a root under an ignored name discarded
+every event" beats naming the drive it happened on. When you must record an operational detail
+to be useful, sanitize it as you write it — not later.
+
+`output/` and everything in `tools/` except its README are gitignored, so local detail may live
+there freely. That is the release valve.
+
+### Keeping the record
+
 - **Keep `working-notes.md` current** — a living todo / scratch pad. Add items as they arise; prune
   stale or resolved ones regularly. It is what saves the next session from reconstructing state.
 - **Graduate completed work into `work-log.md`** with an **absolute date** (e.g. `2026-07-21`).
   Always write dates absolutely — never "yesterday" / "last week".
 - **Record durable decisions and findings under `knowledge/`** (one topic per file). Working notes
   are transient; knowledge is kept.
-- `tools/` holds agent-owned helper scripts (empty for now); `output/` holds generated artifacts
-  from those tools (empty for now).
+- **Record the bug's cause, not just its fix.** The valuable half is why it hid — which platform,
+  which assumption, which test could not see it.
+
+### Constraints that do not bend
+
 - **Auth belongs to the user.** Tools shell out only to already-authenticated host CLIs
   (`gh auth login`, ...); nothing here stores, configures, or manages credentials.
-- **Keep the repo flat.** Do not introduce a `src/` package or console-script entry points unless
-  the user explicitly asks for a larger refactor.
+- **Keep the repo flat.** No `src/` package and no console-script entry points unless the user
+  explicitly asks. Tool folders may group modules into subfolders (Sync Suggester does, via
+  `_paths.py`), but they stay plain scripts.
+- **No runtime dependencies.** Everything is stdlib. A build-time tool (PyInstaller) lives in a
+  disposable environment, never in `pyproject.toml`.
+- **Validate on the platform you claim.** "The suite passes" means the suite passes *here*.
+  Windows-only defects have shipped twice because validation happened on Linux.
 
 ## Repo Shape
 
@@ -61,6 +109,11 @@ standalone read-only CLI:
   record with `st_dev == 0`, and comparing that against the root's real device number once
   made an entire drive scan come back empty.
 - `shared/gh_cli.py` — one `gh` subprocess wrapper (`run_gh` / `GhError`)
+- `shared/console.py` — `enable_unicode_output()`, called first in every entry point. The status
+  glyphs (`✓ ✗ ⚠ ✎ ↑ ↓ ↕ ⚑ →`) are not cp1252-encodable, which is what Python picks for a
+  **redirected** stream on Windows, so `check > status.txt`, a launcher log, or any pipe died
+  with `UnicodeEncodeError` *after* the real work succeeded. The interactive console was fine,
+  which is why it hid for so long. Printing must never be the thing that fails.
 
 `git_inspect.py` and `archive_diff.py` are thin facades re-exporting their shared primitives, so
 existing intra-tool imports are unchanged. Scripts that import `shared/` carry a small repo-root
@@ -229,16 +282,27 @@ or Windows `ReadDirectoryChangesW`; `fleet_observer.py` maps debounced file even
 checkouts and inspects only those repositories. Heartbeats contain cached facts and do not scan.
 New or removed repositories require the explicit local `fleet rescan` request.
 See [knowledge/live-fleet.md](knowledge/live-fleet.md) and
-[the user guide](../git-sync-suggester/FLEET.md). Legacy transport/config rules below still
+[the user guide](../git-sync-suggester/docs/FLEET.md). Legacy transport/config rules below still
 apply to legacy commands; the new app has a distinct configuration with one live authority
 and explicitly scheduled replicas. It is a personal pilot, not enterprise authorization.
+
+**Lifecycle shell (2026-09-11):** `fleet_tray.py` (native Windows tray via ctypes; no runtime
+dependency) and `fleet_autostart.py` (per-user start-at-login: registry Run key / XDG autostart /
+LaunchAgent, plus an explicit systemd `--user` option) make the app survive a closed terminal.
+`fleet tray` and `fleet autostart {status,enable,disable}` are the commands; `tray` degrades to a
+foreground run where no tray exists, so one registered command works fleet-wide. Two rules:
+start-at-login is **per-user, never a service** (the app must run as the interactive user or the
+`gh` login, Git ownership and Tailscale identity all differ), and the tray is **a skin** — it
+reads `summary` from the display contract and refuses an unknown contract version rather than
+recomputing anything. `fleet_app._main` gained a `stopping`/`on_ready` seam for it, because
+`signal.signal` cannot run off the main thread and the Win32 message loop owns that thread.
 
 **Display boundary (2026-09-05):** `fleet_display.py` is the pure, versioned display-model
 builder. It owns presentation semantics such as attention, tones, filter tags, notices and
 capability availability. `fleet_client.js` owns transport/compatibility; `fleet_view.js` owns
 generic selectors; `fleet_dashboard.html` + `fleet_standard.*` are only the standard skin.
 Future skins, including LCARS, must consume the same `gitspecops.fleet.display` contract and
-must not reimplement Git/freshness policy. See `git-sync-suggester/DISPLAY-CONTRACT.md`.
+must not reimplement Git/freshness policy. See `git-sync-suggester/docs/DISPLAY-CONTRACT.md`.
 
 `sync_suggester.py` is the read-only entry point. Nothing in this tool pulls, pushes, commits,
 stashes, or otherwise touches an observed repository — it reads local Git facts, publishes this
@@ -444,6 +508,19 @@ and touches no real repository:
 ```powershell
 uv run python tests\run_all.py
 ```
+
+Tests are grouped by area — `tests/archive/`, `tests/duplicator/`, `tests/sync/`,
+`tests/fleet/`, `tests/repo/` — and each bootstraps imports through `tests/_bootstrap.py`
+(`setup("sync")`, `setup("duplicator")`, ...), which adds only the tool folders that file
+actually imports. All three tools are flat script directories, so putting every one of them on
+`sys.path` would let a module in one shadow a same-named module in another.
+
+**`tests/repo/test_repo_hygiene.py` is the sanitization guard.** It scans *tracked* files for
+secrets, local paths, real addresses, tracked generated launchers, and a missing LICENSE. Every
+pattern in it corresponds to something this repository actually shipped or nearly shipped. When
+it fails, fix the file; only widen its allowlist after deciding the match is genuinely
+documentation or invented fixture data. It reports on the working tree only — no test can clean
+git history.
 
 Individually, plus the compile and `--help` smoke checks:
 

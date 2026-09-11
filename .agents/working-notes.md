@@ -3,21 +3,53 @@
 Living todo / scratch pad. Add items freely; **prune regularly**. When something is done, move it
 into [`work-log.md`](work-log.md) with an absolute date. Dates are always absolute.
 
-_Last tended: 2026-09-05_
+_Last tended: 2026-09-11_
 
 ## Open
 
-- [ ] **Live fleet deployment (2026-09-05).** Foreground app implemented and prime deployed;
+- [ ] **History still holds the pre-sanitization details (2026-09-11).** Tracked files are clean,
+  but earlier commits still contain real machine names, tailnet addresses, archive paths and
+  private namespaces. A rewrite (`git filter-repo`) is the only complete fix and it breaks every
+  existing clone and fork. Not done, deliberately — the exposed values are private-range
+  addresses and folder names, not credentials. **Decision still owed by the user.**
+
+- [ ] **First release is not cut.** `shared/version.py` says 0.2.0 and the update check works,
+  but there are **no tags and no GitHub release**, so `version --check` correctly reports
+  "unknown" for everyone. Tag `v0.2.0`, publish a release, then confirm the check flips to
+  "current". Until that exists, the update path is untested against reality.
+
+- [ ] **Distribution beyond a hand-built bundle.** Decided direction: one installable app per OS
+  acting as a *launcher* for the operations, with the heavy fleet tier opt-in behind first run;
+  the clone-and-run-scripts path must never degrade, since it is also the development path.
+  Self-replacing update is deliberately NOT built — report-and-tell first, and an opt-in
+  "download and replace" only after the version contract has proven itself in the field.
+
+- [ ] **Enrol the two Windows machines (2026-09-11).** The lifecycle blockers are now gone —
+  tray, start-at-login and a Windows `.exe` all exist and are tested (see
+  [`work-log.md`](work-log.md)) — and the Windows event watcher, which had never worked, is
+  fixed. What remains is a deployment decision, not code: **no host is currently running**, and
+  `fleet connect` cannot enrol against a host that is down. Prime answers Tailscale ping and now
+  accepts SSH (it did not at the earlier handoff), so either machine-a's host is restarted and the
+  Windows machines connect to it, or `machine-c` becomes the host. Do not start a host on a
+  second machine casually: a new host mints a **new fleet secret**, which forks the fleet from
+  machine-a's and makes the two sets of manifests unjoinable.
+  - `machine-c` is otherwise ready: 145 repositories under `<library-root>`, read-only scan clean.
+  - `machine-b` was last seen offline; it still needs a checkout or a copy of the bundle.
+  - The built bundle currently lives in the gitignored `dist/GitSpecOpsSync/`. It needs a durable
+    install location before start-at-login points at it — a login entry aimed at a build output
+    that gets cleaned is worse than no login entry.
+
+- [ ] **Live fleet deployment (2026-09-05).** Foreground app implemented and machine-a deployed;
   see [knowledge/live-fleet.md](knowledge/live-fleet.md). User approved existing gh auth as a
   hard prerequisite and Tailscale-first deployment on the three local machines.
-  - Prime observes 105 repos under `/memory-lambda/Github`; dashboard http://100.85.195.87:8765/ .
+  - Prime observes 105 repos under `<archive-root>/Github`; dashboard http://<machine-a-tailscale-ip>:8765/ .
     The validated Linux PyInstaller bundle is the live process. SQLite is local to the host app;
     no startup entry, synchronized-folder replica, or GitHub replica is configured.
   - Need both Windows observers running, and a real uncommitted-change check across devices.
     Windows library paths requested. Prototype dashboard ZIP onboarding was rejected by the user
     and removed. The cross-platform PyInstaller recipe is built/tested on Linux; a Windows machine
     must build the matching `.exe` because PyInstaller does not cross-compile.
-    Both devices ping; current names: moonbase-node1-w (100.71.128.54), xenomorph2b (100.96.18.7).
+    Both devices ping; current names: machine-b (<node1w-tailscale-ip>), machine-c (<machine-c-tailscale-ip>).
   - Core next: real baskets/subscriptions (namespace groups are not baskets), safe library
     convergence/actions, guided no-Tailscale fallback, replica reconciliation and commit-only
     publication. Existing folder/GitHub transports remain usable independently.
@@ -49,8 +81,8 @@ _Last tended: 2026-09-05_
     `device_id()` / `entry_device_id()`, which pay for a real stat only when the cached value is
     absent. `tests/test_repo_discovery_devices.py` reproduces the Windows symptom on any platform
     by faking the cached-zero device; verified it fails ("found 0 of 3") against the old code.
-    **Confirmed on the real Windows T: drive:** direct-child scans found all 5 Sb4ssport-Alpha
-    agent repos, all 8 moon-and-back repos, and all 3 BonusBrain repos.
+    **Confirmed on the real Windows T: drive:** direct-child scans found all 5 <namespace-a>
+    agent repos, all 8 <namespace-b> repos, and all 3 <namespace-c> repos.
   - ~~**Compound facts hidden by precedence.**~~ **Fixed 2026-09-04.** `classify_repository` is now
     documented as a headline for severity *ordering only*; anything that renders or advises uses
     `repository_flags` / `describe_repository` / `secondary_facts`, so a repository that is dirty
@@ -58,7 +90,7 @@ _Last tended: 2026-09-05_
     behind+stash, diverged+dirty, missing-upstream+dirty, and that a clean repository invents no
     extras.
   - **Integrations stay optional.** gitSpecOps, the org admin/agent repositories, Digital
-    Cartography and BonusBrain are independent systems that interoperate through small contracts;
+    Cartography and <namespace-c> are independent systems that interoperate through small contracts;
     none may become a required runtime dependency of Sync Suggester. Sync Suggester owns its local
     stable machine id (it already does — `config.py`, derived from the hostname and overridable)
     and may *optionally* accept a human label or metadata exported by another tool. Nothing to

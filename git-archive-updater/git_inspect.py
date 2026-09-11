@@ -13,7 +13,7 @@ re-exported here so the archive modules' imports keep working.
 
 Standalone:
 
-    python git_inspect.py T:\\Github\\moon-and-back
+    python git_inspect.py /path/to/archive/namespace
 """
 
 from __future__ import annotations

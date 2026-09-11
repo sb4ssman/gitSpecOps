@@ -14,15 +14,17 @@ TESTS_DIR = Path(__file__).resolve().parent
 
 
 def main(argv: list[str]) -> int:
-    files = sorted(path for path in TESTS_DIR.glob("test_*.py"))
+    # Recursive: tests are grouped by area (archive/, duplicator/, sync/, fleet/, repo/).
+    files = sorted(TESTS_DIR.rglob("test_*.py"), key=lambda p: (p.parent.name, p.name))
     if not files:
         print("No test files found.")
         return 1
     results = []
     for path in files:
-        print(f"=== {path.name} ===", flush=True)
+        label = f"{path.parent.name}/{path.name}"
+        print(f"=== {label} ===", flush=True)
         completed = subprocess.run([sys.executable, str(path)], cwd=TESTS_DIR.parent)
-        results.append((path.name, completed.returncode))
+        results.append((label, completed.returncode))
         print(flush=True)
     failed = [name for name, code in results if code != 0]
     for name, code in results:
