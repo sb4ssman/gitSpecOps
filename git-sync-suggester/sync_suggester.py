@@ -411,7 +411,14 @@ def command_dashboard(args: argparse.Namespace) -> int:
         print("error: no state location. Run 'init --state-dir PATH' or "
               "'init --state-repo owner/name'.", file=sys.stderr)
         return 2
-    print(_dashboard_text(transport, config, load_catalog(config_dir), show_all=args.all))
+    catalog = load_catalog(config_dir)
+    if args.serve:
+        from local_dashboard import serve
+
+        return serve(transport, config, catalog, port=args.port,
+                     open_browser=not args.no_browser,
+                     settings={"transport": label, "root_count": len(config.get("roots") or [])})
+    print(_dashboard_text(transport, config, catalog, show_all=args.all))
     return 0
 
 
@@ -614,6 +621,12 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard.add_argument("--state-dir", help="override the saved manifest folder")
     dashboard.add_argument("--state-repo", help="override the saved state repository (owner/name)")
     dashboard.add_argument("--all", action="store_true", help="list every repository, not just exceptions")
+    dashboard.add_argument("--serve", action="store_true",
+                           help="open the browser dashboard locally (loopback only; needs no "
+                                "Tailscale and no other machine to be online)")
+    dashboard.add_argument("--port", type=int, default=8760, help="local port for --serve")
+    dashboard.add_argument("--no-browser", action="store_true",
+                           help="with --serve, do not open a browser window")
     dashboard.set_defaults(handler=command_dashboard)
 
     alias = subparsers.add_parser("alias", help="name a repository in the local-only catalog")

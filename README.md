@@ -11,9 +11,10 @@ and it never touches your credentials.
 
 ## The special operations
 
-### 1. Duplicate a whole GitHub organization
+### 1. GitHub Organization Duplicator
 
-Copy an entire namespace — down, up, or across — without clicking through a hundred repositories.
+*Copy an entire namespace — down, up, or across — without clicking through a hundred
+repositories.*
 
 ```bash
 python3 github-org-duplicator/github_org_duplicator.py
@@ -25,9 +26,9 @@ confirmation, and writes resumable run files so an interrupted 300-repo migratio
 instead of restarting. Handles private/archived/fork filters, mirror or working clones, and
 parallel workers.
 
-### 2. Keep a pile of repositories current
+### 2. Archive Updater
 
-Point it at a folder full of clones and keep them all up to date, safely.
+*Point it at a folder full of clones and keep every one of them current, safely.*
 
 ```bash
 python3 git-archive-updater/archive_updater.py --root /path/to/archive
@@ -39,10 +40,10 @@ richer engine (`archive_sync.py`) additionally discovers an org's full repo set 
 what is missing, repair stale origins after a rename, and rename folders to match upstream —
 each as a separate, explicitly approved class of change.
 
-### 3. Know what every machine left unfinished
+### 3. Sync Suggester
 
-Cross-machine sync *suggestion*: which clone on which computer has uncommitted work, unpushed
-commits, or a report too stale to trust.
+*Know what every one of your machines left unfinished — which clone on which computer has
+uncommitted work, unpushed commits, or a report too stale to trust.*
 
 ```bash
 python3 git-sync-suggester/sync_suggester.py check
@@ -168,42 +169,39 @@ Every machine observes itself and writes **one file that it alone owns**; no mac
 of another. That single-writer rule is why there is no conflict-resolution code anywhere in this
 repository.
 
-### Three transports, none required
+### Three transports — use as many as you can
 
-| Tier | What carries your status | Needs |
-|---|---|---|
-| **Durable** | a private GitHub repo, via the Contents API — never cloned | your existing `gh` login |
-| **Medium** | a folder your own sync client already replicates | any sync client |
-| **Live** | a direct Tailscale connection, with a browser dashboard | Tailscale, one machine kept running |
+They are complements, not alternatives. Each one is another way for a machine to leave a
+fingerprint and another way for you to read one, so configuring all three is the goal rather
+than a choice you have to make:
 
-The durable and medium tiers need **no host and no two machines online at once**. A laptop shut
-for a week still publishes on its next `check`:
+| Tier | What carries your status | Needs | Gives you |
+|---|---|---|---|
+| **Durable** | a private GitHub repo, via the Contents API — never cloned | your `gh` login | works from anywhere, survives everything |
+| **Medium** | a folder your own sync client already replicates | any sync client | fast, no API budget |
+| **Live** | machines talking directly over Tailscale | Tailscale | near-real-time, readable peer names |
 
 ```bash
 python3 git-sync-suggester/sync_suggester.py init --state-repo owner/private-repo --root ~/code
-python3 git-sync-suggester/sync_suggester.py check       # observe, publish, advise
-python3 git-sync-suggester/sync_suggester.py dashboard   # what every machine last reported
-python3 git-sync-suggester/sync_suggester.py converge    # repos your peers have and you don't
+python3 git-sync-suggester/sync_suggester.py check            # observe, publish, advise
+python3 git-sync-suggester/sync_suggester.py dashboard        # text, every machine
+python3 git-sync-suggester/sync_suggester.py dashboard --serve  # the browser dashboard
 ```
 
-A **public** state repository is refused outright, and creating one requires an explicit
-`--create-state-repo` — making a repository on your account is not something a status command
-should do as a side effect.
+**The dashboard is local and needs nothing else to be running.** `dashboard --serve` binds to
+loopback on this machine and renders whatever manifests it can read from whichever transports
+are configured. No Tailscale, no second machine awake, no server anywhere. A laptop that has
+been shut for a week still appears, with its last known state and an honest "this is three days
+old" — because the freshness rules treat an old report as old, never as an all-clear.
 
-The **live** tier (`fleet setup`) adds a near-real-time dashboard and readable peer repository
-names, at the cost of one machine staying up. It is the only tier with a host, and if that host
-is down the other tiers are unaffected. Keep it alive with the tray:
+That is the point of publishing to more than one transport: a machine that is unreachable right
+now has usually still left a fingerprint somewhere you *can* read.
 
-```bash
-python3 git-sync-suggester/sync_suggester.py fleet setup
-python3 git-sync-suggester/sync_suggester.py fleet tray            # tray icon (Windows)
-python3 git-sync-suggester/sync_suggester.py fleet autostart enable
-```
-
-Start-at-login is **per-user and never a service**, so the app keeps your `gh` login, your Git
-ownership and your Tailscale identity; it is reversible from the same command or the tray menu.
-`fleet tray` falls back to a foreground run where no tray exists. See
-[the fleet guide](git-sync-suggester/docs/FLEET.md).
+**Status of the live tier:** it currently runs as one host that others connect to
+(`fleet setup`), which means the dashboard it serves goes away when that machine does. The local
+dashboard above is unaffected. Making the live tier peer-to-peer — machines discovering and
+querying each other directly, with no host — is the next change, and the durable and medium
+tiers already work this way.
 
 ### What crosses the wire
 
