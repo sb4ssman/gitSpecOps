@@ -25,6 +25,7 @@ from shared.console import enable_unicode_output  # noqa: E402
 from shared.gh_cli import GhError, run_gh
 from config import default_config_dir
 from fleet_display import build_display
+from ui_assets import load_ui_assets
 from fleet_events import NativeEvents
 from fleet_net import FleetClient, discover_hosts, local_identity, make_server
 from fleet_observer import IncrementalObserver
@@ -74,18 +75,6 @@ def require_gh():
     proc = run_gh(["auth", "status"], check=False, timeout=30)
     if proc.returncode:
         raise ValueError("an existing working gh login is required; check 'gh auth status'")
-
-
-def load_ui_assets():
-    """Only named presentation assets are served; no source downloads or directory traversal."""
-    files = {"/": ("fleet_dashboard.html", "text/html; charset=utf-8"),
-             "/assets/fleet_standard.css": ("fleet_standard.css", "text/css; charset=utf-8"),
-             "/assets/fleet_client.js": ("fleet_client.js", "text/javascript; charset=utf-8"),
-             "/assets/fleet_view.js": ("fleet_view.js", "text/javascript; charset=utf-8"),
-             "/assets/fleet_standard.js": ("fleet_standard.js", "text/javascript; charset=utf-8")}
-    # In a frozen bundle the assets sit beside the executable; from source they are in ui/.
-    root = Path(getattr(sys, "_MEIPASS", "")) if getattr(sys, "frozen", False) else UI_DIR
-    return {url: ((root / name).read_bytes(), mime) for url, (name, mime) in files.items()}
 
 
 class ReplicaSchedule:
