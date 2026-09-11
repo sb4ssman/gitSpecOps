@@ -47,6 +47,45 @@ class IncrementalObserver:
                 break
         return affected
 
+    def detect_new_checkouts(self, changed: set[Path]) -> set[Path]:
+        """Checkouts that appeared under a watched root since the last inventory.
+
+        Filesystem events already fire when a repository is cloned into the library — they were
+        simply discarded, because `affected_repositories` maps an event only to a *known*
+        checkout. So a newly cloned repository stayed invisible until someone remembered to run
+        `fleet rescan`, which is exactly the kind of silent gap this project treats as a defect.
+
+        This only *detects*. Adding a repository to what this machine observes stays an explicit
+        act, in keeping with detect -> alert -> approve; the point is that the alert now exists.
+        """
+        roots = [Path(root).resolve() for root in self.config["roots"]]
+        known = set(self._repos)
+        found: set[Path] = set()
+        for item in changed:
+            path = Path(item).resolve(strict=False)
+            if not any(self._within(path, root) for root in roots):
+                continue
+            if any(self._within(path, repo) for repo in known):
+                continue
+            # Walk up from the event to the shallowest enclosing checkout still inside a root.
+            candidate = path if path.is_dir() else path.parent
+            while candidate and any(self._within(candidate, root) for root in roots):
+                if (candidate / ".git").exists() and candidate not in known:
+                    found.add(candidate)
+                    break
+                if candidate == candidate.parent:
+                    break
+                candidate = candidate.parent
+        return found
+
+    @staticmethod
+    def _within(path: Path, ancestor: Path) -> bool:
+        try:
+            path.relative_to(ancestor)
+        except ValueError:
+            return False
+        return True
+
     def refresh(self, changed: set[Path]) -> int:
         affected = self.affected_repositories(changed)
         for path in affected:
