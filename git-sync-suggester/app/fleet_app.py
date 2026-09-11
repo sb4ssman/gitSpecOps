@@ -10,6 +10,7 @@ synced folder, and the local dashboard — works without it.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import signal
 import sys
@@ -190,6 +191,18 @@ def build_parser():
     commands.add_parser("tray", help="resume behind a tray icon (falls back to 'run')")
     commands.add_parser("doctor", help="show configuration and reachability; hides the secret")
     commands.add_parser("rescan", help="request one deliberate local inventory refresh")
+    client = commands.add_parser("git-client", help="configure an optional local desktop Git client")
+    client.add_argument("--client", choices=("sourcetree", "github-desktop"))
+    client.add_argument("--executable", type=Path, help="installed client executable at a custom location")
+    client.add_argument("--disable", action="store_true")
+
+    basket = commands.add_parser("baskets",
+        help="choose which namespaces this machine observes and publishes")
+    basket.add_argument("--scope", choices=("observe", "publish"),
+                        help="which scope to change; omit to print the current baskets")
+    basket.add_argument("--mode", choices=("all", "none", "only", "except"))
+    basket.add_argument("--namespace", action="append", metavar="HOST/OWNER",
+                        help="repeatable; required for --mode only/except")
 
     autostart = commands.add_parser("autostart", help="inspect or change start-at-login")
     autostart.add_argument("action", choices=("status", "enable", "disable"), nargs="?",
@@ -209,6 +222,51 @@ def build_parser():
     transports.add_argument("--clear-tailnet", action="store_true")
     transports.add_argument("--tailnet-port", type=int)
     return parser
+
+
+def guided_durable_arguments() -> list[str]:
+    """Prepare an explicit repo choice; creation happens only in configure()."""
+    if input("Set up durable status in a private GitHub repository? [y/N]: ").strip().lower() \
+            not in ("y", "yes"):
+        return []
+    require_gh()
+    suggestion = ""
+    try:
+        login = run_gh(["api", "user", "--jq", ".login"], timeout=30).stdout.strip()
+        candidate = f"{login}/gitspecops-fleet-state"
+        RepoTransport(candidate)  # validate before presenting CLI output as a name
+        suggestion = candidate
+    except (GhError, OSError, ValueError):
+        print("Could not suggest an owner; enter an accessible owner/name below.")
+    print("\nUse a dedicated private repository that gitSpecOps manages. The app creates or\n"
+          "replaces its machine status files under machines/ using your existing gh login.\n"
+          "It publishes initial status when started, then changes at most once every "
+          f"{DEFAULT_REPO_SECONDS // 60} minutes.\n"
+          "Changes waiting for that interval are kept for later delivery while the app runs;\n"
+          "failed writes retry after the interval. Stopping the app can leave changes unsent.\n"
+          "This stores status only: no source files, repository history, or recovery snapshots.\n"
+          "Repository and branch identities in those status files are salted digests.\n"
+          "You can inspect the repository; gitSpecOps never clones it.\n")
+    prompt = f"State repository [{suggestion}]: " if suggestion else "State repository owner/name: "
+    spec = input(prompt).strip() or suggestion
+    if not spec:
+        print("Durable status skipped.")
+        return []
+    health = RepoTransport(spec).doctor()
+    if health.get("exists"):
+        if not health.get("private") or not health.get("permissions"):
+            raise ValueError("the state repository must be private and writable")
+        confirmation = f"USE {spec}"
+        action = "allow gitSpecOps to manage its status files there"
+        extra = []
+    else:
+        confirmation = f"CREATE {spec}"
+        action = "create this private repository for gitSpecOps"
+        extra = ["--create-repo"]
+    if input(f"Type {confirmation} to {action} [Enter skips]: ").strip() != confirmation:
+        print("Durable status skipped; no repository will be created or used.")
+        return []
+    return ["--repo", spec, *extra]
 
 
 def setup_arguments(directory: Path, configure_only=False):
@@ -232,14 +290,10 @@ def setup_arguments(directory: Path, configure_only=False):
     secret = input("Fleet key from a machine you already set up [new fleet]: ").strip()
     if secret:
         arguments += ["--fleet-secret", secret]
+    arguments += guided_durable_arguments()
     folder = input("A folder your sync client already replicates [none]: ").strip().strip('"')
     if folder:
         arguments += ["--folder", folder]
-    repo = input("A private GitHub repo for durable status, owner/name [none]: ").strip()
-    if repo:
-        arguments += ["--repo", repo]
-        if input("Create it privately if it does not exist? [y/N]: ").strip().lower() == "y":
-            arguments.append("--create-repo")
     if input("Talk directly to your other machines over Tailscale? [Y/n]: ").strip().lower() \
             in ("n", "no"):
         arguments.append("--no-tailnet")
@@ -291,6 +345,34 @@ def command_transports(args, directory: Path) -> int:
     validate(config)
     write_json(directory / APP_CONFIG, config)
     print(f"Transports now:\n{describe(config)}\nStart with 'fleet run'.")
+    return 0
+
+
+def command_baskets(args, directory: Path) -> int:
+    """Print or change one scope. Capture is deliberately not reachable from here."""
+    import baskets
+
+    config = load_saved(directory)
+    scopes = config.get("baskets") or copy.deepcopy(baskets.DEFAULT_SCOPES)
+    if not args.scope:
+        print(f"Baskets on this machine:\n{baskets.describe(scopes)}\n\n"
+              "Namespaces are host/owner, e.g. github.com/your-org. Observing and publishing are\n"
+              "separate: narrowing 'publish' keeps a repository visible here while hiding its\n"
+              "state from every other machine.")
+        config["baskets"] = scopes
+        return 0
+    if not args.mode:
+        raise ValueError("--scope needs --mode")
+    selection = baskets.parse_selection(args.mode, args.namespace)
+    scopes = {**scopes, args.scope: selection}
+    config["baskets"] = baskets.validate_scopes(scopes)
+    validate(config)
+    write_json(directory / APP_CONFIG, config)
+    print(f"Baskets now:\n{baskets.describe(scopes)}")
+    if args.scope == "observe":
+        print("\nRun 'fleet rescan' (or restart the peer) to apply this to the inventory.")
+    else:
+        print("\nWithheld repositories stay on your local dashboard and are published to nothing.")
     return 0
 
 
@@ -362,6 +444,33 @@ def _main(argv=None, stopping=None, on_ready=None):
             return 0
         if args.command == "transports":
             return command_transports(args, directory)
+        if args.command == "baskets":
+            return command_baskets(args, directory)
+        if args.command == "git-client":
+            from git_client import discover_clients, LABELS, validate_choice
+
+            config = load_saved(directory)
+            if args.disable and (args.client or args.executable):
+                raise ValueError("choose --disable or a client")
+            if args.executable and not args.client:
+                raise ValueError("--executable needs --client")
+            if args.client:
+                choice = ({"id": args.client, "executable": str(args.executable.expanduser().resolve())}
+                          if args.executable else discover_clients().get(args.client))
+                if not choice or not Path(choice["executable"]).is_file():
+                    raise ValueError("client not found; pass --executable with its installed location")
+                validate_choice(choice)
+                config["git_client"] = choice
+                write_json(directory / APP_CONFIG, config)
+                print(f"Selected {LABELS[args.client]}. Resume the peer to use its desktop shortcut.")
+            elif args.disable:
+                config["git_client"] = None
+                write_json(directory / APP_CONFIG, config)
+                print("Desktop shortcut disabled.")
+            else:
+                print(json.dumps({"selected": config.get("git_client"),
+                                  "detected": discover_clients(config.get("git_client"))}, indent=2))
+            return 0
         if args.command == "setup":
             args = setup_arguments(directory, args.configure_only)
         if args.command == "peer":

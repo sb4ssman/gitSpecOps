@@ -7,25 +7,57 @@ _Last tended: 2026-09-11_
 
 ## Open
 
+### Current continuation — 2026-09-11
+
+Stale active host/client guidance has been reconciled. Guided durable setup, pending transport
+delivery, the desktop Git client shortcut and **baskets** are implemented; details are in the
+work log.
+
+- **Medium-tier recovery is deferred by the user's decision (2026-09-11):** do baskets first,
+  decide encryption later. The implementation contract is already written in
+  [RECOVERY-DESIGN.md](../git-sync-suggester/docs/RECOVERY-DESIGN.md) — scope, staged versus
+  unstaged fidelity, encryption, quotas, exclusions, secret screening, restore, retirement
+  proof. **Nothing is blocked on the `age` question until capture is picked up again**; no
+  encryption dependency is installed and no content-capture code exists. The capture basket
+  refuses any value but `none`, so there is no cosmetic toggle in the meantime.
+- **Manual probes are versioned under `tests/probes/`.** Code, synthetic fixtures and
+  instructions belong there; profiles, raw logs and results remain temporary/local. The
+  automated runner explicitly excludes this directory. The VS Code hot-exit probe **has now
+  run against a real unsaved edit** and found a backup differing from the saved file: dirty
+  buffers are persisted before exit (VS Code 1.137.0, this machine). Existence only — the
+  probe says nothing about how quickly a backup appears.
+- **Desktop Git client shortcut is implemented and verified** (`app/git_client.py`,
+  `tests/fleet/test_git_client.py`, `tests/probes/desktop_client_ui.py`). Selection is
+  per-machine; the action only opens a locally observed checkout in Sourcetree or GitHub
+  Desktop. It performs no Git operations and is not a step on the tier ladder.
+- **Validation environment:** use the existing virtual environment (Python 3.14.2 on this
+  Windows checkout). Bare `python` is below the declared >=3.11 minimum.
+
 - [ ] **The tier ladder is not built yet (design recorded 2026-09-11).** See
   [knowledge/tiers-and-capture.md](knowledge/tiers-and-capture.md). Today all three tiers carry
   the *same* v3 status manifest, so they differ only in latency. They are supposed to differ in
   what they can rescue: durable = committed + status; medium = **saved but uncommitted content**;
   live = **unsaved editor buffers**. Ordered next steps:
-  1. **Guided durable setup** — setup should propose a repo name, explain that gitSpecOps owns
-     that repo, and state the publication conditions. Creating it stays explicit.
+  1. **Guided durable setup — implemented 2026-09-11.** Suggested private repo name,
+     app ownership/publication explanation, and named CREATE/USE confirmations.
   2. **Content capture on the medium tier** (the user's *stealth-stash*): a patch bundle per
      repository, encrypted, size-capped, expiring after the real commit is published, separate
-     from the manifest. Needs retention/size/ignore/secret-scan controls before any code.
-  3. **Unsaved buffers on the live tier.** Test first, build second: VS Code writes dirty
-     buffers to `%APPDATA%\Code\Backups`. If they appear within seconds of typing, no editor
-     plugin is needed for VS Code — we read what the editor already wrote.
-  4. **Baskets**, keeping observe / publish / capture as three separate scopes. Capture never
-     defaults on.
+     from the manifest. Controls are now designed in `docs/RECOVERY-DESIGN.md`;
+     encryption dependency choice remains pending before capture implementation.
+  3. **Unsaved buffers on the live tier — probe answered, reader unbuilt.** VS Code does write
+     dirty buffers to its backup store before exit (measured 2026-09-11 via
+     `tests/probes/vscode_hot_exit/probe.py --run`). So no editor plugin is needed for VS Code:
+     read what the editor already wrote. Still undecided and unbuilt: backup latency, the
+     mapping from a backup file back to its repository and path, other editors, and whether
+     unsaved content may leave the machine at all.
+  4. **Baskets — implemented 2026-09-11**, ahead of capture at the user's direction. Three
+     independent scopes; capture is refused rather than offered. See the work log and
+     `docs/FLEET.md`. Config is schema v4.
 
-- [ ] **Selecting which repositories a machine syncs is still all-or-nothing.** Roots are the
-  only selector. This is the basket work above, and it is the main usability gap once more than
-  one machine is real.
+- [x] ~~**Selecting which repositories a machine syncs is all-or-nothing.**~~ **Done
+  2026-09-11.** `fleet baskets` selects by namespace per scope. Still open on top of it: a
+  basket cannot yet name an individual repository (namespace granularity only), and there is no
+  UI to change baskets — App & setup displays them read-only and points at the CLI.
 
 - [ ] **History holds personal data but no secrets — verified (2026-09-11).** Every blob in
   history was scanned (566 objects, 355 blobs, seven secret shapes): **no secrets**. Personal
@@ -46,52 +78,18 @@ _Last tended: 2026-09-11_
   Self-replacing update is deliberately NOT built — report-and-tell first, and an opt-in
   "download and replace" only after the version contract has proven itself in the field.
 
-- [ ] **Enrol the two Windows machines (2026-09-11).** The lifecycle blockers are now gone —
-  tray, start-at-login and a Windows `.exe` all exist and are tested (see
-  [`work-log.md`](work-log.md)) — and the Windows event watcher, which had never worked, is
-  fixed. What remains is a deployment decision, not code: **no host is currently running**, and
-  `fleet connect` cannot enrol against a host that is down. Prime answers Tailscale ping and now
-  accepts SSH (it did not at the earlier handoff), so either machine-a's host is restarted and the
-  Windows machines connect to it, or `machine-c` becomes the host. Do not start a host on a
-  second machine casually: a new host mints a **new fleet secret**, which forks the fleet from
-  machine-a's and makes the two sets of manifests unjoinable.
-  - `machine-c` is otherwise ready: 145 repositories under `<library-root>`, read-only scan clean.
-  - `machine-b` was last seen offline; it still needs a checkout or a copy of the bundle.
-  - The built bundle currently lives in the gitignored `dist/GitSpecOpsSync/`. It needs a durable
-    install location before start-at-login points at it — a login entry aimed at a build output
-    that gets cleaned is worse than no login entry.
-
-- [ ] **Live fleet deployment (2026-09-05).** Foreground app implemented and machine-a deployed;
-  see [knowledge/live-fleet.md](knowledge/live-fleet.md). User approved existing gh auth as a
-  hard prerequisite and Tailscale-first deployment on the three local machines.
-  - Prime observes 105 repos under `<archive-root>/Github`; dashboard http://<machine-a-tailscale-ip>:8765/ .
-    The validated Linux PyInstaller bundle is the live process. SQLite is local to the host app;
-    no startup entry, synchronized-folder replica, or GitHub replica is configured.
-  - Need both Windows observers running, and a real uncommitted-change check across devices.
-    Windows library paths requested. Prototype dashboard ZIP onboarding was rejected by the user
-    and removed. The cross-platform PyInstaller recipe is built/tested on Linux; a Windows machine
-    must build the matching `.exe` because PyInstaller does not cross-compile.
-    Both devices ping; current names: machine-b (<node1w-tailscale-ip>), machine-c (<machine-c-tailscale-ip>).
-  - Core next: real baskets/subscriptions (namespace groups are not baskets), safe library
-    convergence/actions, guided no-Tailscale fallback, replica reconciliation and commit-only
-    publication. Existing folder/GitHub transports remain usable independently.
-  - Event-driven observation is shipped: one acknowledged initial inventory, then native inotify /
-    ReadDirectoryChangesW with targeted status checks and timestamp-only heartbeats. No recurring
-    scan. `fleet rescan` deliberately refreshes repository membership.
-  - Productization decision: Alice installs a self-contained desktop app and uses graphical first
-    run; she does not clone the repo, install Python or execute downloaded scripts. Build/release
-    direction is in `knowledge/distribution.md`. Implement portable Windows builds only after
-    the native lifecycle/first-run boundary is ready enough to improve onboarding.
-  - Later: enterprise device/user authorization, remote commit/push jobs, opt-in recovery
-    snapshots. User wants automatic capture on selected baskets; content must be separate
-    from status, with acknowledged remote durability and verified retirement after publication.
-  - User confirmed the action goal: fetch/refresh, pull, commit, push and conflict-resolution
-    workflows from the dashboard, executed on the machine that owns the working tree. Preserve
-    preview/revalidation and typed confirmation boundaries; do not expose a generic remote shell.
-  - Integration UX decision: show three encouraged levels (Tailscale live, synced-folder medium,
-    scheduled GitHub durable) but never require Obsidian or require all three. First run checks
-    hard prerequisites and guides each selected optional integration. Recovery snapshots and
-    remote actions are visible as planned settings but cannot be toggled until implemented.
+- [ ] **Enroll the remaining machines as peers.** Use `fleet setup` with the existing fleet
+  key and chosen transports. No central host is needed. Reuse the fleet key rather than minting
+  a separate fleet. Historical machine inventories and reachability are in the work log; check
+  actual deployment state before acting. Keep any installed bundle in a durable location before
+  enabling per-user start-at-login. Do not infer enrollment from a successful build.
+- [ ] **Live deployment validation.** Verify saved-work status across two actual peers, including
+  one being offline. The Windows/Linux event mechanisms and independent dashboard ship; actual
+  fleet membership and configured transports still need operational verification.
+- [ ] **Product onboarding and fleet actions.** Keep the source-checkout path working while
+  developing a self-contained installed app. Baskets, encrypted recovery and narrow remote Git
+  jobs remain future work in the agreed tier order. Integration choices are independent;
+  nothing requires a particular sync client. Do not expose cosmetic enable switches.
 
 - [ ] **Outside fleet review (2026-09-04) — status.** Recorded by the user; two items were acted
   on the same day, the rest are still open.
@@ -122,9 +120,8 @@ _Last tended: 2026-09-11_
     become an all-clear**. Not built. The natural home is a local-only annotation in the catalog
     (beside `alias`), displayed alongside the state and explicitly excluded from classification —
     the manifest must keep carrying the raw counts.
-  - **Run background operation as the interactive user**, so Git ownership, credentials,
-    configuration and cloud-folder access all match. Applies to whatever schedules `check`; not
-    built, and it is the main correctness trap in the tier-2 OS-timer idea.
+  - **Run background operation as the interactive user.** This is implemented for the fleet
+    tray and per-user autostart; preserve it for future scheduled legacy commands too.
   - **Note on sequencing:** the review's "watchdog path remains" list was written against
     `9989dc0`, before the 2026-09-03 work. Persistent per-root config and machine identity,
     peer-manifest aggregation with stale/expired rules, optional bounded fetch with honest
@@ -158,14 +155,10 @@ _Last tended: 2026-09-11_
      (bounded pool, per-repo stamping, separate remote-freshness accounting). The *scheduled*
      variant is still open: whether a periodic `watch --fetch` is wanted, and at what interval,
      is a policy call now rather than a design one.
-  4. **Change detection via git hooks (tier 1)** — the "no running junk" mechanism, decided
-     2026-09-03 and written up in [`knowledge/change-detection.md`](knowledge/change-detection.md).
-     A chained global `core.hooksPath` dispatcher that publishes local state on
-     `post-commit`/`post-checkout`/`post-merge`/`post-rewrite`. Must chain to each repo's own
-     hooks, must always exit 0, and must never do network I/O — so with the repo transport the
-     hook writes locally and something else uploads. An OS timer stays optional (tier 2) because
-     the freshness model already degrades to "unknown" rather than lying.
-     Also still open: **joining a fleet in one step** on machines two and three.
+  4. **Earlier hook proposal is superseded for the peer app.** Native filesystem event
+     observation ships and includes saved edits that Git hooks cannot see. Do not install a
+     global hooks dispatcher as part of the current roadmap. Legacy command automation remains
+     separate. Joining with a shared fleet key works; automatic key exchange remains follow-up.
   5. `handoff` — **design pass written 2026-09-03** ([`handoff-design.md`](handoff-design.md));
      still unbuilt, on purpose. Its recommendation is to not build it yet: most of "I left work on
      the other machine" is unpushed commits, which `--publish` now covers. Three open questions
@@ -189,11 +182,11 @@ _Last tended: 2026-09-11_
   secret-scan and deletion controls. The dashboard display contract exposes it as unavailable until
   content capture and restoration are implemented; do not present a cosmetic toggle.
 
-- [ ] **Transports: `state_dir` and `state_repo` both ship; folder auto-detection is not built.**
+- [ ] **Legacy transports: `state_dir` and `state_repo` both ship; folder auto-detection is not built.**
   The user chose "both, gh-backed first" — the gh Contents API transport landed 2026-09-03. Still
   to do: probe the known OneDrive/Dropbox/Drive/Syncthing/iCloud locations per OS at `init` so a
-  machine with a sync client needs no path typed. Note this machine has *no* such folder (only
-  `rclone`), so auto-detection is a convenience, not a default. `rclone` remains a possible
+  machine with a sync client needs no path typed. Detect availability at setup time;
+  historical machine observations are not current evidence. `rclone` remains a possible
   advanced escape hatch — 70+ backends, auth configured once — but its own setup is real tedium.
 
 - [ ] **Scale work for mega/enterprise users.** Measured 2026-09-03: a v3 record is ~321 B/repo,

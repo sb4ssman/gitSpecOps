@@ -3,6 +3,19 @@
 For the next session, human or LLM. Read [`README.md`](README.md) (the project brief) first,
 then this, then [`working-notes.md`](working-notes.md).
 
+## Continuation update — 2026-09-11
+
+Active guidance now matches the peer runtime. Guided durable setup and deferred transport
+publication are implemented in the working tree (see work log). Next is the medium-tier
+recovery implementation contract in `git-sync-suggester/docs/RECOVERY-DESIGN.md`; using an
+installed `age` executable for opt-in encryption awaits the user's dependency decision.
+Manual experiments belong in tracked `tests/probes/`. The VS Code hot-exit probe **has run**:
+dirty buffers are persisted before exit, so the live tier can read the editor's own backups
+rather than needing a plugin. The optional desktop Git client shortcut ships (open a local
+checkout in Sourcetree / GitHub Desktop; it performs no Git operations). Baskets follow in the
+agreed order — with capture and its encryption question deliberately deferred by the user
+(2026-09-11) so that baskets, now built, came first.
+
 ## Do these three things before touching anything
 
 1. **Map the tree with the tool, do not work from memory.** The layout changed substantially
@@ -13,7 +26,7 @@ then this, then [`working-notes.md`](working-notes.md).
    python .agents/tools/generate_folder_structure.py --path . --out .agents/output/folder_structure.md
    ```
    Then read the output file.
-2. **Run the suite.** `python tests/run_all.py` — 19/19 as of this handoff.
+2. **Run the suite.** `python tests/run_all.py` — 21/21 as of this handoff.
 3. **Never commit personal information.** No local paths, machine names, addresses, or real
    account/org/repo names — in code, comments, tests, notes, or commit messages.
    `tests/repo/test_repo_hygiene.py` enforces it; it has already caught real leaks.
@@ -51,20 +64,21 @@ They are supposed to differ in **what work they can rescue** — see
 
 Ordered next steps, agreed with the user:
 
-1. **Guided durable setup** — propose a repo name, say plainly that the app owns that repo, state
-   the publication conditions. Creating it stays an explicit act.
+1. **Guided durable setup — implemented.** It proposes a repo name, explains app ownership
+   and publication conditions, and requires named creation/use confirmation.
 2. **Content capture on the medium tier** — a patch bundle per repository, encrypted,
    size-capped, expiring once the real commit is published, **separate from the manifest**
    (which stays names-free). Needs retention/size/ignore/secret-scan controls designed before
    any code.
-3. **Unsaved buffers on the live tier.** *Test before building:* VS Code writes dirty editor
-   buffers to `%APPDATA%\Code\Backups` for crash recovery. The directory exists on the user's
-   Windows machine but was empty when checked (nothing was dirty). **Open a file, type, do not
-   save, and see whether a backup appears within seconds.** If it does, no editor plugin is
-   needed for VS Code — read what the editor already wrote.
-4. **Baskets** — choose which orgs/repo-sets a machine participates in. Keep three scopes
-   separate: *observe*, *publish*, *capture*. **Capture must never default on**, nor be implied
-   by widening an observe root.
+3. **Unsaved buffers on the live tier — answered, unbuilt.** VS Code does write dirty editor
+   buffers to its backup store before exit; confirmed 2026-09-11 with a real unsaved edit via
+   `tests/probes/vscode_hot_exit/probe.py --run`. No editor plugin is needed for VS Code — read
+   what the editor already wrote. Open: latency, mapping a backup back to repository and path,
+   other editors, and whether unsaved content may leave the machine at all.
+4. **Baskets — implemented 2026-09-11**, brought forward ahead of capture at the user's
+   direction. Namespace selection per scope via `fleet baskets`; config schema v4. The three
+   scopes are independent, and capture is *refused* rather than offered, so no toggle claims a
+   protection that does not exist. Still namespace-granularity only, and CLI-only to change.
 
 ## Open decisions owed by the user
 
@@ -104,7 +118,7 @@ Each of these shipped once. They are in the code comments too — do not re-lear
 ## Verification commands
 
 ```bash
-python tests/run_all.py                                    # 19/19
+python tests/run_all.py                                    # 21/21
 python tests/repo/test_repo_hygiene.py                     # sanitization gate
 python git-archive-updater/archive_diff.py                 # pure-logic self-test
 python git-sync-suggester/sync_suggester.py dashboard --serve   # local dashboard, no Tailscale

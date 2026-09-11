@@ -3,6 +3,85 @@
 Append-only record of **completed** work. Newest first. Items that graduate from
 [`working-notes.md`](working-notes.md) land here with an absolute date.
 
+## 2026-09-11 (later) — baskets: per-scope repository selection
+
+- **Baskets built** (`app/baskets.py`, config schema **v4**, `fleet baskets`). Roots stay the
+  filesystem boundary; baskets narrow what happens inside it in three independent scopes —
+  `observe`, `publish`, `capture`. Selection is by namespace (`host/owner`) with modes
+  `all` / `none` / `only` / `except`.
+- **Capture cannot be turned on.** It is not implemented, so `validate_scopes` refuses anything
+  but `none` and the CLI cannot set it. A toggle that claims to protect uncommitted work while
+  protecting nothing is worse than no toggle.
+- **Matching is local by construction.** A manifest carries salted digests and no names, so the
+  filter can only be applied where the catalog lives. No peer can see or infer another machine's
+  baskets.
+- **Publication is filtered once, before either consumer.** The tailnet peer endpoint serves the
+  same report object as the transports, so filtering per transport would have leaked a withheld
+  repository to any reachable peer. The publish fingerprint is taken on the filtered view, so a
+  change confined to a withheld namespace correctly publishes nothing.
+- **Found and fixed a real defect with an end-to-end check.** `sources()` read this machine's
+  *own* manifest back out of the transport, where the publish basket had already narrowed it,
+  and that narrower echo won over live local state — so withheld repositories disappeared from
+  the one screen that must always show them. A peer now ignores its own manifest as read back
+  from a transport. The seam-level unit tests could not have caught this; the integration test
+  that did is now `test_withheld_work_never_reaches_a_transport`.
+- Narrowing is stated, never silent: a withheld row is badged *not published* in the dashboard
+  with a reason, `withheld` / `unobserved` notices appear, App & setup shows all three scopes,
+  and new-checkout alerts no longer nag about namespaces the observe basket excludes.
+- Migration v3 → v4 reproduces v3 behavior exactly (observe all, publish all, capture none).
+- Windows offline suite: **21/21 test files passed**; hygiene gate passed.
+
+## 2026-09-11 (later) — editor backup evidence and the desktop Git client shortcut
+
+- **VS Code hot-exit probe run, with a real unsaved edit.** The user left one unsaved change in
+  the root README; the probe found a backup whose content differs from the saved file while the
+  saved file was untouched. VS Code 1.137.0 therefore persists dirty buffers before exit on this
+  machine. The probe measures existence, **not** latency — do not claim a timing guarantee.
+  This supports evaluating a backup reader for the live tier; it is not an editor integration.
+- **Optional desktop Git client shortcut (`app/git_client.py`).** Per-machine selection in
+  App & setup and an "Open in ..." action in repository details. Clients are discovered only in
+  standard install locations, launched with fixed arguments and no shell, and the browser may
+  supply only a known client id or an observed repository id — never a path or command. No Git
+  mutation happens here; serious work moves to the chosen client, by design.
+- `build_display` remains the only place this becomes semantics: a row carries `desktop_action`
+  with an honest reason, and a repository with no local checkout reports unavailable.
+- Verified end to end over HTTP against the synthetic probe server: client selection, a launch
+  for the local checkout (simulated launcher fired exactly once), refusal for a peer-only
+  repository, and a 403 for a cross-site origin. `tests/fleet/test_git_client.py` covers the
+  same boundaries. Windows offline suite: **20/20 test files passed**.
+
+## 2026-09-11 — guidance, durable setup, and reusable probes
+
+- Reconciled active host/client guidance across the primary brief, root README, fleet user
+  guide, packaging guide and working notes. The old pilot knowledge record is explicitly
+  historical. Updated moved test paths and distinguished legacy commands from peer behavior.
+- Guided durable setup now opts in before calling gh, suggests a private state repo using the
+  existing login, describes app-owned status files and publication conditions, and requires
+  named CREATE/USE confirmation. Public/read-only repositories are refused. No real state
+  repository was created during development.
+- Fixed lost transport updates: observation previously consumed the change fingerprint even
+  when publication was rate-limited, and the idle loop had no deferred delivery. Each transport
+  now retains its latest pending snapshot until successful delivery and retries at its next
+  slot. The idle loop drains cached status without Git scans or invented observation times.
+  Regression checks cover cooldown, coalescing, failed writes, and idle-loop integration.
+- Wrote the recovery implementation contract in `git-sync-suggester/docs/RECOVERY-DESIGN.md`.
+  A single HEAD diff loses staging boundaries; the design preserves separate staged/unstaged
+  changes. Capture implementation waits on the encryption dependency decision.
+- Added `tests/probes/` for versioned manual experiments at the user's request. The VS Code
+  backup probe creates a disposable profile/workspace and records pre-exit backup evidence;
+  default execution only prepares it. Automated tests explicitly exclude probes. Preparation
+  and JavaScript syntax checks pass; no editor run or empirical backup result is claimed.
+- Windows offline suite passed 19/19 after the durable setup/publication changes.
+
+## 2026-09-11 — handoff takeover verification
+
+- Read the brief, handoff, working notes and tier design; regenerated and inspected the tree.
+  Working tree was clean at entry. Verified the peer runtime and guided-setup entry point.
+- Ran the offline suite on Windows using the existing Python 3.14.2 virtual environment:
+  **19/19 test files passed**. System Python 3.10 is below the project's required minimum.
+- Independently reproduced lost publication during a transport cooldown; recorded the cause
+  and proposed regression coverage in working notes. No runtime changes made in this review.
+- Flagged obsolete host-based enrollment guidance; the current peer model takes precedence.
 ## 2026-09-11 (later) — history audit, handoff, tailnet poll 30s
 
 - **Audited the whole git history properly, and stated the confidence honestly.** The first pass

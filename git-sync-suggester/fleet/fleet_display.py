@@ -51,6 +51,12 @@ def _cell(cell):
 def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None):
     """Return JSON-compatible display v1. All clock-dependent rules use the supplied now."""
     now = now or datetime.now(timezone.utc)
+    settings = settings or {}
+    desktop = settings.get("git_client") or {}
+    local_ids = set(settings.get("local_repo_ids") or [])
+    scopes = settings.get("baskets") or {}
+    withheld_ids = set(settings.get("withheld_repo_ids") or [])
+    unobserved = int(settings.get("unobserved_count") or 0)
     manifests = [r["manifest"] for r in reports]
     views = sorted(machine_views(manifests, now, stale_seconds / 3600, 7),
                    key=lambda v: (v.label.casefold(), v.machine_id))
@@ -91,6 +97,30 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
                  "observed_at": v.observed_at, "repository_count": len(v.repositories),
                  "tone": "success" if v.freshness == "current" else "warning"} for v in views]
     settings = settings or {}
+    for row in rows:
+        local = row["id"] in local_ids
+        # Withholding is stated per row. A repository this machine keeps to itself looks
+        # identical to one nobody has touched unless the dashboard says which it is.
+        row["publication"] = {
+            "published": not (local and row["id"] in withheld_ids),
+            "reason": "Withheld from every transport and peer by this machine's publish basket."
+                      if local and row["id"] in withheld_ids else "",
+        }
+        row["desktop_action"] = {
+            "available": bool(desktop.get("available") and local),
+            "label": f"Open in {desktop.get('label') or 'desktop Git client'}",
+            "reason": (desktop.get("reason") or "Choose a desktop Git client in App & setup.")
+                      if local else "This repository has no observed checkout on this machine.",
+        }
+    basket_notices = []
+    if withheld_ids:
+        basket_notices.append({"id": "withheld", "tone": "warning",
+            "text": f"{len(withheld_ids)} repository(ies) on this machine are observed but not "
+                    "published: no other machine can see their state, however bad it is."})
+    if unobserved:
+        basket_notices.append({"id": "unobserved", "tone": "neutral",
+            "text": f"{unobserved} repository(ies) under your roots are excluded from observation "
+                    "by this machine's observe basket and are not checked at all."})
     return {
         "contract": {"name": CONTRACT_NAME, "version": CONTRACT_VERSION},
         "product": {"name": PRODUCT_NAME, "version": VERSION, "channel": "development"},
@@ -101,6 +131,10 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
                     "stale_machines": sum(m["freshness"] != "current" for m in machines)},
         "machines": machines, "groups": sorted(groups.values(), key=lambda g: g["id"].casefold()),
         "rows": rows,
+        "desktop_client": {"configured": bool(desktop.get("configured")),
+                           "id": desktop.get("id", ""),
+                           "label": desktop.get("label", "Desktop Git client"),
+                           "choices": list(desktop.get("choices") or [])},
         "issues": [{"machine_id": r["manifest"]["machine_id"],
                     "machine": r["manifest"]["machine_label"], "items": list(r["issues"])}
                    for r in reports if r["issues"]],
@@ -115,12 +149,20 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
                              "that machines are on the same commit or current with GitHub."},
                     {"id": "staleness", "tone": "warning",
                      "text": f"Reports older than {stale_seconds:g} seconds are stale. "
-                             "Last-known unfinished work stays visible."}],
+                             "Last-known unfinished work stays visible."},
+                    *basket_notices],
+        "baskets": {"configured": bool(scopes),
+                    "scopes": {scope: dict(scopes[scope]) for scope in scopes},
+                    "withheld": len(withheld_ids), "unobserved": unobserved},
         "capabilities": {"observe": {"available": True, "reason": "Status observation is running."},
+                         "desktop_client": {"available": bool(desktop.get("available")),
+                             "reason": desktop.get("reason") or "No desktop Git client configured."},
                          "repository_actions": {"available": False, "reason":
                              "Fetch, pull, commit and push are not available from this dashboard."},
-                         "baskets": {"available": False, "reason":
-                             "Groups show observed organizations. Basket subscriptions are not available yet."},
+                         "baskets": {"available": bool(scopes), "reason":
+                             "Observe and publish baskets are configured with 'fleet baskets'; "
+                             "content capture is not implemented, so its basket stays empty."
+                             if scopes else "Basket selection is not configured on this machine."},
                          "installation": {"available": False, "reason":
                              "This is a development preview. A supported desktop installer is not available yet."},
                          "self_update": {"available": False, "reason":

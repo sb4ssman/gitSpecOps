@@ -14,6 +14,8 @@ import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import Mock, patch
+import threading
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import setup  # noqa: E402
@@ -163,6 +165,68 @@ def test_v2_host_and_client_both_become_peers():
     check(host["mode"] == client["mode"] == "peer", "both old roles become the same thing")
     check("server" not in client and "allowed_login" not in client,
           "a peer pushes to nobody, so it remembers no server")
+
+
+def test_cooldown_retains_latest_status_and_retries_without_new_events():
+    clock = [0]
+    transport = Mock()
+    publisher = fleet_peer.TransportPublisher({}, clock=lambda: clock[0])
+    publisher.entries = [{"name": "folder", "transport": transport,
+                          "seconds": 10, "next": 0.0}]
+    initial = manifest_for("machine-a", "2026-01-01T00:00:00+00:00")
+    publisher.publish(initial, True)
+    clock[0] = 2
+    dirty = manifest_for("machine-a", "2026-01-01T00:00:02+00:00", dirty=1)
+    publisher.publish(dirty, True)
+    clock[0] = 4
+    latest = manifest_for("machine-a", "2026-01-01T00:00:04+00:00", dirty=2)
+    publisher.publish(latest, True)
+    latest["observed_at"] = "must not affect the queued snapshot"
+    clock[0] = 10
+    transport.write_own_manifest.side_effect = OSError("offline")
+    check(publisher.flush(log=lambda *_: None) == [], "failed write stays queued")
+    clock[0] = 19
+    publisher.flush()
+    check(transport.write_own_manifest.call_count == 2, "no retry before its slot")
+    clock[0] = 20
+    transport.write_own_manifest.side_effect = None
+    check(publisher.flush() == ["folder"], "retry needs no new filesystem event")
+    written = transport.write_own_manifest.call_args.args[1]
+    check(written["repositories"][0]["unstaged"] == 2, "latest queued status wins")
+    check(written["observed_at"] == "2026-01-01T00:00:04+00:00",
+          "delivery must not pretend observation was more recent")
+    clock[0] = 100
+    check(publisher.flush() == [], "successful delivery clears pending status")
+
+
+def test_idle_runtime_drains_pending_status_without_scanning():
+    """A publisher unit test alone cannot catch forgetting to drain it in the event loop."""
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        config = new_config("machine-a", "A", [root], SECRET)
+        stopping = threading.Event()
+        events = Mock()
+        events.wait.side_effect = lambda **_: (stopping.set() or set())
+        observer = Mock()
+        observer.inventory.return_value = 1
+        report = {"manifest": manifest_for("machine-a", "2026-01-01T00:00:00+00:00"),
+                  "names": {}, "issues": []}
+        observer.report.return_value = report
+        observer.shared_report.return_value = (report, set())
+        observer.excluded_from_observation = 0
+        with patch("fleet_peer.IncrementalObserver", return_value=observer), \
+                patch("fleet_peer.TransportPublisher") as Publisher, \
+                patch("fleet_peer.PeerNetwork"), \
+                patch("local_dashboard.make_local_server"), \
+                patch("fleet_peer.threading.Thread"):
+            Publisher.return_value.publish.return_value = []
+            Publisher.return_value.flush.return_value = ["folder"]
+            fleet_peer.run_peer(config, root, stopping, event_source=events, log=lambda *_: None)
+            Publisher.return_value.flush.assert_called_once()
+        observer.inventory.assert_called_once()
+        observer.report.assert_called_once()
+        observer.refresh.assert_not_called()
+        events.close.assert_called_once()
 
 
 def main():

@@ -1,3 +1,25 @@
+# Fleet architecture: current peer model and historical pilot
+
+## Current guidance — 2026-09-11
+
+Every machine is an independent peer. `app/fleet_app.py` supplies `setup`, `peer`, `run`,
+`transports`, `doctor`, `rescan`, `tray`, and `autostart`. The v3 configuration preserves old
+fleet identities on migration. No machine is an authority; peers pull reports and reject POST.
+Each peer serves its own loopback dashboard from local state, its SQLite peer cache, and any
+configured transports. `gh` is needed only for GitHub; Tailscale is optional.
+
+Native filesystem events follow one acknowledged inventory. There is no periodic Git scan.
+Tailnet discovery/pulls run every 30 seconds. Folder/GitHub transports carry the same names-free
+v3 status manifest. Recovery content is still planned, separately from that manifest.
+Use [FLEET.md](../../git-sync-suggester/docs/FLEET.md) for current commands and
+[tiers-and-capture.md](tiers-and-capture.md) for the agreed next work.
+
+## Historical pilot record — superseded, not deployment instructions
+
+The following records explain the original host/client design and why it was replaced.
+Its prerequisite, enrollment, heartbeat, and authority statements are historical only.
+Machine reachability and deployment counts are dated observations, not current facts.
+
 # Live personal fleet — 2026-09-05
 
 User authorized the first deployment on machine-a (Linux host), machine-b and

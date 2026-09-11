@@ -15,7 +15,11 @@ TESTS_DIR = Path(__file__).resolve().parent
 
 def main(argv: list[str]) -> int:
     # Recursive: tests are grouped by area (archive/, duplicator/, sync/, fleet/, repo/).
-    files = sorted(TESTS_DIR.rglob("test_*.py"), key=lambda p: (p.parent.name, p.name))
+    # Manual probes may launch real applications and must never join this offline suite,
+    # even if a future probe author uses a test_ filename.
+    files = sorted((p for p in TESTS_DIR.rglob("test_*.py")
+                    if "probes" not in p.relative_to(TESTS_DIR).parts),
+                   key=lambda p: (p.parent.name, p.name))
     if not files:
         print("No test files found.")
         return 1
