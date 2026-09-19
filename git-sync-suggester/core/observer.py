@@ -20,6 +20,12 @@ from manifest import branch_id, repository_id, utc_now  # noqa: E402
 DEFAULT_FETCH_WORKERS = 4
 DEFAULT_FETCH_TIMEOUT_SECONDS = 60
 
+# A background fetch must never stop to ask for credentials: nobody is there to answer. Git's
+# terminal prompt and Git Credential Manager's sign-in window would both wait for a click that
+# never comes, holding a worker until the timeout.
+NON_INTERACTIVE_GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never",
+                           "GIT_OPTIONAL_LOCKS": "0"}
+
 # An in-progress operation is a "stop and finish this" signal, and it is the difference
 # between a dirty tree someone chose and a repository left mid-surgery. Each marker is a
 # path inside the git dir; the first match wins.
@@ -50,15 +56,19 @@ class Observation:
     branches: dict[str, str] = field(default_factory=dict)
 
 
-def _status_counts(repo_path: Path) -> tuple[int, int, int]:
-    """Return staged, unstaged, and untracked entry counts from porcelain v2."""
+def _status_counts(repo_path: Path) -> tuple[int, int, int] | None:
+    """Staged, unstaged and untracked entry counts from porcelain v2, or None if unreadable.
+
+    None is never read as clean. A damaged index, a lock, or a timeout used to return zeros, so
+    the one repository whose state could not be seen was reported as having nothing to commit.
+    """
     result = run_git(
         repo_path,
         ["status", "--porcelain=v2", "-z", "--untracked-files=normal"],
         env={"GIT_OPTIONAL_LOCKS": "0"},
     )
     if result.returncode != 0:
-        return 0, 0, 0
+        return None
     records = result.stdout.split("\0")
     staged = unstaged = untracked = 0
     index = 0
@@ -96,16 +106,47 @@ def _fetch(repo_path: Path, timeout: int) -> str | None:
     """Update remote-tracking refs. Returns an error message, or None on success.
 
     Never touches the working tree or any local branch — `git fetch` with no refspec only
-    moves remote-tracking refs. `GIT_TERMINAL_PROMPT=0` is the lesson the org duplicator
-    already paid for: without it a repository whose credentials have expired blocks on an
-    invisible prompt until the timeout instead of failing in under a second.
+    moves remote-tracking refs. It never prompts (see NON_INTERACTIVE_GIT_ENV): a repository
+    whose credentials have expired fails in a second instead of blocking until the timeout.
     """
-    result = run_git(repo_path, ["fetch", "--quiet"], timeout=timeout,
-                     env={"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0"})
+    result = run_git(repo_path, ["-c", "credential.interactive=never", "fetch", "--quiet",
+                                 "--no-write-fetch-head"],
+                     timeout=timeout, env=NON_INTERACTIVE_GIT_ENV)
     if result.returncode == 0:
         return None
     detail = (result.stderr or result.stdout or "").strip().splitlines()
     return detail[-1][:160] if detail else f"git fetch exited {result.returncode}"
+
+
+def fetch_repositories(paths: list[Path], workers: int = DEFAULT_FETCH_WORKERS,
+                       timeout: int = DEFAULT_FETCH_TIMEOUT_SECONDS,
+                       fetcher=None) -> tuple[dict[Path, str], list[str]]:
+    """Fetch each repository. Returns `(fetched_at for each success, issues for each failure)`.
+
+    House rule: failures are collected, never fatal. One repository that cannot be fetched must
+    not cost the others their fetch. `fetcher` is the network boundary, injectable for tests.
+    """
+    fetcher = fetcher or _fetch
+    fetched_at: dict[Path, str] = {}
+    issues: list[str] = []
+    if not paths:
+        return fetched_at, issues
+
+    def guarded(path: Path) -> str | None:
+        try:
+            return fetcher(path, timeout)
+        except Exception as exc:  # noqa: BLE001 - one repository never stops the rest
+            return f"{type(exc).__name__}: {exc}"
+
+    # Network-bound, so a small pool is a large win; bounded so a big archive cannot open
+    # hundreds of connections at once.
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        for path, error in zip(paths, pool.map(guarded, paths)):
+            if error is None:
+                fetched_at[path] = utc_now()
+            else:
+                issues.append(f"fetch failed, using cached refs: {path.name}: {error}")
+    return fetched_at, issues
 
 
 def _discover(roots: list[RootSpec], issues: list[str]) -> list[Path]:
@@ -142,33 +183,13 @@ def observe_roots(roots: list[RootSpec], secret: str | None = None, fetch: bool 
     read, so ahead/behind become current rather than cached, and `upstream_observed_at` is
     stamped for the repositories that actually succeeded. Without it, ahead/behind remain
     honest-but-cached and `upstream_observed_at` stays null.
-
-    `fetcher` is the network boundary, injectable so tests can exercise success and failure
-    without a network — the same discipline that makes `watcher.py` testable.
     """
-    fetcher = fetcher or _fetch
     issues: list[str] = []
-
     paths = _discover(roots, issues)
     fetched_at: dict[Path, str] = {}
     if fetch and paths:
-        # Network-bound, so a small pool is a large win; bounded so a big archive cannot
-        # open hundreds of connections at once.
-        def guarded(path: Path) -> str | None:
-            # House rule: failures are collected, never fatal. One repository that cannot be
-            # fetched must not cost the observation of every other repository.
-            try:
-                return fetcher(path, fetch_timeout)
-            except Exception as exc:
-                return f"{type(exc).__name__}: {exc}"
-
-        with ThreadPoolExecutor(max_workers=max(1, fetch_workers)) as pool:
-            for path, error in zip(paths, pool.map(guarded, paths)):
-                if error is None:
-                    fetched_at[path] = utc_now()
-                else:
-                    issues.append(f"fetch failed, using cached refs: {path.name}: {error}")
-
+        fetched_at, fetch_issues = fetch_repositories(paths, fetch_workers, fetch_timeout, fetcher)
+        issues.extend(fetch_issues)
     observed = observe_paths(paths, secret, fetched_at=fetched_at, progress=progress)
     observed.issues = issues + observed.issues
     return observed
@@ -181,12 +202,15 @@ def observe_paths(paths: list[Path], secret: str | None = None,
     This is the event-driven observer's targeted path: a filesystem event identifies the
     affected checkout, then only that checkout pays for Git status commands. It performs no
     network activity and never mutates the repository.
+
+    A repository whose facts cannot be read is left out *with an issue*, never reported with
+    guessed counts. A caller holding a last-known record keeps it (see IncrementalObserver).
     """
     repositories: list[dict] = []
     catalog: dict[str, dict] = {}
     branches: dict[str, str] = {}
     issues: list[str] = []
-    fetched_at = fetched_at or {}
+    fetched_at = {Path(key).resolve(): value for key, value in (fetched_at or {}).items()}
     normalized = [Path(path).expanduser().resolve() for path in paths]
 
     for index, path in enumerate(normalized, start=1):
@@ -196,13 +220,22 @@ def observe_paths(paths: list[Path], secret: str | None = None,
             issues.append(f"repository disappeared: {path}")
             continue
         facts = repo_facts(path)
+        if not facts.get("is_work_tree"):
+            # Commonly Git refusing a folder owned by another account ("dubious ownership").
+            issues.append(f"git cannot read this repository (check folder ownership or "
+                          f"safe.directory): {path}")
+            continue
         parsed = parse_remote_url(facts.get("origin"))
         if not parsed:
             issues.append(f"missing or unrecognized origin: {path}")
             continue
+        counts = _status_counts(path)
+        if counts is None:
+            issues.append(f"status unreadable, so uncommitted work cannot be ruled out: {path}")
+            continue
         host, owner, name = parsed
         repo_id = repository_id(host, owner, name, secret)
-        staged, unstaged, untracked = _status_counts(path)
+        staged, unstaged, untracked = counts
         stash_text = git_stdout(path, ["rev-list", "--walk-reflogs", "--count", "refs/stash"])
         repositories.append({
             "repo_id": repo_id,

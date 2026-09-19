@@ -51,7 +51,7 @@ function renderSummary() {
     [summary.attention, 'Need attention', `${summary.repositories} repositories observed`],
     [summary.machines, 'Reporting machines', `${summary.current_machines} current`],
     [summary.stale_machines, 'Stale machines', summary.stale_machines ? 'Review before acting' : 'All reports current'],
-    [state.data.groups.length, 'Organizations observed', 'Baskets are planned'],
+    [state.data.groups.length, 'Organizations observed', 'Grouped by owner'],
   ];
   byId('summary').replaceChildren(...values.map(([value, label, detail]) => {
     const card = node('article', undefined, 'metric');
@@ -251,6 +251,20 @@ function renderAbout() {
       } finally { save.disabled = false; }
     };
     section.append(label, save, result); block.append(section);
+  }
+  if (state.data.local_actions) {
+    const section = node('div', undefined, 'capability');
+    section.append(node('strong', 'Fleet catch-up'), node('p',
+      'Fresh-fetch every locally observed checkout and show the same safe fast-forward plan as the terminal command. Applying pulls remains an explicit terminal confirmation.'));
+    const preview = node('button', 'Preview catch-up'); preview.type = 'button';
+    const result = node('pre', desktopMessages.get('catchup-preview') || '', 'host-note');
+    preview.onclick = async () => {
+      preview.disabled = true;
+      try { desktopMessages.set('catchup-preview', await connection.desktopAction('catchup-preview', {}, state.data.local_actions.token)); }
+      catch (error) { desktopMessages.set('catchup-preview', error.message); }
+      finally { preview.disabled = false; renderAbout(); }
+    };
+    section.append(preview, result); block.append(section);
   }
   renderSettingCards(byId('integrations'), integrations);
   renderSettingCards(byId('features'), features);

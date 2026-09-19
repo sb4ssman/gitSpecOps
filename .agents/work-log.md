@@ -1,7 +1,235 @@
 # Work log
 
+## 2026-09-19 — medium recovery activated; catch-up surfaced safely
+
+- Completed the medium-tier recovery chain: schema v5 holds a separately confirmed private
+  location and local per-repository `CapturePolicy`; capture baskets now require that location;
+  the peer captures selected repositories after filesystem quiet periods and peers verify visible
+  bundles into independent acknowledgement records.
+- Added preview, disposable restore, explicit policy, acknowledgement and retirement CLI paths.
+  Retirement reconstructs the exact snapshot tree in disposable Git metadata, freshly fetches
+  the upstream and retires only a byte/tree-identical remote result. `safe-to-wipe` accepts a
+  dirty checkout only for an exact current snapshot acknowledged by another peer and never for
+  unpushed commits.
+- Added an authenticated, opt-in Tailscale session join to setup, and a local dashboard
+  catch-up preview that invokes the terminal planner's fresh-fetch policy. Applying a pull stays
+  `fleet catchup --apply --yes` while the peer is stopped.
+- Added terminal-first `fleet audit`, a read-only fleet-scale report of missing origins/upstreams,
+  plain-HTTP origins, detached heads, local-only commits, behind state and tracked changes.
+- Added `fleet materialize`: a reviewed clone-only plan for the locally observed working set,
+  laid out by remote host/owner/repository and protected by `--apply --yes`; existing destination
+  directories are never replaced or updated. It validates portable path components and rejects
+  destinations that would escape the selected library through an existing symlink.
+- Added explicit local `fleet live-buffers` inspection of existing VS Code backup metadata. It is
+  root-confined, bounded, content-free in output and does not transmit or continuously watch
+  buffers; cross-machine live-buffer recovery remains a separate privacy decision.
+- Corrected the PyInstaller recipe's source-root paths and declared every lazily imported action,
+  recovery and live-buffer module. Added a read-only `packaging/release_check.py` gate for the
+  version/tag, clean tree, desktop recipe/assets and local PyInstaller prerequisite; it correctly
+  reports that tagging, publication and a disposable build environment are still operator work.
+- Corrected the remaining undefined PyInstaller `tool` path: the recipe now puts both the
+  repository root (for `shared/`) and the Sync Suggester root on the analysis path. The recipe
+  test asserts that exact boundary so a syntactically valid but unbuildable spec cannot recur.
+- Ran the real Windows PyInstaller build under Python 3.14.2 and corrected `SPECPATH` handling:
+  it already names the recipe directory, so taking its parent chose `app/fleet_desktop.py` from
+  the repository root. The test now pins the correct spec-directory interpretation.
+- Corrected the release gate to detect PyInstaller as an import in its own build interpreter,
+  matching the documented `python -m PyInstaller` invocation instead of relying on ambient PATH.
+- Added a tray catch-up preview menu entry. It invokes the peer's same fresh-fetch plan on a
+  worker and shows only the shared plan summary, so it cannot create a tray-specific Git policy
+  or block the Windows message loop.
+- The final Windows regression run passed all 34 test files. No live machine, remote, commit or
+  push was changed.
+
 Append-only record of **completed** work. Newest first. Items that graduate from
 [`working-notes.md`](working-notes.md) land here with an absolute date.
+
+## 2026-09-19 — fleet catch-up, first safe group action
+
+- Added terminal-first `fleet catchup`. It freshly, non-interactively fetches every locally
+  observed checkout and prints a plan by default. `fleet catchup --apply --yes` fast-forwards
+  only clean, behind-only repositories and rechecks the result; every other state remains a
+  visible human decision.
+- The action cannot commit, push, stash, reset, merge, rebase, prune, or recurse into
+  submodules. It refuses to run beside the peer through the existing per-configuration lock.
+  A fresh-fetch failure, unreadable status, dirty/untracked work, ahead-only work, divergence,
+  detached HEAD, and missing upstream are all surfaced and skipped.
+- Added disposable-real-Git tests covering a safe pull plus dirty/ahead/diverged refusals;
+  updated the root and fleet documentation and dashboard wording to direct users to the
+  terminal operation rather than imply that a dashboard button exists.
+- Full Windows suite alone: **27/27 test files passed**.
+
+## 2026-09-19 — fleet setup preflight
+
+- Added read-only `fleet preflight`, which reports whether Git, the optional GitHub and
+  Tailscale tiers, and the loopback dashboard port are usable, plus any common existing
+  synchronized-folder locations it can find. It creates no configuration and changes no
+  repository or external service.
+- Verified its command path, the fleet-app and catch-up tests, repository hygiene, and diff
+  integrity on Windows. The full suite remains green at 27/27 from the preceding catch-up slice.
+
+## 2026-09-19 — Continuation preparation
+
+- Re-read the project brief, current handoff and working notes; regenerated and read the
+  repository tree map.
+- The user confirmed the product direction: one family of careful Git operations, with
+  terminal-first commands and an optional peer fleet service. Fleet-wide visibility and a
+  safe suggestion to synchronize unsynced work are the headline outcome.
+- Recorded the agreed implementation order: finish safe medium-tier recovery wiring, add
+  tier-aware setup preflight, then build terminal-first fleet catch-up and later safe-to-wipe.
+- Ran the complete Windows suite alone through the repository virtual environment:
+  **26/26 test files passed**. No deployment or Git network/mutation operation occurred.
+
+## 2026-09-16 — Notes-only checkpoint
+
+- Read the current notes and preserved the newer September 12 recovery work.
+- Located the World Monitor and Agent Prime note locations and prepared the
+  user's stop-and-restart decision there for review.
+- No product code changed. No tests, fetches, pulls, commits, or pushes ran.
+
+## 2026-09-17 — core path audit: read end to end, seven confirmed defects fixed
+
+The user's goal: every machine shows a tray icon and dashboard answering "which repos have
+uncommitted work" and "which repos are out of date". The core path had never been read end to
+end. Every defect below was reproduced with synthetic data before fixing.
+
+1. **Permanent false alarm.** Stale threshold was a fixed 120s and the peer never
+   heartbeated, so every quiet machine (including your own) needed attention minutes after its
+   last edit. Now: the peer re-stamps its report every `heartbeat` seconds, transports re-send
+   unchanged state once per slot, and `stale_after()` = two missed deliveries on the slowest
+   configured path.
+2. **"Behind" was unanswerable.** Nothing fetched. Now a background `git fetch` runs every
+   `fetch_minutes` (default 15, 0 = off): remote-tracking refs only, never prompts
+   (`GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`, `credential.interactive=never`), off the
+   observation loop. Fetch stamps survive later refreshes and rescans. Failures are issues.
+3. **GitHub API budget.** Every tray poll (5s) and browser refresh (3s) re-read the state repo:
+   2,880 calls/hour from the tray alone vs a 5,000/hour account limit. Reads are now cached per
+   transport (folder 15s, repo 5 min, failed read retries after 30s).
+4. **Unreadable repo reported clean.** A failing `git status` returned zero counts. Now the
+   repo is omitted with a "status unreadable" issue, and a refresh keeps the last-known record.
+   A repo git refuses to open (e.g. dubious ownership) says so instead of "missing origin".
+5. **Settings panel lied.** It read retired v2 keys: always "no folder, no repo", Tailscale
+   always on. Now reads the real transport config; adds a scheduled-fetch feature row.
+6. **Packaged app never opened the dashboard.** `fleet_desktop.dashboard_url` used retired host
+   keys and Tailscale. Now the loopback URL.
+7. **No tray / silent failure.** `fleet setup` ran a terminal foreground peer. Now setup offers
+   start-at-login and starts the tray. If the app stops unasked, the tray keeps a red icon with
+   the reason and log path (`fleet.log`, written even under pythonw).
+
+Also: a Windows watch thread that failed exited silently forever — `wait()` now raises and the
+peer restarts watching with a fresh inventory; kernel event overflow (Windows and Linux) forces
+an inventory; tailnet polling moved off the observation loop.
+
+New `tests/fleet/test_core_path.py` (11 tests). One existing test encoded bug 1 ("unchanged
+state is never re-sent") and was corrected. Windows suite alone: **26/26**.
+Not yet done: a live run on the user's real machines.
+
+## 2026-09-12 (later still) — recovery: restore, and capture policy toggles
+
+- **Built `core/snapshot_restore.py`.** `prepare_disposable_checkout` clones a repository holding
+  the base into a new or empty folder and detaches at the base; the source is only read and
+  restore never fetches. `restore` refuses any bundle preview marks unrestorable, and any target
+  that is not the top of a checkout, not at the base, not clean (untracked files included), or
+  mid-operation. It applies staged (`--index`), then unstaged, then carried files; on any failure
+  it resets to the base and removes what it created. **Success is verified**: `git diff --staged`
+  and `git diff` in the target must reproduce the captured patches byte for byte, and each
+  carried file must match its digest.
+- **Carried files never overwrite**, ignored files included — a clean `git status` still permits
+  an ignored file sitting under the snapshot's name, which is exactly the trap.
+- **Fidelity boundary measured, not assumed** (Windows, Git 2.52; probe across `core.autocrlf`
+  unset/true/false/input): Git's staged and unstaged content was exact every time apply
+  succeeded; working-tree bytes of patched text files follow the *target's* line-ending settings,
+  as any checkout would; carried untracked files are byte-identical. An apparent `autocrlf=false`
+  failure was the probe's own artifact (config set after cloning) and re-verified clean.
+- **Hazards found by the probes and pinned:** a user's `apply.whitespace=fix` would silently
+  rewrite restored content and `error` would refuse it — apply now pins whitespace handling on the
+  command line, and the test first proves plain `git apply` is refused by that config. Capture
+  decoded git output with replacement, so a non-UTF-8 text file would have been stored lossily —
+  it now decodes strictly and refuses. Preview refuses symlink (120000) and submodule (160000)
+  modes.
+- **Capture policy toggles, at the user's request** (`CapturePolicy`): obey `.gitignore` and
+  secret protection, both default on, per repository, local-only, never synced; every
+  relaxation is written into the bundle's notes. `allow_paths` was added so that deliberately
+  carrying one `.env` does not force switching screening off for everything else. `.git` is
+  always excluded — structure, not policy.
+- **Screening is now intrinsic** (a caller cannot forget it) and reads only the lines each patch
+  section *adds*, plus whole carried files, so rotating a committed secret out is not refused.
+  That needed patch parsing moved into `core/patch_parse.py`, breaking what would otherwise have
+  been an import cycle (capture → secret_scan → preview → store → capture).
+- Two test fixtures were wrong and the code right: re-adding a line already in the committed base
+  is diff *context*, not an addition; and an ignored carried file is now excluded by default.
+- `fleet/test_git_client.py` failed only while five test processes ran concurrently; alone it
+  passed, and the full suite run alone passed **25/25 on Windows**. Hygiene scan of the new
+  untracked files: clean.
+- **Capture is still not usable**, and the capture basket still refuses. Remaining: retirement
+  proof, then peer wiring.
+
+## 2026-09-12 (later) — recovery: snapshot store and preview
+
+- **Built `core/snapshot_store.py`.** Layout `gitspecops-snapshots/v1/<machine>/bundles/<repo>/
+  <version>.json.gz`; each machine writes only beneath its own directory, so no file is ever
+  written by two machines and one machine can never delete another's copy. Receivers record
+  acknowledgements under *their own* `acks/` tree.
+- Durability states are kept apart: `written` (reached this disk) is never promoted to
+  `recoverable elsewhere` until another machine has read the bundle back and acknowledged
+  *that exact checksum*; a mismatched acknowledgement does not count, nor may a machine
+  acknowledge itself.
+- Bounded storage never costs a last copy: superseded versions prune by count (reported, not
+  silent), retention expires as explicit policy with `expiring()` for advance warning, and a
+  full store **refuses** a new capture rather than deleting any repository's newest version.
+  Identical recaptures write nothing. User deletion is previewed and executes exactly the plan.
+- Everything read back is untrusted: ids validated before becoming paths, bounded
+  decompression (a gzip bomb is refused, not allocated), format/checksum verified, and a valid
+  bundle found under the wrong machine or repository directory is not believed there.
+- `validate_location` **refuses** a capture location overlapping an observed root — writing a
+  snapshot raises filesystem events that would trigger capture again, an endless loop — and
+  always warns about the status folder and about sharing, which cannot be detected.
+- **Built `core/snapshot_preview.py`**, in-memory only (a preview that writes nothing cannot be
+  tricked into writing something). Lists staged/unstaged changes (added, deleted, renamed,
+  binary) and carried files, and collects every reason a bundle is unsafe: traversal, absolute
+  and drive paths, `.git`, Windows reserved names and invalid characters, case-insensitive
+  collisions, size/digest mismatch, truncated or malformed hunks, binary changes without
+  content. The parser tracks hunk line counts, so a removed line reading `-- comment` is never
+  mistaken for a file header. `base_available()` checks a target checkout for the base commit.
+- **Real defect found while designing the parser:** capture did not pin diff prefixes, so a
+  user's `diff.mnemonicPrefix` produced `c/`/`i/`/`w/` headers — confirmed with a direct git
+  probe — that another machine could not parse. Capture now passes `--src-prefix=a/
+  --dst-prefix=b/` and `--no-textconv`; a regression test sets both hostile configs.
+- Suite: **24/24 on Windows**.
+
+## 2026-09-12 — recovery: trust boundary settled, capture core built
+
+- **Decided: snapshots are NOT encrypted** (`docs/RECOVERY-DESIGN.md`, "Trust boundary"). The
+  user challenged the premise and was right. The earlier draft required an `age` CLI and a
+  stdlib-only exception; that imported a generic default instead of reasoning from this
+  project's own recorded principle. Every tier already rides inside a system that authenticates
+  — private GitHub repo (`gh`, refuses non-private), the user's sync account, and Tailscale
+  (`peer_identity()` rejects devices not owned by the allowed login, and tagged devices) — with
+  HTTPS/HTTPS/WireGuard on the wire. Verified in the code, not from memory.
+- Three facts closed the gap: captured work is **already plaintext in the working tree on the
+  same disk**; remotely, access control is the boundary (same conclusion as
+  `knowledge/manifest-privacy.md`); and a key must reach every peer to restore, so losing it
+  destroys the work the feature exists to save — while a key beside its ciphertext protects
+  nothing. **No new dependency; the stdlib-only runtime rule is intact.**
+- Consequences recorded rather than assumed: **secret scanning is now load-bearing**, and
+  **capture never inherits the status folder** (that folder may have been chosen while manifests
+  were names-free and harmless). `FORMAT`/`format_version` make an encrypted format additive if
+  the decision is ever revisited.
+- **Built `core/capture.py`**: staged (HEAD->index) and unstaged (index->worktree) patches kept
+  **separate** — a lone `git diff HEAD` flattens them and loses staged work the worktree later
+  reversed. Binary-capable, opaque repo ids, explicit untracked selection, policy exclusions
+  that beat an explicit selection, size limits that refuse rather than truncate, and a
+  before/after state comparison that refuses a bundle assembled from two different moments.
+  External diff/textconv helpers are disabled: a "read-only" capture must not run user programs.
+- **Built `core/secret_scan.py`**: shape-based rules (key blocks, AWS/GitHub/Slack/Google/Stripe/
+  JWT, assigned credentials) that refuse the whole snapshot and report **path and rule only** —
+  never the matched value, since the refusal message is itself somewhere a secret must not go.
+  Placeholders (`changeme`, `${VAULT_...}`) and prose do not cry wolf.
+- **Capture remains unavailable to users**, and the capture basket still refuses any value but
+  `none`. Store, preview, restore, retirement proof and peer wiring are not built.
+- Two test assertions were wrong and the code was right: the unstaged patch legitimately shows
+  staged text as a *removal* (it is relative to the index), and file capture is byte-exact
+  including Windows CRLF. Both now pin the real behavior. Suite: **22/22 on Windows**.
 
 ## 2026-09-11 (later) — baskets: per-scope repository selection
 

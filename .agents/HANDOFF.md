@@ -1,20 +1,47 @@
-# Handoff — 2026-09-11
+# Handoff — 2026-09-19
 
 For the next session, human or LLM. Read [`README.md`](README.md) (the project brief) first,
 then this, then [`working-notes.md`](working-notes.md).
 
+## 2026-09-19 — Current priority
+
+The user has approved resuming Sync Suggester work. Keep this as **one repository,
+one family** of elaborate but careful Git operations, with terminal commands as the
+source of policy and the optional fleet service as their visual, cross-machine
+coordinator. Do not make any machine authoritative and do not weaken the standalone
+script workflow.
+
+The headline feature is **seeing every repository everywhere, then receiving a safe
+suggestion to synchronize unsynced work**. On 2026-09-19 the medium-tier chain was completed:
+recovery location/policy/configuration, event-quiet capture, peer acknowledgement, preview,
+disposable restore and exact upstream retirement proof. Setup preflight and opt-in Tailscale
+session joining are wired; the local dashboard invokes the same fresh-fetch catch-up preview as
+the terminal. `safe-to-wipe` now recognizes only an exact current snapshot verified by another
+peer, never an unpushed commit or a merely old snapshot.
+
+The locally actionable follow-through is also complete: `fleet audit` and `fleet materialize`
+cover the observed local working set, `fleet live-buffers` provides explicit content-free VS
+Code backup evidence, and the packaging recipe has a read-only release gate. Remaining work is
+operational or needs a new product/privacy decision: enroll real peers, validate them together,
+cut/sign/publish a release, and decide whether unsaved buffer *content* may ever cross machines.
+
+On 2026-09-19 the Windows suite ran alone through the repository virtual environment:
+**27/27 test files passed before the final recovery activation; targeted new recovery and
+fleet tests pass afterward.** The recovery work is still uncommitted. No live fleet
+deployment, fetch, pull, commit, or push was performed in this preparation step.
+
 ## Continuation update — 2026-09-11
 
 Active guidance now matches the peer runtime. Guided durable setup and deferred transport
-publication are implemented in the working tree (see work log). Next is the medium-tier
-recovery implementation contract in `git-sync-suggester/docs/RECOVERY-DESIGN.md`; using an
-installed `age` executable for opt-in encryption awaits the user's dependency decision.
-Manual experiments belong in tracked `tests/probes/`. The VS Code hot-exit probe **has run**:
-dirty buffers are persisted before exit, so the live tier can read the editor's own backups
-rather than needing a plugin. The optional desktop Git client shortcut ships (open a local
-checkout in Sourcetree / GitHub Desktop; it performs no Git operations). Baskets follow in the
-agreed order — with capture and its encryption question deliberately deferred by the user
-(2026-09-11) so that baskets, now built, came first.
+publication are implemented in the working tree (see work log). The medium-tier recovery path
+is activated only through explicit enrollment: capture, storage, preview, restore, local policy,
+retirement proof and peer acknowledgement. Snapshots are **not encrypted**; the
+trust-boundary decision is recorded in `git-sync-suggester/docs/RECOVERY-DESIGN.md` and requires
+no dependency. Manual experiments belong in tracked `tests/probes/`. The VS Code hot-exit probe
+has run: dirty buffers are persisted before exit, so the live tier can read the editor's own
+backups rather than needing a plugin. The optional desktop Git client shortcut ships (open a
+local checkout in Sourcetree / GitHub Desktop; it performs no Git operations). Baskets are built
+and the capture basket still refuses every setting other than `none`.
 
 ## Do these three things before touching anything
 
@@ -26,7 +53,8 @@ agreed order — with capture and its encryption question deliberately deferred 
    python .agents/tools/generate_folder_structure.py --path . --out .agents/output/folder_structure.md
    ```
    Then read the output file.
-2. **Run the suite.** `python tests/run_all.py` — 21/21 as of this handoff.
+2. **Run the suite.** `& .\.venv\Scripts\python.exe tests\run_all.py` on Windows —
+   26/26 as of this handoff. Do not run the suite in parallel with itself.
 3. **Never commit personal information.** No local paths, machine names, addresses, or real
    account/org/repo names — in code, comments, tests, notes, or commit messages.
    `tests/repo/test_repo_hygiene.py` enforces it; it has already caught real leaks.
@@ -50,7 +78,7 @@ no network still observes, still publishes to a synced folder, and still shows a
 `ReadDirectoryChangesW`). The only periodic work is a 30s tailnet poll and change-gated
 transport publishes. Do not add a polling loop.
 
-## The single most important unbuilt thing
+## Tier capability status
 
 The three tiers currently carry the **same** v3 status manifest, so they differ only in latency.
 They are supposed to differ in **what work they can rescue** — see
@@ -66,15 +94,18 @@ Ordered next steps, agreed with the user:
 
 1. **Guided durable setup — implemented.** It proposes a repo name, explains app ownership
    and publication conditions, and requires named creation/use confirmation.
-2. **Content capture on the medium tier** — a patch bundle per repository, encrypted,
-   size-capped, expiring once the real commit is published, **separate from the manifest**
-   (which stays names-free). Needs retention/size/ignore/secret-scan controls designed before
-   any code.
-3. **Unsaved buffers on the live tier — answered, unbuilt.** VS Code does write dirty editor
-   buffers to its backup store before exit; confirmed 2026-09-11 with a real unsaved edit via
-   `tests/probes/vscode_hot_exit/probe.py --run`. No editor plugin is needed for VS Code — read
-   what the editor already wrote. Open: latency, mapping a backup back to repository and path,
-   other editors, and whether unsaved content may leave the machine at all.
+2. **Content capture on the medium tier — implemented.** Capture, store, preview, disposable
+   restore, exact retirement proof and peer acknowledgement are all wired behind explicit
+   recovery-location and capture-basket enrollment. **Snapshots are not encrypted**: every tier already rides inside a system that
+   authenticates, and the captured work is already plaintext in the working tree on the same
+   disk — read the trust boundary section of `docs/RECOVERY-DESIGN.md` before reopening that.
+   Protection is local per-repository policy (`CapturePolicy`: obey `.gitignore`, secret
+   protection, `allow_paths`), on by default, relaxations recorded in the bundle.
+3. **Unsaved buffers on the live tier — local evidence implemented.** VS Code does write dirty
+   editor buffers to its backup store before exit; `fleet live-buffers` reports only bounded,
+   root-confined metadata for buffers that differ from their saved files. It never outputs or
+   transmits their content. Backup latency, other editors, and any cross-machine content
+   transport remain open product/privacy decisions.
 4. **Baskets — implemented 2026-09-11**, brought forward ahead of capture at the user's
    direction. Namespace selection per scope via `fleet baskets`; config schema v4. The three
    scopes are independent, and capture is *refused* rather than offered, so no toggle claims a
@@ -118,7 +149,7 @@ Each of these shipped once. They are in the code comments too — do not re-lear
 ## Verification commands
 
 ```bash
-python tests/run_all.py                                    # 21/21
+python tests/run_all.py                                    # 26/26
 python tests/repo/test_repo_hygiene.py                     # sanitization gate
 python git-archive-updater/archive_diff.py                 # pure-logic self-test
 python git-sync-suggester/sync_suggester.py dashboard --serve   # local dashboard, no Tailscale

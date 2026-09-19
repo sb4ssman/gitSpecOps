@@ -4,6 +4,15 @@ There is deliberately no timer-based directory scan here. Linux uses inotify and
 uses ReadDirectoryChangesW. Both block in the kernel while the configured library is quiet.
 The caller debounces returned paths and decides which known repository needs a Git status
 refresh. New repository discovery remains an explicit inventory rescan.
+
+Two failure modes are reported rather than swallowed, because either one used to leave the
+dashboard showing old state indefinitely with nothing to say so:
+
+- **Overflow.** When too many changes arrive at once (a large checkout, a branch switch), the
+  kernel discards the individual records. `overflowed()` tells the caller to take a fresh
+  inventory instead of trusting that nothing changed.
+- **A watch that stops.** A Windows watch thread that fails (the drive went away) used to exit
+  silently; `wait()` now raises so the caller can restart watching.
 """
 from __future__ import annotations
 
@@ -56,6 +65,7 @@ class LinuxEvents:
              0x00000800)   # IN_MOVE_SELF
     _IS_DIR = 0x40000000
     _IGNORED = 0x00008000
+    _Q_OVERFLOW = 0x00004000
 
     def __init__(self, roots: list[Path]):
         libc = ctypes.CDLL(None, use_errno=True)
@@ -69,6 +79,7 @@ class LinuxEvents:
         if self.fd < 0:
             raise OSError(ctypes.get_errno(), "inotify_init1 failed")
         self.paths: dict[int, Path] = {}
+        self._overflow = False
         try:
             for root in roots:
                 self._add_tree(root)
@@ -110,6 +121,9 @@ class LinuxEvents:
                 offset += self._EVENT.size
                 name = os.fsdecode(data[offset:offset + length].split(b"\0", 1)[0])
                 offset += length
+                if mask & self._Q_OVERFLOW:
+                    self._overflow = True
+                    continue
                 base = self.paths.get(wd)
                 if base is None:
                     continue
@@ -123,6 +137,10 @@ class LinuxEvents:
             if len(data) < 1024 * 256:
                 break
         return changed
+
+    def take_overflow(self) -> bool:
+        overflow, self._overflow = self._overflow, False
+        return overflow
 
     def close(self) -> None:
         if getattr(self, "fd", -1) >= 0:
@@ -155,6 +173,8 @@ class WindowsEvents:
         self._closed = threading.Event()
         self._handles = []
         self._threads = []
+        self._error: str | None = None
+        self._overflow = False
         for root in roots:
             handle = self._kernel32.CreateFileW(
                 str(root), 0x0001, 0x00000001 | 0x00000002 | 0x00000004, None, 3,
@@ -175,7 +195,14 @@ class WindowsEvents:
             ok = self._kernel32.ReadDirectoryChangesW(
                 handle, buffer, len(buffer), True, filters, ctypes.byref(returned), None, None)
             if not ok:
-                break
+                if not self._closed.is_set():
+                    self._error = f"watch on {root} failed: {ctypes.WinError(ctypes.get_last_error())}"
+                return
+            if returned.value == 0:
+                # Success with no records means the kernel buffer overflowed and the individual
+                # changes were discarded. Nothing here can say which repositories moved.
+                self._overflow = True
+                continue
             data = buffer.raw[:returned.value]
             offset = 0
             while offset + 12 <= len(data):
@@ -190,10 +217,16 @@ class WindowsEvents:
                     break
                 offset += next_offset
 
+    def _raise_if_stopped(self) -> None:
+        if self._error is not None and self._queue.empty():
+            raise OSError(self._error)
+
     def wait(self, timeout: float) -> set[Path]:
+        self._raise_if_stopped()
         try:
             first = self._queue.get(timeout=max(0.0, timeout))
         except queue.Empty:
+            self._raise_if_stopped()
             return set()
         changed = {first}
         while True:
@@ -201,6 +234,10 @@ class WindowsEvents:
                 changed.add(self._queue.get_nowait())
             except queue.Empty:
                 return changed
+
+    def take_overflow(self) -> bool:
+        overflow, self._overflow = self._overflow, False
+        return overflow
 
     def close(self) -> None:
         if self._closed.is_set():
@@ -214,9 +251,11 @@ class WindowsEvents:
 
 class NativeEvents:
     """Small cross-platform boundary used by the observer loop and synthetic tests."""
-    def __init__(self, roots: list[Path]):
+    def __init__(self, roots: list[Path], backend=None):
         roots = [Path(root).expanduser().resolve() for root in roots]
-        if sys.platform.startswith("linux"):
+        if backend is not None:
+            self.backend = backend
+        elif sys.platform.startswith("linux"):
             self.backend = LinuxEvents(roots)
         elif sys.platform == "win32":
             self.backend = WindowsEvents(roots)
@@ -237,6 +276,10 @@ class NativeEvents:
                 return changed
             changed.update(more)
             deadline = time.monotonic() + max(0.0, debounce)
+
+    def overflowed(self) -> bool:
+        """True once after changes were dropped; the caller must take a fresh inventory."""
+        return self.backend.take_overflow()
 
     def close(self) -> None:
         self.backend.close()

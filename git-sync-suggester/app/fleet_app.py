@@ -12,7 +12,10 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import os
 import signal
+import shutil
+import socket
 import sys
 import threading
 from contextlib import contextmanager
@@ -30,7 +33,7 @@ from shared.gh_cli import GhError, run_gh  # noqa: E402
 from config import default_config_dir, default_machine_id  # noqa: E402
 from fleet_config import (APP_CONFIG, DEFAULT_FOLDER_SECONDS, DEFAULT_LOCAL_PORT,  # noqa: E402
                           DEFAULT_REPO_SECONDS, DEFAULT_TAILNET_PORT, describe, migrate,
-                          new_config, validate)
+                          new_config, policy_record, recovery_policy, validate)
 from fleet_peer import run_peer  # noqa: E402
 from folder_transport import atomic_write_bytes  # noqa: E402
 from manifest import fleet_id_for, is_fleet_secret, new_fleet_secret  # noqa: E402
@@ -77,8 +80,27 @@ def load_saved(directory: Path) -> dict:
     config = validate(migrate(saved))
     if config != saved:
         write_json(path, config)
-        print("Updated the saved configuration to the peer model (v3).", flush=True)
+        print("Updated the saved configuration to the current format.", flush=True)
     return config
+
+
+def offer_start_at_login(inner: list[str]) -> None:
+    """Ask once at the end of setup. Declining is fine; the tray menu can turn it on later."""
+    try:
+        answer = input("Start gitSpecOps automatically when you log in? [Y/n]: ").strip().lower()
+    except EOFError:
+        return
+    if answer in ("n", "no"):
+        print("Start at login left off. Turn it on later from the tray menu, or run "
+              "'fleet autostart enable'.")
+        return
+    import fleet_autostart
+
+    try:
+        result = fleet_autostart.enable(inner, script=__file__)
+        print(f"Start at login enabled ({result['method']}).")
+    except (OSError, ValueError) as exc:
+        print(f"Could not enable start at login: {exc}")
 
 
 def require_gh():
@@ -150,8 +172,8 @@ def configure(args, directory: Path) -> dict:
     print(f"Saved: {path}\nTransports:\n{describe(config)}")
     if not args.fleet_secret:
         print(f"\nCreated fleet {fleet_id_for(secret)}. To add another machine, run setup there "
-              f"with:\n\n    --fleet-secret {secret}\n\nCarry that value yourself. A peer on the "
-              "tailnet can also hand it over automatically once you are connected.")
+              f"with:\n\n    --fleet-secret {secret}\n\nCarry that value yourself. The tailnet "
+              "session endpoint exists, but automatic key exchange is not wired into setup yet.")
     return config
 
 
@@ -190,7 +212,25 @@ def build_parser():
     commands.add_parser("run", help="resume this peer; installs no service")
     commands.add_parser("tray", help="resume behind a tray icon (falls back to 'run')")
     commands.add_parser("doctor", help="show configuration and reachability; hides the secret")
+    commands.add_parser("preflight", help="check setup prerequisites and optional tiers without changing anything")
     commands.add_parser("rescan", help="request one deliberate local inventory refresh")
+    catchup = commands.add_parser("catchup",
+        help="fresh-fetch observed repositories and preview safe fast-forward pulls")
+    catchup.add_argument("--apply", action="store_true",
+                         help="apply only clean, behind-only fast-forward pulls")
+    catchup.add_argument("--yes", action="store_true",
+                         help="confirm --apply non-interactively; required with --apply")
+    commands.add_parser("safe-to-wipe",
+                        help="fresh-fetch every observed checkout and report whether this machine is replaceable")
+    audit = commands.add_parser("audit", help="read-only audit of local remotes and unfinished work")
+    audit.add_argument("--json", action="store_true", help="emit machine-readable local audit rows")
+    materialize = commands.add_parser("materialize", help="clone this machine's observed working set into a new library")
+    materialize.add_argument("--destination", type=Path, required=True, help="existing library folder to fill")
+    materialize.add_argument("--apply", action="store_true", help="clone planned missing repositories")
+    materialize.add_argument("--yes", action="store_true", help="confirm --apply")
+    buffers = commands.add_parser("live-buffers", help="explicitly inspect local VS Code unsaved-buffer metadata")
+    buffers.add_argument("--backup-root", type=Path,
+                         help="existing VS Code Backups folder (default on Windows)")
     client = commands.add_parser("git-client", help="configure an optional local desktop Git client")
     client.add_argument("--client", choices=("sourcetree", "github-desktop"))
     client.add_argument("--executable", type=Path, help="installed client executable at a custom location")
@@ -198,11 +238,41 @@ def build_parser():
 
     basket = commands.add_parser("baskets",
         help="choose which namespaces this machine observes and publishes")
-    basket.add_argument("--scope", choices=("observe", "publish"),
+    basket.add_argument("--scope", choices=("observe", "publish", "capture"),
                         help="which scope to change; omit to print the current baskets")
     basket.add_argument("--mode", choices=("all", "none", "only", "except"))
     basket.add_argument("--namespace", action="append", metavar="HOST/OWNER",
                         help="repeatable; required for --mode only/except")
+
+    recovery = commands.add_parser("recovery", help="configure and inspect unfinished-work snapshots")
+    recovery.add_argument("action", choices=("configure", "status", "policy", "capture",
+                                                "preview", "restore", "acknowledge", "retire"))
+    recovery.add_argument("--location", type=Path,
+                          help="separate existing sync folder for recovery snapshots")
+    recovery.add_argument("--confirm-private-location", action="store_true",
+                          help="confirm this location is appropriate for source content")
+    recovery.add_argument("--repo", type=Path, help="one observed checkout to capture")
+    recovery.add_argument("--untracked", action="append", default=[], metavar="PATH",
+                          help="explicit repository-relative untracked file to carry (repeatable)")
+    recovery.add_argument("--obey-gitignore", choices=("on", "off"),
+                          help="local policy setting for --repo")
+    recovery.add_argument("--secret-protection", choices=("on", "off"),
+                          help="local policy setting for --repo")
+    recovery.add_argument("--allow-path", action="append", default=None, metavar="PATH",
+                          help="replace the local allowed-path list for --repo (repeatable)")
+    recovery.add_argument("--clear-allow-paths", action="store_true",
+                          help="clear the local allowed-path list for --repo")
+    recovery.add_argument("--confirm-relaxed-policy", action="store_true",
+                          help="confirm a policy that weakens capture's default protections")
+    recovery.add_argument("--source", help="source machine id when acknowledging a peer snapshot")
+    recovery.add_argument("--repo-id", help="opaque repository id when acknowledging a peer snapshot")
+    recovery.add_argument("--version", help="snapshot version when acknowledging a peer snapshot")
+    recovery.add_argument("--source-repo", type=Path,
+                          help="local repository holding a snapshot base, for disposable restore")
+    recovery.add_argument("--destination", type=Path,
+                          help="new or empty disposable checkout destination, for restore")
+    recovery.add_argument("--yes", action="store_true",
+                          help="confirm a source-content copy or acknowledgement")
 
     autostart = commands.add_parser("autostart", help="inspect or change start-at-login")
     autostart.add_argument("action", choices=("status", "enable", "disable"), nargs="?",
@@ -269,11 +339,51 @@ def guided_durable_arguments() -> list[str]:
     return ["--repo", spec, *extra]
 
 
+def guided_tailnet_join_secret() -> str:
+    """Offer a deliberate, authenticated key hand-off from a running peer.
+
+    The endpoint is reachable only over the tailnet and authorizes the caller with Tailscale's
+    identity check.  It is still opt-in: a wrong or unavailable peer must fall back to the
+    manual key rather than making setup look as though it joined a fleet when it did not.
+    """
+    if input("Join a running peer over Tailscale instead of pasting a fleet key? [y/N]: ").strip().lower() \
+            not in ("y", "yes"):
+        return ""
+    try:
+        from fleet_net import FleetClient, discover_hosts
+
+        hosts = [item for item in discover_hosts() if item.get("serving")]
+        if not hosts:
+            print("No running fleet peer was found. Paste a fleet key instead, or start one peer first.")
+            return ""
+        for index, host in enumerate(hosts, start=1):
+            print(f"  {index}. {host['label']}")
+        answer = input("Peer number [Enter cancels]: ").strip()
+        if not answer:
+            return ""
+        host = hosts[int(answer) - 1]
+        session = FleetClient(host["url"]).request("/v1/session")
+        secret = session.get("fleet_secret") if isinstance(session, dict) else None
+        if not is_fleet_secret(secret):
+            raise ValueError("peer returned no valid fleet key")
+        print(f"Joined fleet {fleet_id_for(secret)} through authenticated peer {host['label']}.")
+        return secret
+    except (IndexError, OSError, ValueError) as exc:
+        print(f"Could not join a peer ({exc}). Paste a fleet key instead.")
+        return ""
+
+
 def setup_arguments(directory: Path, configure_only=False):
     """Interactive first run. Offers every transport; requires none."""
     print("Fleet setup. Every machine is a peer: it watches its own repositories, publishes\n"
           "what it sees, and shows you a dashboard. Nothing here needs another machine to be\n"
           "running, and no machine is in charge of any other.\n")
+    readiness = preflight_state()
+    print(render_preflight(readiness))
+    if not readiness["git"]:
+        raise ValueError("Git is required before fleet setup can observe a repository library")
+    if not readiness["dashboard"]:
+        raise ValueError("the default dashboard port is unavailable; use non-interactive 'fleet peer' with --local-port")
     arguments = ["--config-dir", str(directory), "peer"]
     root = input("Repository library folder (inventoried once, recursively): ").strip().strip('"')
     if not root:
@@ -288,13 +398,23 @@ def setup_arguments(directory: Path, configure_only=False):
     print("\nHow should this machine share status with your others?\n"
           "These are complements — set up as many as you can. Press Enter to skip any.")
     secret = input("Fleet key from a machine you already set up [new fleet]: ").strip()
+    if not secret and readiness["tailnet"]:
+        secret = guided_tailnet_join_secret()
     if secret:
         arguments += ["--fleet-secret", secret]
-    arguments += guided_durable_arguments()
-    folder = input("A folder your sync client already replicates [none]: ").strip().strip('"')
+    if readiness["github"]:
+        arguments += guided_durable_arguments()
+    else:
+        print("GitHub durable status skipped: gh is unavailable or not logged in.")
+    suggested = readiness["folders"][0] if readiness["folders"] else ""
+    folder = (input(f"A folder your sync client already replicates [{suggested or 'none'}]: ")
+              .strip().strip('"') or suggested)
     if folder:
         arguments += ["--folder", folder]
-    if input("Talk directly to your other machines over Tailscale? [Y/n]: ").strip().lower() \
+    if not readiness["tailnet"]:
+        print("Tailscale live sharing skipped: it is not connected. Add it later with 'fleet transports --tailnet'.")
+        arguments.append("--no-tailnet")
+    elif input("Talk directly to your other machines over Tailscale? [Y/n]: ").strip().lower() \
             in ("n", "no"):
         arguments.append("--no-tailnet")
     if configure_only:
@@ -349,7 +469,7 @@ def command_transports(args, directory: Path) -> int:
 
 
 def command_baskets(args, directory: Path) -> int:
-    """Print or change one scope. Capture is deliberately not reachable from here."""
+    """Print or change one scope. Capture remains off until recovery setup is confirmed."""
     import baskets
 
     config = load_saved(directory)
@@ -371,8 +491,176 @@ def command_baskets(args, directory: Path) -> int:
     print(f"Baskets now:\n{baskets.describe(scopes)}")
     if args.scope == "observe":
         print("\nRun 'fleet rescan' (or restart the peer) to apply this to the inventory.")
+    elif args.scope == "capture":
+        print("\nCapture selection is local-only. With a separately confirmed recovery location, "
+              "the running peer captures selected repositories after filesystem quiet periods.")
     else:
         print("\nWithheld repositories stay on your local dashboard and are published to nothing.")
+    return 0
+
+
+def command_recovery(args, directory: Path) -> int:
+    """Configure the content tier separately from names-free status transports."""
+    from snapshot_store import SnapshotStore, StoreRefused, validate_location
+
+    config = load_saved(directory)
+    recovery = dict(config["recovery"])
+    if args.action == "configure":
+        if args.location is None:
+            raise ValueError("recovery configure needs --location PATH")
+        status_folder = ((config.get("transports") or {}).get("folder") or {}).get("path")
+        try:
+            warnings = validate_location(args.location, status_folder=status_folder,
+                                         roots=[Path(root) for root in config["roots"]])
+        except StoreRefused as exc:
+            raise ValueError(str(exc)) from None
+        if warnings and not args.confirm_private_location:
+            raise ValueError("recovery location needs --confirm-private-location after review: "
+                             + " ".join(warnings))
+        recovery["location"] = str(args.location.expanduser().resolve())
+        recovery["confirmed"] = True
+        config["recovery"] = recovery
+        validate(config)
+        write_json(directory / APP_CONFIG, config)
+        print("Recovery location saved. It is separate from status publication; configuring it "
+              "does not capture any file.\n" + "\n".join(f"warning: {item}" for item in warnings))
+        return 0
+    location = recovery["location"]
+    if location is None:
+        print("Recovery is not configured. Use 'fleet recovery configure --location PATH "
+              "--confirm-private-location'.")
+        return 0
+    store = SnapshotStore(location, config["machine_id"])
+    if args.action == "policy":
+        if args.repo is None:
+            raise ValueError("recovery policy needs --repo PATH")
+        from fleet_observer import IncrementalObserver
+
+        observer = IncrementalObserver(config)
+        observer.inventory()
+        wanted = args.repo.expanduser().resolve()
+        repo_id = next((identity for identity, path in observer.local_repositories().items()
+                        if path == wanted), None)
+        if repo_id is None:
+            raise ValueError("that checkout is not in this machine's observed inventory")
+        current = recovery_policy(config, repo_id)
+        changed = any((args.obey_gitignore, args.secret_protection,
+                       args.allow_path is not None, args.clear_allow_paths))
+        if not changed:
+            print(json.dumps({"repo_id": repo_id, **policy_record(current)}, indent=2))
+            return 0
+        if args.allow_path is not None and args.clear_allow_paths:
+            raise ValueError("choose --allow-path or --clear-allow-paths")
+        updated = type(current)(
+            obey_gitignore=(args.obey_gitignore == "on" if args.obey_gitignore else current.obey_gitignore),
+            secret_protection=(args.secret_protection == "on" if args.secret_protection
+                               else current.secret_protection),
+            allow_paths=(tuple(args.allow_path) if args.allow_path is not None else
+                         (() if args.clear_allow_paths else current.allow_paths)))
+        relaxed = (not updated.obey_gitignore or not updated.secret_protection
+                   or bool(updated.allow_paths))
+        if relaxed and not args.confirm_relaxed_policy:
+            raise ValueError("this policy weakens default capture protection; review and re-run "
+                             "with --confirm-relaxed-policy")
+        recovery["policies"] = {**recovery["policies"], repo_id: policy_record(updated)}
+        config["recovery"] = recovery
+        validate(config)
+        write_json(directory / APP_CONFIG, config)
+        print("Saved local-only recovery policy:\n" + json.dumps(
+            {"repo_id": repo_id, **policy_record(updated)}, indent=2))
+        return 0
+    if args.action == "capture":
+        if not args.yes:
+            raise ValueError("recovery capture copies saved source content; review and re-run with --yes")
+        if args.repo is None:
+            raise ValueError("recovery capture needs --repo PATH")
+        from capture import CaptureRefused, capture
+        from fleet_observer import IncrementalObserver
+
+        observer = IncrementalObserver(config)
+        observer.inventory()
+        wanted = args.repo.expanduser().resolve()
+        paths = observer.local_repositories()
+        repo_id = next((identity for identity, path in paths.items() if path == wanted), None)
+        if repo_id is None:
+            raise ValueError("that checkout is not in this machine's observed inventory")
+        namespace = observer.namespaces().get(repo_id)
+        import baskets
+        if not namespace or not baskets.selects(config["baskets"]["capture"], namespace):
+            raise ValueError("that checkout is excluded by this machine's capture basket")
+        try:
+            result = store.write(capture(wanted, repo_id, config["machine_id"],
+                                         untracked=args.untracked,
+                                         policy=recovery_policy(config, repo_id)).to_dict())
+        except (CaptureRefused, StoreRefused) as exc:
+            raise ValueError(str(exc)) from None
+        state = store.status(repo_id, result["version"])
+        print(f"Snapshot {result['version']}: {state}. "
+              + ("Written now." if result["written"] else result["reason"]))
+        return 0
+    if args.action == "preview":
+        if not all((args.source, args.repo_id, args.version)):
+            raise ValueError("recovery preview needs --source, --repo-id, and --version")
+        from snapshot_preview import preview
+
+        try:
+            print(json.dumps(preview(store.read(args.source, args.repo_id, args.version)), indent=2))
+        except StoreRefused as exc:
+            raise ValueError(str(exc)) from None
+        return 0
+    if args.action == "restore":
+        if not args.yes:
+            raise ValueError("recovery restore creates a disposable checkout; review and re-run with --yes")
+        if not all((args.source, args.repo_id, args.version, args.source_repo, args.destination)):
+            raise ValueError("recovery restore needs --source, --repo-id, --version, --source-repo, and --destination")
+        from snapshot_restore import RestoreRefused, prepare_disposable_checkout, restore
+
+        try:
+            body = store.read(args.source, args.repo_id, args.version)
+            target = prepare_disposable_checkout(args.source_repo, body["base_commit"], args.destination)
+            print(json.dumps(restore(body, target), indent=2))
+        except (StoreRefused, RestoreRefused) as exc:
+            raise ValueError(str(exc)) from None
+        return 0
+    if args.action == "acknowledge":
+        if not args.yes:
+            raise ValueError("recovery acknowledgement writes a verification record; re-run with --yes")
+        if not all((args.source, args.repo_id, args.version)):
+            raise ValueError("recovery acknowledge needs --source, --repo-id, and --version")
+        try:
+            record = store.acknowledge(args.source, args.repo_id, args.version)
+        except StoreRefused as exc:
+            raise ValueError(str(exc)) from None
+        print(f"Acknowledged {record['source_machine']}/{record['repo_id'][:12]}… "
+              f"version {record['version']}.")
+        return 0
+    if args.action == "retire":
+        if not args.yes:
+            raise ValueError("recovery retire deletes a local snapshot after proof; re-run with --yes")
+        if args.repo is None or not args.version:
+            raise ValueError("recovery retire needs --repo PATH and --version")
+        from fleet_observer import IncrementalObserver
+        from retirement import RetirementRefused, prove_retirement
+
+        observer = IncrementalObserver(config)
+        observer.inventory()
+        wanted = args.repo.expanduser().resolve()
+        repo_id = next((identity for identity, path in observer.local_repositories().items()
+                        if path == wanted), None)
+        if repo_id is None:
+            raise ValueError("that checkout is not in this machine's observed inventory")
+        try:
+            proof = prove_retirement(wanted, store.read(config["machine_id"], repo_id, args.version))
+            store.retire(repo_id, args.version)
+        except (StoreRefused, RetirementRefused) as exc:
+            raise ValueError(str(exc)) from None
+        print("Retired the proven snapshot:\n" + json.dumps(proof, indent=2))
+        return 0
+    versions = store.versions()
+    print(f"Recovery location: {location}\nSnapshots written by this machine: {len(versions)}")
+    for version in versions:
+        print(f"  {version.repo_id[:12]}… {version.version} — "
+              f"{store.status(version.repo_id, version.version)}")
     return 0
 
 
@@ -395,6 +683,185 @@ def command_doctor(config: dict) -> int:
                 print("  no tailnet peers found")
         except (OSError, ValueError) as exc:
             print(f"  tailnet unavailable: {exc}")
+    return 0
+
+
+def preflight_state(port: int = DEFAULT_LOCAL_PORT) -> dict:
+    """Read-only availability facts consumed by both setup and the standalone command."""
+    git = shutil.which("git")
+    gh = shutil.which("gh")
+    git_ready = bool(git)
+    gh_ready = False
+    if gh:
+        try:
+            gh_ready = run_gh(["auth", "status"], check=False, timeout=30).returncode == 0
+        except (GhError, OSError):
+            pass
+    try:
+        from fleet_net import local_identity
+        local_identity()
+    except (OSError, ValueError):
+        tailnet = False
+    else:
+        tailnet = True
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.bind(("127.0.0.1", port))
+        dashboard = "available"
+    except OSError:
+        dashboard = "unavailable (choose another local port)"
+    finally:
+        probe.close()
+    home = Path.home()
+    candidates = [Path(value) for value in (os.environ.get("OneDrive"),
+                  os.environ.get("OneDriveConsumer"), os.environ.get("OneDriveCommercial"))
+                  if value]
+    candidates += [home / name for name in ("Dropbox", "Google Drive", "Nextcloud")]
+    folders = []
+    seen = set()
+    for folder in candidates:
+        if folder.is_dir() and str(folder.resolve()).casefold() not in seen:
+            seen.add(str(folder.resolve()).casefold())
+            folders.append(folder)
+    return {"git": git_ready, "github": gh_ready, "tailnet": tailnet,
+            "dashboard": dashboard == "available", "port": port, "folders": folders}
+
+
+def render_preflight(state: dict) -> str:
+    return ("Fleet preflight (read-only):\n"
+            f"  Git:       {'ready' if state['git'] else 'not found — required'}\n"
+            f"  GitHub:    {'ready' if state['github'] else 'unavailable — optional durable tier'}\n"
+            f"  Tailscale: {'ready' if state['tailnet'] else 'not connected — optional live tier'}\n"
+            f"  Dashboard port {state['port']}: {'available' if state['dashboard'] else 'unavailable'}\n"
+            "  Likely sync folders: " + (", ".join(map(str, state["folders"])) if state["folders"]
+                                          else "none detected; you may still specify one"))
+
+
+def command_preflight(port: int = DEFAULT_LOCAL_PORT) -> int:
+    """Report what setup can use now. Absence of an optional tier is not an error."""
+    state = preflight_state(port)
+    print(render_preflight(state))
+    return 0 if state["git"] and state["dashboard"] else 2
+
+
+def command_catchup(args, config: dict) -> int:
+    """The first fleet mutation: narrowly safe, local, and always planned before application."""
+    if args.apply and not args.yes:
+        raise ValueError("catchup --apply requires --yes after you review the plan")
+    from fleet_actions import apply_catchup, plan_catchup, render_catchup
+    from fleet_observer import IncrementalObserver
+
+    observer = IncrementalObserver(config)
+    count = observer.inventory()
+    print(f"Inventory found {count} observed repository(ies). Fetching their remotes without "
+          "changing branches, indexes, or files.")
+    plan = plan_catchup(observer.paths)
+    print(render_catchup(plan))
+    if not args.apply:
+        return 0
+    results = apply_catchup(plan)
+    print()
+    print(render_catchup(results, applied=True))
+    print("Start or resume the peer to publish the newly observed status.")
+    return 1 if any(item["action"] in {"fetch_failed", "pull_failed", "pull_needs_review"}
+                    for item in results) else 0
+
+
+def command_safe_to_wipe(config: dict) -> int:
+    """A deliberately strict replacement audit. Unknown is never an all-clear."""
+    from fleet_actions import plan_catchup
+    from fleet_observer import IncrementalObserver
+    from recovery_runtime import RecoveryRuntime
+    from shared.git_facts import repo_facts
+
+    observer = IncrementalObserver(config)
+    count = observer.inventory()
+    if not count:
+        print("SAFE-TO-WIPE: unproven — no observed repositories. Nothing was fetched or changed.")
+        return 1
+    plan = plan_catchup(observer.paths)
+    recovery = RecoveryRuntime(config, observer, log=lambda *_: None)
+    recovered = []
+    unsafe = []
+    for item in plan:
+        if item["action"] == "current":
+            continue
+        # A verified snapshot may cover uncommitted work, but never local commits that have
+        # not reached an upstream.  `plan_catchup` deliberately stops at dirtiness, so inspect
+        # this one extra fact before calling it replaceable.
+        facts = repo_facts(item["path"])
+        if (item["action"] == "dirty" and facts.get("upstream")
+                and facts.get("ahead") == 0
+                and recovery.current_snapshot_state(item["path"]) == "recoverable elsewhere"):
+            recovered.append(item)
+        else:
+            unsafe.append(item)
+    print("SAFE-TO-WIPE AUDIT (fresh fetch completed; no working tree was changed)")
+    if not unsafe:
+        if recovered:
+            print(f"SAFE: {count - len(recovered)} clean/current checkout(s), plus "
+                  f"{len(recovered)} dirty checkout(s) whose exact current work is verified "
+                  "recoverable on another peer.")
+        else:
+            print(f"SAFE: all {count} observed checkouts are clean and current with their upstreams.")
+        return 0
+    print("NOT SAFE: this machine holds work or Git state that has not been proved replaceable:")
+    for item in unsafe:
+        print(f"  {item['name']}: {item['action'].replace('_', ' ')} — {item['detail']}")
+    if recovered:
+        print(f"  {len(recovered)} dirty checkout(s) are covered by an exact, peer-verified "
+              "recovery snapshot; they do not block replacement.")
+    print("Resolve every remaining item, then run this audit again. A snapshot counts only when "
+          "it exactly matches current work and another peer has verified its checksum.")
+    return 1
+
+
+def command_audit(args, config: dict) -> int:
+    """A fleet-scale report, deliberately without a repair side effect."""
+    from fleet_actions import audit_repositories, render_audit
+    from fleet_observer import IncrementalObserver
+
+    observer = IncrementalObserver(config)
+    count = observer.inventory()
+    rows = audit_repositories(observer.paths)
+    if args.json:
+        print(json.dumps([{**row, "path": str(row["path"])} for row in rows], indent=2))
+    else:
+        print(f"Inventory found {count} observed repository(ies).")
+        print(render_audit(rows))
+    return 1 if any(item["findings"] != ["no audited issue"] for item in rows) else 0
+
+
+def command_materialize(args, config: dict) -> int:
+    if args.apply and not args.yes:
+        raise ValueError("materialize --apply requires --yes after you review the plan")
+    if not args.destination.is_dir():
+        raise ValueError("materialize --destination must already be an existing folder")
+    from fleet_actions import apply_materialize, plan_materialize, render_materialize
+    from fleet_observer import IncrementalObserver
+
+    observer = IncrementalObserver(config)
+    count = observer.inventory()
+    plan = plan_materialize(observer.paths, args.destination)
+    print(f"Inventory found {count} observed repository(ies).\n{render_materialize(plan)}")
+    if not args.apply:
+        return 0
+    results = apply_materialize(plan)
+    print("\n" + render_materialize(results, applied=True))
+    return 1 if any(row["action"] == "clone_failed" for row in results) else 0
+
+
+def command_live_buffers(args, config: dict) -> int:
+    """The live tier's local first slice: no watcher, no content publication."""
+    from vscode_buffers import default_backup_root, inspect
+
+    root = args.backup_root or default_backup_root()
+    if root is None or not root.is_dir():
+        raise ValueError("select an existing VS Code Backups folder with --backup-root")
+    items = inspect(config["roots"], root)
+    print(json.dumps({"buffers": items,
+                      "note": "Explicit local metadata only; no editor buffer content was sent or stored."},
+                     indent=2))
     return 0
 
 
@@ -436,6 +903,8 @@ def _main(argv=None, stopping=None, on_ready=None):
     args = build_parser().parse_args(argv)
     directory = args.config_dir.expanduser()
     try:
+        if args.command == "preflight":
+            return command_preflight()
         if args.command == "rescan":
             if not (directory / APP_CONFIG).exists():
                 raise ValueError("no saved fleet configuration")
@@ -446,6 +915,8 @@ def _main(argv=None, stopping=None, on_ready=None):
             return command_transports(args, directory)
         if args.command == "baskets":
             return command_baskets(args, directory)
+        if args.command == "recovery":
+            return command_recovery(args, directory)
         if args.command == "git-client":
             from git_client import discover_clients, LABELS, validate_choice
 
@@ -481,6 +952,16 @@ def _main(argv=None, stopping=None, on_ready=None):
             config = load_saved(directory)
         if args.command == "doctor":
             return command_doctor(config)
+        if args.command == "catchup":
+            return command_catchup(args, config)
+        if args.command == "safe-to-wipe":
+            return command_safe_to_wipe(config)
+        if args.command == "audit":
+            return command_audit(args, config)
+        if args.command == "materialize":
+            return command_materialize(args, config)
+        if args.command == "live-buffers":
+            return command_live_buffers(args, config)
 
         if stopping is None:
             stopping = threading.Event()
@@ -521,7 +1002,23 @@ def main(argv=None, stopping=None, on_ready=None):
         except TrayUnavailable as exc:
             print(f"note: {exc}; running in the foreground instead", flush=True)
             return main(inner, stopping, on_ready)
-    if args.command in ("doctor", "rescan"):
+    if args.command == "setup" and not args.configure_only:
+        # Setup ends with the app running where you can see it -- a tray icon on Windows -- not
+        # a terminal you have to keep open. The lock is released before the tray starts, because
+        # the tray's own worker takes it for the running peer.
+        directory = args.config_dir.expanduser()
+        try:
+            with app_lock(directory):
+                code = _main([*argv, "--configure-only"])
+        except (OSError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if code:
+            return code
+        inner = ["--config-dir", str(directory), "tray"]
+        offer_start_at_login(inner)
+        return main(inner, stopping, on_ready)
+    if args.command in ("doctor", "rescan", "preflight"):
         return _main(argv, stopping, on_ready)
     try:
         with app_lock(args.config_dir.expanduser()):

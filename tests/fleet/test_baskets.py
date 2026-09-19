@@ -50,9 +50,11 @@ def test_scopes_are_independent():
     # Widening observation must not widen publication or capture.
     scopes["observe"] = baskets.parse_selection("all", None)
     assert baskets.validate_scopes(scopes)["capture"]["mode"] == "none"
-    refused(lambda: baskets.validate_scopes({**scopes, "capture": baskets.parse_selection("all", None)}))
-    refused(lambda: baskets.validate_scopes({**scopes,
-                                             "capture": baskets.parse_selection("only", ["a/b"])}))
+    # Capture selection is valid as a basket shape. Fleet configuration additionally refuses it
+    # until a separately confirmed recovery location exists.
+    assert baskets.validate_scopes({**scopes, "capture": baskets.parse_selection("all", None)})
+    assert baskets.validate_scopes({**scopes,
+                                    "capture": baskets.parse_selection("only", ["a/b"])})
     refused(lambda: baskets.validate_scopes({"observe": baskets.ALL, "publish": baskets.ALL}))
 
 

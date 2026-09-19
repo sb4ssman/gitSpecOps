@@ -8,7 +8,7 @@ Three scopes, deliberately separate, because they leak different amounts:
 
     observe   this machine inspects the repository at all (local only)
     publish   its status is written into manifests other machines read
-    capture   its uncommitted content is snapshotted (NOT IMPLEMENTED)
+    capture   its uncommitted content is snapshotted (requires explicit recovery setup)
 
 They are separate keys and never imply one another. Widening `observe` must never widen
 `publish`, and nothing may ever widen `capture` implicitly -- see `validate_scopes`.
@@ -30,7 +30,8 @@ SCOPES = ("observe", "publish", "capture")
 ALL = {"mode": "all"}
 NONE = {"mode": "none"}
 
-# Capture never defaults on, and there is no capture implementation to turn on yet.
+# Capture never defaults on. Fleet configuration requires a confirmed recovery location before
+# a capture basket may select anything.
 DEFAULT_SCOPES = {"observe": dict(ALL), "publish": dict(ALL), "capture": dict(NONE)}
 
 
@@ -62,10 +63,6 @@ def validate_scopes(scopes) -> dict:
         raise ValueError(f"baskets must define exactly: {', '.join(SCOPES)}")
     for scope in SCOPES:
         validate_selection(scopes[scope], scope)
-    if scopes["capture"]["mode"] != "none":
-        # A toggle that claims to protect uncommitted work while protecting nothing is worse
-        # than no toggle. Capture stays refusable until the medium tier actually captures.
-        raise ValueError("content capture is not implemented; the capture basket must be 'none'")
     return scopes
 
 
@@ -95,7 +92,7 @@ def describe_selection(selection: dict) -> str:
 
 def describe(scopes: dict) -> str:
     lines = [f"  {scope:<8} {describe_selection(scopes[scope])}" for scope in SCOPES]
-    lines.append("  (capture is not implemented; it stays 'none')")
+    lines.append("  (capture requires a separately confirmed recovery location)")
     return "\n".join(lines)
 
 

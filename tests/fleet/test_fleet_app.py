@@ -78,9 +78,10 @@ def main():
         assert view["rows"][0]["cells"]["ts-one"]["tone"] == "danger"
         assert view["groups"] == [{"id": "github.com/example", "label": "example",
                                    "host": "github.com", "count": 1, "attention": 1}]
-        assert view["capabilities"]["repository_actions"]["available"] is False
+        assert view["capabilities"]["repository_actions"]["available"] is True
         assert view["integrations"][0]["id"] == "tailscale"
-        assert view["features"][2]["id"] == "recovery_snapshots"
+        features = {feature["id"]: feature for feature in view["features"]}
+        assert features["recovery_snapshots"]["available"] is False
         with app_lock(Path(temp)):
             rejected(lambda: app_lock(Path(temp)).__enter__())
 
@@ -126,7 +127,10 @@ def main():
     with patch("fleet_app.run_gh", return_value=Mock(returncode=1)):
         rejected(require_gh)
     # Setup asks for the library, the scan acknowledgement, then each optional transport.
-    with patch("builtins.input", side_effect=["/libraries/code", "SCAN", "", "", "", ""]), \
+    with patch("builtins.input", side_effect=["/libraries/code", "SCAN", "", "", "", "", ""]), \
+            patch("fleet_app.preflight_state", return_value={
+                "git": True, "github": True, "tailnet": True, "dashboard": True,
+                "port": 8760, "folders": []}), \
             patch("fleet_app.run_gh", side_effect=AssertionError("GitHub is optional")):
         setup = setup_arguments(Path("test-config"))
         assert setup.command == "peer" and setup.root == ["/libraries/code"]
@@ -215,8 +219,9 @@ def main():
     clock[0] = 12
     assert publisher.publish(manifest, changed=True, log=lambda *_: None) == ["folder"]
     clock[0] = 30
-    # Nothing new to say: the slot is kept rather than spent republishing identical state.
-    assert publisher.publish(manifest, changed=False, log=lambda *_: None) == []
+    # Unchanged state is still re-sent once per slot: that re-send is the heartbeat that tells
+    # other machines this one is alive. The slower transport is not due yet and stays quiet.
+    assert publisher.publish(manifest, changed=False, log=lambda *_: None) == ["folder"]
     clock[0] = 100
     github.write_own_manifest.side_effect = OSError("offline")
     assert "github" not in publisher.publish(manifest, changed=True, log=lambda *_: None)

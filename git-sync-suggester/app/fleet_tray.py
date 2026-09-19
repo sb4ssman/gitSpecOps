@@ -180,7 +180,7 @@ class _Snapshot:
 class WindowsTray:
     """Hidden window + notification icon. All Win32 calls stay on the thread that made them."""
 
-    IDM_OPEN, IDM_INFO, IDM_RESCAN, IDM_AUTOSTART, IDM_QUIT = 1, 2, 3, 4, 5
+    IDM_OPEN, IDM_INFO, IDM_RESCAN, IDM_AUTOSTART, IDM_QUIT, IDM_CATCHUP = 1, 2, 3, 4, 5, 6
 
     def __init__(self, stopping: threading.Event):
         self.stopping = stopping
@@ -292,6 +292,8 @@ class WindowsTray:
         user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
         user32.AppendMenuW(menu, MF_STRING | (0 if ready else MF_GRAYED), self.IDM_RESCAN,
                            "Rescan repositories")
+        user32.AppendMenuW(menu, MF_STRING | (0 if ready else MF_GRAYED), self.IDM_CATCHUP,
+                           "Preview catch-up (fresh fetch)")
         try:
             enabled = autostart_status().get("enabled", False)
         except OSError:
@@ -331,6 +333,26 @@ class WindowsTray:
                                 "The observer will refresh which repositories exist.")
                 except (OSError, ValueError) as exc:
                     self.notify("Rescan failed", str(exc))
+        elif choice == self.IDM_CATCHUP:
+            handler = self.handlers.get("catchup_preview")
+            if handler:
+                self.notify("Catch-up preview started",
+                            "Fetching remotes without changing branches or files.")
+
+                def preview():
+                    try:
+                        result = handler()
+                        # A tray balloon is a summary, not a substitute for the dashboard's
+                        # full plan.  Keep the terminal-equivalent wording out of a second
+                        # policy engine.
+                        text = str(result.get("message", ""))
+                        summary = next((line for line in reversed(text.splitlines())
+                                        if line.startswith("Summary:")), "Preview completed.")
+                        self.notify("Catch-up preview complete", summary)
+                    except (OSError, ValueError) as exc:
+                        self.notify("Catch-up preview failed", str(exc))
+
+                threading.Thread(target=preview, name="fleet-tray-catchup", daemon=True).start()
         elif choice == self.IDM_AUTOSTART:
             self._toggle_autostart()
         elif choice == self.IDM_QUIT:
@@ -440,12 +462,70 @@ def error_snapshot(url, label, exc) -> _Snapshot:
 # --------------------------------------------------------------------------- entry point
 
 
+class _LogTee:
+    """Copies console output into fleet.log and remembers the last error line.
+
+    At login the tray runs under pythonw, which has no console at all. Without this, the one
+    message explaining why the app could not start went nowhere, and the icon simply vanished.
+    """
+
+    def __init__(self, path, original):
+        self.original = original
+        self.handle = open(path, "a", encoding="utf-8", buffering=1)
+        self.last_error = ""
+
+    def write(self, text):
+        if self.original is not None:
+            try:
+                self.original.write(text)
+            except (OSError, ValueError):
+                pass
+        self.handle.write(text)
+        for line in text.splitlines():
+            if line.startswith("error:"):
+                self.last_error = line[len("error:"):].strip()
+        return len(text)
+
+    def flush(self):
+        for stream in (self.original, self.handle):
+            if stream is not None:
+                try:
+                    stream.flush()
+                except (OSError, ValueError):
+                    pass
+
+    def close(self):
+        self.handle.close()
+
+
+def _config_dir_from(argv):
+    from pathlib import Path
+
+    if "--config-dir" in argv:
+        index = argv.index("--config-dir")
+        if index + 1 < len(argv):
+            return Path(argv[index + 1]).expanduser()
+    from config import default_config_dir
+
+    return default_config_dir()
+
+
 def run_tray(argv, poll_seconds: float = POLL_SECONDS) -> int:
     """Run the fleet app under a tray icon. Returns the app's exit code."""
     if not supported():
         raise TrayUnavailable(
             f"no stdlib system tray on {sys.platform}; run 'fleet run' and use start-at-login")
     from fleet_app import main as fleet_main
+
+    log_path = _config_dir_from(argv) / "fleet.log"
+    original_streams = (sys.stdout, sys.stderr)
+    output = errors = None
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        output, errors = _LogTee(log_path, sys.stdout), _LogTee(log_path, sys.stderr)
+        sys.stdout, sys.stderr = output, errors
+    except OSError:
+        output = errors = None  # no log is better than no tray
 
     stopping = threading.Event()
     tray = WindowsTray(stopping)
@@ -461,19 +541,29 @@ def run_tray(argv, poll_seconds: float = POLL_SECONDS) -> int:
             tray.snapshot.ready = True
             tray.snapshot_config_dir = info.get("config_dir")
         tray.handlers["rescan"] = info["rescan"]
+        tray.handlers["catchup_preview"] = info.get("catchup_preview")
         ready.set()
         tray.post_refresh()
 
     def worker():
         try:
             result["code"] = fleet_main(argv, stopping=stopping, on_ready=on_ready)
+        except Exception as exc:  # noqa: BLE001 - the icon must survive to say why
+            result["code"] = 1
+            print(f"error: {exc}", file=sys.stderr, flush=True)
         finally:
-            if not ready.is_set():
-                # Setup never completed (no configuration, unreachable host, gh logged out).
+            if not stopping.is_set():
+                # The app stopped without being asked to. Keep a red icon up saying why until
+                # the user chooses Quit: an icon that silently vanishes explains nothing.
+                reason = (errors.last_error if errors else "") or "the app stopped unexpectedly"
+                failed = _Snapshot()
+                failed.state = "error"
+                failed.text = f"gitSpecOps is not running: {reason}"[:200]
                 with tray.lock:
-                    tray.snapshot = error_snapshot("", "Fleet app",
-                                                   "the app exited before starting; see the console")
+                    tray.snapshot = failed
                 tray.post_refresh()
+                tray.notify("gitSpecOps is not running", f"{reason}. Log: {log_path}"[:250])
+                stopping.wait()
             stopping.set()
             user32.PostMessageW(tray.hwnd, WM_DESTROY, 0, 0)
 
@@ -509,6 +599,10 @@ def run_tray(argv, poll_seconds: float = POLL_SECONDS) -> int:
         tray.remove()
         for thread in threads:
             thread.join(timeout=10)
+        if output is not None:
+            sys.stdout, sys.stderr = original_streams
+            output.close()
+            errors.close()
     return result["code"]
 
 

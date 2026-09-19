@@ -4,9 +4,14 @@ Baskets are applied here because this is the only place repository *names* exist
 carries salted digests, so selection cannot be expressed -- or second-guessed -- downstream.
 Both halves of every split are kept. A repository excluded from observation or publication is
 counted and reported, never quietly dropped.
+
+Remote freshness is remembered per repository. A fetch stamps when a repository's remote was
+last checked; every later refresh keeps that stamp, so an ordinary file edit does not make a
+repository look as though its remote had never been checked.
 """
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 
 import baskets
@@ -22,6 +27,9 @@ class IncrementalObserver:
         self._repos: dict[Path, dict] = {}
         self._catalog: dict[Path, dict] = {}
         self._issues: list[str] = []
+        self._path_issues: dict[Path, list[str]] = {}
+        self._fetched_at: dict[Path, str] = {}
+        self._fetch_issues: list[str] = []
         self.excluded_from_observation = 0
 
     @property
@@ -45,6 +53,7 @@ class IncrementalObserver:
         observation = observe_roots(roots, self.config["fleet_secret"])
         self._repos.clear()
         self._catalog.clear()
+        self._path_issues.clear()
         self._issues = list(observation.issues)
         self.excluded_from_observation = 0
         for repo in observation.repositories:
@@ -53,8 +62,12 @@ class IncrementalObserver:
                 self.excluded_from_observation += 1
                 continue
             path = Path(catalog["path"]).resolve()
+            # A rescan does not un-check a remote that was fetched a few minutes ago.
+            repo["upstream_observed_at"] = self._fetched_at.get(path)
             self._repos[path] = repo
             self._catalog[path] = catalog
+        self._fetched_at = {path: stamp for path, stamp in self._fetched_at.items()
+                            if path in self._repos}
         return len(self._repos)
 
     def affected_repositories(self, changed: set[Path]) -> set[Path]:
@@ -125,7 +138,8 @@ class IncrementalObserver:
         for path in affected:
             previous = self._repos.pop(path, None)
             previous_catalog = self._catalog.pop(path, None)
-            observation = observe_paths([path], self.config["fleet_secret"])
+            observation = observe_paths([path], self.config["fleet_secret"],
+                                        fetched_at=self._fetched_at)
             if observation.repositories:
                 repo = observation.repositories[0]
                 catalog = observation.catalog[repo["repo_id"]]
@@ -136,14 +150,26 @@ class IncrementalObserver:
                     continue
                 self._repos[path] = repo
                 self._catalog[path] = catalog
+                # Readable again: an inventory-time complaint about this path no longer holds.
+                self._issues = [issue for issue in self._issues
+                                if not issue.endswith(f": {path}")]
             elif previous is not None and path.is_dir():
-                # A transient read error should not erase the last-known warning. A removed
-                # origin is retained until the next explicit inventory scan can report it.
+                # A read error keeps the last-known record -- dirty stays dirty -- and the issue
+                # below says the state could not be re-read.
                 self._repos[path] = previous
                 self._catalog[path] = previous_catalog
             if observation.issues:
-                self._issues = observation.issues
+                self._path_issues[path] = list(observation.issues)
+            else:
+                self._path_issues.pop(path, None)
         return len(affected)
+
+    def apply_fetch(self, fetched_at: dict[Path, str], issues: list[str], attempted) -> int:
+        """Record a finished fetch round, then re-read those repositories' ahead/behind."""
+        self._fetched_at.update({Path(path).resolve(): stamp
+                                 for path, stamp in fetched_at.items()})
+        self._fetch_issues = list(issues)
+        return self.refresh({Path(path) for path in attempted})
 
     def report(self) -> dict:
         repositories = sorted(self._repos.values(), key=lambda repo: repo["repo_id"])
@@ -153,12 +179,17 @@ class IncrementalObserver:
             if repo is None:
                 continue
             names[repo["repo_id"]] = {key: catalog[key] for key in ("host", "owner", "name")}
+        everything = [*self._issues, *self._fetch_issues,
+                      *(issue for issues in self._path_issues.values() for issue in issues)]
+        # Categories only: paths stay local. The count says how many repositories are affected.
+        counts = Counter(issue.split(": ", 1)[0] for issue in everything)
         return {
             "manifest": build_manifest(
                 fleet_id_for(self.config["fleet_secret"]), self.config["machine_id"],
                 self.config["label"], repositories),
             "names": names,
-            "issues": sorted(set(issue.split(": ", 1)[0] for issue in self._issues)),
+            "issues": sorted(f"{category} ({count} repositor{'y' if count == 1 else 'ies'})"
+                             for category, count in counts.items()),
         }
 
     def shared_report(self, report: dict) -> tuple[dict, set]:

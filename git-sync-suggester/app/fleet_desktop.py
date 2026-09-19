@@ -24,13 +24,16 @@ bootstrap()
 
 from config import default_config_dir  # noqa: E402
 from fleet_app import APP_CONFIG, main  # noqa: E402
-from fleet_net import local_identity  # noqa: E402
+from fleet_config import DEFAULT_LOCAL_PORT  # noqa: E402
 
 
 def dashboard_url(config: dict) -> str:
-    if config["mode"] == "connect":
-        return config["server"].rstrip("/") + "/"
-    return f"http://{local_identity()['ip']}:{config['port']}/"
+    """Every machine's own loopback dashboard. It needs no Tailscale and no other machine.
+
+    This used to build a Tailscale host URL from the retired host/client keys, so the packaged
+    app retried for half an hour and never opened anything for a peer configuration.
+    """
+    return f"http://127.0.0.1:{int(config.get('local_port') or DEFAULT_LOCAL_PORT)}/"
 
 
 def open_when_ready(config_path: Path) -> None:
