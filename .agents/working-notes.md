@@ -3,9 +3,49 @@
 Living todo / scratch pad. Add items freely; **prune regularly**. When something is done, move it
 into [`work-log.md`](work-log.md) with an absolute date. Dates are always absolute.
 
-_Last tended: 2026-09-11_
+_Last tended: 2026-09-19_
 
 ## Open
+
+### 2026-09-19 — Product direction confirmed; implementation is ready to resume
+
+The user confirmed one repository, one family, with two shapes: careful terminal
+operations and an optional fleet service that coordinates them. The archive updater,
+org duplicator, and Sync Suggester remain peers in that family; do not turn the
+service into an authority or degrade the clone-and-run command path.
+
+**Headline outcome:** from any enrolled machine, the user can see the state of all
+their repositories everywhere and receive a safe, specific suggestion for unsynced
+work. The dashboard and tray are skins over terminal-first operations, not separate
+policy engines.
+
+**Implemented 2026-09-19:** the medium-tier recovery slice is now end to end: an explicit
+private location, local per-repository policy, capture-basket selection, event-quiet capture,
+peer checksum acknowledgement, preview/disposable restore, and exact freshly-fetched remote
+retirement proof. `safe-to-wipe` now accepts only exact current snapshots verified by another
+peer, and never unpushed commits. Setup preflight has honest tier offers; setup can explicitly
+request an authenticated Tailscale session hand-off from a running peer. The dashboard has the
+same fresh-fetch catch-up preview as the terminal (applying stays terminal-confirmed).
+
+**Also implemented 2026-09-19:** `fleet audit` reports remote/upstream/unfinished-work issues
+without mutation, and `fleet materialize` provides a reviewed clone-only plan for the locally
+observed working set. The materializer rejects unsafe remote-derived filesystem paths and
+symlink escapes. `fleet live-buffers` supplies explicit, local-only VS Code backup evidence;
+publishing unsaved content remains deliberately unbuilt. `catchup` fresh-fetches
+and previews every observed checkout;
+`--apply --yes` fast-forwards only clean behind-only checkouts and lists every other
+state for a human. Remote actions retain the existing safety ladder: fetch, safe pull,
+ahead-only non-force push, reviewed commit; never guess through divergence or conflict.
+
+Preparation and implementation completed 2026-09-19: mapped the tree, added catch-up, recovery
+activation, authenticated session join, dashboard preview, and replacement evidence. Targeted
+Windows validation passed, including new recovery runtime and retirement tests. No live
+deployment, commit, or push was performed.
+
+**Packaging readiness update:** the desktop PyInstaller recipe had incorrect relative source
+paths and omitted dynamic modules; both are repaired and a read-only release gate checks them.
+The release remains deliberately uncut: the current working tree is uncommitted, no matching tag
+exists, and PyInstaller is not installed in a disposable build environment.
 
 ### Current continuation — 2026-09-11
 
@@ -13,13 +53,26 @@ Stale active host/client guidance has been reconciled. Guided durable setup, pen
 delivery, the desktop Git client shortcut and **baskets** are implemented; details are in the
 work log.
 
-- **Medium-tier recovery is deferred by the user's decision (2026-09-11):** do baskets first,
-  decide encryption later. The implementation contract is already written in
-  [RECOVERY-DESIGN.md](../git-sync-suggester/docs/RECOVERY-DESIGN.md) — scope, staged versus
-  unstaged fidelity, encryption, quotas, exclusions, secret screening, restore, retirement
-  proof. **Nothing is blocked on the `age` question until capture is picked up again**; no
-  encryption dependency is installed and no content-capture code exists. The capture basket
-  refuses any value but `none`, so there is no cosmetic toggle in the meantime.
+- **Medium-tier recovery: encryption question is CLOSED (2026-09-12) — snapshots are not
+  encrypted.** Reasoning and the verified per-tier authority table are in
+  [RECOVERY-DESIGN.md](../git-sync-suggester/docs/RECOVERY-DESIGN.md) under "Trust boundary".
+  No `age`, no new dependency, stdlib-only runtime rule intact. Do not reopen this without a
+  concrete threat the three tiers do not already cover.
+- **Capture is enabled only through an explicit medium-tier enrollment.** `core/capture.py` and
+  `core/secret_scan.py` remain protected by default. The capture basket may select namespaces
+  only after a separate confirmed location passes overlap checks; running peers capture after
+  filesystem quiet periods, and a second peer must verify the checksum before the source calls
+  it recoverable elsewhere.
+- **Done 2026-09-12:** snapshot store, preview, restore (`core/snapshot_restore.py`), and the
+  per-repository capture policy (`CapturePolicy`: obey `.gitignore`, secret protection,
+  `allow_paths`), all tested against real repositories. See the work log.
+- **Recovery proof is exact.** `core/retirement.py` recreates a bundle's resulting tree in a
+  temporary index, freshly fetches origin, and permits retirement only if the upstream tree is
+  identical. Clean state or counts never suffice. The follow-up is cross-machine snapshot
+  discovery/restore UX, not a weaker proof.
+- **Run test suites alone before claiming a result.** On 2026-09-12 `fleet/test_git_client.py`
+  failed only while five test processes ran concurrently; alone it passed. The full suite alone
+  passed **26/26 on Windows** on 2026-09-19.
 - **Manual probes are versioned under `tests/probes/`.** Code, synthetic fixtures and
   instructions belong there; profiles, raw logs and results remain temporary/local. The
   automated runner explicitly excludes this directory. The VS Code hot-exit probe **has now
@@ -33,23 +86,23 @@ work log.
 - **Validation environment:** use the existing virtual environment (Python 3.14.2 on this
   Windows checkout). Bare `python` is below the declared >=3.11 minimum.
 
-- [ ] **The tier ladder is not built yet (design recorded 2026-09-11).** See
+- [x] **The tier ladder's local slices are built (updated 2026-09-19).** See
   [knowledge/tiers-and-capture.md](knowledge/tiers-and-capture.md). Today all three tiers carry
   the *same* v3 status manifest, so they differ only in latency. They are supposed to differ in
   what they can rescue: durable = committed + status; medium = **saved but uncommitted content**;
   live = **unsaved editor buffers**. Ordered next steps:
   1. **Guided durable setup — implemented 2026-09-11.** Suggested private repo name,
      app ownership/publication explanation, and named CREATE/USE confirmations.
-  2. **Content capture on the medium tier** (the user's *stealth-stash*): a patch bundle per
-     repository, encrypted, size-capped, expiring after the real commit is published, separate
-     from the manifest. Controls are now designed in `docs/RECOVERY-DESIGN.md`;
-     encryption dependency choice remains pending before capture implementation.
-  3. **Unsaved buffers on the live tier — probe answered, reader unbuilt.** VS Code does write
+  2. **Content capture on the medium tier** (the user's *stealth-stash*): a separate,
+     size-capped bundle per repository that expires only after retirement proof. It is not
+     encrypted by design; policy, retirement proof and peer wiring are active after explicit
+     recovery-location and capture-basket enrollment. See `docs/RECOVERY-DESIGN.md`.
+  3. **Unsaved buffers on the live tier — local reader built.** VS Code does write
      dirty buffers to its backup store before exit (measured 2026-09-11 via
      `tests/probes/vscode_hot_exit/probe.py --run`). So no editor plugin is needed for VS Code:
-     read what the editor already wrote. Still undecided and unbuilt: backup latency, the
-     mapping from a backup file back to its repository and path, other editors, and whether
-     unsaved content may leave the machine at all.
+     read what the editor already wrote. `fleet live-buffers` maps existing backup records to
+     configured roots and returns metadata only. Still undecided: backup latency, other editors,
+     and whether unsaved content may leave the machine at all.
   4. **Baskets — implemented 2026-09-11**, ahead of capture at the user's direction. Three
      independent scopes; capture is refused rather than offered. See the work log and
      `docs/FLEET.md`. Config is schema v4.
@@ -70,7 +123,10 @@ work log.
 - [ ] **First release is not cut.** `shared/version.py` says 0.2.0 and the update check works,
   but there are **no tags and no GitHub release**, so `version --check` correctly reports
   "unknown" for everyone. Tag `v0.2.0`, publish a release, then confirm the check flips to
-  "current". Until that exists, the update path is untested against reality.
+  "current". Until that exists, the update path is untested against reality. The new read-only
+  `git-sync-suggester/packaging/release_check.py` makes the local prerequisites explicit; it
+  currently correctly reports the dirty implementation worktree, absent tag, and absent
+  disposable PyInstaller environment.
 
 - [ ] **Distribution beyond a hand-built bundle.** Decided direction: one installable app per OS
   acting as a *launcher* for the operations, with the heavy fleet tier opt-in behind first run;
@@ -87,8 +143,8 @@ work log.
   one being offline. The Windows/Linux event mechanisms and independent dashboard ship; actual
   fleet membership and configured transports still need operational verification.
 - [ ] **Product onboarding and fleet actions.** Keep the source-checkout path working while
-  developing a self-contained installed app. Baskets, encrypted recovery and narrow remote Git
-  jobs remain future work in the agreed tier order. Integration choices are independent;
+  developing a self-contained installed app. Baskets, unencrypted recovery wiring and narrow
+  remote Git jobs remain future work in the agreed tier order. Integration choices are independent;
   nothing requires a particular sync client. Do not expose cosmetic enable switches.
 
 - [ ] **Outside fleet review (2026-09-04) — status.** Recorded by the user; two items were acted
@@ -175,12 +231,12 @@ work log.
   `--ff-only`; allow push only for a clean ahead-only checkout after revalidation and never force;
   require diff/file review and an entered message for commits. Diverged or conflicted work needs an
   explicit merge/rebase workflow or launch into an installed Git client, not a one-click guess.
-- [ ] **Recovery snapshots (user names: stealth-stash / stealth-sync).** This means an opt-in,
-  encrypted snapshot of staged, unstaged and selected untracked work that survives the source
-  machine going offline, can be previewed/applied elsewhere, and expires after the real commit is
-  safely published. It is separate from remote actions and must have retention, size, ignore,
-  secret-scan and deletion controls. The dashboard display contract exposes it as unavailable until
-  content capture and restoration are implemented; do not present a cosmetic toggle.
+- [ ] **Recovery snapshots (user names: stealth-stash / stealth-sync).** This is an opt-in,
+  unencrypted snapshot of staged, unstaged and selected untracked work that survives the source
+  machine going offline, can be previewed/applied elsewhere, and expires only after retirement
+  proof. Capture, storage, preview, restore and the retention/size/ignore/secret-scan/deletion
+  controls are built; peer wiring and retirement proof remain. The dashboard must keep it
+  unavailable until then; do not present a cosmetic toggle.
 
 - [ ] **Legacy transports: `state_dir` and `state_repo` both ship; folder auto-detection is not built.**
   The user chose "both, gh-backed first" — the gh Contents API transport landed 2026-09-03. Still

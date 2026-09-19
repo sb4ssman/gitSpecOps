@@ -11,6 +11,16 @@ From the repository root, in a disposable build environment with PyInstaller ins
 python -m PyInstaller --noconfirm --clean git-sync-suggester/packaging/GitSpecOpsSync.spec
 ```
 
+First run the read-only local release gate:
+
+```sh
+python git-sync-suggester/packaging/release_check.py
+```
+
+It checks the declared version/tag relationship, worktree and patch whitespace, the build recipe
+and assets, and whether PyInstaller is installed. It never creates a tag, changes a checkout,
+builds an artifact or publishes a release.
+
 The one-folder result is `dist/GitSpecOpsSync/`. Run `GitSpecOpsSync.exe` on Windows or
 `GitSpecOpsSync` on Linux/macOS. The preview retains a console because first-run setup and
 diagnostics are still terminal-driven. It opens the private fleet dashboard automatically.
@@ -22,11 +32,12 @@ how the build is smoke-tested without a configured fleet.
 
 Two things in the spec are load-bearing:
 
-- `hiddenimports` names `fleet_tray`, `fleet_autostart` and `shared.console`. All three are
-  imported lazily inside functions, so PyInstaller's static analysis never sees them and the
-  frozen build would fail only at the moment a user clicked a tray menu item.
+- `hiddenimports` names the tray/autostart shells plus lazily imported recovery, action and
+  live-buffer modules. PyInstaller's static analysis cannot see those imports, so omitting one
+  would produce a build that fails only after a user reaches that feature.
 - The build must run on the target OS. Verified builds: Linux (PyInstaller 6.22.2, 24 MiB) and
-  Windows (PyInstaller 6.22.2, 25 MiB, built on `machine-c` 2026-09-11).
+  Windows (PyInstaller 6.22.3, 2026-09-19). The current Windows artifact completed the
+  configuration-free `GitSpecOpsSync.exe preflight` smoke test.
 
 This is build input, not a public installer. Start-at-login now exists (`fleet autostart`,
 per-user only, reversible), so the remaining packaging work is copying the one-folder result

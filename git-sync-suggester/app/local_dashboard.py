@@ -25,7 +25,7 @@ LOOPBACK = "127.0.0.1"
 DEFAULT_PORT = 8760
 
 
-def make_local_server(address, build_document, assets, desktop_action=None):
+def make_local_server(address, build_document, assets, desktop_action=None, fleet_action=None):
     if address[0] != LOOPBACK:
         raise ValueError("the local dashboard must bind to loopback")
     action_token = secrets.token_urlsafe(32)
@@ -63,7 +63,7 @@ def make_local_server(address, build_document, assets, desktop_action=None):
                     return
                 if self.path == "/v1/dashboard":
                     document = build_document()
-                    if desktop_action is not None:
+                    if desktop_action is not None or fleet_action is not None:
                         document = {**document, "local_actions": {"token": action_token}}
                     self.send(200, document)
                     return
@@ -78,7 +78,10 @@ def make_local_server(address, build_document, assets, desktop_action=None):
             return self.client_address[0] == LOOPBACK and self.headers.get("Host") == expected
 
         def do_POST(self):
-            if desktop_action is None or self.path not in ("/v1/git-client", "/v1/open-git-client"):
+            action = self.path.removeprefix("/v1/")
+            handlers = {"git-client": desktop_action, "open-git-client": desktop_action,
+                        "catchup-preview": fleet_action}
+            if action not in handlers or handlers[action] is None:
                 self.send(405, {"error": "this endpoint accepts no actions"})
                 return
             origin = f"http://{LOOPBACK}:{self.server.server_address[1]}"
@@ -97,7 +100,7 @@ def make_local_server(address, build_document, assets, desktop_action=None):
                 payload = json.loads(self.rfile.read(length))
                 if not isinstance(payload, dict):
                     raise ValueError("expected a JSON object")
-                self.send(200, desktop_action(self.path.removeprefix("/v1/"), payload))
+                self.send(200, handlers[action](action, payload))
             except (OSError, ValueError, KeyError):
                 # Never echo paths from a launch error into the browser document.
                 self.send(400, {"error": "Could not complete the desktop action. Check the client "

@@ -122,7 +122,7 @@ def main():
     rows = {r["id"]: r for r in view["rows"]}
     assert rows["a" * 32]["desktop_action"]["available"]
     assert not rows["b" * 32]["desktop_action"]["available"]
-    assert view["capabilities"]["repository_actions"]["available"] is False
+    assert view["capabilities"]["repository_actions"]["available"] is True
     assert "executable" not in json.dumps(view)
     print("ALL-GIT-CLIENT-TESTS-PASS")
 

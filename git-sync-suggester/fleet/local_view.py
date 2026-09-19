@@ -57,7 +57,7 @@ def reports_from_manifests(manifests: list[dict], catalog: dict | None = None,
 def display_from_manifests(manifests: list[dict], fleet_id: str | None = None,
                            catalog: dict | None = None, names: dict | None = None,
                            issues: list[str] | None = None, now=None,
-                           settings: dict | None = None) -> dict:
+                           settings: dict | None = None, stale_seconds: float = 120) -> dict:
     """Render the display from manifests gathered from *any* mix of sources.
 
     A peer reads the same machine from several places at once — its own observation, a synced
@@ -86,7 +86,8 @@ def display_from_manifests(manifests: list[dict], fleet_id: str | None = None,
     for repo_id, identity in (names or {}).items():
         combined.setdefault(repo_id, identity)
     reports = reports_from_manifests(manifests, combined, issues)
-    return build_display(reports, fleet_id or "local", now=now, settings=settings)
+    return build_display(reports, fleet_id or "local", now=now, stale_seconds=stale_seconds,
+                         settings=settings)
 
 
 def display_from_transport(transport, config: dict, catalog: dict | None = None,

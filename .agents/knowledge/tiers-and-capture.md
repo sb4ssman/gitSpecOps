@@ -4,10 +4,11 @@ Recorded 2026-09-11 after the user corrected the model. The tiers are **compleme
 is to have all three. What has been under-stated until now is that they should not differ only
 in *latency* — they should differ in **what kind of work they can rescue**.
 
-## Today: all three carry the same thing
+## Current implementation
 
-Every tier publishes the same v3 status manifest (salted digests and small integers). So today
-the tiers differ only in how quickly and how readably that status arrives. That is the gap.
+Durable and live tiers publish the same v3 status manifest (salted digests and small integers).
+The medium tier additionally writes opt-in saved-work bundles to a separately confirmed private
+sync folder. Unsaved editor buffers are still not read or transmitted.
 
 ## The intended ladder
 
@@ -35,33 +36,34 @@ Status already reports *that* there are uncommitted changes; the medium tier is 
 user's files. This is the "recovery snapshot" / user's *stealth-stash* idea, and it is what makes
 "my laptop died with saved work on it" recoverable.
 
-Shape: `git diff HEAD` (staged + unstaged) plus explicitly selected untracked files, as one
-patch bundle per repository, encrypted, size-capped, expiring once the real commit is published.
-It must be a **separate artifact from the manifest** — the manifest stays names-free.
-The [implementation contract](../../git-sync-suggester/docs/RECOVERY-DESIGN.md)
-specifies separate staged/unstaged patches (a HEAD diff alone loses staging), limits,
-exclusions, encryption, restore and retirement. Capture is not yet implemented.
+Shape: separate staged and unstaged patches plus explicitly selected untracked files, as one
+size-capped bundle per repository. It is **not encrypted**: each tier already relies on the
+authenticated system that carries it, while captured content is already plaintext on the source
+disk. It must be a **separate artifact from the manifest** — the manifest stays names-free.
+The [implementation contract](../../git-sync-suggester/docs/RECOVERY-DESIGN.md) specifies the
+trust boundary, limits, exclusions, restore and retirement. Capture, storage, preview, restore,
+per-repository policy, exact retirement proof, event-driven capture and peer acknowledgement
+are built. It remains opt-in: configure the location and select a capture basket.
 
 ### Live: unsaved editor buffers — probably without a plugin
 
 **Finding (2026-09-11):** VS Code already persists dirty editor buffers to disk for crash
-recovery, at `%APPDATA%\Code\Backups\<workspace-hash>\…` (confirmed the directory exists on a
-Windows machine; it was empty at the time because no buffer was dirty). If those backups are
-written eagerly rather than only at exit, unsaved work can be observed by **reading files the
-editor already wrote** — no extension, no editor API, nothing to install per editor version.
+recovery, at `%APPDATA%\Code\Backups\<workspace-hash>\…`. A real unsaved edit was confirmed to
+produce a backup differing from the saved file. Unsaved work can therefore be observed by
+**reading files the editor already wrote** — no extension, no editor API, nothing to install per
+editor version.
 
-This is unverified in one respect that matters: whether a backup exists *before* an abrupt power
-loss. Test empirically — type into an unsaved editor buffer, do not save, and watch that folder.
-Use the [manual probe](../../tests/probes/vscode_hot_exit/README.md) to test this.
-Eager backups justify evaluating a reader; they do not establish a stable public
-format or support for all profiles and remote workspaces. The probe is not yet run.
+One question still matters: precise backup latency before an abrupt power loss. The
+[manual probe](../../tests/probes/vscode_hot_exit/README.md) establishes backup existence, not a
+latency guarantee or a stable public format across profiles and remote workspaces.
 
 A plugin would still be the answer for editors that do not persist dirty buffers, and for
 intent a file cannot express (which buffer is focused, cursor position). Start by reading what
 exists; do not build a plugin first.
 
 Reading buffer content is a large privacy step beyond salted digests, so: opt-in per basket,
-encrypted, size-capped, excluded from the manifest, and never published to the durable tier.
+size-capped, excluded from the manifest, and never published to the durable tier. Its transport
+and trust boundary require a separate decision before implementation.
 
 ## Watchdogs: there are none, and that is deliberate
 
@@ -103,8 +105,8 @@ lists are not implemented. Three scopes stay distinct or the feature becomes dan
 2. **Publish** — what it shares with the fleet.
 3. **Capture** — what may have *content* preserved (medium/live tiers).
 
-Capture must never default on, and must never be implied by the other two. As built, it is
-stronger than that: `validate_scopes` *refuses* any capture selection but `none` while there is
-no capture implementation, and the CLI cannot set it at all. Namespace groups in the dashboard
-remain observed inventory, not baskets — the display contract already says so; the configured
-baskets are reported separately, alongside how many repositories they withhold or exclude.
+Capture must never default on, and must never be implied by the other two. Configuration refuses
+a non-`none` capture basket until an existing, separately confirmed recovery location is present.
+Namespace groups in the dashboard remain observed inventory, not baskets — the display contract
+already says so; the configured baskets are reported separately, alongside how many repositories
+they withhold or exclude.

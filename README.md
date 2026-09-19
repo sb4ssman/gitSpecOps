@@ -203,6 +203,25 @@ dashboard, publishes to its configured transports, and optionally pulls from tai
 No central host is required. Existing host/client configurations migrate automatically.
 See [the fleet guide](git-sync-suggester/docs/FLEET.md) for setup and transport commands.
 
+### Catch up safely
+
+When returning to a machine after time away, use the fleet command instead of pulling an
+unreviewed pile of checkouts by hand:
+
+```sh
+python git-sync-suggester/sync_suggester.py fleet catchup
+python git-sync-suggester/sync_suggester.py fleet catchup --apply --yes
+```
+
+The first command always performs a fresh, non-interactive fetch for each locally observed
+checkout and prints a plan. It changes no branch, index, or working file. The second command
+repeats that plan and fast-forwards only checkouts that are clean and behind-only; `--yes` makes
+the mutation explicit for terminal and unattended use. Dirty, untracked, ahead, diverged,
+detached, no-upstream, unreadable, and failed-fetch checkouts are listed for a human and are
+never altered. Catch up neither commits nor pushes work. Stop the local peer before running it;
+the command's configuration lock enforces that boundary, then the next peer start publishes the
+new status.
+
 ### What crosses the wire
 
 Published manifests (schema v3) identify repositories by `HMAC-SHA256(fleet secret,

@@ -29,7 +29,7 @@ export class FleetConnection extends EventTarget {
     } finally { this.busy = false; this.dispatchEvent(new CustomEvent('idle')); }
   }
   async desktopAction(action, payload, token) {
-    if (!['git-client', 'open-git-client'].includes(action) || !token) {
+    if (!['git-client', 'open-git-client', 'catchup-preview'].includes(action) || !token) {
       throw new Error('Desktop actions are unavailable in this dashboard.');
     }
     const response = await this.fetcher(`/v1/${action}`, {

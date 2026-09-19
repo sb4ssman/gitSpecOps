@@ -1,4 +1,4 @@
-"""Fleet app configuration: schema v4, the peer model with baskets.
+"""Fleet app configuration: schema v5, the peer model with baskets and recovery.
 
 v2 had two kinds of machine — a `host` that owned the database and served the dashboard, and
 `connect` clients that pushed reports to it. That asymmetry was the design mistake: when the
@@ -15,6 +15,9 @@ a peer is expected to have several, and adding a fourth should not mean four mor
 v4 adds `baskets`: per-scope repository selection (see `baskets.py`). Roots remain the
 filesystem boundary; baskets narrow what is observed, published and captured *within* it. The
 v3 defaults are "all" for observe and publish, so migrating changes no behavior.
+
+v5 adds a separately confirmed recovery location and local-only repository policies. Recovery
+never inherits the status transport: snapshots contain source content and filenames.
 """
 from __future__ import annotations
 
@@ -24,9 +27,11 @@ from pathlib import Path
 import baskets
 from manifest import is_fleet_secret
 from git_client import validate_choice
+from capture import CapturePolicy, CaptureRefused
+from snapshot_store import REPO_ID, StoreRefused, validate_location
 
 APP_CONFIG = "fleet-app.json"
-CONFIG_VERSION = 4
+CONFIG_VERSION = 5
 DEFAULT_LOCAL_PORT = 8760
 DEFAULT_TAILNET_PORT = 8765
 DEFAULT_FOLDER_SECONDS = 300
@@ -73,6 +78,12 @@ def migrate(config: dict) -> dict:
         # find. Capture is 'none' and stays there until the medium tier can actually capture.
         config = {**config, "version": 4,
                   "baskets": config.get("baskets") or copy.deepcopy(baskets.DEFAULT_SCOPES)}
+    if config.get("version") == 4:
+        prior = config.get("recovery") or {}
+        config = {**config, "version": 5,
+                  "recovery": {"location": prior.get("location"),
+                               "confirmed": bool(prior.get("confirmed", False)),
+                               "policies": prior.get("policies") or {}}}
     return config
 
 
@@ -90,12 +101,40 @@ def validate(config: dict) -> dict:
         raise ValueError("unsupported observation mode")
     if not config.get("roots") or any(not Path(p).is_dir() for p in config["roots"]):
         raise ValueError("every configured repository root must exist")
-    baskets.validate_scopes(config.get("baskets"))
+    scopes = baskets.validate_scopes(config.get("baskets"))
+    recovery = config.get("recovery")
+    if not isinstance(recovery, dict) or set(recovery) != {"location", "confirmed", "policies"}:
+        raise ValueError("recovery must define exactly location, confirmed, and policies")
+    location, confirmed, policies = recovery["location"], recovery["confirmed"], recovery["policies"]
+    if location is not None and (not isinstance(location, str) or not Path(location).is_dir()):
+        raise ValueError("recovery location must be an existing directory or null")
+    if not isinstance(policies, dict):
+        raise ValueError("recovery policies must be an object")
+    for repo_id, raw_policy in policies.items():
+        if not REPO_ID.fullmatch(str(repo_id)):
+            raise ValueError("recovery policy keys must be opaque repository ids")
+        if not isinstance(raw_policy, dict) or set(raw_policy) != {
+                "obey_gitignore", "secret_protection", "allow_paths"}:
+            raise ValueError("each recovery policy must define ignore, secret protection, and paths")
+        try:
+            CapturePolicy(**raw_policy).validate()
+        except (CaptureRefused, TypeError) as exc:
+            raise ValueError(f"invalid recovery policy: {exc}") from None
+    if location is not None and confirmed is not True:
+        raise ValueError("recovery location has not been explicitly confirmed")
+    if location is not None:
+        status_folder = ((config.get("transports") or {}).get("folder") or {}).get("path")
+        try:
+            validate_location(location, status_folder=status_folder, roots=config["roots"])
+        except StoreRefused as exc:
+            raise ValueError(str(exc)) from None
+    if scopes["capture"]["mode"] != "none" and (location is None or confirmed is not True):
+        raise ValueError("a capture basket needs a separately confirmed recovery location")
     heartbeat = config.get("heartbeat")
     if type(heartbeat) is not int or heartbeat < 1:
         raise ValueError("heartbeat must be a positive number of seconds")
     if heartbeat > 60:
-        raise ValueError("live heartbeat must be <= 60 seconds (stale threshold is 120 seconds)")
+        raise ValueError("heartbeat must be 60 seconds or less")
     debounce = config.get("debounce_seconds")
     if not isinstance(debounce, (int, float)) or isinstance(debounce, bool) or debounce < 0:
         raise ValueError("debounce_seconds must be zero or greater")
@@ -125,10 +164,32 @@ def validate(config: dict) -> dict:
     tailnet = transports.get("tailnet")
     if tailnet and not 1024 <= int(tailnet.get("port") or 0) <= 65535:
         raise ValueError("tailnet port must be between 1024 and 65535")
+    fetch_minutes = config.get("fetch_minutes", DEFAULT_FETCH_MINUTES)
+    if type(fetch_minutes) is not int or fetch_minutes < 0:
+        raise ValueError("fetch_minutes must be a whole number of minutes (0 turns fetching off)")
     # A peer with no transports is still legitimate: it observes itself and shows its own
     # dashboard. That is a useful single-machine tool, and refusing it would make the fleet
     # features a precondition for the basic ones.
     return config
+
+
+def recovery_policy(config: dict, repo_id: str) -> CapturePolicy:
+    """The local-only policy for one opaque repository id, safe by default."""
+    raw = ((config.get("recovery") or {}).get("policies") or {}).get(repo_id)
+    return CapturePolicy(**raw) if raw else CapturePolicy()
+
+
+def policy_record(policy: CapturePolicy) -> dict:
+    """JSON form kept in the local app config; do not sync this with fleet status."""
+    policy.validate()
+    return {"obey_gitignore": policy.obey_gitignore,
+            "secret_protection": policy.secret_protection,
+            "allow_paths": list(policy.allow_paths)}
+
+
+# `git fetch` every observed repository on this interval, so "behind" is measured against the
+# remote rather than against whenever someone last fetched by hand. 0 turns it off.
+DEFAULT_FETCH_MINUTES = 15
 
 
 def new_config(machine_id: str, label: str, roots, fleet_secret: str, *,
@@ -136,8 +197,10 @@ def new_config(machine_id: str, label: str, roots, fleet_secret: str, *,
                transports: dict | None = None, scopes: dict | None = None) -> dict:
     return {
         "version": CONFIG_VERSION, "mode": "peer",
+        "fetch_minutes": DEFAULT_FETCH_MINUTES,
         "baskets": baskets.validate_scopes(scopes) if scopes
                    else copy.deepcopy(baskets.DEFAULT_SCOPES),
+        "recovery": {"location": None, "confirmed": False, "policies": {}},
         "machine_id": machine_id, "label": label,
         "fleet_secret": fleet_secret,
         "roots": [str(Path(root).expanduser().resolve()) for root in roots],
