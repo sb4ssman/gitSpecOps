@@ -1,4 +1,4 @@
-# gitSpecOps
+# gitSpecOps 
 
 **git Special Operations** — careful, boring, stdlib-only tools for when you have far too many
 Git repositories and doing it by hand has stopped being reasonable.
@@ -43,15 +43,22 @@ each as a separate, explicitly approved class of change.
 ### 3. Sync Suggester
 
 *Know what every one of your machines left unfinished — which clone on which computer has
-uncommitted work, unpushed commits, or a report too stale to trust.*
+uncommitted work, unpushed commits, or a report too stale to trust — and then put it all in
+order from wherever you are sitting.*
 
 ```bash
-python3 git-sync-suggester/sync_suggester.py check
+python3 git-sync-suggester/sync_suggester.py check          # what needs attention, everywhere
+python3 git-sync-suggester/sync_suggester.py fleet catchup   # plan a group fast-forward
 ```
 
-It reads Git state and tells you what needs attention. **It never pulls, pushes, commits,
-stashes, or copies a working file.** Across machines it becomes the thing you actually want at
-2am: "you left 17 uncommitted files on the laptop."
+Across machines it becomes the thing you actually want at 2am: "you left 17 uncommitted files on
+the laptop." Then it helps you fix it: group fast-forward everything after weeks away, publish
+ahead-only work, clone a set you are missing, or recover uncommitted work stranded on a machine
+that is currently switched off.
+
+**Watching never changes anything** — the tray, the dashboard, the background peer and its
+scheduled fetch only observe. Every change is a command you ran, with a plan shown first and
+nothing ambiguous applied.
 
 ---
 
@@ -257,7 +264,7 @@ is executed:
 
 ```text
 git-sync-suggester/
-  sync_suggester.py   the read-only CLI: check, dashboard, converge, watch, doctor, fleet
+  sync_suggester.py   the CLI: check, dashboard, converge, watch, doctor, fleet
   core/               observation, manifests, advice, config, transports
   fleet/              live tier: protocol, SQLite store, observer, display contract
   app/                process shells: fleet app, tray, desktop bundle, start-at-login
@@ -280,8 +287,11 @@ that versioned contract rather than reclassifying Git facts.
   collected, never fatal, and reported at the end. Nothing ambiguous is auto-applied.
 - **Destructive-adjacent actions are interactive-only** and require typed confirmation. They are
   structurally excluded from scheduled and launcher runs.
-- **Sync Suggester never mutates a repository — including cloning.** When it finds repos you are
-  missing, it prints the `archive_sync.py` command that would fix it, and stops.
+- **Watching never changes anything; mutation is always a command you invoked.** The peer, the
+  tray, the dashboard and the scheduled fetch only observe and report — nothing is changed as a
+  side effect of observation, or of time passing. Sync Suggester's mutating operations
+  (`fleet catchup --apply`, `fleet materialize --apply`, recovery restore) are named, confirmed,
+  refuse to run beside a live peer, and follow the same plan-then-approve ladder as the rest.
 - **Bounded everything.** Per-command timeouts, bounded discovery, bounded thread pools, forced
   non-interactive Git so nothing can hang on a hidden prompt.
 - **Your credentials stay yours.** No token is read, stored, forwarded, or logged.

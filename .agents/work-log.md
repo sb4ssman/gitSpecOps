@@ -1,5 +1,65 @@
 # Work log
 
+## 2026-09-20 — the "read-only" rule was never a rule; brief realigned to the product goal
+
+The user challenged the claim that Sync Suggester "never pulls, pushes, commits, stashes, or
+otherwise touches an observed repository." It is a tool for performing Git operations across many
+repositories; the claim could not be true and should never have been an invariant.
+
+**Archaeology.** Both the brief's "never touches an observed repository" and the root README's
+"never mutates a repository — including cloning" were written on **2026-09-03**, in
+`feat(sync-suggester): complete the first vertical slice`. They accurately described that slice,
+which only observed and printed advice — the name *suggester* is from the same era. On the **same
+day**, `new-tool-sync-suggester.md` recorded the opposite as the goal: "Convergence is the
+product, not just observation." A temporary implementation scope was written into the primary
+brief as a permanent safety principle, where it outranked the recorded product goal for 17 days.
+On 2026-09-19 a session noticed the conflict and bolted an "Amended:" exception onto the rule
+rather than deleting it, which made the document worse.
+
+**Resolution — one principle, replacing the false one.** It is the family model the archive
+updater already follows, correctly scoped:
+
+1. **Watching never changes anything.** No mutation may be a side effect of observation or of
+   time passing — not from the peer loop, watcher, tray, dashboard, or scheduled fetch. A daemon
+   that silently pulls is the real catastrophe the old rule was groping at.
+2. **Every mutation is a command the user invoked**, planned, shown and confirmed:
+   detect → plan → approve → execute → review.
+
+**Changes.** Added a "What this is for" section at the top of the brief stating the product goal
+in the user's own terms, with an explicit precedence rule: if a later rule contradicts it, the
+goal wins and the rule is the defect. Replaced the false invariant in the brief and the root
+README; left a dated correction note at the Sync Suggester section so the framing is not restored
+by a future session. Corrected consequential wording (`sync_suggester.py` is no longer described
+as "the read-only CLI"; the fetch section no longer justifies itself as "what keeps a read-only
+tool read-only"; live smoke-testing guidance now distinguishes observation commands from mutating
+ones). Documentation only; no code changed; hygiene gate passes over 139 tracked files.
+
+**Lesson worth keeping:** the brief had no statement of what the project is *for*, so
+implementation detail had nothing to outrank it. Scope descriptions must not be written as
+principles, and a document that outranks the goal must state the goal.
+
+## 2026-09-19 (later) — records reconciled with the shipped tree
+
+Audit of the preceding checkpoint: the code is real and green (**34/34 on Windows, re-verified
+here**), and the working notes and work log had been tended. The gap was the durable record.
+
+- **Updated the project brief** (`.agents/README.md`), which had not been touched since
+  2026-09-11 and described a smaller tool than exists. Added the eight `core/` recovery modules,
+  the `fleet` command surface (`preflight`, `audit`, `catchup`, `materialize`, `live-buffers`,
+  `safe-to-wipe`), and the not-encrypted decision.
+- **Corrected two now-false invariants in the brief.** It claimed the tool never touches an
+  observed repository and never clones. `catchup --apply` and `materialize --apply` do both. The
+  rules are restated as the boundary that actually holds: observation is read-only, mutation is a
+  separate terminal command that refuses to run beside a live peer and that no dashboard, tray, or
+  schedule can reach.
+- **Corrected `HANDOFF.md`**: it said the recovery work was uncommitted (it is committed, tree
+  clean) and gave three different suite counts (27/27, 26/26, 26/26). All now 34/34.
+- Reordered the 2026-09-16 entry below 2026-09-17 in this newest-first file, and closed the stale
+  "peer wiring and retirement proof remain" bullet in the working notes, which the same commit had
+  already contradicted 200 lines above.
+- Documentation only. No product code, test, remote, or configuration changed. Repository hygiene
+  gate passes over 139 tracked files.
+
 ## 2026-09-19 — medium recovery activated; catch-up surfaced safely
 
 - Completed the medium-tier recovery chain: schema v5 holds a separately confirmed private
@@ -80,13 +140,6 @@ Append-only record of **completed** work. Newest first. Items that graduate from
 - Ran the complete Windows suite alone through the repository virtual environment:
   **26/26 test files passed**. No deployment or Git network/mutation operation occurred.
 
-## 2026-09-16 — Notes-only checkpoint
-
-- Read the current notes and preserved the newer September 12 recovery work.
-- Located the World Monitor and Agent Prime note locations and prepared the
-  user's stop-and-restart decision there for review.
-- No product code changed. No tests, fetches, pulls, commits, or pushes ran.
-
 ## 2026-09-17 — core path audit: read end to end, seven confirmed defects fixed
 
 The user's goal: every machine shows a tray icon and dashboard answering "which repos have
@@ -123,6 +176,13 @@ an inventory; tailnet polling moved off the observation loop.
 New `tests/fleet/test_core_path.py` (11 tests). One existing test encoded bug 1 ("unchanged
 state is never re-sent") and was corrected. Windows suite alone: **26/26**.
 Not yet done: a live run on the user's real machines.
+
+## 2026-09-16 — Notes-only checkpoint
+
+- Read the current notes and preserved the newer September 12 recovery work.
+- Located the World Monitor and Agent Prime note locations and prepared the
+  user's stop-and-restart decision there for review.
+- No product code changed. No tests, fetches, pulls, commits, or pushes ran.
 
 ## 2026-09-12 (later still) — recovery: restore, and capture policy toggles
 
