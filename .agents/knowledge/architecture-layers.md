@@ -52,19 +52,16 @@ naming convention enforces the architecture for free.
 
 ## The shape on disk
 
-Listed as the filesystem shows it — **alphabetical, folders before files** — because that is how
-it will actually be read:
+Alphabetical, folders before files:
 
 ```
 gitSpecOps/
 ├── .agents/              brief, working notes, work log, knowledge
 │
-├── App/                  the thing in your tray
-│     skins/
-│       lcars/  modern/  retro/
-│       CONTRACT.md
-│     _contract.py
-│     autostart  cli  dashboard  peer  tray
+├── App/                  OPTIONAL, and mostly the tray
+│     skins/   lcars/  modern/  retro/   CONTRACT.md   _contract.py
+│     tray/    the primary surface; per-OS bits from plugins-local/platform/
+│     autostart  cli  dashboard  peer
 │
 ├── Basic/                ONE operation, wrapped with care
 │     git/     clone  fetch  pull  push  revs  status
@@ -97,10 +94,6 @@ gitSpecOps/
 └── tests/                mirrors the stack
       App/  Basic/  Elaborate/  Special/  probes/  repo/
 ```
-
-**Alphabetical order is not dependency order.** On disk it reads App, Basic, Elaborate, Special;
-the stack is Basic → Special → Elaborate → App. The filesystem cannot show the stack, so the
-documentation and the import test are what carry it. Do not infer layering from the folder list.
 
 ## Three seams, one shape
 
@@ -139,6 +132,23 @@ anticipates this — `gitspecops.fleet.display` is versioned, one module is perm
 into display semantics, and every skin (**including LCARS**) must consume it and must never
 reimplement Git or freshness policy. It becomes `App/skins/CONTRACT.md`; today's dashboard becomes
 `App/skins/modern/`.
+
+## App is optional, and it is mostly the tray
+
+Every operation below `App/` is usable from the terminal, on its own, forever. **The App is
+optional and so is the tray** — they add presence, not capability. Nothing in the stack may come
+to depend on the App existing.
+
+`App/tray/` is the primary surface and the bulk of what the App *is*; the dashboard and its skins
+are second. gitSpecOps gets to live in the tray only if the user lets it, and the best thing it
+does from there is **suggest sync** — glance at the tray, see that repositories need attention,
+open the dashboard for where and what, act from either the dashboard or the terminal.
+
+The tray stays in `App/tray/` rather than becoming a plugin, because it must own the main thread
+and the Win32 message loop (`fleet_app._main` already carries a `stopping`/`on_ready` seam for
+exactly this reason — `signal.signal` cannot run off the main thread). It *calls into*
+`plugins-local/platform/` for the per-OS mechanisms, which is the right split: one tray, three
+implementations of what it needs from the operating system.
 
 ## Every operation declares its effect
 
@@ -185,10 +195,3 @@ breaks start-at-login on every machine — *silently*: the app simply stops comi
 reboot, the worst failure mode for a tool whose whole job is noticing things.
 
 Migrate first, enroll onto the final layout.
-
-## Open
-
-- `plugins-local/`'s internal split (editors / git-clients / platform) is proposed, not settled.
-- Whether `plugins-local/platform/` absorbs the tray implementations themselves, or only the
-  autostart and filesystem-watch mechanisms, since a tray must live on the main thread and owns
-  the Win32 message loop.

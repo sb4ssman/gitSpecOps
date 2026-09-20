@@ -17,9 +17,11 @@ outranked the product goal for 17 days and had to be removed; see the work log.
 always a command the user invoked*. Do not restate that as "Sync Suggester is read-only", and do
 not bolt exceptions onto a rule that is wrong — fix the rule.
 
-- [ ] **The name is a vestige.** "Sync *Suggester*" is from the era when it only suggested
-  commands for the user to run. It now performs group operations. Renaming is cheap in docs and
-  expensive in paths/config keys — raise it with the user before the first release, not after.
+- [x] **"Sync Suggester" is not a vestigial name — resolved 2026-09-20.** An earlier note here
+  claimed it was left over from the read-only era and should be reconsidered before release. The
+  user settled it: *the best thing it does is suggest sync.* Suggesting is the headline value, not
+  the old limitation — the tool now suggests **and** can act, and the suggestion is still the part
+  that earns its place in the tray. Do not reopen this as a rename.
 
 ### 2026-09-19 — Product direction confirmed; implementation is ready to resume
 
