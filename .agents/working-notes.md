@@ -3,9 +3,23 @@
 Living todo / scratch pad. Add items freely; **prune regularly**. When something is done, move it
 into [`work-log.md`](work-log.md) with an absolute date. Dates are always absolute.
 
-_Last tended: 2026-09-19_
+_Last tended: 2026-09-20_
 
 ## Open
+
+### 2026-09-20 — the goal outranks the rules; do not re-derive "read-only"
+
+The brief now opens with **What this is for**. If anything further down contradicts it, the goal
+wins and the rule is the defect. This is not hypothetical — a scaffold-era "never writes" claim
+outranked the product goal for 17 days and had to be removed; see the work log.
+
+**These tools perform Git operations.** The boundary is *observation never mutates; mutation is
+always a command the user invoked*. Do not restate that as "Sync Suggester is read-only", and do
+not bolt exceptions onto a rule that is wrong — fix the rule.
+
+- [ ] **The name is a vestige.** "Sync *Suggester*" is from the era when it only suggested
+  commands for the user to run. It now performs group operations. Renaming is cheap in docs and
+  expensive in paths/config keys — raise it with the user before the first release, not after.
 
 ### 2026-09-19 — Product direction confirmed; implementation is ready to resume
 
@@ -231,12 +245,16 @@ work log.
   `--ff-only`; allow push only for a clean ahead-only checkout after revalidation and never force;
   require diff/file review and an entered message for commits. Diverged or conflicted work needs an
   explicit merge/rebase workflow or launch into an installed Git client, not a one-click guess.
-- [ ] **Recovery snapshots (user names: stealth-stash / stealth-sync).** This is an opt-in,
-  unencrypted snapshot of staged, unstaged and selected untracked work that survives the source
-  machine going offline, can be previewed/applied elsewhere, and expires only after retirement
-  proof. Capture, storage, preview, restore and the retention/size/ignore/secret-scan/deletion
-  controls are built; peer wiring and retirement proof remain. The dashboard must keep it
-  unavailable until then; do not present a cosmetic toggle.
+- [x] **Recovery snapshots (user names: stealth-stash / stealth-sync) — local chain complete
+  2026-09-19.** An opt-in, unencrypted snapshot of staged, unstaged and selected untracked work
+  that survives the source machine going offline, can be previewed/applied elsewhere, and expires
+  only after retirement proof. Capture, storage, preview, restore, the
+  retention/size/ignore/secret-scan/deletion controls, peer checksum acknowledgement and exact
+  retirement proof are all built and tested. Availability is still gated on explicit
+  recovery-location and capture-basket enrollment, so an unenrolled dashboard correctly shows it
+  unavailable — do not present a cosmetic toggle. **Remaining: cross-machine verification on real
+  peers**, and the separate open decision on whether unsaved buffer *content* may ever leave a
+  machine.
 
 - [ ] **Legacy transports: `state_dir` and `state_repo` both ship; folder auto-detection is not built.**
   The user chose "both, gh-backed first" — the gh Contents API transport landed 2026-09-03. Still

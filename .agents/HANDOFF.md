@@ -26,9 +26,12 @@ operational or needs a new product/privacy decision: enroll real peers, validate
 cut/sign/publish a release, and decide whether unsaved buffer *content* may ever cross machines.
 
 On 2026-09-19 the Windows suite ran alone through the repository virtual environment:
-**27/27 test files passed before the final recovery activation; targeted new recovery and
-fleet tests pass afterward.** The recovery work is still uncommitted. No live fleet
-deployment, fetch, pull, commit, or push was performed in this preparation step.
+**34/34 test files passed** — re-verified after the work landed. The recovery work is
+**committed** (`checkpoint`), and the working tree is clean. No live fleet deployment, fetch,
+pull, commit, or push against a real remote was performed.
+
+**The next step is operational, not code.** Everything below the "Open decisions owed by the
+user" heading is what remains; the blocking item is that no machine is enrolled yet.
 
 ## Continuation update — 2026-09-11
 
@@ -54,7 +57,7 @@ and the capture basket still refuses every setting other than `none`.
    ```
    Then read the output file.
 2. **Run the suite.** `& .\.venv\Scripts\python.exe tests\run_all.py` on Windows —
-   26/26 as of this handoff. Do not run the suite in parallel with itself.
+   34/34 as of this handoff. Do not run the suite in parallel with itself.
 3. **Never commit personal information.** No local paths, machine names, addresses, or real
    account/org/repo names — in code, comments, tests, notes, or commit messages.
    `tests/repo/test_repo_hygiene.py` enforces it; it has already caught real leaks.
@@ -149,7 +152,7 @@ Each of these shipped once. They are in the code comments too — do not re-lear
 ## Verification commands
 
 ```bash
-python tests/run_all.py                                    # 26/26
+python tests/run_all.py                                    # 34/34
 python tests/repo/test_repo_hygiene.py                     # sanitization gate
 python git-archive-updater/archive_diff.py                 # pure-logic self-test
 python git-sync-suggester/sync_suggester.py dashboard --serve   # local dashboard, no Tailscale
