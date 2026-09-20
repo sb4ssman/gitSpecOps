@@ -7,9 +7,10 @@ Unlike [`../working-notes.md`](../working-notes.md), which is transient and prun
 **kept**. Reach for this folder when you learn something worth remembering next session: a design
 decision and its rationale, a non-obvious constraint, an investigation result.
 
-- [`architecture-layers.md`](architecture-layers.md) — **agreed direction, migration not started.**
-  The layer stack (platform → basic → providers → special → elaborate → app), the one-way import
-  rule, why it is how "git-agnostic" gets done, and why it precedes enrolling machines.
+- [`architecture-layers.md`](architecture-layers.md) — **shape agreed, migration not started.**
+  The layer stack (Basic → Special → Elaborate → App) as *composition*, the one-way import rule,
+  the three kinds of file, the three plugin seams and their contracts, `effect` declarations, and
+  why the migration precedes enrolling machines.
 - [`at-risk-work.md`](at-risk-work.md) — **design, not built.** Detecting repositories that exist
   in only one place; the risk classes, and the remote-free root-commit identity they need.
 - [`change-detection.md`](change-detection.md) — how change is noticed without scanning.

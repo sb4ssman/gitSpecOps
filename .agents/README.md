@@ -115,9 +115,10 @@ there freely. That is the release valve.
 
 ## Repo Shape
 
-> **Target architecture agreed 2026-09-20:** a layer stack —
-> `platform → basic → providers → special → elaborate → app` — with a one-way import rule, and
-> `tests/ build/ docs/` running parallel to it. See
+> **Target architecture agreed 2026-09-20:** a composition stack —
+> `Basic → Special → Elaborate → App` — with a one-way import rule, two plugin seams
+> (`plugins-remote/`, `plugins-local/`) plus skins under `App/`, and `tests/ build/ docs/` at the
+> root. See
 > [`knowledge/architecture-layers.md`](knowledge/architecture-layers.md) for the model, the
 > migration phases, and why it precedes enrolling machines. **The section below describes what is
 > on disk today**, which is still the tool-folder layout. Update it as each phase lands.
