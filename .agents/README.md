@@ -96,17 +96,31 @@ there freely. That is the release valve.
 
 ### Constraints that do not bend
 
-- **Auth belongs to the user.** Tools shell out only to already-authenticated host CLIs
-  (`gh auth login`, ...); nothing here stores, configures, or manages credentials.
-- **Keep the repo flat.** No `src/` package and no console-script entry points unless the user
-  explicitly asks. Tool folders may group modules into subfolders (Sync Suggester does, via
-  `_paths.py`), but they stay plain scripts.
+- **Prior auth first. Auth belongs to the user.** Tools shell out only to already-authenticated
+  host CLIs (`gh auth login`, ...); nothing here stores, configures, or manages credentials, and
+  nothing falls back to asking for a secret.
+- **Cross-platform first.** Windows, Linux and macOS are peers, not a primary and two ports. A
+  platform-specific mechanism (registry Run key, XDG autostart, LaunchAgent, `ReadDirectoryChangesW`
+  vs inotify) is written behind one command that works everywhere.
+- **Plain scripts, layered — not a package.** No `src/` package, no console-script entry points,
+  no clever indirection; every module stays a plain script that can be run directly. Directories
+  express the layer stack ([`knowledge/architecture-layers.md`](knowledge/architecture-layers.md)),
+  with a one-way import rule: a layer imports only layers below it. *Amended 2026-09-20 — this
+  previously read "keep the repo flat", which was about avoiding premature packaging; it was
+  being read as "never introduce structure" and would have contradicted the agreed architecture.*
 - **No runtime dependencies.** Everything is stdlib. A build-time tool (PyInstaller) lives in a
   disposable environment, never in `pyproject.toml`.
 - **Validate on the platform you claim.** "The suite passes" means the suite passes *here*.
   Windows-only defects have shipped twice because validation happened on Linux.
 
 ## Repo Shape
+
+> **Target architecture agreed 2026-09-20:** a layer stack —
+> `platform → basic → providers → special → elaborate → app` — with a one-way import rule, and
+> `tests/ build/ docs/` running parallel to it. See
+> [`knowledge/architecture-layers.md`](knowledge/architecture-layers.md) for the model, the
+> migration phases, and why it precedes enrolling machines. **The section below describes what is
+> on disk today**, which is still the tool-folder layout. Update it as each phase lands.
 
 This repo is intentionally small. Keep it that way.
 
