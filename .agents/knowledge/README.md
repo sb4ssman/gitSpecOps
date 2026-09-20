@@ -11,6 +11,8 @@ decision and its rationale, a non-obvious constraint, an investigation result.
   The layer stack (Basic → Special → Elaborate → App) as *composition*, the one-way import rule,
   the three kinds of file, the three plugin seams and their contracts, `effect` declarations, and
   why the migration precedes enrolling machines.
+- [`architecture-diagram.md`](architecture-diagram.md) — the layer stack as a picture: the ASCII
+  flow chart, what it asserts, and where the rendered version lives.
 - [`at-risk-work.md`](at-risk-work.md) — **design, not built.** Detecting repositories that exist
   in only one place; the risk classes, and the remote-free root-commit identity they need.
 - [`change-detection.md`](change-detection.md) — how change is noticed without scanning.

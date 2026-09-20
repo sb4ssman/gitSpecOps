@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gitSpecOps — how it fits together</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body { margin: 0; background: #0E110F; font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+a { color: #C9A86A; } a:hover { color: #E0BE84; }
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 1120px; box-sizing: border-box; background: #0E110F; color: #E7EAE5; position: relative; overflow: hidden;">
+
+  <div style="position: absolute; left: 60px; top: 34px; width: 1320px; display: flex; flex-direction: column; gap: 7px;">
+    <h1 style="margin: 0; font-size: 27px; font-weight: 600; letter-spacing: -0.01em;">gitSpecOps</h1>
+    <p style="margin: 0; font-size: 15px; line-height: 1.5; color: #98A399; max-width: 1000px;">Take git operations. Assume you are already authenticated. Make repeating them easy — safely, across far too many repositories, in too many places. Each layer below is built on the one above it.</p>
+  </div>
+
+  <svg width="1440" height="1120" viewBox="0 0 1440 1120" style="position: absolute; left: 0; top: 0;" aria-hidden="true">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#54634F"></path>
+      </marker>
+    </defs>
+    <g stroke="#54634F" stroke-width="1.5" fill="none" marker-end="url(#ar)">
+      <path d="M 640 206 L 640 250"></path>
+      <path d="M 640 406 L 640 450"></path>
+      <path d="M 640 596 L 640 640"></path>
+      <path d="M 640 796 L 640 840"></path>
+      <path d="M 1190 206 L 1190 250"></path>
+      <path d="M 310 331 L 354 331"></path>
+      <path d="M 310 526 L 354 526"></path>
+      <path d="M 310 721 L 354 721"></path>
+    </g>
+    <g stroke="#41504F" stroke-width="1.5" stroke-dasharray="5 5" fill="none">
+      <path d="M 920 331 L 1000 331"></path>
+      <path d="M 920 721 L 1000 721"></path>
+      <path d="M 920 911 L 1000 911"></path>
+    </g>
+  </svg>
+
+  <div style="position: absolute; left: 662px; top: 221px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: #8A9489; letter-spacing: 0.04em;">wrapped with care</div>
+  <div style="position: absolute; left: 662px; top: 421px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: #8A9489; letter-spacing: 0.04em;">repeated, with judgment</div>
+  <div style="position: absolute; left: 662px; top: 611px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: #8A9489; letter-spacing: 0.04em;">widened — machines, time</div>
+  <div style="position: absolute; left: 662px; top: 811px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: #8A9489; letter-spacing: 0.04em;">assembled for a human</div>
+  <div style="position: absolute; left: 1212px; top: 221px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: #8A9489; letter-spacing: 0.04em;">wrapped too</div>
+  <div style="position: absolute; left: 924px; top: 309px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; color: #6E7C7B; letter-spacing: 0.06em;">contract</div>
+  <div style="position: absolute; left: 924px; top: 699px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; color: #6E7C7B; letter-spacing: 0.06em;">contract</div>
+  <div style="position: absolute; left: 924px; top: 889px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; color: #6E7C7B; letter-spacing: 0.06em;">contract</div>
+
+  <div style="position: absolute; left: 360px; top: 130px; width: 560px; height: 76px; box-sizing: border-box; border: 1px solid #2A322B; border-radius: 10px; background: #12161300; padding: 15px 22px; display: flex; flex-direction: column; gap: 5px;">
+    <div style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 15px; color: #E7EAE5;">git</div>
+    <p style="margin: 0; font-size: 12.5px; color: #8E998D;">Your real git, on PATH. Everything here shells out to it — nothing reimplements it.</p>
+  </div>
+
+  <div style="position: absolute; left: 1000px; top: 130px; width: 380px; height: 76px; box-sizing: border-box; border: 1px solid #2A322B; border-radius: 10px; padding: 15px 22px; display: flex; flex-direction: column; gap: 5px;">
+    <div style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 15px; color: #E7EAE5;">gh, and its kind</div>
+    <p style="margin: 0; font-size: 12.5px; color: #8E998D;">Already logged in. Auth is assumed, never stored or asked for.</p>
+  </div>
+
+  <div style="position: absolute; left: 360px; top: 256px; width: 560px; height: 150px; box-sizing: border-box; border: 1px solid #2B4640; border-radius: 10px; background: #111917; padding: 18px 22px; display: flex; flex-direction: column; gap: 10px;">
+    <div style="display: flex; align-items: baseline; gap: 12px;">
+      <span style="font-size: 21px; font-weight: 600; color: #7FB6A6;">Basic</span>
+      <span style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.12em; color: #6E9188;">ONE OPERATION · ADDS CARE</span>
+    </div>
+    <p style="margin: 0; font-size: 13.5px; line-height: 1.5; color: #B9C2B8;">One git or remote operation, wrapped. Always a timeout, never interactive, structured results, and no <code style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; color: #E7EAE5;">--force</code> available at all.</p>
+    <div style="display: flex; gap: 22px;">
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.1em; color: #6E9188;">git/</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: #A9D0C4;">
+          <span style="border: 1px solid #2B4640; border-radius: 4px; padding: 2px 7px;">fetch</span>
+          <span style="border: 1px solid #2B4640; border-radius: 4px; padding: 2px 7px;">pull</span>
+          <span style="border: 1px solid #2B4640; border-radius: 4px; padding: 2px 7px;">push</span>
+          <span style="border: 1px solid #2B4640; border-radius: 4px; padding: 2px 7px;">clone</span>
+          <span style="border: 1px solid #2B4640; border-radius: 4px; padding: 2px 7px;">status</span>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.1em; color: #6E9188;">remote/</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: #A9D0C4;">
+          <span style="border: 1px solid #2B4640; border-radius: 4px; padding: 2px 7px;">repo-list</span>
+          <span style="border: 1px solid #2B4640; border-radius: 4px; padding: 2px 7px;">repo-create</span>
+          <span style="border: 1px solid #2B4640; border-radius: 4px; padding: 2px 7px;">repo-view</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 360px; top: 456px; width: 560px; height: 140px; box-sizing: border-box; border: 1px solid #453A26; border-radius: 10px; background: #1A1711; padding: 18px 22px; display: flex; flex-direction: column; gap: 9px;">
+    <div style="display: flex; align-items: baseline; gap: 12px;">
+      <span style="font-size: 21px; font-weight: 600; color: #C9A86A;">Special</span>
+      <span style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.12em; color: #9C8C68;">REPEATED · ADDS JUDGMENT</span>
+    </div>
+    <p style="margin: 0; font-size: 13.5px; line-height: 1.5; color: #B9C2B8;">A Basic operation repeated, with <strong style="color: #E7EAE5;">the logic of the repetition</strong> — which qualify, what to skip, what to collect and report. A loop is not a Special operation.</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px;">
+      <span style="border: 1px solid #453A26; border-radius: 4px; padding: 2px 7px; color: #DBC59A;">archive-update</span>
+      <span style="border: 1px solid #453A26; border-radius: 4px; padding: 2px 7px; color: #DBC59A;">archive-sync</span>
+      <span style="border: 1px solid #453A26; border-radius: 4px; padding: 2px 7px; color: #DBC59A;">publish</span>
+      <span style="border: 1px solid #453A26; border-radius: 4px; padding: 2px 7px; color: #DBC59A;">duplicate-org</span>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 360px; top: 646px; width: 560px; height: 150px; box-sizing: border-box; border: 1px solid #47332A; border-radius: 10px; background: #1A1513; padding: 18px 22px; display: flex; flex-direction: column; gap: 9px;">
+    <div style="display: flex; align-items: baseline; gap: 12px;">
+      <span style="font-size: 21px; font-weight: 600; color: #CE8B6A;">Elaborate</span>
+      <span style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.12em; color: #A38273;">WIDER SCALE · ADDS REACH</span>
+    </div>
+    <p style="margin: 0; font-size: 13.5px; line-height: 1.5; color: #B9C2B8;">Wider scale — across machines, and across time. The only layer that knows other machines exist, or that anything runs on a schedule.</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px;">
+      <span style="border: 1px solid #47332A; border-radius: 4px; padding: 2px 7px; color: #D6AE97;">observe</span>
+      <span style="border: 1px solid #47332A; border-radius: 4px; padding: 2px 7px; color: #D6AE97;">catchup</span>
+      <span style="border: 1px solid #47332A; border-radius: 4px; padding: 2px 7px; color: #D6AE97;">at-risk</span>
+      <span style="border: 1px solid #47332A; border-radius: 4px; padding: 2px 7px; color: #D6AE97;">materialize</span>
+      <span style="border: 1px solid #47332A; border-radius: 4px; padding: 2px 7px; color: #D6AE97;">capture</span>
+      <span style="border: 1px solid #47332A; border-radius: 4px; padding: 2px 7px; color: #D6AE97;">restore</span>
+      <span style="border: 1px solid #47332A; border-radius: 4px; padding: 2px 7px; color: #D6AE97;">retire</span>
+      <span style="border: 1px solid #47332A; border-radius: 4px; padding: 2px 7px; color: #D6AE97;">archive-manage</span>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 360px; top: 846px; width: 560px; height: 130px; box-sizing: border-box; border: 1px solid #3A3348; border-radius: 10px; background: #17161C; padding: 18px 22px; display: flex; flex-direction: column; gap: 9px;">
+    <div style="display: flex; align-items: baseline; gap: 12px;">
+      <span style="font-size: 21px; font-weight: 600; color: #A895C4;">App</span>
+      <span style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.12em; color: #8E86A0;">OPTIONAL · ADDS PRESENCE</span>
+    </div>
+    <p style="margin: 0; font-size: 13.5px; line-height: 1.5; color: #B9C2B8;">All of it assembled for a human, and mostly the tray: glance, see what needs attention, get the sync suggested. It holds no policy of its own.</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px;">
+      <span style="border: 1px solid #3A3348; border-radius: 4px; padding: 2px 7px; color: #C2B8D4;">tray</span>
+      <span style="border: 1px solid #3A3348; border-radius: 4px; padding: 2px 7px; color: #C2B8D4;">dashboard</span>
+      <span style="border: 1px solid #3A3348; border-radius: 4px; padding: 2px 7px; color: #C2B8D4;">peer</span>
+      <span style="border: 1px solid #3A3348; border-radius: 4px; padding: 2px 7px; color: #C2B8D4;">autostart</span>
+      <span style="border: 1px solid #3A3348; border-radius: 4px; padding: 2px 7px; color: #C2B8D4;">cli</span>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 60px; top: 256px; width: 250px; height: 540px; box-sizing: border-box; border: 1px solid #2A322B; border-radius: 10px; padding: 22px 20px; display: flex; flex-direction: column; gap: 14px;">
+    <div style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; letter-spacing: 0.14em; color: #98A399;">ENTRY POINT</div>
+    <div style="font-size: 22px; font-weight: 600;">Terminal</div>
+    <p style="margin: 0; font-size: 13.5px; line-height: 1.55; color: #B9C2B8;">Come in at <strong style="color: #E7EAE5;">any layer</strong>. Every operation is a plain script that runs on its own — you never have to start at the top.</p>
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 9px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: #8E998D; line-height: 1.5;">
+      <div>pull.py &lt;repo&gt;</div>
+      <div>archive-update.py --root …</div>
+      <div>catchup.py --apply</div>
+    </div>
+    <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #7F8A7F;">Nothing above ever depends on the App existing.</p>
+  </div>
+
+  <div style="position: absolute; left: 1000px; top: 256px; width: 380px; height: 150px; box-sizing: border-box; border: 1px dashed #3F4A52; border-radius: 10px; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; color: #C7CFD4;">plugins-remote/</div>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: #97A3AB;">
+      <span style="border: 1px solid #333D44; border-radius: 4px; padding: 2px 7px;">github</span>
+      <span style="border: 1px solid #333D44; border-radius: 4px; padding: 2px 7px;">gitlab</span>
+      <span style="border: 1px solid #333D44; border-radius: 4px; padding: 2px 7px;">gitea</span>
+      <span style="border: 1px solid #333D44; border-radius: 4px; padding: 2px 7px;">plain-git</span>
+    </div>
+    <p style="margin: 0; font-size: 12px; line-height: 1.45; color: #7F8A90;">Chosen by the remote URL. Basic names no host, so a second host is a new folder rather than a rewrite — this is how git-agnostic actually happens.</p>
+  </div>
+
+  <div style="position: absolute; left: 1000px; top: 646px; width: 380px; height: 150px; box-sizing: border-box; border: 1px dashed #3F4A52; border-radius: 10px; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; color: #C7CFD4;">plugins-local/</div>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: #97A3AB;">
+      <span style="border: 1px solid #333D44; border-radius: 4px; padding: 2px 7px;">platform</span>
+      <span style="border: 1px solid #333D44; border-radius: 4px; padding: 2px 7px;">editors</span>
+      <span style="border: 1px solid #333D44; border-radius: 4px; padding: 2px 7px;">git-clients</span>
+    </div>
+    <p style="margin: 0; font-size: 12px; line-height: 1.45; color: #7F8A90;">Chosen by detection, never configured. Windows, Linux and macOS are peers — adding one is adding a folder, and no caller ever branches on OS. The tray reaches it too.</p>
+  </div>
+
+  <div style="position: absolute; left: 1000px; top: 846px; width: 380px; height: 130px; box-sizing: border-box; border: 1px dashed #3F4A52; border-radius: 10px; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; color: #C7CFD4;">App/skins/</div>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: #97A3AB;">
+      <span style="border: 1px solid #333D44; border-radius: 4px; padding: 2px 7px;">modern</span>
+      <span style="border: 1px solid #333D44; border-radius: 4px; padding: 2px 7px;">retro</span>
+      <span style="border: 1px solid #333D44; border-radius: 4px; padding: 2px 7px;">lcars</span>
+    </div>
+    <p style="margin: 0; font-size: 12px; line-height: 1.45; color: #7F8A90;">The one genuine choice. A skin consumes the versioned display contract and refuses a version it does not know; it never reimplements Git policy.</p>
+  </div>
+
+  <div style="position: absolute; left: 60px; top: 1012px; width: 1320px; height: 72px; box-sizing: border-box; border-top: 1px solid #2A322B; padding-top: 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px;">
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <div style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.12em; color: #7FB6A6;">BUILDS ONLY ON WHAT IS ABOVE</div>
+      <p style="margin: 0; font-size: 12.5px; line-height: 1.45; color: #98A399;">A layer uses only the layers above it — never sideways, never what comes after. A test reads the imports and says so.</p>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <div style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.12em; color: #C9A86A;">NOTHING IMPORTS A PLUGIN</div>
+      <p style="margin: 0; font-size: 12.5px; line-height: 1.45; color: #98A399;"><code style="font-family: 'JetBrains Mono', ui-monospace, monospace; color: #C6CFC5;">import plugins-remote</code> is a syntax error. Plugins load by path, so no layer can depend on one.</p>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <div style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.12em; color: #CE8B6A;">WATCHING CHANGES NOTHING</div>
+      <p style="margin: 0; font-size: 12.5px; line-height: 1.45; color: #98A399;">The peer, tray and dashboard only observe. Every change is a command you invoked, planned and confirmed.</p>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1120}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
