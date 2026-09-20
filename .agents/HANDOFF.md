@@ -26,6 +26,30 @@ optional — mostly the tray. A layer uses only the layers above it in the diagr
 dependency sense): never sideways, never what comes after. `plugins-remote/`, `plugins-local/` and
 `App/skins/` sit off the stack behind contracts; nothing imports them, they are loaded by path.
 
+### Decisions taken 2026-09-20 — do not reopen these
+
+- **Work directly on `main`.** The user is the only user and prefers to fix things cleanly rather
+  than carry a long-lived branch. Keep each phase committed and green so `main` is never left
+  mid-move for long.
+- **Direct script paths are the command surface.** One file is one command; there is **no
+  dispatcher**:
+  ```
+  python Basic/git/pull.py <repo>
+  python Special/archive-update.py --root <archive>
+  python Elaborate/catchup.py --apply --yes
+  python App/cli.py tray
+  ```
+  `ls` on a layer lists exactly what that layer can do, and nothing has to be kept in sync with a
+  registry. Consequence for phase 5: each operation declares its `effect` as a module-level
+  constant in its own file, and the invariant test **collects them by scanning the layer folders**
+  rather than reading a central list. Consequence for phase 3: `LAUNCHER_SPECS` targets the new
+  direct paths. The monolithic entry points (`sync_suggester.py`, `archive_manager.py` as a CLI
+  front door, `github_org_duplicator.py`) dissolve into their operations.
+- **Hard break — no forwarding shims.** Move it, fix every caller, delete the old path. Two ways to
+  import the same module is exactly what the layering exists to end, and the import-direction test
+  can only be honest if there is one way to reach a module. Nothing external depends on these paths
+  except the scheduled task, which must be regenerated regardless.
+
 ### Migration phases — each ends green
 
 Phase 1 is where to start. Do not begin a later phase until the one before it is committed green.
