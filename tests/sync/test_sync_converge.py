@@ -27,7 +27,7 @@ from convergence import (  # noqa: E402
 )
 from manifest import (branch_id, build_manifest, fleet_id_for,  # noqa: E402
                       repository_id)
-from shared.remote_identity import RepoRef  # noqa: E402
+from Basic._identity import RepoRef  # noqa: E402
 
 failures = []
 SECRET = "ab" * 32

@@ -78,31 +78,8 @@ check("--forks -> True", b is not None and b.forks is True)
 check("--format mirror kept", b is not None and b.format == "mirror")
 check("--archived unset -> None", b is not None and b.archived is None)
 
-# ---- scripted answers: queue, echo, fallthrough, strict ----
-gh_common.use_scripted_answers(["4", "all", "", "y"], strict=True)
-out = io.StringIO()
-with redirect_stdout(out):
-    got = [gh_common.prompt_input(f"q{i}: ") for i in range(4)]
-check("scripted answers served in order", got == ["4", "all", "", "y"])
-check("scripted prompt is echoed", "q0: 4" in out.getvalue())
-try:
-    with redirect_stdout(io.StringIO()):
-        gh_common.prompt_input("overflow: ")
-    check("strict overflow raises", False)
-except SystemExit:
-    check("strict overflow raises", True)
-
-gh_common.use_scripted_answers([], strict=False)  # reset
-
-# ---- activation-noise filter ----
-gh_common.use_scripted_answers(
-    ["source /home/u/.venv/bin/activate", "  & C:\\proj\\.venv\\Scripts\\Activate.ps1  ", "4"],
-    strict=True,
-)
-with redirect_stdout(io.StringIO()):
-    kept = gh_common.prompt_input("mode: ")
-check("activation lines skipped, real answer kept", kept == "4")
-gh_common.use_scripted_answers([], strict=False)
+# Scripted answers and the activation-noise filter moved with prompt_input to
+# Basic/_confirm.py; tests/basic/test_confirm.py covers them.
 
 
 # ---- batch.ask_filters: flag > --yes default > (no prompt when resolvable) ----

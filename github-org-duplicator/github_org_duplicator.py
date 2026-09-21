@@ -27,16 +27,14 @@ from pathlib import Path
 
 from gh_common import (
     RUNS_DIR,
-    enable_unicode_output,
     format_size,
     parse_selection,
     prompt_clone_format,
     print_download_warnings,
     prompt_for_directory,
-    prompt_input,
-    prompt_yes_no,
-    use_scripted_answers,
 )
+from Basic._confirm import prompt_input, prompt_yes_no, use_scripted_answers  # noqa: E402
+from Basic._console import enable_unicode_output  # noqa: E402
 from gh_remote import (
     check_gh_authenticated,
     check_gh_installed,

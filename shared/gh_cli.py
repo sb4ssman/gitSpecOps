@@ -20,6 +20,13 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
+
+_REPO_ROOT = str(Path(__file__).resolve().parents[1])
+if _REPO_ROOT not in sys.path:  # also runnable directly: python shared/gh_cli.py auth
+    sys.path.insert(0, _REPO_ROOT)
+
+from Basic._run import run  # noqa: E402
 
 GH_TIMEOUT_SECONDS = 120
 
@@ -31,20 +38,11 @@ class GhError(RuntimeError):
 def run_gh(args: list[str], check: bool = True, capture: bool = True,
            timeout: int = GH_TIMEOUT_SECONDS) -> subprocess.CompletedProcess:
     """Run `gh` with args and return the CompletedProcess. Raises GhError on failure."""
-    try:
-        proc = subprocess.run(
-            ["gh", *args],
-            capture_output=capture,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            check=False,
-        )
-    except FileNotFoundError:
-        raise GhError("gh CLI not found; install from https://cli.github.com") from None
-    except subprocess.TimeoutExpired:
-        raise GhError(f"gh timed out after {timeout}s: gh {' '.join(args)}") from None
+    proc = run(["gh", *args], timeout=timeout, capture=capture)
+    if proc.missing:
+        raise GhError("gh CLI not found; install from https://cli.github.com")
+    if proc.timed_out:
+        raise GhError(f"gh timed out after {timeout}s: gh {' '.join(args)}")
     if check and proc.returncode != 0:
         detail = (proc.stderr or "").strip() or "unknown error"
         raise GhError(f"gh {' '.join(args)} failed: {detail}")

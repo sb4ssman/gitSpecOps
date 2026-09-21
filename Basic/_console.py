@@ -64,17 +64,3 @@ def ascii_fallback(text: str) -> str:
     for glyph, plain in ASCII_EQUIVALENTS.items():
         text = text.replace(glyph, plain)
     return text
-
-
-def main() -> int:
-    """Standalone check: print the glyph set the way this terminal would actually receive it."""
-    enable_unicode_output()
-    print(f"stdout encoding: {getattr(sys.stdout, 'encoding', 'unknown')}")
-    line = " ".join(ASCII_EQUIVALENTS)
-    print(f"glyphs : {line}")
-    print(f"ascii  : {ascii_fallback(line)}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

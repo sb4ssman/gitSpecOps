@@ -1,5 +1,52 @@
 # Work log
 
+## 2026-09-21 — migration phase 1: `Basic/` and `_os/`
+
+**Folder map reviewed first (2026-09-20).** The user revised the target before any file moved:
+a root `_os/` folder beneath every layer, present for all three OSes out of the box; `Basic/`
+flat (no `git/` subfolder); `App/tray.py` flat; `providers/` → `_providers/`; the archive registry
+to the per-user state folder as `gitspecops_managed_archives.json`; merges (`_run`, `_confirm`,
+launcher writing) and splits (renderers, `archive_manager`, the version query, `atomic_write_bytes`).
+Recorded under "Revisions" in `knowledge/architecture-layers.md`. The four regenerable untracked
+folders (`build/`, `dist/`, the egg-info, root `__pycache__/`) went to the Recycle Bin;
+`gitArchiveUpdater/` was kept because the scheduled task points into it.
+
+**Landed.** `shared/{console,git_facts,remote_identity,repo_discovery}.py` moved (with `git mv`) to
+`Basic/{_console,_facts,_identity,_discovery}.py`. New: `Basic/_run.py` (the one subprocess
+wrapper; `run`/`run_git` return flagged results, `run_checked` raises `CommandFailed`/
+`CommandTimeout`), `_confirm.py` (the duplicator's prompt machinery plus `confirm_typed`; the
+archive tools' `input()` calls and `archive_manager`'s duplicate `prompt_input` now use it),
+`_files.py` (`atomic_write_bytes`, out of `folder_transport`), `_paths.py` (`config_home`,
+`sync_home`; replaces `config.default_config_dir`), and the commands `status.py`/`discover.py`,
+which replace the two useful standalone CLIs that plumbing modules no longer carry. `_os/` has
+`current.py`, `_posix.py`, and `paths` + `process` for windows/linux/macos. `gh_common.py` lost
+`run_command`, `CommandTimeout`, the prompt machinery and its import-time stream reconfigure;
+`shared/gh_cli.run_gh` now runs on `_run`. New tests: `basic/test_run`, `basic/test_confirm`,
+`basic/test_identity` (the old module self-test, which only ran by hand), `os/test_os_parity`.
+
+**Found and fixed: a timeout that did not bound anything, on Windows.** The first suite run hung
+for over ten minutes on the new timeout test. The venv's `python.exe` — like Git for Windows'
+`cmd\git.exe` — is a launcher whose child is the real program. `subprocess.run` on timeout kills
+only the direct child; the grandchild keeps the output pipe open, and the read that follows the
+kill waits for it. **Both earlier wrappers had this**, so a hung `git fetch` could hang a run
+despite its timeout. Why it hid: nothing ever tested a timeout against a real launcher-style
+child, and real hangs are rare and look like slow networks. Fix: `_run` uses `Popen` and on
+timeout (or Ctrl+C) calls `_os.current.process.kill_tree` — `taskkill /T /F` on Windows, a
+process group (`start_new_session` + `killpg`) on POSIX. `test_run` now asserts a timed-out
+60-second sleep returns in well under 20 seconds (3.1 s measured).
+
+**Deliberate behavior changes.** Every git call now gets `GIT_TERMINAL_PROMPT=0` (only the
+duplicator's did); prior auth is the rule, so a credential prompt failing fast is correct. A
+missing binary is exit 127 and an unstartable one 126 (previously 1 from `run_git`); callers test
+only for nonzero. The archive tools' yes/no prompts re-ask on garbage instead of treating it as
+"no", and end-of-input is a clean stop rather than an `EOFError` traceback. macOS keeps
+`~/.config` as its config base, as before; moving to `~/Library/Application Support` waits for a
+real Mac.
+
+**Validation (Windows, this checkout, suite alone):** 38/38 test files; hygiene gate green over
+the tracked tree including the new files; every entry point answers `--help` when run by path
+from a foreign directory; `Basic/status.py` and `Basic/discover.py` run by path.
+
 ## 2026-09-20 — the "read-only" rule was never a rule; brief realigned to the product goal
 
 The user challenged the claim that Sync Suggester "never pulls, pushes, commits, stashes, or

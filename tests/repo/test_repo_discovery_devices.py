@@ -25,8 +25,8 @@ from _bootstrap import setup  # noqa: E402
 
 setup()
 
-from shared import repo_discovery  # noqa: E402
-from shared.repo_discovery import device_id, entry_device_id, find_repos  # noqa: E402
+from Basic import _discovery as repo_discovery  # noqa: E402
+from Basic._discovery import device_id, entry_device_id, find_repos  # noqa: E402
 
 failures = []
 

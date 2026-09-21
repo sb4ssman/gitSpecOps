@@ -1,6 +1,7 @@
 # Architecture: the layer stack
 
-**Status:** target agreed 2026-09-20; migration not started. How to get there is in
+**Status:** target agreed 2026-09-20, revised 2026-09-21 (root `_os/`, flat `Basic/`, flat
+`App/tray.py`, `_providers/`; see "Revisions" at the end). Migration phase 1 landed 2026-09-21. How to get there is in
 [`../HANDOFF.md`](../HANDOFF.md). The picture is [`architecture-diagram.md`](architecture-diagram.md).
 [`../README.md`](../README.md) "Repo Shape" describes what is on disk *today* until the migration lands.
 
@@ -40,6 +41,7 @@ Clarifications that took several passes to get right, recorded so they are not r
   interpreter discovery, argument quoting and stdout encoding across a subprocess boundary do not.
 - **A layer builds only on the layers above it** in the diagram (Basic → Special → Elaborate → App):
   never sideways, never on what comes after. Enforced by a test that reads the imports.
+  `_os/` sits beneath all four: every layer may import it, and it imports only the stdlib.
 - **Plain names: lowercase words joined by underscores.** No hyphens anywhere.
 - **Plain scripts, not a package.** No installation step and no console-script entry points.
 
@@ -50,37 +52,45 @@ gitSpecOps/
 ├── .agents/                    brief, notes, work log, knowledge, diagrams
 ├── _build/                     PyInstaller recipe, release gate, build notes
 ├── _docs/                      FLEET, DISPLAY-CONTRACT, RECOVERY-DESIGN
-├── _tests/                     App/ Basic/ Elaborate/ Special/ probes/ repo/  run_all.py
+├── _os/                        beneath every layer: the per-OS components, stdlib only
+│   ├── current.py              the one place the OS is decided
+│   ├── _posix.py               what linux and macos genuinely share
+│   ├── windows/                autostart editors events git_clients launcher paths
+│   ├── linux/                    process schedule tray — the same files in all three,
+│   └── macos/                    "unsupported" where an OS has no mechanism yet
+├── _tests/                     _os/ App/ Basic/ Elaborate/ Special/ probes/ repo/  run_all.py
 ├── App/                        optional, and mostly the tray
 │   ├── skins/
+│   │   ├── _assets.py          serves skin files by exact name
+│   │   ├── _common/            client + view JS every skin shares
 │   │   ├── lcars/              placeholder at first
 │   │   ├── modern/             today's dashboard
-│   │   ├── retro/              placeholder at first
-│   │   └── _assets.py          serves skin files by exact name
-│   ├── tray/
-│   │   └── tray.py
-│   ├── autostart.py            registry Run key / XDG autostart / LaunchAgent
+│   │   └── retro/              placeholder at first
+│   ├── autostart.py            command; per-OS work in _os/*/autostart.py
 │   ├── dashboard.py            the loopback dashboard
 │   ├── desktop.py              packaged-app entry
 │   ├── git_client.py           open a checkout in a desktop Git client
 │   ├── setup_fleet.py          guided first run
-│   └── version.py
+│   ├── tray.py                 command; per-OS work in _os/*/tray.py
+│   └── version.py              compare and report; the release query is the provider's
 ├── Basic/                      one git or host operation, wrapped with care
-│   ├── git/
-│   │   ├── clone.py
-│   │   ├── fetch.py
-│   │   ├── pull.py             fast-forward only
-│   │   ├── push.py             never --force
-│   │   └── status.py
-│   ├── providers/
+│   ├── _providers/
 │   │   ├── _registry.py        the Protocol, register, provider_for
 │   │   └── github.py           one module per host
+│   ├── _confirm.py             the approve step: prompts, --answers, typed confirmation
 │   ├── _console.py
 │   ├── _discovery.py
 │   ├── _facts.py
+│   ├── _files.py               atomic writes
 │   ├── _identity.py
-│   ├── _paths.py
-│   └── _run.py                 the one subprocess wrapper
+│   ├── _paths.py               per-user state folder
+│   ├── _run.py                 the one subprocess wrapper (git and host CLIs)
+│   ├── clone.py
+│   ├── discover.py             find repositories under a root
+│   ├── fetch.py
+│   ├── pull.py                 fast-forward only
+│   ├── push.py                 never --force
+│   └── status.py
 ├── Elaborate/                  wider scale: across machines, across time
 │   ├── _fleet/                 advice, aggregate, config, display, events, manifest,
 │   │                           net, observer, store
@@ -88,6 +98,7 @@ gitSpecOps/
 │   ├── recovery/               one operation, with details
 │   │   ├── acknowledge.py  policy.py  preview.py  restore.py  retire.py
 │   │   └── _capture  _patch_parse  _retirement  _runtime  _secret_scan  _snapshot_store …
+│   ├── _archive_registry.py    registry file I/O, in the per-user state folder
 │   ├── _editors.py
 │   ├── alias.py
 │   ├── archive_manage.py       registry, launchers, schedule
@@ -115,7 +126,7 @@ gitSpecOps/
 
 ## Providers: the one seam
 
-Host-awareness lives in exactly one place: `Basic/providers/`. This is the seam the repository
+Host-awareness lives in exactly one place: `Basic/_providers/`. This is the seam the repository
 already had (`shared/providers.py`: a `RemoteProvider` Protocol with `list_repos` and `resolve`,
 a host → provider registry, and graceful degradation to host-agnostic behavior when no provider
 matches). The migration moves it into the stack. It does not redesign it.
@@ -136,11 +147,24 @@ implementation, such as a second editor alongside VS Code. Until then it is one 
 
 ## Operating systems
 
-Windows, Linux and macOS are peers. A per-OS mechanism lives **inside the module that needs it**,
-behind one function: `autostart.py` over the registry Run key, XDG autostart and LaunchAgent;
-`tray/` over the platform tray; `_fleet/events` over `ReadDirectoryChangesW` and inotify. **No
-caller ever branches on OS.** If a component grows several per-OS files, they sit beside it as
-plumbing (`App/tray/_windows.py`). There is no global per-OS folder.
+Windows, Linux and macOS are peers, **out of the box**. Every per-OS mechanism lives in
+`_os/<os>/<component>.py`, and all three OS folders carry the same component files with the same
+functions: `_tests/_os/test_os_parity.py` fails if one drifts. Where an OS has no mechanism yet
+(the tray on Linux, file events on macOS), its file still exists and reports "unsupported"
+rather than being absent, so the gap is visible instead of forgotten.
+
+- **No caller ever branches on OS.** Callers write `from _os.current import paths` and get this
+  machine's implementation. `_os/current.py` is the one place `sys.platform` is read.
+- **`_os/` sits beneath the layers.** The file-event backend (Elaborate), the state folder and
+  process control (Basic) and the tray (App) all need per-OS code, and a lower layer may not import
+  a higher one, so the OS folder cannot live inside any layer. It imports only the stdlib, and
+  every file in it must import cleanly on every OS (OS-only calls happen inside functions).
+- **Only real OS differences go here.** `Basic/_console.py` stays whole: the cp1252 problem is a
+  Windows symptom, but the fix is the same code everywhere.
+
+*Revised 2026-09-21.* The 2026-09-20 text said "a per-OS mechanism lives inside the module that
+needs it … there is no global per-OS folder." The user overrode that: the OS split must be
+visible and complete from the start, not discovered module by module.
 
 ## Skins
 
@@ -179,3 +203,26 @@ A test collects every declaration by scanning the layer folders and asserts the 
 `autostart` writes an **absolute resolved path** to the peer into the registry Run key, the XDG
 `.desktop` file and the LaunchAgent. Moving files after enrollment breaks start-at-login on every
 machine, silently. Migrate first, then enroll onto the final layout.
+
+## Revisions, 2026-09-21
+
+Decided by the user while reviewing the folder map, before phase 1 began:
+
+- **`_os/` at the root**, beneath every layer (see "Operating systems").
+- **`Basic/` is flat.** `clone`, `fetch`, `pull`, `push`, `status` sit beside the underscored
+  plumbing; there is no `Basic/git/` folder. `ls Basic` lists what Basic can do.
+- **`App/tray.py`, not `App/tray/tray.py`.** Its per-OS pieces live in `_os/*/tray.py`, so a
+  folder would hold one file.
+- **`providers/` became `_providers/`**, by the underscore rule: nothing in it is a command.
+- **The archive registry moves to the per-user state folder** (`Basic/_paths.config_home()`) and
+  is renamed `gitspecops_managed_archives.json` so it is recognizable on its own. It never lives
+  in the checkout again.
+- **Merges:** one subprocess wrapper for git *and* host CLIs (`_run.py`); one approve step
+  (`_confirm.py`); one launcher writer (`_os/*/launcher.py`); `gh_common.py` dissolves entirely.
+- **Splits:** terminal renderers leave the policy modules for `check.py`/`converge.py`;
+  `archive_manager.py` splits into `archive_manage.py` + `_archive_registry.py` + `_os/*/schedule.py`;
+  the version check's GitHub query moves into the provider; `atomic_write_bytes` into `_files.py`.
+- **`git_inspect.inspect_candidate` is archive policy, not a fact.** It decides fast-forward
+  eligibility against approved remotes, so in phase 3 it goes to `Special/_archive_plan.py`, not
+  `Basic/_facts.py` as the first map said.
+

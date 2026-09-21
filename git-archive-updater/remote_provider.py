@@ -22,7 +22,7 @@ from shared.providers import (  # noqa: E402
     provider_for as _registry_provider_for,
     register_provider,
 )
-from shared.remote_identity import RepoRef  # noqa: E402,F401
+from Basic._identity import RepoRef  # noqa: E402,F401
 
 try:
     from .provider_github import GitHubProvider

@@ -2,78 +2,28 @@
 gh_common
 =========
 
-Shared primitives for the GitHub org duplicator: where run files live, the print lock
-that keeps parallel output readable, the one subprocess wrapper every other module uses,
-and small console helpers. No GitHub knowledge lives here.
+Primitives for the GitHub org duplicator: where run files live, the print lock that keeps
+parallel output readable, and the duplicator's own prompts and console helpers. No GitHub
+knowledge lives here. Subprocesses go through `Basic/_run.py`; generic prompting and the
+`--answers` queue live in `Basic/_confirm.py`.
 """
 
 import os
-import subprocess
 import re
 import sys
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import NoReturn
 
 TOOL_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = str(TOOL_DIR.parent)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from shared.console import enable_unicode_output  # noqa: E402
+from Basic._confirm import prompt_input, prompt_yes_no  # noqa: E402
 
 RUNS_DIR = TOOL_DIR / "runs"
 PRINT_LOCK = threading.Lock()
-
-# Upper bound on a single git operation. Large clones are legitimately slow, but a clone
-# that has made no progress for this long is hung (dead connection, a credential prompt with
-# no terminal, a server that stopped responding) and must not block a worker thread forever.
-COMMAND_TIMEOUT_SECONDS = 3600
-
-
-class CommandTimeout(RuntimeError):
-    """run_command exceeded its timeout. A retry rarely helps — the caller should give up."""
-
-# Force UTF-8 so the ✓/✗/→ glyphs and non-ASCII repo names survive on Windows consoles.
-for stream in (sys.stdout, sys.stderr):
-    if hasattr(stream, "reconfigure"):
-        stream.reconfigure(encoding="utf-8", errors="replace")
-
-
-def run_command(cmd, check=True, capture=True, timeout=COMMAND_TIMEOUT_SECONDS, env=None):
-    """Run a command (argv list, never a shell) and return the CompletedProcess.
-
-    timeout bounds a hung network operation. git subprocesses always get
-    GIT_TERMINAL_PROMPT=0 so a missing credential fails fast instead of blocking on an
-    interactive prompt (which, under a thread pool, would deadlock the run). Raises
-    RuntimeError on a missing binary, a timeout, or (with check) a nonzero exit.
-    """
-    run_env = os.environ.copy()
-    if cmd and os.path.basename(str(cmd[0])).split(".")[0] == "git":
-        run_env.setdefault("GIT_TERMINAL_PROMPT", "0")
-    if env:
-        run_env.update(env)
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=capture,
-            text=True,
-            encoding='utf-8',
-            errors='replace',  # replace problematic chars rather than crash on decode
-            check=False,
-            timeout=timeout,
-            env=run_env,
-        )
-    except FileNotFoundError:
-        raise RuntimeError(f"Command not found: {cmd[0]}") from None
-    except subprocess.TimeoutExpired:
-        raise CommandTimeout(
-            f"Command timed out after {timeout}s (treated as hung): {' '.join(map(str, cmd))}"
-        ) from None
-    if check and result.returncode != 0:
-        raise RuntimeError(f"Command failed: {' '.join(map(str, cmd))}\n{(result.stderr or '').strip()}")
-    return result
 
 
 def log_message(message, log_file):
@@ -84,74 +34,6 @@ def log_message(message, log_file):
         print(message)
         with open(log_file, 'a', encoding='utf-8') as f:
             f.write(log_entry + '\n')
-
-
-# VS Code (and some shells) type virtual-env activation commands into a terminal when it
-# starts. If a prompt is open when that happens, the activation line lands in our input
-# instead of the shell. Skip any line that is clearly one of those rather than treating it
-# as an answer. Substrings, not just suffixes: the injected line may have a leading `source `,
-# `. `, `& `, or a full path.
-_ACTIVATION_MARKERS = (
-    "/bin/activate",
-    r"\scripts\activate",
-    "activate.bat",
-    "activate.ps1",
-    "activate.fish",
-    "activate.csh",
-    "conda activate",
-)
-
-# Optional queue of pre-supplied answers (see --answers / use_scripted_answers). While it is
-# non-empty prompt_input() serves from it and echoes each line; once drained it falls back to
-# real input() unless strict mode was requested, in which case a missing answer is an error.
-_SCRIPTED_ANSWERS: list[str] = []
-_SCRIPTED_STRICT = False
-
-
-def use_scripted_answers(lines, *, strict=False):
-    """Pre-load answers for upcoming prompts (one per line; '' accepts that prompt's default).
-
-    strict=True makes a prompt with no remaining scripted answer a hard error instead of
-    dropping back to input() — use it when the process has no usable interactive terminal.
-    """
-    global _SCRIPTED_ANSWERS, _SCRIPTED_STRICT
-    _SCRIPTED_ANSWERS = [str(line).rstrip("\r\n") for line in lines]
-    _SCRIPTED_STRICT = bool(strict)
-
-
-def _looks_like_activation(lowered_value):
-    return any(marker in lowered_value for marker in _ACTIVATION_MARKERS)
-
-
-def _no_answer_available(prompt) -> NoReturn:
-    """A prompt is waiting but there is no scripted answer and no usable terminal."""
-    raise SystemExit(
-        f"\nERROR: an answer is needed but none is available:\n  {prompt!r}\n"
-        "Run this in a real terminal, or supply the value as a flag / a line in --answers."
-    )
-
-
-def prompt_input(prompt):
-    """Read one answer: from the scripted queue if present, else the terminal.
-
-    Lines that look like an injected virtual-env activation command are ignored rather than
-    accepted as the answer (see _ACTIVATION_MARKERS).
-    """
-    while True:
-        if _SCRIPTED_ANSWERS:
-            value = _SCRIPTED_ANSWERS.pop(0).strip()
-            print(f"{prompt}{value}")
-        elif _SCRIPTED_STRICT:
-            _no_answer_available(prompt)
-        else:
-            try:
-                value = input(prompt).strip()
-            except EOFError:
-                _no_answer_available(prompt)
-        if _looks_like_activation(value.lower()):
-            print("Ignoring terminal activation command; please enter your choice.")
-            continue
-        return value
 
 
 def format_size(kb):
@@ -167,20 +49,6 @@ def format_size(kb):
     if kb < 1024 * 1024:
         return f"{kb / 1024:.1f} MB"
     return f"{kb / (1024 * 1024):.1f} GB"
-
-
-def prompt_yes_no(question, default=True):
-    """Ask a yes/no question. Empty input takes the default. Returns a bool."""
-    suffix = "[Y/n]" if default else "[y/N]"
-    while True:
-        answer = prompt_input(f"{question} {suffix}: ").lower()
-        if not answer:
-            return default
-        if answer in ("y", "yes"):
-            return True
-        if answer in ("n", "no"):
-            return False
-        print("Please answer y or n.")
 
 
 def prompt_clone_format():

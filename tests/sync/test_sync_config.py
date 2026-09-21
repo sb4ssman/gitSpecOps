@@ -21,7 +21,6 @@ from config import (  # noqa: E402
     catalog_path,
     config_path,
     default_config,
-    default_config_dir,
     default_machine_id,
     display_name_for,
     load_catalog,
@@ -32,7 +31,9 @@ from config import (  # noqa: E402
     save_config,
     validate_config,
 )
-from folder_transport import SAFE_MACHINE_ID, atomic_write_bytes  # noqa: E402
+from Basic._files import atomic_write_bytes  # noqa: E402
+from Basic._paths import sync_home  # noqa: E402
+from folder_transport import SAFE_MACHINE_ID  # noqa: E402
 
 failures = []
 
@@ -55,9 +56,9 @@ with tempfile.TemporaryDirectory() as tmp:
 
     # --- config directory selection -------------------------------------------------
     os.environ["GITSPECOPS_SYNC_HOME"] = str(tmp / "override")
-    check(default_config_dir() == tmp / "override", "GITSPECOPS_SYNC_HOME did not win")
+    check(sync_home() == tmp / "override", "GITSPECOPS_SYNC_HOME did not win")
     del os.environ["GITSPECOPS_SYNC_HOME"]
-    check("gitspecops" in str(default_config_dir()).lower(),
+    check("gitspecops" in str(sync_home()).lower(),
           "default config dir is not namespaced under gitspecops")
 
     # --- identity -------------------------------------------------------------------

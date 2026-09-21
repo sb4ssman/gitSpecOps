@@ -18,7 +18,7 @@ _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from shared.repo_discovery import find_repos  # noqa: E402
+from Basic._discovery import find_repos  # noqa: E402
 
 
 def scan_local_git_repos(directory_path, recursive=False):

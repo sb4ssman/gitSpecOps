@@ -38,7 +38,8 @@ import re
 import secrets
 
 from capture import FORMAT, FORMAT_VERSION, checksum_of
-from folder_transport import SAFE_MACHINE_ID, atomic_write_bytes
+from Basic._files import atomic_write_bytes
+from folder_transport import SAFE_MACHINE_ID
 
 STORE_DIR = "gitspecops-snapshots"
 LAYOUT_VERSION = "v1"

@@ -1,5 +1,13 @@
 # shared/ — the cross-operation primitive layer
 
+> **Superseded 2026-09-21 by the layer stack** ([architecture-layers.md](architecture-layers.md)).
+> Migration phase 1 moved `console`, `git_facts`, `remote_identity` and `repo_discovery` into
+> `Basic/` (`_console`, `_facts`, `_identity`, `_discovery`), merged `run_git` and the duplicator's
+> `run_command` into `Basic/_run.py` (which `run_gh` now also uses), and dropped the standalone
+> CLIs of plumbing modules — `Basic/status.py` and `Basic/discover.py` replace the two that were
+> useful; the identity self-test became `tests/basic/test_identity.py`. What remains in `shared/`
+> leaves in phases 2 and 4. The record below is kept for its reasoning and history.
+
 _Decision recorded 2026-08-31._
 
 ## Decision

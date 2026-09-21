@@ -14,13 +14,13 @@ machine. See `manifest.py` for the synced-side boundary.
 from __future__ import annotations
 
 import json
-import os
 import re
 import socket
-import sys
 from pathlib import Path
 
-from folder_transport import SAFE_MACHINE_ID, atomic_write_bytes
+from Basic._files import atomic_write_bytes
+from Basic._paths import sync_home
+from folder_transport import SAFE_MACHINE_ID
 from manifest import is_fleet_secret, new_fleet_secret
 from repo_transport import SAFE_REPO_SPEC
 
@@ -37,18 +37,6 @@ CONFIG_KEYS = frozenset({
     "state_repo", "roots", "stale_hours", "expired_days", "compress_manifests",
 })
 ROOT_KEYS = frozenset({"path", "recursive"})
-
-
-def default_config_dir() -> Path:
-    """Where local state lives. `GITSPECOPS_SYNC_HOME` overrides everything."""
-    override = os.environ.get("GITSPECOPS_SYNC_HOME")
-    if override:
-        return Path(override).expanduser()
-    if sys.platform == "win32":
-        base = os.environ.get("APPDATA") or "~/AppData/Roaming"
-    else:
-        base = os.environ.get("XDG_CONFIG_HOME") or "~/.config"
-    return Path(base).expanduser() / "gitspecops" / "sync-suggester"
 
 
 def config_path(config_dir: Path) -> Path:
@@ -147,7 +135,7 @@ def validate_config(value: object) -> dict:
 
 def load_config(config_dir: Path | None = None) -> dict | None:
     """Return the saved config, or None when this machine has never run `init`."""
-    path = config_path(config_dir or default_config_dir())
+    path = config_path(config_dir or sync_home())
     if not path.is_file():
         return None
     try:
@@ -172,7 +160,7 @@ def load_catalog(config_dir: Path | None = None) -> dict[str, dict]:
     old keys. They are harmless (nothing joins to them any more) and re-observation repopulates
     the new ones; `prune_catalog` clears them out when the user wants a tidy file.
     """
-    path = catalog_path(config_dir or default_config_dir())
+    path = catalog_path(config_dir or sync_home())
     if not path.is_file():
         return {}
     try:
@@ -192,7 +180,7 @@ def load_catalog(config_dir: Path | None = None) -> dict[str, dict]:
 
 def load_branches(config_dir: Path | None = None) -> dict[str, str]:
     """Local-only branch_id -> readable branch name. Missing/corrupt reads as empty."""
-    path = catalog_path(config_dir or default_config_dir())
+    path = catalog_path(config_dir or sync_home())
     if not path.is_file():
         return {}
     try:

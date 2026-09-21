@@ -26,10 +26,10 @@ _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from shared.remote_identity import RepoRef, normalize_owner_name  # noqa: E402,F401
+from Basic._identity import RepoRef, normalize_owner_name  # noqa: E402,F401
 
 
-# RepoRef moved to shared/remote_identity.py (imported and re-exported above).
+# RepoRef lives in Basic/_identity.py (imported and re-exported above).
 
 
 @dataclass
@@ -71,7 +71,7 @@ class SyncPlan:
         }
 
 
-# normalize_owner_name moved to shared/remote_identity.py (imported and re-exported above).
+# normalize_owner_name lives in Basic/_identity.py (imported and re-exported above).
 
 
 def build_plan(

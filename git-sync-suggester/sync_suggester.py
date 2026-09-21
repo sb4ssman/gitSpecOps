@@ -34,7 +34,6 @@ from convergence import (
 )
 from config import (
     default_config,
-    default_config_dir,
     load_branches,
     load_catalog,
     load_config,
@@ -52,7 +51,8 @@ from observer import (DEFAULT_FETCH_TIMEOUT_SECONDS, DEFAULT_FETCH_WORKERS, Root
                       observe_roots)
 from watcher import DEFAULT_HEARTBEAT_SECONDS, DEFAULT_INTERVAL_SECONDS, run_watch
 
-from shared.console import enable_unicode_output  # noqa: E402
+from Basic._console import enable_unicode_output  # noqa: E402
+from Basic._paths import sync_home  # noqa: E402
 from shared.version import VERSION, check_for_update, version_line  # noqa: E402
 from shared.providers import provider_for_host, registered_hosts  # noqa: E402
 PREVIEW_MACHINE_ID = "local-preview"
@@ -87,7 +87,7 @@ def open_transport(config: dict | None, args: argparse.Namespace | None = None):
 
 
 def _config_dir(args: argparse.Namespace) -> Path:
-    return Path(args.config_dir).expanduser() if args.config_dir else default_config_dir()
+    return Path(args.config_dir).expanduser() if args.config_dir else sync_home()
 
 
 def _not_ready(command: str) -> int:
@@ -557,7 +557,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config-dir", help="override the local state directory "
-                                             f"(default: {default_config_dir()})")
+                                             f"(default: {sync_home()})")
     parser.add_argument("--version", action="version", version=version_line())
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -695,7 +695,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     # Status glyphs are not cp1252-encodable, so a redirected stream must be widened before
-    # anything prints; otherwise a successful scan dies on its own output. See shared/console.py.
+    # anything prints; otherwise a successful scan dies on its own output. See Basic/_console.py.
     enable_unicode_output()
     # The foreground app owns its own small parser and lifecycle. Existing scripts remain flat.
     argv = list(sys.argv[1:] if argv is None else argv)

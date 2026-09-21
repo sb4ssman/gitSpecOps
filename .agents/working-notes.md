@@ -3,15 +3,26 @@
 Living todo / scratch pad. Add items freely; **prune regularly**. When something is done, move it
 into [`work-log.md`](work-log.md) with an absolute date. Dates are always absolute.
 
-_Last tended: 2026-09-20_
+_Last tended: 2026-09-21_
 
 ## Open
 
-### 2026-09-20 — migration is fully specified; next session executes it
+### 2026-09-21 — migration: phase 1 done, phase 2 next
 
-The target tree, every file's destination, the phases and the decisions are in
+The target tree (revised 2026-09-21), the phases and the decisions are in
 [`knowledge/architecture-layers.md`](knowledge/architecture-layers.md) and
-[`HANDOFF.md`](HANDOFF.md). Two framings from the design discussion were wrong and are recorded as
+[`HANDOFF.md`](HANDOFF.md). Carried forward from phase 1:
+
+- [ ] **Direct `subprocess` calls outside `_run`** remain (measured 2026-09-21): `archive_manager`
+  (4, incl. `schtasks`), `fleet_autostart` (3), `capture`, `retirement`, `snapshot_restore`,
+  `fleet_net`, `release_check`, `setup_gitspecops`, `shared/version` (1 each). Each moves onto
+  `_run` or into `_os/` as its owner moves in phases 2–4; none should survive phase 4.
+- [ ] **`gh` can still prompt**: `_run` guards git with `GIT_TERMINAL_PROMPT=0` but sets nothing
+  for `gh`. Decide `GH_PROMPT_DISABLED=1` in phase 2, when `gh` moves into the provider.
+- [ ] **Scheduled task**: already broken (see HANDOFF). Phase 3 writes the new launcher; the user
+  replaces the task; only then may `gitArchiveUpdater/` be deleted.
+- [ ] `operations.py` relies on `gh_common` having put the repo root on `sys.path` before it
+  imports `Basic`. Correct today, fragile; it disappears when the duplicator moves in phase 3. Two framings from the design discussion were wrong and are recorded as
 such so they are not revived: **"plugins"** (the provider seam already existed; no plugin folders,
 loaders or hyphen tricks) and **"legacy vs fleet" Sync Suggester runtimes** (not two products:
 `check` runs the observation job once, `peer` runs it continuously, over one config and one code

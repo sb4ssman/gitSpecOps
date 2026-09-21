@@ -31,10 +31,9 @@ from gh_common import (
     prompt_clone_format,
     print_download_warnings,
     prompt_for_directory,
-    prompt_input,
-    prompt_yes_no,
     resolve_directory,
 )
+from Basic._confirm import prompt_input, prompt_yes_no  # noqa: E402
 from gh_remote import (
     check_repo_for_lfs,
     list_my_orgs,

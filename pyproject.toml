@@ -22,7 +22,7 @@ classifiers = [
 dependencies = []
 
 # This project is NOT an importable package. The tools are flat scripts that put their own
-# directory (and the repo root, for `shared/`) on sys.path at runtime. `.venv` exists only to
+# directory (and the repo root, for `Basic/`, `_os/` and `shared/`) on sys.path at runtime. `.venv` exists only to
 # give the launchers a clean, predictable interpreter. Do NOT install the project into it:
 # an editable install drops a `.pth` that runs finder code on every interpreter startup, which
 # turns a stray SIGINT during startup into `Fatal Python error: init_import_site`.

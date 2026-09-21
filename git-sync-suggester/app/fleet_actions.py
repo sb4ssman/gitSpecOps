@@ -10,8 +10,9 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from shared.git_facts import repo_facts, run_git
-from shared.remote_identity import parse_remote_url
+from Basic._facts import repo_facts
+from Basic._identity import parse_remote_url
+from Basic._run import run_git
 
 FETCH_TIMEOUT_SECONDS = 120
 PULL_TIMEOUT_SECONDS = 180

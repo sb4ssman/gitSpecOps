@@ -505,9 +505,9 @@ def _config_dir_from(argv):
         index = argv.index("--config-dir")
         if index + 1 < len(argv):
             return Path(argv[index + 1]).expanduser()
-    from config import default_config_dir
+    from Basic._paths import sync_home
 
-    return default_config_dir()
+    return sync_home()
 
 
 def run_tray(argv, poll_seconds: float = POLL_SECONDS) -> int:
@@ -607,7 +607,7 @@ def run_tray(argv, poll_seconds: float = POLL_SECONDS) -> int:
 
 
 def main(argv=None) -> int:
-    from shared.console import enable_unicode_output
+    from Basic._console import enable_unicode_output
 
     enable_unicode_output()
     argv = list(sys.argv[1:] if argv is None else argv)
