@@ -120,7 +120,8 @@ there freely. That is the release valve.
 > `Basic/providers/`, three skins under `App/skins/`, and `_build/ _docs/ _tests/` at the root.
 > See [`knowledge/architecture-layers.md`](knowledge/architecture-layers.md) for the model and the
 > full target tree, and [`HANDOFF.md`](HANDOFF.md) for the migration phases. **The section below describes what is
-> on disk today**, which is still the tool-folder layout. Update it as each phase lands.
+> on disk today.** Phase 1 landed 2026-09-21 (`Basic/` and `_os/` exist; the tool folders import
+> downward); the tool folders themselves move in phase 3. Update this as each phase lands.
 
 This repo is intentionally small. Keep it that way.
 
@@ -144,34 +145,46 @@ The optional bootstrap helper is:
 - `setup_gitspecops.py` (writes the generated launchers, then builds a bare `.venv` — `uv sync`,
   or the stdlib `venv` module as a fallback; the project itself is never installed into it)
 
-These modules are deliberately flat (sibling files imported with a `try: from . / except: from` shim), not a `src/` package. There is no `cli.py` and no console-script entry point. Keep it flat: do not introduce a `src/` package or packaging entry points unless the user explicitly asks for a larger refactor.
+Inside each tool folder the modules are still sibling files (imported with a `try: from . / except: from` shim) until phase 3 moves them into the layers. There is no `src/` package, no `cli.py` and no console-script entry point, and there will not be.
 
-### `shared/` — cross-operation primitives
+### `Basic/` and `_os/` — the bottom of the stack (phase 1, 2026-09-21)
 
-`shared/` holds read-only, stdlib-only primitives shared by the special operations. Admission
-rule: **a method moves into `shared/` once two of the three operations (archive updater, org
-duplicator, sync suggester) need it.** Modules there never import tool folders and never hold
-policy (approved remotes, confirmations, apply classes stay per-tool). Each module is also a
-standalone read-only CLI:
+`Basic/` holds the careful primitives every operation builds on. Underscored files are plumbing;
+the others are commands, runnable by path:
 
-- `shared/remote_identity.py` — parse any git remote URL into canonical host/owner/name
-- `shared/git_facts.py` — `run_git` with timeouts + per-repo facts (branch, origin, dirty, ahead/behind)
-- `shared/repo_discovery.py` — find repos on disk (worktrees, `.git`-file links, bare); the
-  scanner. **Cross-filesystem exclusion happens only on positive evidence** — an unknown
-  device id never means "skip". Windows is why: `os.DirEntry.stat()` there returns a cached
-  record with `st_dev == 0`, and comparing that against the root's real device number once
-  made an entire drive scan come back empty.
-- `shared/gh_cli.py` — one `gh` subprocess wrapper (`run_gh` / `GhError`)
-- `shared/console.py` — `enable_unicode_output()`, called first in every entry point. The status
+- `_run.py` — **the one subprocess wrapper**, for git and host CLIs alike: a required timeout that
+  kills the whole process tree when it expires, `GIT_TERMINAL_PROMPT=0` for git, UTF-8 decoding,
+  and failures as flagged results (`run`, `run_git`) or exceptions (`run_checked`,
+  `CommandTimeout`). Nothing else calls `subprocess` for git or `gh`.
+  **The tree kill matters on Windows:** the venv `python.exe` and `cmd\git.exe` are launchers
+  whose child is the real program; killing only the launcher left the child holding the output
+  pipe, so a timed-out call hung until the child exited on its own — a timeout that did not
+  bound anything. Both earlier wrappers had this.
+- `_facts.py` — read-only repository facts (`repo_facts`, ahead/behind, top level).
+- `_identity.py` — parse any remote URL into host/owner/name.
+- `_discovery.py` — find repositories on disk. **Cross-filesystem exclusion happens only on
+  positive evidence** — an unknown device id never means "skip". Windows is why:
+  `os.DirEntry.stat()` there returns a cached record with `st_dev == 0`, and comparing that
+  against the root's real device number once made an entire drive scan come back empty.
+- `_console.py` — `enable_unicode_output()`, called first in every entry point. The status
   glyphs (`✓ ✗ ⚠ ✎ ↑ ↓ ↕ ⚑ →`) are not cp1252-encodable, which is what Python picks for a
   **redirected** stream on Windows, so `check > status.txt`, a launcher log, or any pipe died
-  with `UnicodeEncodeError` *after* the real work succeeded. The interactive console was fine,
-  which is why it hid for so long. Printing must never be the thing that fails.
+  with `UnicodeEncodeError` *after* the real work succeeded. Printing must never be the thing that fails.
+- `_confirm.py` — the approve step: prompts, `--answers` scripted queue, activation-noise filter,
+  `confirm_typed("PUBLISH", ...)`. Running out of answers is a clean `SystemExit`, never a "yes".
+- `_files.py` — `atomic_write_bytes`, for every state file.
+- `_paths.py` — the per-user state folder (`config_home()`, `sync_home()`); never the checkout.
+- `status.py`, `discover.py` — read-only commands over `_facts` and `_discovery`.
 
-`git_inspect.py` and `archive_diff.py` are thin facades re-exporting their shared primitives, so
-existing intra-tool imports are unchanged. Scripts that import `shared/` carry a small repo-root
-`sys.path` bootstrap. On Linux the `.sh` launchers need the executable bit (mode 755) — keep it.
-See [`knowledge/shared-layer.md`](knowledge/shared-layer.md) for the full record.
+`_os/` sits beneath every layer and holds per-OS components: `_os/windows/`, `_os/linux/` and
+`_os/macos/` carry the same files with the same functions (`tests/os/test_os_parity.py`), and
+callers import `from _os.current import <component>` without ever branching on the OS. Today:
+`paths` (the per-user config base) and `process` (spawn options and whole-tree kill).
+
+`shared/` still holds `gh_cli.py` and `providers.py` (they become `Basic/_providers/` in phase 2)
+and `version.py` (App, phase 4). Scripts reach all of these with the small repo-root `sys.path`
+bootstrap they already carry. On Linux the `.sh` launchers need the executable bit (mode 755) —
+keep it.
 
 ## Launchers
 

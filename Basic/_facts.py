@@ -1,72 +1,17 @@
-"""
-git_facts
-=========
+"""Read-only facts about one repository: top level, branch, upstream, ahead/behind, dirtiness.
 
-SHARED SPECIAL OPERATION: run `git` with consistent timeout/decoding behavior and report
-repository facts. The fact functions and standalone CLI are read-only. The low-level
-`run_git` process boundary is policy-neutral; archive apply code may reuse it only after
-that tool's own preview/confirmation rules approve a mutation.
-
-Shared rule: a method lives in `shared/` once two of the three special operations
-(archive updater, org duplicator, sync suggester) need it. Stdlib only; no imports from
-tool folders; no policy (approval lists and eligibility decisions stay per-tool).
-
-Standalone:
-
-    python shared/git_facts.py <repo-path>        # JSON facts for one repository
+Nothing here changes a repository. Ambiguity is reported, never guessed: a detached HEAD has no
+branch, a branch with no upstream has no counts, and both say so as ``None`` rather than a
+plausible-looking default. `Basic/status.py` is the command over these facts.
 """
 
 from __future__ import annotations
 
-import json
-import os
-import subprocess
-import sys
 from pathlib import Path
 from typing import Iterable
 
-try:
-    from shared.remote_identity import remote_host
-except ImportError:  # run directly as a script from shared/: sibling import
-    from remote_identity import remote_host
-
-DEFAULT_GIT_TIMEOUT_SECONDS = 45
-GIT_TIMEOUT_SECONDS = DEFAULT_GIT_TIMEOUT_SECONDS
-
-
-def set_git_timeout(seconds: int) -> None:
-    global GIT_TIMEOUT_SECONDS
-    GIT_TIMEOUT_SECONDS = seconds
-
-
-def run_git(repo_path: Path, args: Iterable[str], timeout: int | None = None,
-            env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
-    """Run git in repo_path with a timeout. Never raises for ordinary git failures.
-
-    Shared fact readers pass read-only commands. Archive apply code also reuses the process
-    boundary for explicitly approved mutations, so callers—not this wrapper—own command policy.
-    """
-    timeout = GIT_TIMEOUT_SECONDS if timeout is None else timeout
-    try:
-        return subprocess.run(
-            ["git", *args],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            env={**os.environ, **(env or {})},
-        )
-    except (PermissionError, FileNotFoundError):
-        return subprocess.CompletedProcess(list(args), returncode=1, stdout="", stderr="")
-    except subprocess.TimeoutExpired as exc:
-        return subprocess.CompletedProcess(
-            list(args),
-            returncode=124,
-            stdout=exc.stdout or "",
-            stderr=f"timed out after {timeout}s",
-        )
+from Basic._identity import remote_host
+from Basic._run import run_git
 
 
 def git_stdout(repo_path: Path, args: Iterable[str]) -> str | None:
@@ -137,19 +82,3 @@ def repo_facts(repo_path: Path) -> dict:
         "dirty_work_tree": dirty_work_tree,
         "dirty_index": dirty_index,
     }
-
-
-def main(argv: list[str]) -> int:
-    if not argv or argv[0] in ("-h", "--help"):
-        print(__doc__)
-        return 0 if argv else 2
-    path = Path(argv[0])
-    if not path.is_dir():
-        print(f"Not a directory: {path}", file=sys.stderr)
-        return 2
-    print(json.dumps(repo_facts(path), indent=2))
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))

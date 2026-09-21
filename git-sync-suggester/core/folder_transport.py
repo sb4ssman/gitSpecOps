@@ -6,40 +6,14 @@ only reads machine manifests and atomically replaces the current machine's file.
 
 from __future__ import annotations
 
-import os
 import re
-import tempfile
 from pathlib import Path
 
+from Basic._files import atomic_write_bytes
 from manifest import (COMPRESSED_SUFFIX, MANIFEST_SUFFIX, decode_manifest,
                       encode_manifest, manifest_filename)
 
 SAFE_MACHINE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
-
-
-def atomic_write_bytes(destination: Path, payload: bytes) -> Path:
-    """Replace `destination` in one step, never leaving a half-written file behind.
-
-    A cloud-sync client (or a peer reader) may look at this directory at any instant, so
-    the file must only ever appear complete. The temp file is created in the destination's
-    own directory so `os.replace` stays on one filesystem and stays atomic.
-    """
-    destination = Path(destination)
-    fd, temp_name = tempfile.mkstemp(prefix=f".{destination.name}-", suffix=".tmp",
-                                     dir=destination.parent)
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temp_name, destination)
-    except BaseException:
-        try:
-            os.unlink(temp_name)
-        except OSError:
-            pass
-        raise
-    return destination
 
 
 class FolderTransport:

@@ -37,7 +37,7 @@ from pathlib import Path, PurePosixPath
 import subprocess
 
 import secret_scan
-from shared.git_facts import run_git
+from Basic._run import run_git
 
 FORMAT = "gitspecops.recovery.bundle"
 FORMAT_VERSION = 1

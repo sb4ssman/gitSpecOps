@@ -20,12 +20,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-try:
-    from shared.remote_identity import RepoRef, remote_host
-except ImportError:  # run directly from shared/
-    from remote_identity import RepoRef, remote_host
-
-
+from Basic._identity import RepoRef, remote_host
 class RemoteProvider(Protocol):
     name: str
 

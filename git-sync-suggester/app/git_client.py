@@ -7,7 +7,7 @@ import subprocess
 import sys
 import threading
 
-from shared.git_facts import run_git
+from Basic._run import run_git
 
 LABELS = {"sourcetree": "Sourcetree", "github-desktop": "GitHub Desktop"}
 

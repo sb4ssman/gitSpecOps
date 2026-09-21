@@ -12,11 +12,17 @@ import os
 import random
 import time
 
-from gh_common import PRINT_LOCK, CommandTimeout, format_size, log_message, run_command
+from gh_common import PRINT_LOCK, format_size, log_message  # puts the repo root on sys.path
+from Basic._run import CommandTimeout, run_checked
 from gh_remote import create_repo, ensure_repo
 from local_repos import safe_cleanup_directory
 
 RETRY_ATTEMPTS = 3
+
+# Upper bound on a single git operation. Large clones are legitimately slow, but a clone
+# that has made no progress for this long is hung (dead connection, a server that stopped
+# responding) and must not block a worker thread forever.
+GIT_OP_TIMEOUT_SECONDS = 3600
 
 
 def _retry_backoff(attempt):
@@ -62,7 +68,7 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
             else ['git', 'clone', clone_url, repo_final_path]
         for attempt in range(RETRY_ATTEMPTS):
             try:
-                run_command(clone_cmd, check=True)
+                run_checked(clone_cmd, timeout=GIT_OP_TIMEOUT_SECONDS)
                 break
             except CommandTimeout:
                 raise  # a hung clone won't un-hang on a retry
@@ -125,10 +131,8 @@ def process_upload_repo(repo, dest_org, completed_file, success_log, error_log):
         for attempt in range(max_retries):
             try:
                 # Get list of all refs
-                result = run_command(
-                    ['git', '-C', repo_path, 'for-each-ref', '--format=%(refname)', 'refs/'],
-                    check=True
-                )
+                result = run_checked(
+                    ['git', '-C', repo_path, 'for-each-ref', '--format=%(refname)', 'refs/'], timeout=GIT_OP_TIMEOUT_SECONDS)
 
                 # Filter out pull request refs
                 all_refs = result.stdout.strip().split('\n')
@@ -136,7 +140,7 @@ def process_upload_repo(repo, dest_org, completed_file, success_log, error_log):
 
                 # Push only the good refs
                 if good_refs:
-                    run_command(['git', '-C', repo_path, 'push', push_url] + good_refs, check=True)
+                    run_checked(['git', '-C', repo_path, 'push', push_url] + good_refs, timeout=GIT_OP_TIMEOUT_SECONDS)
                 break
             except CommandTimeout:
                 raise  # a hung command won't un-hang on a retry
@@ -198,7 +202,7 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
         max_retries = RETRY_ATTEMPTS
         for attempt in range(max_retries):
             try:
-                run_command(['git', 'clone', '--mirror', clone_url, repo_temp_path], check=True)
+                run_checked(['git', 'clone', '--mirror', clone_url, repo_temp_path], timeout=GIT_OP_TIMEOUT_SECONDS)
                 break
             except CommandTimeout:
                 raise  # a hung command won't un-hang on a retry
@@ -223,10 +227,8 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
         for attempt in range(max_retries):
             try:
                 # First, get list of all refs
-                result = run_command(
-                    ['git', '-C', repo_temp_path, 'for-each-ref', '--format=%(refname)', 'refs/'],
-                    check=True
-                )
+                result = run_checked(
+                    ['git', '-C', repo_temp_path, 'for-each-ref', '--format=%(refname)', 'refs/'], timeout=GIT_OP_TIMEOUT_SECONDS)
 
                 # Filter out pull request refs
                 all_refs = result.stdout.strip().split('\n')
@@ -234,7 +236,7 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
 
                 # Push only the good refs
                 if good_refs:
-                    run_command(['git', '-C', repo_temp_path, 'push', push_url] + good_refs, check=True)
+                    run_checked(['git', '-C', repo_temp_path, 'push', push_url] + good_refs, timeout=GIT_OP_TIMEOUT_SECONDS)
                 break
             except CommandTimeout:
                 raise  # a hung command won't un-hang on a retry

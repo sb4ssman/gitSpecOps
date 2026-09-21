@@ -74,6 +74,8 @@ except ImportError:
     )
     from remote_provider import provider_for
 
+from Basic._confirm import confirm_typed, prompt_yes_no  # noqa: E402 (root set by git_inspect)
+
 APP_NAME = "Archive Sync"
 VERSION = "0.1.0"
 DEFAULT_APPROVED_REMOTE_PREFIXES = ["https://github.com/", "git@github.com:", "ssh://git@github.com/"]
@@ -515,9 +517,7 @@ def write_report(root: Path, payload: dict) -> Path:
 
 
 def _ask(question: str, assume_yes: bool) -> bool:
-    if assume_yes:
-        return True
-    return input(f"{question} [y/N]: ").strip().lower() in ("y", "yes")
+    return assume_yes or prompt_yes_no(question, default=False)
 
 
 def parse_args() -> argparse.Namespace:
@@ -568,8 +568,8 @@ def run_publish(root: Path, args: argparse.Namespace) -> int:
           "is not a fast-forward, but published commits can trigger CI and are visible to "
           "anyone with access.")
     if not args.yes:
-        answer = input(f"Type {PUBLISH_CONFIRMATION} to push {len(plan.to_push)} repo(s): ")
-        if answer.strip() != PUBLISH_CONFIRMATION:
+        if not confirm_typed(PUBLISH_CONFIRMATION,
+                             f"Type {PUBLISH_CONFIRMATION} to push {len(plan.to_push)} repo(s): "):
             print("Not confirmed; nothing was pushed.")
             return 0
     pushed = apply_publish(root, plan, issues, pause=args.publish_pause)

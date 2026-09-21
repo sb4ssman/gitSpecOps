@@ -256,7 +256,7 @@ def main(argv=None) -> int:
     import argparse
     import json
 
-    from shared.console import enable_unicode_output
+    from Basic._console import enable_unicode_output
     enable_unicode_output()
     parser = argparse.ArgumentParser(description="inspect or change start-at-login registration")
     parser.add_argument("action", choices=("status", "enable", "disable"), default="status",

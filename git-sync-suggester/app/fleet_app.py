@@ -28,14 +28,15 @@ from _paths import bootstrap  # noqa: E402
 
 bootstrap()  # core/, fleet/, app/ and the repo root (for shared/)
 
-from shared.console import enable_unicode_output  # noqa: E402
+from Basic._console import enable_unicode_output  # noqa: E402
 from shared.gh_cli import GhError, run_gh  # noqa: E402
-from config import default_config_dir, default_machine_id  # noqa: E402
+from Basic._paths import sync_home  # noqa: E402
+from config import default_machine_id  # noqa: E402
 from fleet_config import (APP_CONFIG, DEFAULT_FOLDER_SECONDS, DEFAULT_LOCAL_PORT,  # noqa: E402
                           DEFAULT_REPO_SECONDS, DEFAULT_TAILNET_PORT, describe, migrate,
                           new_config, policy_record, recovery_policy, validate)
 from fleet_peer import run_peer  # noqa: E402
-from folder_transport import atomic_write_bytes  # noqa: E402
+from Basic._files import atomic_write_bytes  # noqa: E402
 from manifest import fleet_id_for, is_fleet_secret, new_fleet_secret  # noqa: E402
 from repo_transport import RepoTransport, create_state_repo  # noqa: E402
 
@@ -180,7 +181,7 @@ def configure(args, directory: Path) -> dict:
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--config-dir", type=Path, default=default_config_dir())
+    parser.add_argument("--config-dir", type=Path, default=sync_home())
     commands = parser.add_subparsers(dest="command", required=True)
 
     setup = commands.add_parser("setup", help="guided first-run setup for this peer")
@@ -772,7 +773,7 @@ def command_safe_to_wipe(config: dict) -> int:
     from fleet_actions import plan_catchup
     from fleet_observer import IncrementalObserver
     from recovery_runtime import RecoveryRuntime
-    from shared.git_facts import repo_facts
+    from Basic._facts import repo_facts
 
     observer = IncrementalObserver(config)
     count = observer.inventory()

@@ -53,6 +53,8 @@ except ImportError:
         review,
     )
 
+from Basic._confirm import prompt_input  # noqa: E402 (root set by git_inspect)
+
 # Per-archive run modes baked into the launcher / stored in the registry.
 MODE_UPDATE = "update"   # fast-forward pull only (safe; default)
 MODE_SYNC = "sync"       # update + clone repos missing locally (additive)
@@ -104,17 +106,6 @@ def log_event(message: str) -> None:
     stamp = now_stamp()
     with MANAGER_LOG.open("a", encoding="utf-8") as handle:
         handle.write(f"[{stamp}] {message}\n")
-
-
-def prompt_input(prompt: str) -> str:
-    """Read interactive input, ignoring VS Code auto-activation noise."""
-    while True:
-        value = input(prompt).strip()
-        lowered = value.lower()
-        if lowered.endswith(r"\scripts\activate.bat") or lowered.endswith("/bin/activate"):
-            print("Ignoring terminal activation command; please enter your choice.")
-            continue
-        return value
 
 
 def scan_suitable_repos_with_progress(root: Path, approved_prefixes: list[str]) -> list[str]:

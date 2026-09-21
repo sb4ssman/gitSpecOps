@@ -22,7 +22,7 @@ from _paths import bootstrap  # noqa: E402
 
 bootstrap()
 
-from config import default_config_dir  # noqa: E402
+from Basic._paths import sync_home  # noqa: E402
 from fleet_app import APP_CONFIG, main  # noqa: E402
 from fleet_config import DEFAULT_LOCAL_PORT  # noqa: E402
 
@@ -53,7 +53,7 @@ def desktop_main(argv=None) -> int:
         # The bundle is also the CLI: `GitSpecOpsSync.exe doctor`, `... autostart enable`,
         # and the `tray` argv that the login entry registers all arrive here.
         return main(argv)
-    config_path = default_config_dir() / APP_CONFIG
+    config_path = sync_home() / APP_CONFIG
     if not config_path.exists():
         # First run is still terminal-driven; --configure-only hands the process back here so
         # the very first session also gets a tray rather than waiting for a restart.

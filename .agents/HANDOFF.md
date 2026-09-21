@@ -1,4 +1,4 @@
-# Handoff — 2026-09-20
+# Handoff — 2026-09-21
 
 For the next session, human or LLM. Read [`README.md`](README.md) (the project brief) first. It
 opens with **What this is for**, and that section outranks every rule below it. Then this, then
@@ -6,8 +6,10 @@ opens with **What this is for**, and that section outranks every rule below it. 
 
 ## Your job: reorganize the guts into the agreed architecture
 
-The product direction, the layering and the diagram are **settled**. The code has not moved yet.
-This session's work is the migration, and nothing else.
+The product direction, the layering and the diagram are **settled**. **Phase 1 is committed
+(2026-09-21); phase 2 is next.** The work is the migration, and nothing else. The target was
+revised on 2026-09-21 (root `_os/`, flat `Basic/`, flat `App/tray.py`, `_providers/`, merges and
+splits): read "Revisions" at the end of the architecture document before phase 2.
 
 Read these two before touching a file:
 
@@ -53,15 +55,17 @@ layers.
 
 Phase 1 is where to start. Do not begin a phase until the one before it is committed green.
 
-1. **`Basic/`.** Collapse the two independently evolved git subprocess wrappers
-   (`shared/git_facts.run_git` and `gh_common.run_command`) into one careful `_run`. Move console,
-   discovery, facts (with `git_inspect`), identity, and the state-dir paths. Existing tool folders
-   import downward; **no tool folder moves in this phase.** Highest value, lowest risk.
-2. **`Basic/providers/`.** Move the existing seam unchanged in concept: `shared/providers` becomes
-   `_registry.py`; `provider_github`, the duplicator's `gh_remote` calls and `shared/gh_cli` become
-   `github.py`, which registers itself. **Delete the `remote_provider.py` facade and
-   `_register_providers()`**: they existed only because `shared/` could not import tool folders.
-   **Add the import-direction test here.**
+1. **`Basic/` — DONE 2026-09-21.** One `_run.py` (git and `gh`), `_facts`, `_identity`,
+   `_discovery`, `_console`, `_confirm`, `_files`, `_paths`; commands `status.py`, `discover.py`;
+   root `_os/` with `current.py` and `paths`/`process` for all three OSes plus a parity test. Tool
+   folders import downward; none moved. `git_inspect` stayed put on purpose: `inspect_candidate`
+   is archive policy and goes to `Special/_archive_plan.py` in phase 3. See the work log.
+2. **`Basic/_providers/`.** Move the existing seam unchanged in concept: `shared/providers` becomes
+   `_registry.py`; `provider_github`, the duplicator's `gh_remote` calls, `shared/gh_cli` and the
+   version check's release query become `github.py`, which registers itself. **Delete the
+   `remote_provider.py` facade and `_register_providers()`**: they existed only because `shared/`
+   could not import tool folders. **Add the import-direction test here** (with `_os/` beneath
+   every layer).
 3. **`Special/` and `Elaborate/`.** Move the operations to their names in the target tree. Split
    `archive_diff` (generic classification to `Basic/_facts`, archive decisions to
    `Special/_archive_plan.py`). **`archive_manage` goes to Elaborate**: it schedules. Consolidate
@@ -69,8 +73,12 @@ Phase 1 is where to start. Do not begin a phase until the one before it is commi
    and `peer` runs it continuously; delete `watch` (the peer's file events replace its polling);
    fold `init` into `setup_fleet`; the terminal `dashboard` becomes `check` without observing;
    delete the reserved `handoff` stub. Update `LAUNCHER_SPECS` and every path in the docs.
-4. **`App/`, `_build/`, `_docs/`, `_tests/`.** The tray goes to `App/tray/`, with per-OS pieces
-   beside it as plumbing if it grows them. Create all three skins. Rename `tests/` to `_tests/`
+   Also: the archive registry moves to `Basic/_paths.config_home()` as
+   `gitspecops_managed_archives.json`; launcher writing moves to `_os/*/launcher.py` and
+   scheduling to `_os/*/schedule.py`; terminal renderers move out of `advice`/`aggregate`.
+   **Stop and tell the user before touching the scheduled task** (below).
+4. **`App/`, `_build/`, `_docs/`, `_tests/`.** The tray becomes `App/tray.py`; its Win32 code goes
+   to `_os/windows/tray.py`, with linux/macos files reporting "unsupported". Create all three skins. Rename `tests/` to `_tests/`
    with subfolders mirroring the layers.
 5. **Effect declarations and the invariant test.** Every operation declares
    `EFFECT = "none" | "local" | "remote"` as a module-level constant. A test collects them by
@@ -79,10 +87,13 @@ Phase 1 is where to start. Do not begin a phase until the one before it is commi
 
 ## Things that will bite you
 
-- **A live scheduled task points at the old layout.** `gitSpecOps Archive Refresh` executes
-  `…\gitArchiveUpdater\refresh-managed-archives.bat`, a generated launcher under an older
-  camel-case folder name. Phase 3 breaks it. Tell the user; they will regenerate it, since it
-  touches their real archives.
+- **The scheduled task is already broken, and it is the user's.** `gitSpecOps Archive Refresh`
+  runs `<repo>\gitArchiveUpdater\refresh-managed-archives.bat`, which calls
+  `gitArchiveUpdater\archive_manager.py` — a file that no longer exists (the untracked folder holds
+  only that `.bat` and stale `.pyc`s). Read-only query on 2026-09-20: last run 2026-09-01, result
+  2 (file not found); monthly, next 2026-10-01. **Decided 2026-09-20:** the migration writes a new
+  launcher for it; the user replaces the task. Do not delete `gitArchiveUpdater/` or touch the
+  task until they have — stop and tell them first.
 - **No fleet autostart is registered and no machine is enrolled.** That is why the migration goes
   first: `autostart` writes an absolute resolved path into the registry Run key, the XDG
   `.desktop` file and the LaunchAgent, so moving files after enrollment would break start-at-login
@@ -99,12 +110,13 @@ Phase 1 is where to start. Do not begin a phase until the one before it is commi
 ## Validation: non-negotiable
 
 ```powershell
-& .\.venv\Scripts\python.exe tests\run_all.py        # 34/34 before the migration
+& .\.venv\Scripts\python.exe tests\run_all.py        # 38/38 after phase 1
 & .\.venv\Scripts\python.exe tests\repo\test_repo_hygiene.py
 ```
 
 (After phase 4 these live under `_tests\`.) Run the suite **alone**: on 2026-09-12 a test failed
-only while five test processes ran concurrently. "The suite passes" means it passes on this
+only while five test processes ran concurrently. It takes several minutes; run it in the
+background rather than behind a pipe that buffers everything. "The suite passes" means it passes on this
 Windows checkout.
 
 Do not run live GitHub duplication, archive refreshes, scheduled-task changes, or any fleet

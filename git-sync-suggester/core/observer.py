@@ -11,9 +11,10 @@ _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from shared.git_facts import git_stdout, repo_facts, run_git  # noqa: E402
-from shared.remote_identity import parse_remote_url  # noqa: E402
-from shared.repo_discovery import find_repos  # noqa: E402
+from Basic._discovery import find_repos  # noqa: E402
+from Basic._facts import git_stdout, repo_facts  # noqa: E402
+from Basic._identity import parse_remote_url  # noqa: E402
+from Basic._run import run_git  # noqa: E402
 
 from manifest import branch_id, repository_id, utc_now  # noqa: E402
 

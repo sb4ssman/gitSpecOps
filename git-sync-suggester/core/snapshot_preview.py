@@ -28,7 +28,7 @@ import hashlib
 import re
 
 from patch_parse import PatchUnreadable, parse_patch
-from shared.git_facts import run_git
+from Basic._run import run_git
 from snapshot_store import verify_bundle
 
 COMMIT = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")

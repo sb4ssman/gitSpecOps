@@ -32,7 +32,8 @@ from fleet_net import fetch_peer_report, local_identity, make_peer_server
 from fleet_observer import IncrementalObserver
 from fleet_store import FleetStore, MAX_REPORT_BYTES
 from git_client import DesktopIntegration
-from folder_transport import FolderTransport, atomic_write_bytes
+from Basic._files import atomic_write_bytes
+from folder_transport import FolderTransport
 from local_view import display_from_manifests
 from manifest import fleet_id_for
 from observer import fetch_repositories

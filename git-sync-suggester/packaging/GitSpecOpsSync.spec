@@ -14,7 +14,7 @@ code_dirs = [str(root / name) for name in ("core", "fleet", "app")]
 
 analysis = Analysis(
     [str(root / "app" / "fleet_desktop.py")],
-    # `shared/` belongs to the repository root, while the flat fleet modules live below
+    # `Basic/`, `_os/` and `shared/` belong to the repository root, while the flat fleet modules live below
     # git-sync-suggester.  Keep both; an old `tool` variable here was undefined at build time.
     pathex=[str(project_root), str(root), *code_dirs],
     binaries=[],
@@ -26,7 +26,7 @@ analysis = Analysis(
                    "local_view", "ui_assets", "fleet_actions", "recovery_runtime",
                    "capture", "secret_scan", "patch_parse", "snapshot_store",
                    "snapshot_preview", "snapshot_restore", "retirement", "vscode_buffers",
-                   "shared.console", "shared.version"],
+                   "Basic._console", "shared.version"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

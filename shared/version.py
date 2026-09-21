@@ -109,7 +109,7 @@ def version_line() -> str:
 def main() -> int:
     """Standalone: print the version, and the update status when asked."""
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from shared.console import enable_unicode_output
+    from Basic._console import enable_unicode_output
 
     enable_unicode_output()
     print(version_line())

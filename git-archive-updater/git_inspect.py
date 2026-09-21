@@ -8,8 +8,9 @@ nothing about GitHub, GitLab, or any remote API. It only runs `git` and parses U
 One task: given a folder, tell the caller what its child repositories are, what their
 origins/branches are, and whether they are clean enough to fast-forward.
 
-Generic primitives (run_git, URL parsing, child-dir listing) live in `shared/` and are
-re-exported here so the archive modules' imports keep working.
+Generic primitives (run_git, URL parsing, child-dir listing) live in `Basic/` and are
+re-exported here for the archive modules until they move to `Special/` (migration phase 3),
+where `inspect_candidate` becomes archive planning rather than a fact.
 
 Standalone:
 
@@ -23,24 +24,21 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-# Shared special-operation primitives live in shared/ at the repo root. Make them
-# importable whether this file runs as a script, a sibling import, or a package module.
+# The layers live at the repo root. Make them importable however this file is loaded.
 _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from shared.git_facts import (  # noqa: E402,F401
-    GIT_TIMEOUT_SECONDS,
+from Basic._discovery import is_hidden, list_child_dirs  # noqa: E402
+from Basic._facts import (  # noqa: E402,F401
     ahead_behind,
-    is_repo_root,
     git_stdout,
     git_top_level,
+    is_repo_root,
     repo_facts,
-    run_git,
-    set_git_timeout,
 )
-from shared.remote_identity import parse_remote_url, remote_host  # noqa: E402
-from shared.repo_discovery import is_hidden, list_child_dirs  # noqa: E402
+from Basic._identity import parse_remote_url, remote_host  # noqa: E402,F401
+from Basic._run import GIT_TIMEOUT_SECONDS, run_git, set_git_timeout  # noqa: E402,F401
 
 
 @dataclass
@@ -61,13 +59,6 @@ class RepoInfo:
     action: str
     result: str = "not run"
     elapsed_seconds: float = 0.0
-
-
-# run_git / git_stdout / git_top_level / is_repo_root moved to shared/git_facts.py;
-# is_hidden / list_child_dirs moved to shared/repo_discovery.py — all imported above.
-
-
-# parse_remote_url / remote_host moved to shared/remote_identity.py (imported above).
 
 
 def approved_remote(origin: str | None, prefixes: list[str]) -> bool:

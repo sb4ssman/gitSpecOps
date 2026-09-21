@@ -26,7 +26,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from shared.gh_cli import GhError, run_gh  # noqa: E402
-from shared.remote_identity import RepoRef  # noqa: E402,F401
+from Basic._identity import RepoRef  # noqa: E402,F401
 
 # Fields requested from `gh` for both list and view; maps 1:1 onto RepoRef in _ref_from_json.
 _FIELDS = "id,name,nameWithOwner,url,isPrivate,isFork,isArchived"

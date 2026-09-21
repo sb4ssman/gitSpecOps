@@ -15,18 +15,17 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from gh_common import run_command
-
 # The .gitattributes probe is a tiny single-file API read; it must never sit on the default
 # 120s gh timeout, and several can run at once.
 _LFS_PROBE_TIMEOUT = 20
 _LFS_PROBE_WORKERS = 8
 
-# Shared gh wrapper lives in shared/ at the repo root; all gh calls go through it.
+# The layers and shared/ live at the repo root; every subprocess goes through Basic/_run.py.
 _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from Basic._run import run_checked  # noqa: E402
 from shared.gh_cli import GhError, run_gh  # noqa: E402
 
 
@@ -36,7 +35,7 @@ from shared.gh_cli import GhError, run_gh  # noqa: E402
 def check_git_installed():
     """Verify git is installed."""
     try:
-        run_command(['git', '--version'], check=True)
+        run_checked(['git', '--version'], timeout=30)
         print("✓ git installed")
         return True
     except Exception:
