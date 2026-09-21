@@ -6,8 +6,8 @@ opens with **What this is for**, and that section outranks every rule below it. 
 
 ## Your job: reorganize the guts into the agreed architecture
 
-The product direction, the layering and the diagram are **settled**. **Phase 1 is committed
-(2026-09-21); phase 2 is next.** The work is the migration, and nothing else. The target was
+The product direction, the layering and the diagram are **settled**. **Phases 1 and 2 are committed
+(2026-09-21); phase 3 is next, and it stops before the scheduled task.** The work is the migration, and nothing else. The target was
 revised on 2026-09-21 (root `_os/`, flat `Basic/`, flat `App/tray.py`, `_providers/`, merges and
 splits): read "Revisions" at the end of the architecture document before phase 2.
 
@@ -60,12 +60,12 @@ Phase 1 is where to start. Do not begin a phase until the one before it is commi
    root `_os/` with `current.py` and `paths`/`process` for all three OSes plus a parity test. Tool
    folders import downward; none moved. `git_inspect` stayed put on purpose: `inspect_candidate`
    is archive policy and goes to `Special/_archive_plan.py` in phase 3. See the work log.
-2. **`Basic/_providers/`.** Move the existing seam unchanged in concept: `shared/providers` becomes
-   `_registry.py`; `provider_github`, the duplicator's `gh_remote` calls, `shared/gh_cli` and the
-   version check's release query become `github.py`, which registers itself. **Delete the
-   `remote_provider.py` facade and `_register_providers()`**: they existed only because `shared/`
-   could not import tool folders. **Add the import-direction test here** (with `_os/` beneath
-   every layer).
+2. **`Basic/_providers/` — DONE 2026-09-21.** `_registry.py` (was `shared/providers.py`) loads
+   its built-in providers itself; `github.py` holds every `gh` invocation (was `provider_github`,
+   `shared/gh_cli`, the duplicator's `gh_remote` calls, the version check's release query) and
+   registers itself. `remote_provider.py` and `_register_providers()` are deleted.
+   `tests/repo/test_import_direction.py` enforces `_os → Basic → Special → Elaborate → App`, no
+   sideways command imports, nothing outside the stack. See the work log.
 3. **`Special/` and `Elaborate/`.** Move the operations to their names in the target tree. Split
    `archive_diff` (generic classification to `Basic/_facts`, archive decisions to
    `Special/_archive_plan.py`). **`archive_manage` goes to Elaborate**: it schedules. Consolidate
@@ -110,7 +110,7 @@ Phase 1 is where to start. Do not begin a phase until the one before it is commi
 ## Validation: non-negotiable
 
 ```powershell
-& .\.venv\Scripts\python.exe tests\run_all.py        # 38/38 after phase 1
+& .\.venv\Scripts\python.exe tests\run_all.py        # 40/40 after phase 2
 & .\.venv\Scripts\python.exe tests\repo\test_repo_hygiene.py
 ```
 

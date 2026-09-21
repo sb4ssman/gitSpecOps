@@ -22,7 +22,7 @@ decision and its rationale, a non-obvious constraint, an investigation result.
   salt is worth a different amount per transport.
 - [`repo-privacy-and-history.md`](repo-privacy-and-history.md) — the blob-by-blob history audit:
   personal data, no secrets.
-- [`shared-layer.md`](shared-layer.md) — the `shared/` cross-operation primitive layer: admission
+- [`shared-layer.md`](shared-layer.md) — *superseded by the layer stack; kept for history.* The `shared/` cross-operation primitive layer: admission
   rule, module list, import mechanics, Linux notes.
 - [`tiers-and-capture.md`](tiers-and-capture.md) — what each tier is supposed to be able to
   *rescue*, not merely how fast it is.

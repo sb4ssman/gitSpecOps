@@ -6,7 +6,9 @@
 > `run_command` into `Basic/_run.py` (which `run_gh` now also uses), and dropped the standalone
 > CLIs of plumbing modules — `Basic/status.py` and `Basic/discover.py` replace the two that were
 > useful; the identity self-test became `tests/basic/test_identity.py`. What remains in `shared/`
-> leaves in phases 2 and 4. The record below is kept for its reasoning and history.
+> leaves in phases 2 and 4. Phase 2 (2026-09-21) moved `providers.py` to
+> `Basic/_providers/_registry.py` and folded `gh_cli.py` into `Basic/_providers/github.py`; only
+> `version.py` remains. The record below is kept for its reasoning and history.
 
 _Decision recorded 2026-08-31._
 

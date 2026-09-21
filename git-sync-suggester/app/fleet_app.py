@@ -29,7 +29,7 @@ from _paths import bootstrap  # noqa: E402
 bootstrap()  # core/, fleet/, app/ and the repo root (for shared/)
 
 from Basic._console import enable_unicode_output  # noqa: E402
-from shared.gh_cli import GhError, run_gh  # noqa: E402
+from Basic._providers.github import GhError, run_gh  # noqa: E402
 from Basic._paths import sync_home  # noqa: E402
 from config import default_machine_id  # noqa: E402
 from fleet_config import (APP_CONFIG, DEFAULT_FOLDER_SECONDS, DEFAULT_LOCAL_PORT,  # noqa: E402

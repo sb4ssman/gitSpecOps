@@ -33,7 +33,7 @@ _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from shared.gh_cli import GhError, run_gh  # noqa: E402
+from Basic._providers.github import GhError, run_gh  # noqa: E402
 
 from folder_transport import SAFE_MACHINE_ID  # noqa: E402
 from manifest import (COMPRESSED_SUFFIX, MANIFEST_SUFFIX,  # noqa: E402

@@ -53,7 +53,6 @@ try:
         run_git,
         set_git_timeout,
     )
-    from .remote_provider import provider_for
 except ImportError:
     from archive_diff import (
         LocalRepo,
@@ -72,9 +71,9 @@ except ImportError:
         run_git,
         set_git_timeout,
     )
-    from remote_provider import provider_for
 
 from Basic._confirm import confirm_typed, prompt_yes_no  # noqa: E402 (root set by git_inspect)
+from Basic._providers._registry import provider_for  # noqa: E402
 
 APP_NAME = "Archive Sync"
 VERSION = "0.1.0"
