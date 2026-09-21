@@ -1,197 +1,181 @@
 # Architecture: the layer stack
 
-**Status:** shape agreed 2026-09-20, migration not started. This is the **target**.
-[`../README.md`](../README.md) "Repo Shape" still describes what is on disk today; update it as
-each phase lands.
+**Status:** target agreed 2026-09-20; migration not started. How to get there is in
+[`../HANDOFF.md`](../HANDOFF.md). The picture is [`architecture-diagram.md`](architecture-diagram.md).
+[`../README.md`](../README.md) "Repo Shape" describes what is on disk *today* until the migration lands.
 
 ## The model
 
-Everything here is **git Special Operations**. The layers are about **composition** — what an
-operation is built out of — not about difficulty, and not about how many repositories it touches.
+`git` is the raw material, and authentication is assumed: the user's own `git` and `gh` are
+already set up, and nothing here stores, configures or asks for a credential. Everything is built
+downward from there, becoming more elaborate as it builds on the basic operations.
 
 | Layer | What it *is* | What it adds |
 |---|---|---|
-| **Basic** | one git or remote operation | **care** — a timeout always, forced non-interactive, structured results, no `--force` available |
-| **Special** | a Basic operation repeated, with the logic of the repetition | **judgment** — which qualify, what to skip, collect failures, report at the end |
-| **Elaborate** | wider scale, calling Basic and Special | **reach** — across machines, and across time |
-| **App** | all of it, assembled | **presence** — it is in your tray |
+| **Basic** | one git or host operation | **care**: always a timeout, never interactive, structured results, no `--force` available |
+| **Special** | a Basic operation repeated, with the logic of the repetition | **judgment**: which qualify, what to skip, what to collect and report |
+| **Elaborate** | wider scale, built on Basic and Special | **reach**: across machines, and across time |
+| **App** | all of it, assembled for a human | **presence**: it lives in the tray, if the user lets it |
 
-Three clarifications that took several passes to get right, recorded so they are not re-derived:
+Clarifications that took several passes to get right, recorded so they are not re-derived:
 
-- **Basic is one operation.** It is scoped to a single repository only because that is what a
-  single git command necessarily touches. The definition is the operation count, not the scope.
-- **Special is not "many repos."** A shell loop running `pull` fifty times is not a Special
-  operation. What makes `archive-update` special is the *logic of the repetition* — which repos
-  qualify, approved remote, clean tree only, skip the rest, collect failures, report. That
-  judgment is the layer.
-- **Elaborate reaches across machines *and across time*.** `archive-manage` belongs here despite
-  touching one machine, because it keeps a registry, installs launchers, and runs operations **on
-  a schedule**. That is also exactly why the rule exists that scheduled runs may never emit
-  `--reconcile` or `--rename-folders`: an Elaborate operation can fire while you are asleep.
+- **Basic is one operation.** It touches one repository only because that is what a single git
+  command touches. The definition is the operation count, not the scope.
+- **Special is not "many repos."** A loop running `pull` fifty times is not a Special operation.
+  What makes `archive_update` special is the logic of the repetition. That judgment is the layer.
+- **Elaborate reaches across machines *and across time*.** `archive_manage` belongs here because it
+  keeps a registry and runs operations **on a schedule**. That is also why scheduled runs may never
+  emit `--reconcile` or `--rename-folders`: an Elaborate operation can fire while you are asleep.
+- **App is optional, and it is mostly the tray.** Every operation runs from the terminal on its
+  own, forever. The App adds presence, not capability, and nothing may come to depend on it. The
+  best thing it does is **suggest sync**.
 
-### The one rule
+## The rules
 
-> A layer may call only layers below it. Never sideways into a sibling, never upward.
-> Enforced by a test that reads the imports, not by good intentions.
-
-Composition is therefore the only mechanism, and the stack holds itself up.
-
-## Three kinds of file
-
-| Kind | Looks like | Who touches it |
-|---|---|---|
-| **operation** | `fetch.py` | you run it; it declares its effect |
-| **plumbing** | `_run.py` | its own layer imports it |
-| **plugin** | `plugins-remote/github/` | nobody imports it — it is *loaded* |
-
-An operation that needs several modules gets a folder of its own name instead of a file.
-
-**The hyphen does real work.** `import plugins-remote` is a syntax error, so no layer can
-accidentally depend on a plugin implementation. Plugins are discovered and loaded by path. The
-naming convention enforces the architecture for free.
+- **A file without an underscore is a command. A file or folder with one is plumbing.** `ls` on
+  any layer lists exactly what it can do.
+- **Every command is also an ordinary importable module**, runnable by its path from anywhere.
+  Higher layers call lower ones with a normal `import`. The only subprocesses are calls out to
+  `git` and the host CLIs themselves. Imports behave identically on every operating system;
+  interpreter discovery, argument quoting and stdout encoding across a subprocess boundary do not.
+- **A layer builds only on the layers above it** in the diagram (Basic → Special → Elaborate → App):
+  never sideways, never on what comes after. Enforced by a test that reads the imports.
+- **Plain names: lowercase words joined by underscores.** No hyphens anywhere.
+- **Plain scripts, not a package.** No installation step and no console-script entry points.
 
 ## The shape on disk
 
-Alphabetical, folders before files:
-
 ```
 gitSpecOps/
-├── .agents/              brief, working notes, work log, knowledge
-│
-├── App/                  OPTIONAL, and mostly the tray
-│     skins/   lcars/  modern/  retro/   CONTRACT.md   _contract.py
-│     tray/    the primary surface; per-OS bits from plugins-local/platform/
-│     autostart  cli  dashboard  peer
-│
-├── Basic/                ONE operation, wrapped with care
-│     git/     clone  fetch  pull  push  revs  status
-│     remote/  repo-create  repo-list  repo-rename  repo-view
-│               _contract.py   (the interface + loader; host-blind)
-│     _console  _discovery  _facts  _identity  _paths  _run
-│
-├── build/                PyInstaller recipe, release gate, build notes
-├── docs/                 FLEET, RECOVERY-DESIGN, user-facing guides
-│
-├── Elaborate/            WIDER SCALE — across machines, across time
-│     archive-manage  at-risk  capture  catchup  materialize
-│     observe  restore  retire
-│     _fleet  _manifest  _transport
-│
-├── plugins-local/        what is on THIS machine — selected by detection, never configured
-│     editors/       vscode/  …
-│     git-clients/   github-desktop/  sourcetree/  …
-│     platform/      linux/  macos/  windows/
-│     CONTRACT.md
-│
-├── plugins-remote/       which host — selected by the remote's URL
-│     gitea/  github/  gitlab/  plain-git/
-│     CONTRACT.md
-│
-├── Special/              a Basic operation REPEATED, with the logic of the repetition
-│     duplicate-org/
-│     archive-sync  archive-update  publish
-│
-└── tests/                mirrors the stack
-      App/  Basic/  Elaborate/  Special/  probes/  repo/
+├── .agents/                    brief, notes, work log, knowledge, diagrams
+├── _build/                     PyInstaller recipe, release gate, build notes
+├── _docs/                      FLEET, DISPLAY-CONTRACT, RECOVERY-DESIGN
+├── _tests/                     App/ Basic/ Elaborate/ Special/ probes/ repo/  run_all.py
+├── App/                        optional, and mostly the tray
+│   ├── skins/
+│   │   ├── lcars/              placeholder at first
+│   │   ├── modern/             today's dashboard
+│   │   ├── retro/              placeholder at first
+│   │   └── _assets.py          serves skin files by exact name
+│   ├── tray/
+│   │   └── tray.py
+│   ├── autostart.py            registry Run key / XDG autostart / LaunchAgent
+│   ├── dashboard.py            the loopback dashboard
+│   ├── desktop.py              packaged-app entry
+│   ├── git_client.py           open a checkout in a desktop Git client
+│   ├── setup_fleet.py          guided first run
+│   └── version.py
+├── Basic/                      one git or host operation, wrapped with care
+│   ├── git/
+│   │   ├── clone.py
+│   │   ├── fetch.py
+│   │   ├── pull.py             fast-forward only
+│   │   ├── push.py             never --force
+│   │   └── status.py
+│   ├── providers/
+│   │   ├── _registry.py        the Protocol, register, provider_for
+│   │   └── github.py           one module per host
+│   ├── _console.py
+│   ├── _discovery.py
+│   ├── _facts.py
+│   ├── _identity.py
+│   ├── _paths.py
+│   └── _run.py                 the one subprocess wrapper
+├── Elaborate/                  wider scale: across machines, across time
+│   ├── _fleet/                 advice, aggregate, config, display, events, manifest,
+│   │                           net, observer, store
+│   ├── _transport/             folder, repo
+│   ├── recovery/               one operation, with details
+│   │   ├── acknowledge.py  policy.py  preview.py  restore.py  retire.py
+│   │   └── _capture  _patch_parse  _retirement  _runtime  _secret_scan  _snapshot_store …
+│   ├── _editors.py
+│   ├── alias.py
+│   ├── archive_manage.py       registry, launchers, schedule
+│   ├── audit.py
+│   ├── baskets.py
+│   ├── catchup.py
+│   ├── check.py                observe, publish, show: once
+│   ├── converge.py
+│   ├── doctor.py
+│   ├── live_buffers.py
+│   ├── materialize.py
+│   ├── peer.py                 observe, publish, show: continuously
+│   ├── preflight.py
+│   └── safe_to_wipe.py
+├── Special/                    a Basic operation repeated, with judgment
+│   ├── duplicate_org/          one operation, with details
+│   │   ├── duplicate_org.py
+│   │   └── _batch  _local_repos  _operations  _tracking
+│   ├── _archive_plan.py
+│   ├── archive_sync.py         keeps --publish as its own apply class
+│   └── archive_update.py
+├── AGENTS.md  CLAUDE.md  LICENSE  README.md  pyproject.toml
+└── run_setup.bat .ps1 .sh      setup_gitspecops.py
 ```
 
-## Three seams, one shape
+## Providers: the one seam
 
-Each seam swaps an implementation and keeps a contract. This is what makes "agnostic" real in
-every direction at once, and it is why **cross-platform works from the beginning** rather than
-arriving as a porting effort: the OS is a seam like the others, not a special case.
+Host-awareness lives in exactly one place: `Basic/providers/`. This is the seam the repository
+already had (`shared/providers.py`: a `RemoteProvider` Protocol with `list_repos` and `resolve`,
+a host → provider registry, and graceful degradation to host-agnostic behavior when no provider
+matches). The migration moves it into the stack. It does not redesign it.
 
-| Seam | Swaps | Selected by | Contract |
-|---|---|---|---|
-| **remote** | which host | the remote URL's host | `plugins-remote/CONTRACT.md` |
-| **local** | editors, desktop git clients, OS mechanisms | detection | `plugins-local/CONTRACT.md` |
-| **skin** | which look | the user | `App/skins/CONTRACT.md` |
+- **Adding a host is one module and one `register_provider()` line.** GitLab is `gitlab.py`.
+- **Providers register where they live.** The old facade (`remote_provider.py`) and the
+  tool-side registration dance (`_register_providers()`) existed only because `shared/` could not
+  import tool folders. In the stack that constraint is gone, and so are they.
+- **Providers, not "plugins" and not "APIs."** Nothing is discovered or loaded dynamically, so
+  they are not plugins. `plain-git` has no API at all and GitHub is reached through the `gh` CLI as
+  much as through HTTP, so "API" is too narrow. *Earlier drafts of this document proposed
+  `plugins-remote/` and `plugins-local/` folders with contract files, loaders and hyphenated
+  un-importable names. Dropped on 2026-09-20: the provider seam already existed and did the job,
+  and the hyphen "protection" was bypassable by `importlib` anyway. Do not reintroduce it.*
 
-None of the three is configured by hand where detection can answer it: a host is known from the
-URL, an OS from the platform, an installed editor from its presence. The skin is the one genuine
-user choice.
+Use the same Protocol-and-registry pattern for anything else that genuinely gains a second
+implementation, such as a second editor alongside VS Code. Until then it is one module.
 
-`plugins-local/platform/` is where "one command, three mechanisms" becomes structural. Today
-`autostart` spans a registry Run key, an XDG autostart file and a LaunchAgent; watching spans
-`ReadDirectoryChangesW` and inotify. Adding macOS should mean adding a folder, never editing
-branches spread through the stack. **No caller above ever branches on OS.**
+## Operating systems
 
-### The loader split (get this right early)
+Windows, Linux and macOS are peers. A per-OS mechanism lives **inside the module that needs it**,
+behind one function: `autostart.py` over the registry Run key, XDG autostart and LaunchAgent;
+`tray/` over the platform tray; `_fleet/events` over `ReadDirectoryChangesW` and inotify. **No
+caller ever branches on OS.** If a component grows several per-OS files, they sit beside it as
+plumbing (`App/tray/_windows.py`). There is no global per-OS folder.
 
-A hyphenated folder cannot be imported — which is the property we want — but a contract is code,
-so something must define it:
+## Skins
 
-- **`Basic/remote/_contract.py`** — the interface every remote plugin implements, plus the
-  loader. In the stack, importable, and host-blind: it names no host.
-- **`plugins-remote/github/`** — an implementation. Imported by nobody; loaded by path.
-- **`plugins-remote/CONTRACT.md`** — the human-readable spec, sitting where a plugin author looks.
+Three ship: **lcars, modern, retro.** `modern` is today's dashboard; `retro` and `lcars` start as
+placeholders. Every skin consumes the versioned display contract
+(`_docs/DISPLAY-CONTRACT.md`) and refuses a version it does not recognize. None reimplements Git
+or freshness policy. The contract's builder lives in `Elaborate/_fleet/`, not in `App/`, because
+deciding what needs attention is policy and the App holds none.
 
-The same split applies to `App/skins/`, though it bites less: a skin is mostly HTML/CSS/JS served
-by exact name rather than imported at all. The display contract already exists and already
-anticipates this — `gitspecops.fleet.display` is versioned, one module is permitted to turn state
-into display semantics, and every skin (**including LCARS**) must consume it and must never
-reimplement Git or freshness policy. It becomes `App/skins/CONTRACT.md`; today's dashboard becomes
-`App/skins/modern/`.
+## Sync Suggester: one job, run two ways
 
-## App is optional, and it is mostly the tray
-
-Every operation below `App/` is usable from the terminal, on its own, forever. **The App is
-optional and so is the tray** — they add presence, not capability. Nothing in the stack may come
-to depend on the App existing.
-
-`App/tray/` is the primary surface and the bulk of what the App *is*; the dashboard and its skins
-are second. gitSpecOps gets to live in the tray only if the user lets it, and the best thing it
-does from there is **suggest sync** — glance at the tray, see that repositories need attention,
-open the dashboard for where and what, act from either the dashboard or the terminal.
-
-The tray stays in `App/tray/` rather than becoming a plugin, because it must own the main thread
-and the Win32 message loop (`fleet_app._main` already carries a `stopping`/`on_ready` seam for
-exactly this reason — `signal.signal` cannot run off the main thread). It *calls into*
-`plugins-local/platform/` for the per-OS mechanisms, which is the right split: one tray, three
-implementations of what it needs from the operating system.
+`check` observes this machine's repositories, publishes its status, and shows the fleet: once.
+`peer` does the same job continuously. **One configuration and one observation code path serve
+both.** The earlier second runtime is dissolved rather than carried: `watch` (polling) is gone
+because the peer's file events replace it; `init` folds into `setup_fleet`; the terminal
+`dashboard` becomes `check` without observing; the reserved `handoff` stub is removed.
 
 ## Every operation declares its effect
 
-The layer says what an operation is composed of. It does not say what the operation *does to your
-repositories* — and leaving that to prose is precisely how a Git tool came to be documented as
-never touching Git. So each operation declares one field:
+The layer says what an operation is built from. It does not say what the operation *does to your
+repositories*, and leaving that to prose is how a Git tool once came to be documented as never
+touching Git. So each operation declares one module-level field:
 
-**`effect: none | local | remote`**, where **`none` means nothing you would have to undo.**
+**`EFFECT = "none" | "local" | "remote"`**, where **`none` means nothing you would have to undo.**
 
-`git fetch` writes into `.git/` — remote-tracking refs, objects — yet no branch of yours moves and
-no file you authored changes. Run it a thousand times by accident and there is nothing to recover.
-So fetch is `none`, and that is exactly why the observing side is allowed to do it. The peer
-writing its own manifests, logs and caches is `none` too: that is the tool's bookkeeping, not your
-repository.
+`git fetch` writes into `.git/`, yet no branch of yours moves and no file you authored changes.
+It is `none`, which is exactly why the background peer may run it. The peer writing its own
+manifests and logs is `none` too: that is the tool's bookkeeping, not your repository.
 
-Avoid the word "mutating" in prose — it is ambiguous between *an operation whose behavior varies
-with input* and *an operation that changes its target*. Write what is true instead: "this
-operation has no effect on your repositories."
+A test collects every declaration by scanning the layer folders and asserts the rule that matters:
 
-One rule then covers the whole background-app risk, and it is a test rather than a paragraph:
-
-> Everything reachable from the peer, tray, dashboard or scheduler must be `effect: none`.
-
-## Migration, in phases that each end green
-
-1. **`Basic/`.** Collapse the two independently-evolved git subprocess wrappers
-   (`shared/git_facts.run_git`, `gh_common.run_command`) into one careful `_run`. Move console,
-   paths, atomic writes, facts, discovery, identity. Existing tool folders import downward; none
-   of them move yet. Highest value, lowest risk, repays immediately in deleted duplication.
-2. **`Basic/remote/` + `plugins-remote/`.** Define the contract and the loader; move `gh_cli`,
-   `remote_provider`, `provider_github`, and the duplicator's `gh` calls. Add the import-direction
-   test here — this is the boundary worth the most.
-3. **`Special/` and `Elaborate/`.** Move the operations, drop the `git-` prefixes, split
-   `archive_diff` (generic classification down to Basic, archive policy stays). Update
-   `LAUNCHER_SPECS`, `_paths.py`, `tests/_bootstrap.py`, and every path in the docs.
-4. **`App/`, `App/skins/`, `plugins-local/`, `build/`, `docs/`.**
-5. **Effect declarations and the invariant tests.**
+> Everything reachable from the peer, tray, dashboard or scheduler is `EFFECT = "none"`.
 
 ## Sequencing: this precedes enrolling machines
 
-`fleet_autostart.py` writes an **absolute resolved path** to the peer entry point into the Windows
-registry Run key, the XDG `.desktop` file, and the LaunchAgent. Moving files after enrollment
-breaks start-at-login on every machine — *silently*: the app simply stops coming back after a
-reboot, the worst failure mode for a tool whose whole job is noticing things.
-
-Migrate first, enroll onto the final layout.
+`autostart` writes an **absolute resolved path** to the peer into the registry Run key, the XDG
+`.desktop` file and the LaunchAgent. Moving files after enrollment breaks start-at-login on every
+machine, silently. Migrate first, then enroll onto the final layout.

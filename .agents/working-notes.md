@@ -7,6 +7,16 @@ _Last tended: 2026-09-20_
 
 ## Open
 
+### 2026-09-20 — migration is fully specified; next session executes it
+
+The target tree, every file's destination, the phases and the decisions are in
+[`knowledge/architecture-layers.md`](knowledge/architecture-layers.md) and
+[`HANDOFF.md`](HANDOFF.md). Two framings from the design discussion were wrong and are recorded as
+such so they are not revived: **"plugins"** (the provider seam already existed; no plugin folders,
+loaders or hyphen tricks) and **"legacy vs fleet" Sync Suggester runtimes** (not two products:
+`check` runs the observation job once, `peer` runs it continuously, over one config and one code
+path).
+
 ### 2026-09-20 — the goal outranks the rules; do not re-derive "read-only"
 
 The brief now opens with **What this is for**. If anything further down contradicts it, the goal
