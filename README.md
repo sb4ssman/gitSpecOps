@@ -250,10 +250,13 @@ Two rules that make the advice trustworthy:
 ## Layout
 
 ```text
-git-archive-updater/   archive updating: updater, sync engine, pure diff logic, provider seam
-github-org-duplicator/ org duplication: orchestrator, gh calls, local scans, workers, resume
+Basic/                 careful primitives: one subprocess wrapper, repo facts, discovery,
+                       prompts, state paths, and the host providers (Basic/_providers/)
+_os/                   per-OS pieces, the same files for Windows, Linux and macOS
+git-archive-updater/   archive updating: updater, sync engine, pure diff logic
+github-org-duplicator/ org duplication: orchestrator, local scans, workers, resume
 git-sync-suggester/    the optional fleet tool (see below)
-shared/                primitives used by two or more operations; each a read-only CLI
+shared/                the version number (moving into App/ as the migration proceeds)
 tests/                 offline, synthetic; no network, no real repositories
 .agents/               project brief, working notes, work log, durable knowledge
 ```

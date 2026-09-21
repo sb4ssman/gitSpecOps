@@ -54,7 +54,7 @@ from watcher import DEFAULT_HEARTBEAT_SECONDS, DEFAULT_INTERVAL_SECONDS, run_wat
 from Basic._console import enable_unicode_output  # noqa: E402
 from Basic._paths import sync_home  # noqa: E402
 from shared.version import VERSION, check_for_update, version_line  # noqa: E402
-from shared.providers import provider_for_host, registered_hosts  # noqa: E402
+from Basic._providers._registry import provider_for_host, registered_hosts  # noqa: E402
 PREVIEW_MACHINE_ID = "local-preview"
 
 
@@ -491,7 +491,9 @@ def command_converge(args: argparse.Namespace) -> int:
 
     resolved, errors = ([], [])
     if missing and not args.no_resolve:
-        _register_providers()
+        if not registered_hosts():
+            print("warning: no remote providers registered; unknown repositories cannot be named",
+                  file=sys.stderr)
         def progress(host, owner, remaining):
             print(f"  … listing {host}/{owner} ({remaining} still unnamed)", file=sys.stderr)
         resolved, errors = resolve_missing(missing, namespaces, secret, provider_for_host,
@@ -505,24 +507,6 @@ def command_converge(args: argparse.Namespace) -> int:
 
     print(render_report(resolved, errors, namespaces, roots_by_owner(catalog)))
     return 0
-
-
-def _register_providers() -> None:
-    """Import the tool-side providers so the shared registry is populated.
-
-    `shared/` never imports tool folders, so somebody has to do this; for the archive tools it
-    happens at their own import time. Failing to load one host must not stop the others.
-    """
-    sys.path.insert(0, str(REPO_ROOT / "git-archive-updater"))
-    # remote_provider.py is the module that calls register_provider(); importing the
-    # provider class alone registers nothing.
-    try:
-        import remote_provider  # noqa: F401
-    except ImportError as exc:
-        print(f"warning: GitHub provider unavailable: {exc}", file=sys.stderr)
-    if not registered_hosts():
-        print("warning: no remote providers registered; unknown repositories cannot be named",
-              file=sys.stderr)
 
 
 def command_doctor(args: argparse.Namespace) -> int:

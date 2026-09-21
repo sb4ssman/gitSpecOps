@@ -40,10 +40,10 @@ from gh_remote import (
     check_gh_installed,
     check_git_installed,
     check_org_access,
-    compare_repos,
     get_repos_with_details,
     remind_git_credentials,
 )
+from Basic._providers.github import compare_repos  # noqa: E402
 from local_repos import duplicate_repo_names, scan_local_git_repos
 from operations import download_single_repo, process_migrate_repo, process_upload_repo
 from tracking import initialize_tracking_files, load_completed_repos

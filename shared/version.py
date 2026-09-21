@@ -17,10 +17,13 @@ Deliberately modest, in the same spirit as the rest of the project:
 """
 from __future__ import annotations
 
-import json
-import subprocess
 import sys
 from pathlib import Path
+
+if __name__ == "__main__":  # run directly: make the layers importable
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from Basic._providers.github import latest_release_tag  # noqa: E402
 
 #: Bump this, tag the commit `v<VERSION>`, and publish a GitHub release with that tag.
 VERSION = "0.2.0"
@@ -53,27 +56,12 @@ def running_from_source() -> bool:
 def latest_release(timeout: int = 15) -> str | None:
     """The newest published release tag, or None when that cannot be determined.
 
-    Uses the `gh` CLI the project already depends on, so an update check introduces no new
+    Asks the GitHub provider (the user's own `gh` login), so an update check introduces no new
     authentication and no new dependency. None means "unknown", which every caller must render
     as unknown rather than as "up to date" -- claiming current when we did not check is the
     same silence-as-good-news mistake the fleet rules exist to prevent.
     """
-    try:
-        proc = subprocess.run(
-            ["gh", "release", "list", "--repo", REPOSITORY, "--limit", "1", "--json", "tagName"],
-            capture_output=True, text=True, timeout=timeout, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if proc.returncode or not proc.stdout.strip():
-        return None
-    try:
-        releases = json.loads(proc.stdout)
-    except ValueError:
-        return None
-    if not isinstance(releases, list) or not releases:
-        return None
-    tag = releases[0].get("tagName")
-    return tag if isinstance(tag, str) and tag.strip() else None
+    return latest_release_tag(REPOSITORY, timeout)
 
 
 def check_for_update(timeout: int = 15) -> dict:
@@ -108,7 +96,6 @@ def version_line() -> str:
 
 def main() -> int:
     """Standalone: print the version, and the update status when asked."""
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from Basic._console import enable_unicode_output
 
     enable_unicode_output()

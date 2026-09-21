@@ -7,22 +7,27 @@ _Last tended: 2026-09-21_
 
 ## Open
 
-### 2026-09-21 — migration: phase 1 done, phase 2 next
+### 2026-09-21 — migration: phases 1–2 done, phase 3 next
 
 The target tree (revised 2026-09-21), the phases and the decisions are in
 [`knowledge/architecture-layers.md`](knowledge/architecture-layers.md) and
-[`HANDOFF.md`](HANDOFF.md). Carried forward from phase 1:
+[`HANDOFF.md`](HANDOFF.md). Phase 3 moves `archive_manager`, so **stop and tell the user before
+it touches the scheduled task or its launcher**. Carried forward:
 
 - [ ] **Direct `subprocess` calls outside `_run`** remain (measured 2026-09-21): `archive_manager`
   (4, incl. `schtasks`), `fleet_autostart` (3), `capture`, `retirement`, `snapshot_restore`,
   `fleet_net`, `release_check`, `setup_gitspecops`, `shared/version` (1 each). Each moves onto
   `_run` or into `_os/` as its owner moves in phases 2–4; none should survive phase 4.
-- [ ] **`gh` can still prompt**: `_run` guards git with `GIT_TERMINAL_PROMPT=0` but sets nothing
-  for `gh`. Decide `GH_PROMPT_DISABLED=1` in phase 2, when `gh` moves into the provider.
+- [ ] **`gh` calls are all in the provider now, but two callers still speak raw `gh`**:
+  `repo_transport` (Contents API) and `fleet_app` (auth status, login) call `run_gh` with their
+  own arguments. Move the Contents API into `github.py` when the transport moves (phase 3);
+  `fleet_app` dissolves in phase 3 anyway.
 - [ ] **Scheduled task**: already broken (see HANDOFF). Phase 3 writes the new launcher; the user
   replaces the task; only then may `gitArchiveUpdater/` be deleted.
 - [ ] `operations.py` relies on `gh_common` having put the repo root on `sys.path` before it
-  imports `Basic`. Correct today, fragile; it disappears when the duplicator moves in phase 3. Two framings from the design discussion were wrong and are recorded as
+  imports `Basic`. Correct today, fragile; it disappears when the duplicator moves in phase 3.
+
+Two framings from the design discussion were wrong and are recorded as
 such so they are not revived: **"plugins"** (the provider seam already existed; no plugin folders,
 loaders or hyphen tricks) and **"legacy vs fleet" Sync Suggester runtimes** (not two products:
 `check` runs the observation job once, `peer` runs it continuously, over one config and one code
@@ -310,7 +315,7 @@ work log.
   ahead-only non-force). Not built: per-agent branches + `open_pr()` on the provider seam,
   auto-commit behind a flag, protected-branch awareness, secret/size pre-flight checks. Ship those
   only if the ahead-only slice proves insufficient.
-- Multi-host support is a stated goal: archive tools first via `shared/providers.py` (one
-  `provider_<host>.py` + `register_provider(...)` per host; fix `remote_identity` URL-port
+- Multi-host support is a stated goal: archive tools first via `Basic/_providers/` (one
+  `<host>.py` that calls `register_provider(...)`, plus its import line in `_registry.py`; fix `remote_identity` URL-port
   parsing first). `github-org-duplicator` stays GitHub-specific by design. Auth stays
   user-owned (host CLI logins); no credential management anywhere.

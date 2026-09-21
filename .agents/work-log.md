@@ -1,5 +1,43 @@
 # Work log
 
+## 2026-09-21 — migration phase 2: `Basic/_providers/` and the import-direction test
+
+**Landed.** `shared/providers.py` → `Basic/_providers/_registry.py` and
+`git-archive-updater/provider_github.py` → `Basic/_providers/github.py` (both `git mv`).
+`github.py` now holds **every `gh` invocation**: `run_gh`/`GhError` (ex `shared/gh_cli.py`,
+deleted), `GitHubProvider`, and the host operations the duplicator used to run itself (inventory,
+LFS probe, namespaces, create/ensure, duplicate comparison) plus the version check's release query
+(`latest_release_tag`). They return data or raise; the duplicator's `gh_remote.py` keeps only its
+print-and-stop prerequisite checks and the pooled LFS progress. `remote_provider.py` and Sync
+Suggester's `_register_providers()` are deleted.
+
+**How registration works now.** `github.py` calls `register_provider()` at import; the registry
+imports its built-in provider modules itself (a static import inside `_load_built_in_providers`,
+run on the first lookup). No caller has to remember anything, and nothing is loaded dynamically.
+Adding a host is one module plus one import line.
+
+**Why this mattered beyond tidiness.** The old arrangement failed silently: a provider existed
+only if some caller had imported the archive tool's facade first; forgetting meant "no
+providers", which degrades every lookup to host-agnostic behavior without an error. Sync
+Suggester's workaround reached the facade by **inserting `git-archive-updater/` into its own
+`sys.path` at runtime** — the cross-tool module-shadowing hazard the brief warns about. A fresh
+interpreter now resolves github.com with no setup (`tests/basic/test_providers.py`).
+
+**`gh` never prompts.** `run_gh` sets `GH_PROMPT_DISABLED=1`, the `gh` twin of
+`GIT_TERMINAL_PROMPT=0`. Every existing call passes complete flags, so nothing relied on a prompt.
+
+**Import-direction test** (`tests/repo/test_import_direction.py`): parses every file in the
+stack (function-level imports included) and enforces `_os → Basic → Special → Elaborate → App`;
+no sideways command-to-command import within a layer; nothing outside the stack (tool folders,
+`shared/`, third-party); no relative imports. Verified it fails on a planted file exhibiting each
+of the five violations, then removed the probe.
+
+**Still speaking raw `gh`:** `repo_transport` (Contents API) and `fleet_app` call `run_gh` with
+their own arguments; tracked in working notes for phase 3.
+
+**Validation (Windows, suite alone):** 40/40 test files; hygiene green; entry points answer
+`--help` by path from a foreign directory.
+
 ## 2026-09-21 — migration phase 1: `Basic/` and `_os/`
 
 **Folder map reviewed first (2026-09-20).** The user revised the target before any file moved:

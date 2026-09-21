@@ -138,7 +138,7 @@ The archive engine behind the manager is split into single-purpose modules in th
 - `archive_sync.py` (plan/apply: detect -> plan -> decide -> execute -> review)
 - `archive_diff.py` (pure decision logic; no git, no network; has a self-test)
 - `git_inspect.py` (read-only local git facts; host-agnostic)
-- `remote_provider.py` + `provider_github.py` (the cross-git provider seam)
+- the cross-git provider seam is `Basic/_providers/` (phase 2, 2026-09-21)
 
 The optional bootstrap helper is:
 
@@ -181,8 +181,14 @@ the others are commands, runnable by path:
 callers import `from _os.current import <component>` without ever branching on the OS. Today:
 `paths` (the per-user config base) and `process` (spawn options and whole-tree kill).
 
-`shared/` still holds `gh_cli.py` and `providers.py` (they become `Basic/_providers/` in phase 2)
-and `version.py` (App, phase 4). Scripts reach all of these with the small repo-root `sys.path`
+`Basic/_providers/` is the host seam (phase 2, 2026-09-21): `_registry.py` (the
+`RemoteProvider` Protocol, `register_provider`, `provider_for`/`provider_for_host`) and
+`github.py`, which holds **every `gh` invocation** in the project and registers itself on import.
+The registry imports its built-in providers the first time it is asked, so no caller has to.
+`run_gh` sets `GH_PROMPT_DISABLED=1`, so `gh` fails instead of asking, the same way
+`GIT_TERMINAL_PROMPT=0` stops git from asking.
+
+`shared/` now holds only `version.py` (moves to App in phase 4). Scripts reach all of these with the small repo-root `sys.path`
 bootstrap they already carry. On Linux the `.sh` launchers need the executable bit (mode 755) —
 keep it.
 
@@ -291,16 +297,17 @@ whoever builds it, so the safety model is not broken:
 `github_org_duplicator.py` is the interactive, confirmation-heavy orchestrator. It checks `git`, `gh`, authentication, and org access before moving repositories. **It is GitHub-specific by design** (org concept, `gh repo create`, LFS probing); multi-host support is a stated goal, tracked in `working-notes.md`, and will enter through the shared provider seam — the archive tools are the multi-host frontier. The work is split into cohesive sibling modules in the same folder, imported with plain `import` (the entry point is always run as a script, so its directory is on `sys.path`):
 
 - `gh_common.py` - subprocess wrapper, print lock, run-file dir, console helpers
-- `gh_remote.py` - all `gh` CLI calls (env checks, inventory, duplicate comparison)
+- `gh_remote.py` - the duplicator's prerequisite checks (print and stop) and pooled LFS probe;
+  the `gh` calls themselves are in `Basic/_providers/github.py`
 - `local_repos.py` - adapts shared repo discovery for direct/recursive upload scans + safe deletion
 - `tracking.py` - resume state / run files
 - `operations.py` - the per-repo download/upload/migrate workers
 - `batch.py` - modes 4 (batch) and 5 (single) flows, incl. their flag resolution
 
-Keep new GitHub/`gh` logic in `gh_remote.py` and new filesystem logic in `local_repos.py`; the orchestrator should stay flow-only.
+Keep new GitHub/`gh` calls in `Basic/_providers/github.py` and new filesystem logic in `local_repos.py`; the orchestrator should stay flow-only.
 
-**Subprocess timing rules.** Every `gh` call goes through `shared/gh_cli.run_gh` (120s default);
-every git call through `gh_common.run_command` (3600s ceiling — a git op with no progress that
+**Subprocess timing rules.** Every `gh` call goes through `Basic/_providers/github.run_gh` (120s
+default); every git call through `Basic/_run.run_checked` with `operations.GIT_OP_TIMEOUT_SECONDS` (3600s ceiling — a git op with no progress that
 long is hung, not slow — plus a forced `GIT_TERMINAL_PROMPT=0` so a missing credential fails fast
 instead of deadlocking a worker pool). Both raise `RuntimeError`/`GhError` on timeout; nothing
 blocks unbounded. Retries in `operations.py` use jittered backoff (`_retry_backoff`). The LFS
@@ -582,9 +589,10 @@ Consequences worth preserving:
   account". The tool looks where the user already is rather than enumerating their whole presence.
 
 Namespace-level work has no repository URL to parse, so it resolves a provider by host through
-`shared/providers.provider_for_host()`; `provider_for(url)` is now a thin wrapper over it.
-Registration lives in `git-archive-updater/remote_provider.py` (importing `provider_github.py`
-alone registers nothing) — `_register_providers()` in the CLI imports that module.
+`Basic/_providers/_registry.provider_for_host()`; `provider_for(url)` is a thin wrapper over it.
+Providers register themselves and the registry loads them, so nothing needs to be imported first.
+(Until 2026-09-21 a CLI helper, `_register_providers()`, had to import an archive-tool facade for
+this, and it did so by putting another tool's folder on `sys.path`.)
 
 ### Manifest schema v3 and the fleet secret
 

@@ -21,7 +21,7 @@ setup("sync")
 import repo_transport  # noqa: E402
 from manifest import (branch_id, build_manifest, fleet_id_for,  # noqa: E402
                       repository_id)
-from shared.gh_cli import GhError  # noqa: E402
+from Basic._providers.github import GhError  # noqa: E402
 
 failures = []
 SECRET = "ab" * 32

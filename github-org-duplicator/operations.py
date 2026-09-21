@@ -14,7 +14,7 @@ import time
 
 from gh_common import PRINT_LOCK, format_size, log_message  # puts the repo root on sys.path
 from Basic._run import CommandTimeout, run_checked
-from gh_remote import create_repo, ensure_repo
+from Basic._providers.github import create_repo, ensure_repo
 from local_repos import safe_cleanup_directory
 
 RETRY_ATTEMPTS = 3
