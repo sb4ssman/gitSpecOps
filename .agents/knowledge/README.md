@@ -9,7 +9,7 @@ decision and its rationale, a non-obvious constraint, an investigation result.
 
 - [`architecture-layers.md`](architecture-layers.md) — **shape agreed, migration not started.**
   The layer stack (Basic → Special → Elaborate → App) as *composition*, the one-way import rule,
-  the three kinds of file, the three plugin seams and their contracts, `effect` declarations, and
+  the full target tree, providers as the one host seam, skins, `EFFECT` declarations, and
   why the migration precedes enrolling machines.
 - [`architecture-diagram.md`](architecture-diagram.md) — the layer stack as a picture: the ASCII
   flow chart, what it asserts, and where the rendered version lives.

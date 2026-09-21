@@ -115,12 +115,11 @@ there freely. That is the release valve.
 
 ## Repo Shape
 
-> **Target architecture agreed 2026-09-20:** a composition stack —
-> `Basic → Special → Elaborate → App` — with a one-way import rule, two plugin seams
-> (`plugins-remote/`, `plugins-local/`) plus skins under `App/`, and `tests/ build/ docs/` at the
-> root. See
-> [`knowledge/architecture-layers.md`](knowledge/architecture-layers.md) for the model, the
-> migration phases, and why it precedes enrolling machines. **The section below describes what is
+> **Target architecture agreed 2026-09-20:** a composition stack built down from git —
+> `Basic → Special → Elaborate → App` — with a one-way import rule, the host seam in
+> `Basic/providers/`, three skins under `App/skins/`, and `_build/ _docs/ _tests/` at the root.
+> See [`knowledge/architecture-layers.md`](knowledge/architecture-layers.md) for the model and the
+> full target tree, and [`HANDOFF.md`](HANDOFF.md) for the migration phases. **The section below describes what is
 > on disk today**, which is still the tool-folder layout. Update it as each phase lands.
 
 This repo is intentionally small. Keep it that way.
