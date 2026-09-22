@@ -449,7 +449,7 @@ def command_converge(args: argparse.Namespace) -> int:
     """Report which repositories peers have that this machine does not, and name them.
 
     Read-only, including the network calls: it lists namespaces through the provider seam and
-    never clones. Cloning belongs to `archive_sync.py`, which already does it safely.
+    never clones. Cloning belongs to `Special/archive_sync.py`, which already does it safely.
     """
     config_dir = _config_dir(args)
     try:

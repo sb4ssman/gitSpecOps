@@ -20,7 +20,7 @@ This does three things:
   3. Reports whether the runtime prerequisites (git, gh, uv) are available.
 
 Running this is OPTIONAL. Without it, run the tools directly, e.g.
-`python3 git-archive-updater/archive_updater.py --help`, or via `uv run python ...`.
+`python3 Special/archive_update.py --help`, or via `uv run python ...`.
 Auth is never touched here: users authenticate their own host CLI (`gh auth login`, ...).
 """
 
@@ -133,7 +133,7 @@ def report_prerequisites() -> None:
 
 LAUNCHER_SPECS = [
     # (tool_dir, entry_script, launcher_base, help_on_no_args)
-    ("git-archive-updater", "archive_updater.py", "update-archive", True),
+    ("Special", "archive_update.py", "update-archive", True),
     ("git-archive-updater", "archive_manager.py", "manage-archives", False),
     ("github-org-duplicator", "github_org_duplicator.py", "duplicate-github-org", False),
     ("git-sync-suggester", "sync_suggester.py", "suggest-sync", True),

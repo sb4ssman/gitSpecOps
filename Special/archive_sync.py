@@ -35,49 +35,35 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-try:
-    from .archive_diff import (
-        LocalRepo,
-        PublishCandidate,
-        RepoRef,
-        SyncPlan,
-        build_plan,
-        build_publish_plan,
-        normalize_owner_name,
-    )
-    from .git_inspect import (
-        inspect_candidate,
-        is_repo_root,
-        list_child_dirs,
-        repo_facts,
-        run_git,
-        set_git_timeout,
-    )
-except ImportError:
-    from archive_diff import (
-        LocalRepo,
-        PublishCandidate,
-        RepoRef,
-        SyncPlan,
-        build_plan,
-        build_publish_plan,
-        normalize_owner_name,
-    )
-    from git_inspect import (
-        inspect_candidate,
-        is_repo_root,
-        list_child_dirs,
-        repo_facts,
-        run_git,
-        set_git_timeout,
-    )
+_ROOT = str(Path(__file__).resolve().parents[1])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
-from Basic._confirm import confirm_typed, prompt_yes_no  # noqa: E402 (root set by git_inspect)
+from Basic._confirm import confirm_typed, prompt_yes_no  # noqa: E402
+from Basic._console import enable_unicode_output  # noqa: E402
+from Basic._discovery import list_child_dirs  # noqa: E402
+from Basic._facts import is_repo_root, repo_facts  # noqa: E402
 from Basic._providers._registry import provider_for  # noqa: E402
+from Basic._run import run_git, set_git_timeout  # noqa: E402
+from Basic.clone import clone  # noqa: E402
+from Basic.pull import fast_forward  # noqa: E402
+from Basic.push import push  # noqa: E402
+from Special._archive_plan import (  # noqa: E402
+    DEFAULT_APPROVED_REMOTE_PREFIXES,
+    LocalRepo,
+    PublishCandidate,
+    RepoRef,
+    SyncPlan,
+    build_plan,
+    build_publish_plan,
+    inspect_candidate,
+    normalize_owner_name,
+)
 
+#: --publish pushes (never forced). The scheduled and generated paths never pass it.
+EFFECT = "remote"
 APP_NAME = "Archive Sync"
 VERSION = "0.1.0"
-DEFAULT_APPROVED_REMOTE_PREFIXES = ["https://github.com/", "git@github.com:", "ssh://git@github.com/"]
 # Matches archive_manager's DEFAULT_REPORT_DIR so the dashboard's "latest report" picks these up.
 DEFAULT_REPORT_DIR = ".gitSpecOps/archive-updates"
 
@@ -253,23 +239,12 @@ def _flags(r: RepoRef) -> str:
 # --------------------------------------------------------------------------------------
 # Phase 4: EXECUTE (each step graceful; collects issues)
 # --------------------------------------------------------------------------------------
-def _fast_forward(path: Path) -> str:
-    fetch = run_git(path, ["fetch", "origin"])
-    if fetch.returncode != 0:
-        return f"failed: fetch: {fetch.stderr.strip() or 'error'}"
-    pull = run_git(path, ["pull", "--ff-only"])
-    if pull.returncode != 0:
-        return f"failed: pull --ff-only: {pull.stderr.strip() or 'not a fast-forward'}"
-    combined = f"{pull.stdout}\n{pull.stderr}".lower()
-    return "already current" if ("up to date" in combined or "up-to-date" in combined) else "updated"
-
-
 def apply_pull(root: Path, plan: SyncPlan, issues: list[Issue]) -> int:
     done = 0
     for local in plan.to_pull:
         path = root / local.folder
         print(f"  [PULL] {local.folder} ... ", end="", flush=True)
-        result = _fast_forward(path)
+        result = fast_forward(path)
         print(result)
         if result.startswith("failed:"):
             issues.append(Issue(repo=local.folder, action="pull", detail=result.removeprefix("failed: ")))
@@ -287,7 +262,7 @@ def apply_clone(root: Path, plan: SyncPlan, issues: list[Issue]) -> int:
             print("skip: folder exists")
             issues.append(Issue(repo=ref.name, action="clone", detail="destination folder already exists"))
             continue
-        proc = run_git(root, ["clone", ref.url, str(dest)], timeout=300)
+        proc = clone(ref.url, dest)
         if proc.returncode != 0:
             detail = (proc.stderr.strip() or "error").splitlines()[-1]
             print(f"failed: {detail}")
@@ -423,7 +398,7 @@ def render_publish_plan(root: Path, plan) -> None:
 
 def _publish_one(path: Path, candidate: PublishCandidate) -> str:
     """Fetch, re-check, then push without --force. Returns a result string."""
-    fetch = run_git(path, ["fetch", "origin"], env={"GIT_TERMINAL_PROMPT": "0"})
+    fetch = run_git(path, ["fetch", "origin"])
     if fetch.returncode != 0:
         return f"failed: fetch: {(fetch.stderr or '').strip().splitlines()[-1:] or ['error']}"
 
@@ -438,9 +413,9 @@ def _publish_one(path: Path, candidate: PublishCandidate) -> str:
     if not ahead:
         return "already current"
 
-    push = run_git(path, ["push"], env={"GIT_TERMINAL_PROMPT": "0"}, timeout=300)
-    if push.returncode != 0:
-        detail = ((push.stderr or push.stdout or "").strip().splitlines() or ["error"])[-1]
+    pushed = push(path)  # Basic/push.py: a bare `git push`, with no way to force
+    if pushed.returncode != 0:
+        detail = ((pushed.stderr or pushed.stdout or "").strip().splitlines() or ["error"])[-1]
         return f"failed: push: {detail[:160]}"
     return f"pushed {ahead}"
 
@@ -629,6 +604,7 @@ def run_one(root: Path, approved_prefixes: list[str], args: argparse.Namespace) 
 
 
 def main() -> int:
+    enable_unicode_output()
     args = parse_args()
     set_git_timeout(args.git_timeout)
     approved = args.approved_remote_prefix or DEFAULT_APPROVED_REMOTE_PREFIXES

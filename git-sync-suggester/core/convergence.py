@@ -10,7 +10,7 @@ and match. A repository you can see is identified without its name ever crossing
 transport; a repository you genuinely cannot see (private, no access) stays an opaque hash,
 which is the correct answer rather than a leak.
 
-Nothing here clones. Cloning is a mutation and it already has an owner — `archive_sync.py`
+Nothing here clones. Cloning is a mutation and it already has an owner — `Special/archive_sync.py`
 discovers and clones through the same provider seam. This module reports the gap and hands
 over the exact command; it never grows a second cloner.
 """
@@ -197,7 +197,7 @@ def render_report(missing: list[MissingRepo], errors: list[str],
         owner_roots = owner_roots or {}
         for owner in sorted({repo.owner for repo in identified if repo.owner}):
             root = owner_roots.get(owner, f"<folder holding your {owner} repositories>")
-            lines.append(f"    python3 git-archive-updater/archive_sync.py --root {root} "
+            lines.append(f"    python3 Special/archive_sync.py --root {root} "
                          f"--github-owner {owner} --sync")
         lines.append("")
         lines.append("`--sync` updates existing repositories and clones the missing ones. It "

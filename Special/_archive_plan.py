@@ -1,37 +1,117 @@
-"""
-archive_diff
-============
+"""Archive planning: which repositories in an archive qualify for what, decided from facts.
 
-Pure logic. No git, no network, no filesystem. Given a set of *local* repos and a set of
-*remote* repos, decide which bucket each falls into. This is the decision matrix, isolated
-so it can be unit-tested with plain data and trusted ("we don't assume, ever").
+Everything here is judgment over data -- the part that makes an archive update *special* rather
+than a loop of pulls. No network, and the only git it runs is read-only fact gathering
+(`inspect_candidate`). Two directions, kept apart on purpose:
 
-Identity is by stable remote id first, then by normalized owner/name. Folder names and
-origin URL strings are treated as drift signals, never as identity.
+- **Pull direction.** `inspect_candidate` decides fast-forward eligibility for one folder
+  (work tree, approved origin, clean). `build_plan` buckets a whole archive against the
+  authoritative remote set: pull / clone / reconcile / skip-dirty / local-only. Identity is by
+  stable remote id first, then normalized owner/name; folder names and origin strings are
+  drift signals, never identity.
+- **Push direction.** `build_publish_plan` admits only ahead-only repositories. It does not
+  reuse the pull guarantees: a push needs write auth, can trigger CI, and is refused by git
+  when it is not a fast-forward -- which is the one property this relies on.
 
-Standalone (runs the built-in self-test):
-
-    python archive_diff.py
+`tests/special/test_archive_plan.py` pins the drift buckets and the publish classification.
 """
 
 from __future__ import annotations
 
-import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# Canonical URL identity now lives in shared/ at the repo root; re-exported below so the
-# archive modules' existing imports keep working.
-_REPO_ROOT = str(Path(__file__).resolve().parent.parent)
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+from Basic._discovery import is_hidden
+from Basic._facts import git_stdout, is_repo_root
+from Basic._identity import RepoRef, normalize_owner_name, remote_host
+from Basic._run import run_git
 
-from Basic._identity import RepoRef, normalize_owner_name  # noqa: E402,F401
+DEFAULT_APPROVED_REMOTE_PREFIXES = ["https://github.com/", "git@github.com:", "ssh://git@github.com/"]
+
+__all__ = ["DEFAULT_APPROVED_REMOTE_PREFIXES", "LocalRepo", "PublishCandidate", "PublishPlan",
+           "ReconcileItem", "RepoInfo", "RepoRef", "SyncPlan", "approved_remote",
+           "build_plan", "build_publish_plan", "inspect_candidate", "normalize_owner_name"]
 
 
-# RepoRef lives in Basic/_identity.py (imported and re-exported above).
+# --------------------------------------------------------------------------------------
+# One folder: is it a repository we may fast-forward?
+# --------------------------------------------------------------------------------------
+@dataclass
+class RepoInfo:
+    name: str            # local folder name
+    path: str
+    hidden: bool
+    has_git_marker: bool
+    is_work_tree: bool
+    origin_present: bool
+    origin: str | None
+    host: str | None     # parsed from origin, e.g. "github.com" (for provider selection)
+    approved_remote: bool
+    branch: str | None
+    dirty_work_tree: bool
+    dirty_index: bool
+    eligible: bool
+    action: str
+    result: str = "not run"
+    elapsed_seconds: float = 0.0
 
 
+def approved_remote(origin: str | None, prefixes: list[str]) -> bool:
+    return bool(origin and any(origin.startswith(prefix) for prefix in prefixes))
+
+
+def inspect_candidate(path: Path, approved_prefixes: list[str]) -> RepoInfo:
+    started = time.perf_counter()
+    has_git_marker = (path / ".git").exists()
+    is_work_tree = is_repo_root(path)
+    origin = git_stdout(path, ["remote", "get-url", "origin"]) if is_work_tree else None
+    origin_ok = approved_remote(origin, approved_prefixes)
+    branch = git_stdout(path, ["branch", "--show-current"]) if is_work_tree else None
+
+    dirty_work_tree = False
+    dirty_index = False
+    if is_work_tree:
+        dirty_work_tree = run_git(path, ["diff", "--quiet", "--ignore-submodules"]).returncode != 0
+        dirty_index = run_git(path, ["diff", "--cached", "--quiet", "--ignore-submodules"]).returncode != 0
+
+    if not has_git_marker and not is_work_tree:
+        action = "skip: not a git repository"
+    elif not is_work_tree:
+        action = "skip: .git marker exists but folder is not a work tree"
+    elif not origin:
+        action = "skip: no origin remote"
+    elif not origin_ok:
+        action = "skip: origin is not approved"
+    elif dirty_work_tree:
+        action = "skip: working tree has local changes"
+    elif dirty_index:
+        action = "skip: index has staged changes"
+    else:
+        action = "eligible: pull --ff-only"
+
+    return RepoInfo(
+        name=path.name,
+        path=str(path),
+        hidden=is_hidden(path),
+        has_git_marker=has_git_marker,
+        is_work_tree=is_work_tree,
+        origin_present=origin is not None,
+        origin=origin,
+        host=remote_host(origin),
+        approved_remote=origin_ok,
+        branch=branch,
+        dirty_work_tree=dirty_work_tree,
+        dirty_index=dirty_index,
+        eligible=action.startswith("eligible:"),
+        action=action,
+        elapsed_seconds=round(time.perf_counter() - started, 3),
+    )
+
+
+# --------------------------------------------------------------------------------------
+# A whole archive against its remote: the drift buckets.
+# --------------------------------------------------------------------------------------
 @dataclass
 class LocalRepo:
     """A local clone. `remote_id` is filled by the caller (via a provider) only when a cheap
@@ -69,9 +149,6 @@ class SyncPlan:
             "skipped_dirty": len(self.skipped_dirty),
             "local_only": len(self.local_only),
         }
-
-
-# normalize_owner_name lives in Basic/_identity.py (imported and re-exported above).
 
 
 def build_plan(
@@ -223,110 +300,3 @@ def build_publish_plan(candidates: list[PublishCandidate],
         else:
             plan.in_sync.append(candidate)
     return plan
-
-
-# --------------------------------------------------------------------------------------
-# Self-test: synthetic drift cases modelled on a real namespace rename.
-# Names are invented on purpose -- fixtures must never carry a real account, org, or repo.
-# --------------------------------------------------------------------------------------
-def _self_test() -> int:
-    remote = [
-        RepoRef(id="R_agent", owner="new-team", name="Agent-New-Team",
-                url="https://github.com/new-team/Agent-New-Team"),
-        RepoRef(id="R_wed", owner="new-team", name="event-site",
-                url="https://github.com/new-team/event-site"),
-        RepoRef(id="R_fam", owner="new-team", name="Shared-Clock",
-                url="https://github.com/new-team/Shared-Clock"),
-        RepoRef(id="R_new", owner="new-team", name="Brand-New-Repo",
-                url="https://github.com/new-team/Brand-New-Repo"),
-    ]
-    local = [
-        # org-only rename: folder matches new name, origin owner is stale; id supplied by caller
-        LocalRepo(folder="Shared-Clock", origin="https://github.com/old-team/Shared-Clock",
-                  owner_name="old-team/shared-clock", remote_id="R_fam"),
-        # org + repo rename: folder and origin both stale; id supplied
-        LocalRepo(folder="event-site.example", origin="https://github.com/old-team/event-site.example",
-                  owner_name="old-team/event-site.example", remote_id="R_wed"),
-        # triple drift: folder Agent-Old-Team, origin legacy-AGENT, upstream Agent-New-Team; id supplied
-        LocalRepo(folder="Agent-Old-Team", origin="https://github.com/old-team/legacy-AGENT",
-                  owner_name="old-team/legacy-agent", remote_id="R_agent", dirty=True),
-        # a genuine local-only orphan, not in the org at all
-        LocalRepo(folder="Old-Experiment", origin="https://github.com/someone-else/Old-Experiment",
-                  owner_name="someone-else/old-experiment", remote_id=None),
-    ]
-
-    plan = build_plan(local, remote)
-    failures: list[str] = []
-
-    def check(label: str, got, want):
-        if got != want:
-            failures.append(f"{label}: got {got!r}, want {want!r}")
-
-    check("clone == Brand-New-Repo", [r.name for r in plan.to_clone], ["Brand-New-Repo"])
-    check("local_only == Old-Experiment", [l.folder for l in plan.local_only], ["Old-Experiment"])
-    check("reconcile count", len(plan.to_reconcile), 3)
-    check("Shared-Clock origin_stale, folder OK",
-          [(i.origin_stale, i.folder_mismatch) for i in plan.to_reconcile if i.local.folder == "Shared-Clock"],
-          [(True, False)])
-    check("event-site.example origin_stale + folder drift",
-          [(i.origin_stale, i.folder_mismatch) for i in plan.to_reconcile if i.local.folder == "event-site.example"],
-          [(True, True)])
-    check("Agent dirty -> skipped, not pulled",
-          [l.folder for l in plan.skipped_dirty], ["Agent-Old-Team"])
-    check("pull excludes dirty Agent",
-          sorted(l.folder for l in plan.to_pull), ["Shared-Clock", "event-site.example"])
-    check("namespace rename detected",
-          plan.namespace_renames, [("old-team", "new-team")])
-
-    # Non-authoritative remote (no provider, or a failed/timed-out listing): we must fall back
-    # to update-only and pull every clean repo, never mislabel them as orphans/local-only.
-    loose = build_plan(local, [], remote_authoritative=False)
-    check("non-authoritative pulls all clean repos",
-          sorted(l.folder for l in loose.to_pull),
-          ["Old-Experiment", "Shared-Clock", "event-site.example"])
-    check("non-authoritative skips dirty", [l.folder for l in loose.skipped_dirty], ["Agent-Old-Team"])
-    check("non-authoritative invents no clones/orphans",
-          (len(loose.to_clone), len(loose.local_only), len(loose.to_reconcile)), (0, 0, 0))
-
-    if failures:
-        print("SELF-TEST FAILED:")
-        for f in failures:
-            print(f"  - {f}")
-        return 1
-    print("archive_diff self-test passed: all drift buckets correct.")
-    # --- push direction ---------------------------------------------------------------
-    candidates = [
-        PublishCandidate("clean-ahead", "main", "origin/main", ahead=2, behind=0),
-        PublishCandidate("dirty-ahead", "main", "origin/main", ahead=1, behind=0, dirty=True),
-        PublishCandidate("in-sync", "main", "origin/main", ahead=0, behind=0),
-        PublishCandidate("behind-only", "main", "origin/main", ahead=0, behind=3),
-        PublishCandidate("diverged", "main", "origin/main", ahead=1, behind=1),
-        PublishCandidate("diverged-dirty", "main", "origin/main", ahead=1, behind=1, dirty=True),
-        PublishCandidate("detached", None, None, ahead=None, behind=None),
-        PublishCandidate("no-tracking", "main", None, ahead=None, behind=None),
-    ]
-    publish = build_publish_plan(candidates)
-    expected = {"push": 1, "dirty_ahead": 1, "in_sync": 1, "behind": 1, "diverged": 2,
-                "no_upstream": 2}
-    if publish.counts() != expected:
-        print(f"  FAIL publish counts: {publish.counts()} != {expected}")
-        return 1
-    if [c.folder for c in publish.to_push] != ["clean-ahead"]:
-        print(f"  FAIL only ahead-only clean repos may be pushed: {publish.to_push}")
-        return 1
-    with_dirty = build_publish_plan(candidates, include_dirty=True)
-    if sorted(c.folder for c in with_dirty.to_push) != ["clean-ahead", "dirty-ahead"]:
-        print(f"  FAIL --include-dirty did not admit the dirty ahead repo: {with_dirty.to_push}")
-        return 1
-    if any(c.folder.startswith("diverged") for c in with_dirty.to_push):
-        print("  FAIL a diverged repo became pushable")
-        return 1
-    print(f"  publish counts: {publish.counts()}")
-
-    print(f"  plan counts: {plan.counts()}")
-    print(f"  namespace renames: {plan.namespace_renames}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(_self_test())

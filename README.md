@@ -31,7 +31,7 @@ parallel workers.
 *Point it at a folder full of clones and keep every one of them current, safely.*
 
 ```bash
-python3 git-archive-updater/archive_updater.py --root /path/to/archive
+python3 Special/archive_update.py --root /path/to/archive
 ```
 
 **Fast-forward pulls only.** It never merges, rebases, resets, stashes, or deletes; a repository
@@ -120,11 +120,11 @@ just a predictable interpreter.
 
 ## Archive updating in more detail
 
-### `archive_updater.py` vs `archive_sync.py`
+### `archive_update.py` vs `archive_sync.py`
 
 Both fast-forward clean repositories. The difference is remote discovery:
 
-- **`archive_updater.py`** — `git` only, no network beyond the pull. It updates what is already
+- **`archive_update.py`** — `git` only, no network beyond the pull. It updates what is already
   on disk. Works with any Git host.
 - **`archive_sync.py`** — asks a provider (GitHub via `gh`) what *should* be there, so it can
   clone missing repositories, spot renames, and flag orphans.
@@ -155,7 +155,7 @@ an origin or rename a folder while you are asleep.
 ### Publishing — the one command that writes to a remote
 
 ```bash
-python3 git-archive-updater/archive_sync.py --root /path/to/archive --publish --dry-run
+python3 Special/archive_sync.py --root /path/to/archive --publish --dry-run
 ```
 
 `--publish` pushes **without `--force`**, so Git itself refuses anything that is not a
@@ -303,7 +303,7 @@ When unsure, look before you leap:
 
 ```bash
 python3 git-archive-updater/archive_manager.py --refresh-all --scan-only
-python3 git-archive-updater/archive_sync.py --root /path --publish --dry-run
+python3 Special/archive_sync.py --root /path --publish --dry-run
 ```
 
 ---
