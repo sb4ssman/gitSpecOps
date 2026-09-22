@@ -150,9 +150,9 @@ with tempfile.TemporaryDirectory(prefix="publish-test-") as tmp:
     ]))
 
 # --- publish must never be bundled or scheduled -------------------------------------
-manager_source = (ROOT / "git-archive-updater" / "archive_manager.py").read_text(encoding="utf-8")
-check("--publish" not in manager_source,
-      "archive_manager.py references --publish; generated launchers and scheduled tasks must "
+manager_source = (ROOT / "Elaborate" / "archive_manage.py").read_text(encoding="utf-8")
+check("--publish" not in manager_source.split('"""', 2)[2],
+      "archive_manage.py code references --publish; generated launchers and scheduled tasks must "
       "never push")
 
 sync_source = (ROOT / "Special" / "archive_sync.py").read_text(encoding="utf-8")

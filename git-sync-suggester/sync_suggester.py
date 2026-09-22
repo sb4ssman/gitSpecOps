@@ -38,7 +38,6 @@ from config import (
     load_catalog,
     load_config,
     merge_catalog,
-    roots_from_archive_registry,
     save_catalog,
     save_config,
     validate_config,
@@ -53,6 +52,7 @@ from watcher import DEFAULT_HEARTBEAT_SECONDS, DEFAULT_INTERVAL_SECONDS, run_wat
 
 from Basic._console import enable_unicode_output  # noqa: E402
 from Basic._paths import sync_home  # noqa: E402
+from Elaborate._archive_registry import registered_roots  # noqa: E402
 from shared.version import VERSION, check_for_update, version_line  # noqa: E402
 from Basic._providers._registry import provider_for_host, registered_hosts  # noqa: E402
 PREVIEW_MACHINE_ID = "local-preview"
@@ -184,7 +184,7 @@ def command_init(args: argparse.Namespace) -> int:
     for path in args.recursive_root or []:
         add_root(path, True)
     if args.from_archives:
-        imported = roots_from_archive_registry(REPO_ROOT)
+        imported = registered_roots()
         for path in imported:
             add_root(path, False)
         print(f"Imported {len(imported)} root(s) from the archive registry.")

@@ -6,8 +6,9 @@ opens with **What this is for**, and that section outranks every rule below it. 
 
 ## Your job: reorganize the guts into the agreed architecture
 
-The product direction, the layering and the diagram are **settled**. **Phases 1 and 2 are committed
-(2026-09-21); phase 3 is next, and it stops before the scheduled task.** The work is the migration, and nothing else. The target was
+The product direction, the layering and the diagram are **settled**. **Phases 1, 2 and 3a–3b are committed
+(2026-09-21/22). Phase 3c (Sync Suggester into `Elaborate/`) is next.** The user still has to
+replace the scheduled task and reinstall three archive launchers (see "Things that will bite you"). The work is the migration, and nothing else. The target was
 revised on 2026-09-21 (root `_os/`, flat `Basic/`, flat `App/tray.py`, `_providers/`, merges and
 splits): read "Revisions" at the end of the architecture document before phase 2.
 
@@ -91,9 +92,10 @@ Phase 1 is where to start. Do not begin a phase until the one before it is commi
   runs `<repo>\gitArchiveUpdater\refresh-managed-archives.bat`, which calls
   `gitArchiveUpdater\archive_manager.py` — a file that no longer exists (the untracked folder holds
   only that `.bat` and stale `.pyc`s). Read-only query on 2026-09-20: last run 2026-09-01, result
-  2 (file not found); monthly, next 2026-10-01. **Decided 2026-09-20:** the migration writes a new
-  launcher for it; the user replaces the task. Do not delete `gitArchiveUpdater/` or touch the
-  task until they have — stop and tell them first.
+  2 (file not found); monthly, next 2026-10-01. **Done 2026-09-22:** the new launcher is
+  `<per-user config>/gitspecops/refresh_managed_archives.bat`; the user replaces the task with
+  `Elaborate/archive_manage.py --install-monthly-task` and reinstalls the three archives'
+  launchers (`--install <root>`). Delete `gitArchiveUpdater/` only after they confirm.
 - **No fleet autostart is registered and no machine is enrolled.** That is why the migration goes
   first: `autostart` writes an absolute resolved path into the registry Run key, the XDG
   `.desktop` file and the LaunchAgent, so moving files after enrollment would break start-at-login
@@ -110,7 +112,7 @@ Phase 1 is where to start. Do not begin a phase until the one before it is commi
 ## Validation: non-negotiable
 
 ```powershell
-& .\.venv\Scripts\python.exe tests\run_all.py        # 40/40 after phase 2
+& .\.venv\Scripts\python.exe tests\run_all.py        # 43/43 after phase 3b
 & .\.venv\Scripts\python.exe tests\repo\test_repo_hygiene.py
 ```
 

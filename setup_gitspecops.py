@@ -134,7 +134,7 @@ def report_prerequisites() -> None:
 LAUNCHER_SPECS = [
     # (tool_dir, entry_script, launcher_base, help_on_no_args)
     ("Special", "archive_update.py", "update-archive", True),
-    ("git-archive-updater", "archive_manager.py", "manage-archives", False),
+    ("Elaborate", "archive_manage.py", "manage-archives", False),
     ("Special/duplicate_org", "duplicate_org.py", "duplicate-github-org", False),
     ("git-sync-suggester", "sync_suggester.py", "suggest-sync", True),
 ]

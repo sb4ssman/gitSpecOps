@@ -1,5 +1,42 @@
 # Work log
 
+## 2026-09-22 — migration phase 3a–3b: `Special/`, `Basic/` git commands, `archive_manage`
+
+**3a (two commits).** The archive tools moved to `Special/archive_update.py` and
+`Special/archive_sync.py`; `archive_diff.py` became `Special/_archive_plan.py` and absorbed
+`git_inspect`'s eligibility check. **Nothing in `archive_diff` was generic** — the HANDOFF
+expected a split into `Basic/_facts`, but `RepoRef`/`normalize_owner_name` had already moved to
+`Basic/_identity`, and everything left (drift buckets, publish eligibility, approved-remote
+checks) is archive judgment, so it all went to `_archive_plan`. New `Basic/` commands, each one
+git operation: `fetch`, `pull` (ff-only), `push` (bare, no force option exists), `clone` (never
+over an existing folder), pinned by `tests/basic/test_git_ops.py` on disposable repositories. The
+org duplicator became `Special/duplicate_org/`; `gh_common.py` dissolved into `Basic/_console`,
+`Basic/_confirm`, `_tracking` and `_operations`; its gitignored `runs/` moved with it.
+
+**3b.** `archive_manager.py` → `Elaborate/archive_manage.py`, split three ways: the registry is
+`Elaborate/_archive_registry.py`; launcher writing is `_os/*/launcher.py`; scheduling is
+`_os/*/schedule.py` (Windows `schtasks`; Linux/macOS report unsupported, as before). A refresh
+now calls `archive_sync.main(argv)` **in-process** instead of spawning a second Python — the
+layer rule, and one fewer place where interpreter discovery can differ by OS.
+
+**State left the checkout.** The registry is `<per-user config>/gitspecops/
+gitspecops_managed_archives.json` (user's choice of name, lowercased by the naming rule); the log
+is `archive_manage.log`; the refresh-all launcher `refresh_managed_archives.{bat,ps1|sh}` is
+written there too, **so the scheduled task points at a path that no future code move can break**
+— the failure that broke the old task. `GITSPECOPS_HOME` overrides the folder for tests.
+The three registered archives were copied into it unchanged (verified identical) and the old log
+appended; the emptied `git-archive-updater/` went to the Recycle Bin.
+
+**Validated beyond the suite:** both generated launchers were *executed* through `cmd /c` against
+a disposable archive whose path contains a space, and each fast-forwarded a real clone.
+`tests/elaborate/test_archive_manage.py` pins that automated runs only ever carry `--update` or
+`--sync`, never `--publish`/`--reconcile`/`--rename-folders`. Suite 43/43 on Windows, alone.
+
+**Waiting on the user:** replace the scheduled task (it still points at the stale
+`gitArchiveUpdater\` launcher, broken since before this work) and reinstall the three archives'
+`update_archive` launchers, which still call the pre-migration path. Then delete
+`gitArchiveUpdater/`.
+
 ## 2026-09-21 — migration phase 2: `Basic/_providers/` and the import-direction test
 
 **Landed.** `shared/providers.py` → `Basic/_providers/_registry.py` and
