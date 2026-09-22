@@ -16,10 +16,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import ROOT, setup  # noqa: E402
 
-setup("archive")
+setup()
 
-from archive_diff import PublishCandidate, build_publish_plan  # noqa: E402
-from archive_sync import (  # noqa: E402
+from Special._archive_plan import PublishCandidate, build_publish_plan  # noqa: E402
+from Special.archive_sync import (  # noqa: E402
     apply_publish,
     collect_publish_candidates,
     render_publish_plan,
@@ -155,14 +155,19 @@ check("--publish" not in manager_source,
       "archive_manager.py references --publish; generated launchers and scheduled tasks must "
       "never push")
 
-sync_source = (ROOT / "git-archive-updater" / "archive_sync.py").read_text(encoding="utf-8")
+sync_source = (ROOT / "Special" / "archive_sync.py").read_text(encoding="utf-8")
 check("is its own apply class and cannot be combined" in sync_source,
       "the guard refusing --publish alongside the pull-direction verbs is missing")
 push_body = sync_source.split("def _publish_one")[1].split("def apply_publish")[0]
 check('"--force"' not in push_body and "'--force'" not in push_body,
       "the push path passes --force as a git argument")
-check('run_git(path, ["push"]' in push_body,
-      "the push is no longer a bare non-force push")
+check("push(path)" in push_body and "from Basic.push import push" in sync_source,
+      "publish no longer pushes through Basic/push.py")
+basic_push = (ROOT / "Basic" / "push.py").read_text(encoding="utf-8")
+basic_push_code = basic_push.split('"""', 2)[2]  # the docstring names what is forbidden
+check('run_git(repo, ["push"]' in basic_push_code, "Basic/push.py is no longer a bare `git push`")
+for forbidden in ("--force", "--force-with-lease", "--mirror", "+refs"):
+    check(forbidden not in basic_push_code, f"Basic/push.py code mentions {forbidden}")
 
 if failures:
     print("ARCHIVE-PUBLISH-TESTS FAILED:")

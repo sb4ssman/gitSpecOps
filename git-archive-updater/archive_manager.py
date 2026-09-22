@@ -28,32 +28,27 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
-try:
-    from .archive_updater import DEFAULT_APPROVED_REMOTE_PREFIXES
-    from .git_inspect import approved_remote, inspect_candidate, is_repo_root, list_child_dirs
-    from .archive_sync import (
-        apply_clone,
-        apply_pull,
-        apply_reconcile_origins,
-        apply_rename_folders,
-        detect_plan,
-        render_plan,
-        review,
-    )
-except ImportError:
-    from archive_updater import DEFAULT_APPROVED_REMOTE_PREFIXES
-    from git_inspect import approved_remote, inspect_candidate, is_repo_root, list_child_dirs
-    from archive_sync import (
-        apply_clone,
-        apply_pull,
-        apply_reconcile_origins,
-        apply_rename_folders,
-        detect_plan,
-        render_plan,
-        review,
-    )
+_ROOT = str(Path(__file__).resolve().parents[1])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
-from Basic._confirm import prompt_input  # noqa: E402 (root set by git_inspect)
+from Basic._confirm import prompt_input  # noqa: E402
+from Basic._discovery import list_child_dirs  # noqa: E402
+from Basic._facts import is_repo_root  # noqa: E402
+from Special._archive_plan import (  # noqa: E402
+    DEFAULT_APPROVED_REMOTE_PREFIXES,
+    approved_remote,
+    inspect_candidate,
+)
+from Special.archive_sync import (  # noqa: E402
+    apply_clone,
+    apply_pull,
+    apply_reconcile_origins,
+    apply_rename_folders,
+    detect_plan,
+    render_plan,
+    review,
+)
 
 # Per-archive run modes baked into the launcher / stored in the registry.
 MODE_UPDATE = "update"   # fast-forward pull only (safe; default)
@@ -191,9 +186,9 @@ $SyncArgs += $args
 Push-Location $RepoRoot
 try {{
     if (Test-Path $VenvPy) {{
-        & $VenvPy git-archive-updater/archive_sync.py @SyncArgs
+        & $VenvPy Special/archive_sync.py @SyncArgs
     }} else {{
-        uv run python git-archive-updater/archive_sync.py @SyncArgs
+        uv run python Special/archive_sync.py @SyncArgs
     }}
 }} finally {{ Pop-Location }}
 exit $LASTEXITCODE
@@ -230,9 +225,9 @@ REPO_ROOT={quote_sh(repo_root)}
 ARCHIVE_ROOT={quote_sh(root)}
 cd "$REPO_ROOT"
 if [ -x ".venv/bin/python" ]; then
-    exec .venv/bin/python git-archive-updater/archive_sync.py --root "$ARCHIVE_ROOT" {verb} --yes {prefix_args} "$@"
+    exec .venv/bin/python Special/archive_sync.py --root "$ARCHIVE_ROOT" {verb} --yes {prefix_args} "$@"
 else
-    exec uv run python git-archive-updater/archive_sync.py --root "$ARCHIVE_ROOT" {verb} --yes {prefix_args} "$@"
+    exec uv run python Special/archive_sync.py --root "$ARCHIVE_ROOT" {verb} --yes {prefix_args} "$@"
 fi
 """
 
@@ -321,7 +316,7 @@ def install_launchers(
         updated_at=stamp,
         git_spec_ops_dir=str(REPO_ROOT),
         python_executable=str(python_executable),
-        runner=f"git-archive-updater/archive_sync.py ({mode})",
+        runner=f"Special/archive_sync.py ({mode})",
         launcher=str(launcher_path),
         launcher_type=launcher_type,
         repo_count=len(repos),
@@ -436,7 +431,7 @@ def print_dashboard() -> None:
 
 def updater_command(item: dict, scan_only: bool, force_sync: bool = False) -> list[str]:
     root = Path(item["root"])
-    command = [sys.executable, str(TOOL_DIR / "archive_sync.py"), "--root", str(root)]
+    command = [sys.executable, str(REPO_ROOT / "Special" / "archive_sync.py"), "--root", str(root)]
     for prefix in item.get("approved_remote_prefixes") or DEFAULT_APPROVED_REMOTE_PREFIXES:
         command += ["--approved-remote-prefix", prefix]
     if scan_only:

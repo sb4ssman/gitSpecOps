@@ -11,14 +11,15 @@ force-pushes, installs dependencies, runs project code, clones, or renames. Disc
 remote repos that aren't cloned locally, cloning them, and reconciling renames are the job
 of archive_sync.py (which requires a remote provider such as the GitHub `gh` CLI).
 
-Local repo facts come from git_inspect; this file is just scan + fast-forward + report.
+Eligibility comes from `Special/_archive_plan.py`; the fast-forward is `Basic/pull.py`. This
+file is scan + fast-forward + report.
 
 Usage:
-    python archive_updater.py                      # update the current folder
-    python archive_updater.py --scan-only          # inventory only
-    python archive_updater.py --root T:\\Github\\Archive
-    python archive_updater.py --root A --root B     # several roots
-    python archive_updater.py --output-dir REPORTS  # write a dated JSON report
+    python Special/archive_update.py                      # update the current folder
+    python Special/archive_update.py --scan-only          # inventory only
+    python Special/archive_update.py --root /path/to/archive
+    python Special/archive_update.py --root A --root B     # several roots
+    python Special/archive_update.py --output-dir REPORTS  # write a dated JSON report
 """
 
 from __future__ import annotations
@@ -31,29 +32,23 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
-try:
-    from .git_inspect import (
-        RepoInfo,
-        inspect_candidate,
-        is_hidden,
-        list_child_dirs,
-        run_git,
-        set_git_timeout,
-    )
-except ImportError:
-    from git_inspect import (
-        RepoInfo,
-        inspect_candidate,
-        is_hidden,
-        list_child_dirs,
-        run_git,
-        set_git_timeout,
-    )
+_ROOT = str(Path(__file__).resolve().parents[1])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
+from Basic._console import enable_unicode_output  # noqa: E402
+from Basic._discovery import is_hidden, list_child_dirs  # noqa: E402
+from Basic._run import DEFAULT_GIT_TIMEOUT_SECONDS, set_git_timeout  # noqa: E402
+from Basic.pull import fast_forward  # noqa: E402
+from Special._archive_plan import (  # noqa: E402
+    DEFAULT_APPROVED_REMOTE_PREFIXES,
+    RepoInfo,
+    inspect_candidate,
+)
+
+EFFECT = "local"
 APP_NAME = "Archive Updater"
 VERSION = "0.4.0"
-DEFAULT_APPROVED_REMOTE_PREFIXES = ["https://github.com/", "git@github.com:", "ssh://git@github.com/"]
-DEFAULT_GIT_TIMEOUT_SECONDS = 45
 
 
 @dataclass
@@ -114,19 +109,7 @@ def print_scan(report: RootReport, show_remote_urls: bool) -> None:
 
 
 def update_repo(repo: RepoInfo) -> str:
-    path = Path(repo.path)
-    fetch = run_git(path, ["fetch", "--dry-run", "origin"])
-    if fetch.returncode != 0:
-        detail = f": {fetch.stderr.strip()}" if fetch.stderr.strip() else ""
-        return f"failed: fetch failed{detail}"
-    pull = run_git(path, ["pull", "--ff-only"])
-    if pull.returncode != 0:
-        detail = f": {pull.stderr.strip()}" if pull.stderr.strip() else ""
-        return f"failed: pull --ff-only failed{detail}"
-    combined = f"{pull.stdout}\n{pull.stderr}".lower()
-    if "already up to date" in combined or "already up-to-date" in combined:
-        return "already current"
-    return "updated"
+    return fast_forward(Path(repo.path))
 
 
 def run_updates(report: RootReport) -> None:
@@ -198,7 +181,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Scan and fast-forward update one or more folders of sibling Git repositories.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="For clone/rename/sync of an org's repos, use archive_sync.py.",
+        epilog="For clone/rename/sync of an org's repos, use Special/archive_sync.py.",
     )
     parser.add_argument("--root", type=Path, action="append", help="Folder to scan. Repeatable. Defaults to cwd.")
     parser.add_argument("--scan-only", action="store_true", help="Only scan and report; do not pull.")
@@ -210,10 +193,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-report", action="store_true", help="Do not write a dated JSON report.")
     parser.add_argument("--git-timeout", type=int, default=DEFAULT_GIT_TIMEOUT_SECONDS,
                         help=f"Per-git-command timeout seconds. Default {DEFAULT_GIT_TIMEOUT_SECONDS}.")
-    # Deprecated discovery flags: accepted for backward compatibility with older launchers.
-    parser.add_argument("--github-owner", help=argparse.SUPPRESS)
-    parser.add_argument("--clone-new", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--no-clone-new", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args()
 
 
@@ -241,16 +220,11 @@ def resolve_output_dir(args: argparse.Namespace, roots: list[Path]) -> Path | No
 
 
 def main() -> int:
+    enable_unicode_output()
     started = time.perf_counter()
     args = parse_args()
     set_git_timeout(args.git_timeout)
     approved_prefixes = args.approved_remote_prefix or DEFAULT_APPROVED_REMOTE_PREFIXES
-
-    if args.github_owner or args.clone_new:
-        print("Note: repo discovery/clone/rename moved to archive_sync.py. "
-              "Updating local repos only. For full sync run:")
-        print("      python archive_sync.py --root <folder> --sync")
-        print()
 
     try:
         roots = resolve_roots(args.root)
