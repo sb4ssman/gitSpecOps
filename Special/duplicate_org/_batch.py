@@ -23,27 +23,32 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
-from gh_common import (
-    PRINT_LOCK,
-    RUNS_DIR,
-    format_size,
+from Basic._confirm import (
     parse_selection,
-    prompt_clone_format,
-    print_download_warnings,
     prompt_for_directory,
+    prompt_input,
+    prompt_yes_no,
     resolve_directory,
 )
-from Basic._confirm import prompt_input, prompt_yes_no  # noqa: E402
-from gh_remote import org_repos_with_details_safe
-from Basic._providers.github import (  # noqa: E402
+from Basic._console import PRINT_LOCK, format_size
+from Basic._providers.github import (
     check_repo_for_lfs,
     list_my_orgs,
     org_access_error,
     resolve_repo_details,
 )
-from local_repos import scan_local_git_repos
-from operations import download_single_repo
-from tracking import initialize_tracking_files, load_completed_repos
+from Special.duplicate_org._local_repos import scan_local_git_repos
+from Special.duplicate_org._operations import (
+    download_single_repo,
+    print_download_warnings,
+    prompt_clone_format,
+)
+from Special.duplicate_org._remote import org_repos_with_details_safe
+from Special.duplicate_org._tracking import (
+    RUNS_DIR,
+    initialize_tracking_files,
+    load_completed_repos,
+)
 
 
 def choose_orgs(orgs):

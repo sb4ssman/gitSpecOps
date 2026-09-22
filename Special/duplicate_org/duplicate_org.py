@@ -25,17 +25,31 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from gh_common import (
-    RUNS_DIR,
-    format_size,
+_ROOT = str(Path(__file__).resolve().parents[2])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+from Basic._confirm import (  # noqa: E402
     parse_selection,
-    prompt_clone_format,
-    print_download_warnings,
     prompt_for_directory,
+    prompt_input,
+    prompt_yes_no,
+    use_scripted_answers,
 )
-from Basic._confirm import prompt_input, prompt_yes_no, use_scripted_answers  # noqa: E402
-from Basic._console import enable_unicode_output  # noqa: E402
-from gh_remote import (
+from Basic._console import enable_unicode_output, format_size  # noqa: E402
+from Basic._providers.github import compare_repos  # noqa: E402
+from Special.duplicate_org._local_repos import (  # noqa: E402
+    duplicate_repo_names,
+    scan_local_git_repos,
+)
+from Special.duplicate_org._operations import (  # noqa: E402
+    download_single_repo,
+    print_download_warnings,
+    process_migrate_repo,
+    process_upload_repo,
+    prompt_clone_format,
+)
+from Special.duplicate_org._remote import (  # noqa: E402
     check_gh_authenticated,
     check_gh_installed,
     check_git_installed,
@@ -43,13 +57,14 @@ from gh_remote import (
     get_repos_with_details,
     remind_git_credentials,
 )
-from Basic._providers.github import compare_repos  # noqa: E402
-from local_repos import duplicate_repo_names, scan_local_git_repos
-from operations import download_single_repo, process_migrate_repo, process_upload_repo
-from tracking import initialize_tracking_files, load_completed_repos
+from Special.duplicate_org._tracking import (  # noqa: E402
+    RUNS_DIR,
+    initialize_tracking_files,
+    load_completed_repos,
+)
 
-
-# prompt_yes_no / prompt_for_directory moved to gh_common (shared console helpers); imported above.
+#: Downloads write locally; upload and migrate create repositories and push to the host.
+EFFECT = "remote"
 
 
 def non_repo_entries(directory_path, repos):
@@ -533,13 +548,13 @@ def main():
     # --- Non-interactive entry points ---
     if args.single is not None:
         check_prerequisites()
-        from batch import run_single_repo
+        from Special.duplicate_org._batch import run_single_repo
         run_single_repo(args.single, args.dest, args)
         return
 
     if _enter_batch(args):
         check_prerequisites()
-        from batch import run_batch_download
+        from Special.duplicate_org._batch import run_batch_download
         run_batch_download(args)
         return
 
@@ -548,12 +563,12 @@ def main():
     operation_mode = config['operation_mode']
 
     if operation_mode == 'batch':
-        from batch import run_batch_download
+        from Special.duplicate_org._batch import run_batch_download
         run_batch_download()
         return
 
     if operation_mode == 'single':
-        from batch import run_single_repo
+        from Special.duplicate_org._batch import run_single_repo
         run_single_repo(None, None)
         return
 

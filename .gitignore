@@ -21,7 +21,7 @@ git-archive-updater/runs/
 git-archive-updater/refresh-managed-archives.*
 # Stale pre-rename folder; archive_manager.py used to generate launchers here.
 gitArchiveUpdater/
-github-org-duplicator/runs/
+Special/duplicate_org/runs/
 completed_repos.txt
 migration_errors.txt
 migration_log.txt

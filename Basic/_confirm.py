@@ -16,6 +16,8 @@ module is the approve step, so it behaves the same everywhere:
 """
 from __future__ import annotations
 
+import os
+import re
 from typing import NoReturn
 
 # Substrings, not just suffixes: the injected line may carry `source `, `. `, `& `, or a path.
@@ -91,3 +93,133 @@ def prompt_yes_no(question: str, default: bool = True) -> bool:
 def confirm_typed(word: str, prompt: str) -> bool:
     """True only when the person types exactly `word`. Enter, or anything else, declines."""
     return prompt_input(prompt) == word
+
+
+def prompt_for_directory(prompt_text, must_exist=False, create_ok=True):
+    """Prompt for a directory, re-prompting until a usable one is given.
+
+    must_exist: the path must already be a directory (upload SOURCE).
+    create_ok:  offer to create it when missing (download/migrate TARGET).
+    Returns the validated path. Never calls sys.exit on bad input — it re-prompts,
+    so a typo doesn't drop the user back to the mode menu.
+    """
+    while True:
+        raw = prompt_input(prompt_text)
+        if not raw:
+            print("Please enter a path.")
+            continue
+        path = os.path.expanduser(os.path.expandvars(raw))
+
+        if os.path.isdir(path):
+            return path
+        if os.path.exists(path):
+            print(f"ERROR: {path} exists but is not a directory. Try again.")
+            continue
+
+        # Path does not exist.
+        if must_exist or not create_ok:
+            print(f"ERROR: Directory does not exist: {path}. Try again.")
+            continue
+        if not prompt_yes_no(f"'{path}' does not exist. Create it?", default=True):
+            print("Not created. Enter a different path.")
+            continue
+        try:
+            os.makedirs(path, exist_ok=True)
+        except OSError as exc:
+            print(f"ERROR: Could not create {path}: {exc}. Try again.")
+            continue
+        print(f"Created: {path}")
+        return path
+
+
+def resolve_directory(raw, *, must_exist=False, create_missing=False):
+    """Non-interactive twin of prompt_for_directory. Returns (path, error).
+
+    error is None on success. Used for a directory supplied as a flag: it validates and
+    (when create_missing) creates without asking, so a fully specified run never prompts.
+    """
+    if not raw:
+        return None, "no path given"
+    path = os.path.expanduser(os.path.expandvars(raw))
+    if os.path.isdir(path):
+        return path, None
+    if os.path.exists(path):
+        return None, f"{path} exists but is not a directory"
+    if must_exist or not create_missing:
+        return None, f"directory does not exist: {path}"
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError as exc:
+        return None, f"could not create {path}: {exc}"
+    return path, None
+
+
+def parse_selection(raw, items, key=None):
+    """Parse the print-style selection grammar against items. Pure; no I/O.
+
+    Grammar (case-insensitive): 'all'/'a'/'*', ranges '2-4', single numbers,
+    literal keys (names), exclusions via 'except' (everything after it) or a '!' prefix.
+    Empty raw -> all items. A line made ONLY of exclusions ('!2', 'except 2, 3') implies
+    'all'. Numbers are 1-based display positions; a reversed range normalizes;
+    out-of-range ranges are reported as bad tokens.
+
+    Returns (selected_items_in_display_order, bad_tokens). bad_tokens non-empty means
+    the whole line was rejected and the caller should re-prompt.
+    """
+    if key is None:
+        key = lambda item: str(item).lower()  # noqa: E731
+    raw = raw.strip().lower()
+    if not raw:
+        return list(items), []
+    tokens = [t for t in re.split(r"[,\s]+", raw) if t]
+    include_all = False
+    pending_neg = False  # everything after 'except' is excluded
+    picked, exclude, bad = [], set(), []
+    for token in tokens:
+        if token == "except":
+            pending_neg = True
+            continue
+        neg = pending_neg or token.startswith("!")
+        name = token[1:] if token.startswith("!") else token
+        if not name:
+            bad.append(token)
+            continue
+        if name in ("all", "a", "*"):
+            if neg:
+                bad.append(token)
+            else:
+                include_all = True
+            continue
+        range_match = re.fullmatch(r"(\d+)-(\d+)", name)
+        if range_match:
+            lo, hi = int(range_match.group(1)), int(range_match.group(2))
+            if lo > hi:
+                lo, hi = hi, lo
+            if lo < 1 or hi > len(items):
+                bad.append(f"{token} (valid: 1-{len(items)})")
+                continue
+            span = [items[i - 1] for i in range(lo, hi + 1)]
+            if neg:
+                exclude.update(key(item) for item in span)
+            else:
+                picked.extend(span)
+            continue
+        if name.isdigit() and 1 <= int(name) <= len(items):
+            item = items[int(name) - 1]
+        else:
+            item = next((it for it in items if key(it) == name), None)
+        if item is None:
+            bad.append(token)
+        elif neg:
+            exclude.add(key(item))
+        else:
+            picked.append(item)
+    if bad:
+        return None, bad
+    # A line made only of exclusions ('!2', 'except 2, 3') implies 'all': exclusions
+    # need a set to subtract from, and the only sensible default is the full list.
+    if include_all or (exclude and not picked):
+        keep = {key(item) for item in items} - exclude
+    else:
+        keep = {key(item) for item in picked} - exclude
+    return [item for item in items if key(item) in keep], []  # display order, deduped

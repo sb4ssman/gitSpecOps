@@ -135,7 +135,7 @@ LAUNCHER_SPECS = [
     # (tool_dir, entry_script, launcher_base, help_on_no_args)
     ("Special", "archive_update.py", "update-archive", True),
     ("git-archive-updater", "archive_manager.py", "manage-archives", False),
-    ("github-org-duplicator", "github_org_duplicator.py", "duplicate-github-org", False),
+    ("Special/duplicate_org", "duplicate_org.py", "duplicate-github-org", False),
     ("git-sync-suggester", "sync_suggester.py", "suggest-sync", True),
 ]
 

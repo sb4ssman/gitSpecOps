@@ -17,7 +17,7 @@ and it never touches your credentials.
 repositories.*
 
 ```bash
-python3 github-org-duplicator/github_org_duplicator.py
+python3 Special/duplicate_org/duplicate_org.py
 ```
 
 Downloads every repo in an org, uploads a folder of local repos into one, or migrates org → org.
@@ -253,8 +253,8 @@ Two rules that make the advice trustworthy:
 Basic/                 careful primitives: one subprocess wrapper, repo facts, discovery,
                        prompts, state paths, and the host providers (Basic/_providers/)
 _os/                   per-OS pieces, the same files for Windows, Linux and macOS
-git-archive-updater/   archive updating: updater, sync engine, pure diff logic
-github-org-duplicator/ org duplication: orchestrator, local scans, workers, resume
+git-archive-updater/   archive_manager: registry, launchers, schedule (moving to Elaborate/)
+Special/               archive_update, archive_sync, and duplicate_org/ (org duplication)
 git-sync-suggester/    the optional fleet tool (see below)
 shared/                the version number (moving into App/ as the migration proceeds)
 tests/                 offline, synthetic; no network, no real repositories
