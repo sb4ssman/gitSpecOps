@@ -3,29 +3,29 @@
 Living todo / scratch pad. Add items freely; **prune regularly**. When something is done, move it
 into [`work-log.md`](work-log.md) with an absolute date. Dates are always absolute.
 
-_Last tended: 2026-09-21_
+_Last tended: 2026-09-22_
 
 ## Open
 
-### 2026-09-21 — migration: phases 1–2 done, phase 3 next
+### 2026-09-22 — migration: phases 1, 2, 3a–3b done; 3c next
 
 The target tree (revised 2026-09-21), the phases and the decisions are in
 [`knowledge/architecture-layers.md`](knowledge/architecture-layers.md) and
-[`HANDOFF.md`](HANDOFF.md). Phase 3 moves `archive_manager`, so **stop and tell the user before
-it touches the scheduled task or its launcher**. Carried forward:
+[`HANDOFF.md`](HANDOFF.md). Carried forward:
 
-- [ ] **Direct `subprocess` calls outside `_run`** remain (measured 2026-09-21): `archive_manager`
-  (4, incl. `schtasks`), `fleet_autostart` (3), `capture`, `retirement`, `snapshot_restore`,
-  `fleet_net`, `release_check`, `setup_gitspecops`, `shared/version` (1 each). Each moves onto
+- [ ] **Direct `subprocess` calls outside `_run`** remain (re-measured 2026-09-22):
+  `fleet_autostart` (3), `capture`, `retirement`, `snapshot_restore`, `fleet_net`,
+  `release_check`, `setup_gitspecops` (1 each). `schtasks` now lives in `_os/windows/schedule.py`. Each moves onto
   `_run` or into `_os/` as its owner moves in phases 2–4; none should survive phase 4.
 - [ ] **`gh` calls are all in the provider now, but two callers still speak raw `gh`**:
   `repo_transport` (Contents API) and `fleet_app` (auth status, login) call `run_gh` with their
   own arguments. Move the Contents API into `github.py` when the transport moves (phase 3);
   `fleet_app` dissolves in phase 3 anyway.
-- [ ] **Scheduled task**: already broken (see HANDOFF). Phase 3 writes the new launcher; the user
-  replaces the task; only then may `gitArchiveUpdater/` be deleted.
-- [ ] `operations.py` relies on `gh_common` having put the repo root on `sys.path` before it
-  imports `Basic`. Correct today, fragile; it disappears when the duplicator moves in phase 3.
+- [ ] **Scheduled task — waiting on the user.** New launcher written 2026-09-22 into the
+  per-user state folder; the user replaces the task and reinstalls three archive launchers; then
+  delete `gitArchiveUpdater/`.
+- [ ] **Two registered archives predate the `mode` field and use custom prefixes.** Reinstalling
+  must pass each entry's own `approved_remote_prefixes`; a missing mode means `update`.
 
 Two framings from the design discussion were wrong and are recorded as
 such so they are not revived: **"plugins"** (the provider seam already existed; no plugin folders,

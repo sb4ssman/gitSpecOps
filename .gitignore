@@ -16,9 +16,6 @@ uv.lock
 
 # Tool runtime state
 archive_updater_registry.json
-git-archive-updater/managed_archives.json
-git-archive-updater/runs/
-git-archive-updater/refresh-managed-archives.*
 # Stale pre-rename folder; archive_manager.py used to generate launchers here.
 gitArchiveUpdater/
 Special/duplicate_org/runs/

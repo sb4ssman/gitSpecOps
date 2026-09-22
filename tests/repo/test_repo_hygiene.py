@@ -112,7 +112,7 @@ def test_no_personal_data_in_tracked_files(names):
 def test_generated_local_artifacts_are_not_tracked(names):
     """A generated launcher bakes in absolute local paths; one was staged for commit once."""
     offenders = [n for n in names
-                 if re.search(r"(refresh-managed-archives|update_archive)\.(bat|ps1|sh)$", n)
+                 if re.search(r"(refresh[-_]managed[-_]archives|update_archive)\.(bat|ps1|sh)$", n)
                  or n.endswith("managed_archives.json")
                  or "/runs/" in n
                  or n.startswith(".agents/output/") and not n.endswith("README.md")]

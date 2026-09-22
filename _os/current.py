@@ -19,12 +19,12 @@ import sys
 
 if sys.platform == "win32":
     NAME = "windows"
-    from _os.windows import paths, process
+    from _os.windows import launcher, paths, process, schedule
 elif sys.platform == "darwin":
     NAME = "macos"
-    from _os.macos import paths, process
+    from _os.macos import launcher, paths, process, schedule
 else:
     NAME = "linux"
-    from _os.linux import paths, process
+    from _os.linux import launcher, paths, process, schedule
 
-__all__ = ["NAME", "paths", "process"]
+__all__ = ["NAME", "launcher", "paths", "process", "schedule"]

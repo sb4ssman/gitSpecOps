@@ -101,7 +101,7 @@ There is no install step. Clone it and run the scripts:
 ```bash
 git clone https://github.com/sb4ssman/gitSpecOps
 cd gitSpecOps
-python3 git-archive-updater/archive_manager.py --help
+python3 Elaborate/archive_manage.py --help
 ```
 
 Optionally, `run_setup` builds a clean `.venv` and writes one convenience launcher per tool for
@@ -137,15 +137,18 @@ Identity is by **stable provider id**, never by folder name or URL. GitHub node 
 repository and organization renames, so a deliberately renamed local folder is preserved while
 genuine upstream drift is surfaced for you to confirm.
 
-### `archive_manager.py` — the front door
+### `archive_manage.py` — the front door
 
 Registers archives, installs per-archive launchers, refreshes everything, writes logs, and
-manages an optional Windows scheduled task.
+manages an optional Windows scheduled task. Its registry, log and refresh-all launcher live in
+your per-user gitSpecOps folder (`%APPDATA%\gitspecops` on Windows, `~/.config/gitspecops`
+elsewhere; `GITSPECOPS_HOME` overrides), never in the checkout, so the scheduled task keeps
+working when the code moves.
 
 ```powershell
-python git-archive-updater\archive_manager.py --refresh-all --scan-only
-python git-archive-updater\archive_manager.py --install-monthly-task --task-day 1 --task-time 09:00
-python git-archive-updater\archive_manager.py --task-status
+python Elaborate\archive_manage.py --refresh-all --scan-only
+python Elaborate\archive_manage.py --install-monthly-task --task-day 1 --task-time 09:00
+python Elaborate\archive_manage.py --task-status
 ```
 
 Scheduled and launcher runs may only ever *update* or *sync*. `--reconcile` and
@@ -253,7 +256,7 @@ Two rules that make the advice trustworthy:
 Basic/                 careful primitives: one subprocess wrapper, repo facts, discovery,
                        prompts, state paths, and the host providers (Basic/_providers/)
 _os/                   per-OS pieces, the same files for Windows, Linux and macOS
-git-archive-updater/   archive_manager: registry, launchers, schedule (moving to Elaborate/)
+Elaborate/             archive_manage: registry, launchers, schedule
 Special/               archive_update, archive_sync, and duplicate_org/ (org duplication)
 git-sync-suggester/    the optional fleet tool (see below)
 shared/                the version number (moving into App/ as the migration proceeds)
@@ -302,7 +305,7 @@ that versioned contract rather than reclassifying Git facts.
 When unsure, look before you leap:
 
 ```bash
-python3 git-archive-updater/archive_manager.py --refresh-all --scan-only
+python3 Elaborate/archive_manage.py --refresh-all --scan-only
 python3 Special/archive_sync.py --root /path --publish --dry-run
 ```
 
@@ -312,7 +315,8 @@ python3 Special/archive_sync.py --root /path --publish --dry-run
 
 `.venv/`, `uv.lock`, `*.egg-info/`, `/build/`, `/dist/`, the generated root launchers
 (`update-archive.*`, `manage-archives.*`, `duplicate-github-org.*`, `suggest-sync.*`),
-`git-archive-updater/managed_archives.json`, both `runs/` folders, and `.agents/output/`.
+`Special/duplicate_org/runs/`, and `.agents/output/`. The archive registry is not in the
+checkout at all: it lives in the per-user gitSpecOps folder.
 
 Sync Suggester keeps its state **outside the repository** entirely — `GITSPECOPS_SYNC_HOME`,
 else XDG on POSIX / `%APPDATA%` on Windows, under `gitspecops/sync-suggester/`.

@@ -16,7 +16,13 @@ APP_DIR_NAME = "gitspecops"
 
 
 def config_home() -> Path:
-    """The per-user gitSpecOps folder: `<OS config base>/gitspecops`."""
+    """The per-user gitSpecOps folder: `<OS config base>/gitspecops`.
+
+    `GITSPECOPS_HOME` overrides it (tests, scratch runs), so nothing needs to touch the real one.
+    """
+    override = os.environ.get("GITSPECOPS_HOME")
+    if override:
+        return Path(override).expanduser()
     return _os_paths.config_base() / APP_DIR_NAME
 
 

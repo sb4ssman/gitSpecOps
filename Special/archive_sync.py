@@ -494,7 +494,7 @@ def _ask(question: str, assume_yes: bool) -> bool:
     return assume_yes or prompt_yes_no(question, default=False)
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Plan/apply sync for an archive of sibling repos.")
     p.add_argument("--root", type=Path, action="append", help="Archive folder. Repeatable. Defaults to cwd.")
     p.add_argument("--github-owner", help="Override the detected owner/org (rarely needed).")
@@ -516,7 +516,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--yes", action="store_true", help="Apply without interactive confirmation (for cron).")
     p.add_argument("--no-report", action="store_true", help="Do not write a dated JSON report.")
     p.add_argument("--git-timeout", type=int, default=45, help="Per-git-command timeout seconds.")
-    return p.parse_args()
+    return p.parse_args(argv)
 
 
 def run_publish(root: Path, args: argparse.Namespace) -> int:
@@ -603,9 +603,10 @@ def run_one(root: Path, approved_prefixes: list[str], args: argparse.Namespace) 
     return 1 if issues else 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    """The command. argv defaults to sys.argv; archive_manage passes its own, in-process."""
     enable_unicode_output()
-    args = parse_args()
+    args = parse_args(argv)
     set_git_timeout(args.git_timeout)
     approved = args.approved_remote_prefix or DEFAULT_APPROVED_REMOTE_PREFIXES
     roots = args.root or [Path.cwd()]

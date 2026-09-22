@@ -228,25 +228,6 @@ def display_name_for(repo_id: str, catalog: dict[str, dict]) -> str:
     return entry.get("alias") or entry.get("display_name") or f"repo:{repo_id[:8]}"
 
 
-def roots_from_archive_registry(repo_root: Path) -> list[str]:
-    """Registered archive roots from Archive Updater's local registry, if it exists."""
-    registry = Path(repo_root) / "git-archive-updater" / "managed_archives.json"
-    if not registry.is_file():
-        return []
-    try:
-        data = json.loads(registry.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return []
-    installations = data.get("installations")
-    if not isinstance(installations, list):
-        return []
-    roots = []
-    for item in installations:
-        if isinstance(item, dict) and isinstance(item.get("root"), str) and item["root"]:
-            roots.append(item["root"])
-    return roots
-
-
 def prune_catalog(catalog: dict[str, dict], keep: set[str]) -> dict[str, dict]:
     """Drop catalog entries no longer reachable, e.g. after a fleet-secret change."""
     return {repo_id: entry for repo_id, entry in catalog.items() if repo_id in keep}

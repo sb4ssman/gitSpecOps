@@ -127,7 +127,7 @@ This repo is intentionally small. Keep it that way.
 
 The entry-point tools are:
 
-- `git-archive-updater/archive_manager.py` (front door: registry, launchers, scheduling)
+- `Elaborate/archive_manage.py` (front door: registry, launchers, scheduling)
 - `Special/archive_update.py` (standalone, git-only, update-only)
 - `Special/duplicate_org/duplicate_org.py`
 - `git-sync-suggester/sync_suggester.py` (cross-machine status, and the group operations that act
@@ -203,7 +203,7 @@ One launcher per tool, written into the REPO ROOT (not the tool folder), and onl
 running OS: `.sh` on Linux/macOS, `.ps1` + a `.bat` double-click shim on Windows:
 
 - `update-archive` → `Special/archive_update.py`
-- `manage-archives` → `git-archive-updater/archive_manager.py`
+- `manage-archives` → `Elaborate/archive_manage.py`
 - `duplicate-github-org` → `Special/duplicate_org/duplicate_org.py`
 - `suggest-sync` → `git-sync-suggester/sync_suggester.py`
 
@@ -211,9 +211,11 @@ They are gitignored. To change launcher behavior, edit `LAUNCHER_SPECS` / the te
 `setup_gitspecops.py` and rerun setup — never edit a generated launcher. Each `.ps1` holds the
 Windows logic, the `.bat` is a double-click shim, the `.sh` is the POSIX twin; every launcher
 prefers the repo's `.venv` and falls back to `uv run`. `run_setup.{bat,ps1,sh}` stay committed —
-they bootstrap setup itself. The per-archive `update_archive` launchers and
-`refresh-managed-archives` remain generated at runtime by `archive_manager.py` (they bake in
-real archive paths) and follow the same prefer-`.venv` scheme.
+they bootstrap setup itself. The per-archive `update_archive` launchers and the
+`refresh_managed_archives` launcher are generated at runtime by `Elaborate/archive_manage.py`
+through `_os/*/launcher.py` (they bake in real paths) and follow the same prefer-`.venv` scheme.
+The refresh-all launcher lives in the per-user state folder, not the checkout: a scheduled task
+points at it, and that path must survive the code moving (2026-09-22).
 
 ## Archive Tools
 
@@ -225,17 +227,17 @@ real archive paths) and follow the same prefer-`.venv` scheme.
 
 It should use fast-forward pulls only. It must not merge, rebase, reset, delete repos, install dependencies, run project code, or recurse through arbitrary nested directories.
 
-`archive_sync.py` is the richer engine used by the manager. It can also discover an org's full repo set through a provider and clone missing repos, reconcile stale origins, and rename folders to match upstream. Every operation is graceful (failures are collected, never fatal) and nothing ambiguous is auto-applied. Discovery is the only host-specific part: when no provider matches the host, or discovery fails, `archive_sync.py` must degrade to the same fast-forward-only behavior as `archive_update.py` (pull every clean repo; never invent clones, orphans, or renames). The `remote_authoritative` flag in `detect_plan`/`build_plan` is what enforces this; keep it honest.
+`Special/archive_sync.py` is the richer engine used by the manager. It can also discover an org's full repo set through a provider and clone missing repos, reconcile stale origins, and rename folders to match upstream. Every operation is graceful (failures are collected, never fatal) and nothing ambiguous is auto-applied. Discovery is the only host-specific part: when no provider matches the host, or discovery fails, `archive_sync.py` must degrade to the same fast-forward-only behavior as `archive_update.py` (pull every clean repo; never invent clones, orphans, or renames). The `remote_authoritative` flag in `detect_plan`/`build_plan` is what enforces this; keep it honest.
 
-`archive_manager.py` owns the archive registry and friendly workflow. It installs archive-local `update_archive` launchers (which call `archive_sync.py` in the archive's configured `update` or `sync` mode), tracks managed archive folders, refreshes all managed archives, writes manager logs, and manages the optional Windows scheduled task. Scheduled/launcher runs must never pass `--reconcile` or `--rename-folders`; those mutations stay interactive only.
+`Elaborate/archive_manage.py` owns the archive registry and friendly workflow. It installs archive-local `update_archive` launchers (which call `Special/archive_sync.py` in the archive's configured `update` or `sync` mode), tracks managed archive folders, refreshes all managed archives **in-process** (it calls `archive_sync.main(argv)`; no child Python), writes its log, and manages the optional scheduled task through `_os/*/schedule.py` (Windows Task Scheduler; Linux and macOS report unsupported). Scheduled/launcher runs must never pass `--reconcile`, `--rename-folders` or `--publish`; `automated_sync_args()` is the one place those arguments are built, and `tests/elaborate/test_archive_manage.py` pins it.
 
-The registry is local runtime state:
+The registry is per-user runtime state, outside the checkout (`Elaborate/_archive_registry.py`):
 
 ```text
-git-archive-updater/managed_archives.json
+<per-user config>/gitspecops/gitspecops_managed_archives.json   # GITSPECOPS_HOME overrides
+<per-user config>/gitspecops/archive_manage.log
+<per-user config>/gitspecops/refresh_managed_archives.{bat,ps1 | sh}
 ```
-
-Do not commit local registry contents.
 
 ### The push direction ("publish") — shipped 2026-09-03, first slice
 
@@ -248,7 +250,7 @@ deliberately narrow, and the narrowness is the feature:
 - **Only ahead-only, clean repositories are eligible.** Diverged goes to a human; behind-only
   needs a pull first; detached or no-upstream means the direction is unknown; in-sync is a no-op.
 - **`--publish` is its own apply class** and *refuses* to run alongside
-  `--update/--sync/--reconcile/--rename-folders`. `archive_manager.py` never emits it, so
+  `--update/--sync/--reconcile/--rename-folders`. `archive_manage.py` never emits it, so
   generated launchers and the scheduled task can never push. `tests/test_archive_publish.py`
   asserts both of those, so the invariant cannot rot quietly.
 - **Fetch, then re-check, then push.** The remote may move between planning and pushing; the
@@ -644,9 +646,6 @@ These are local artifacts and should remain ignored:
 - `*.egg-info/`
 - `uv.lock`
 - generated per-tool launchers in the repo root (`update-archive.*`, `manage-archives.*`, `duplicate-github-org.*` — this OS's only)
-- `git-archive-updater/managed_archives.json`
-- `git-archive-updater/runs/`
-- `git-archive-updater/refresh-managed-archives.*`
 - `Special/duplicate_org/runs/`
 
 If tests or `uv run` recreate `uv.lock` or egg-info metadata, remove or ignore them according to `.gitignore`; do not treat them as source.
@@ -682,9 +681,9 @@ git history.
 Individually, plus the compile and `--help` smoke checks:
 
 ```powershell
-uv run python -m py_compile setup_gitspecops.py Special\archive_update.py Special\archive_sync.py git-archive-updater\archive_manager.py Special\duplicate_org\duplicate_org.py
+uv run python -m py_compile setup_gitspecops.py Special\archive_update.py Special\archive_sync.py Elaborate\archive_manage.py Special\duplicate_org\duplicate_org.py
 uv run python Special\archive_update.py --help
-uv run python git-archive-updater\archive_manager.py --help
+uv run python Elaborate\archive_manage.py --help
 uv run python Special\duplicate_org\duplicate_org.py --help
 uv run python git-sync-suggester\sync_suggester.py --help
 uv run python tests\duplicator\test_selection.py

@@ -26,13 +26,13 @@ from config import (  # noqa: E402
     load_catalog,
     load_config,
     merge_catalog,
-    roots_from_archive_registry,
     save_catalog,
     save_config,
     validate_config,
 )
 from Basic._files import atomic_write_bytes  # noqa: E402
 from Basic._paths import sync_home  # noqa: E402
+from Elaborate._archive_registry import registered_roots  # noqa: E402
 from folder_transport import SAFE_MACHINE_ID  # noqa: E402
 
 failures = []
@@ -131,21 +131,19 @@ with tempfile.TemporaryDirectory() as tmp:
           "unknown repo id did not fall back to a short stable identifier")
 
     # --- archive registry import ----------------------------------------------------
-    fake_repo = tmp / "fake-repo"
-    (fake_repo / "git-archive-updater").mkdir(parents=True)
-    registry = fake_repo / "git-archive-updater" / "managed_archives.json"
-    check(roots_from_archive_registry(fake_repo) == [], "missing registry should import nothing")
+    registry = tmp / "gitspecops_managed_archives.json"
+    check(registered_roots(registry) == [], "missing registry should import nothing")
     registry.write_text("{broken", encoding="utf-8")
-    check(roots_from_archive_registry(fake_repo) == [], "corrupt registry should import nothing")
+    check(registered_roots(registry) == [], "corrupt registry should import nothing")
     registry.write_text(json.dumps({"version": 1, "installations": "nope"}), encoding="utf-8")
-    check(roots_from_archive_registry(fake_repo) == [], "non-list installations should import nothing")
+    check(registered_roots(registry) == [], "non-list installations should import nothing")
     registry.write_text(json.dumps({"version": 1, "installations": [
         {"root": "/archives/one", "mode": "update"},
         {"mode": "sync"},
         {"root": ""},
         {"root": "/archives/two"},
     ]}), encoding="utf-8")
-    check(roots_from_archive_registry(fake_repo) == ["/archives/one", "/archives/two"],
+    check(registered_roots(registry) == ["/archives/one", "/archives/two"],
           "registry import did not skip records without a usable root")
 
     # --- atomic write ---------------------------------------------------------------
