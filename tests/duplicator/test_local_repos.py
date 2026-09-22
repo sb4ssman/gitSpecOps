@@ -11,9 +11,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import setup  # noqa: E402
 
-setup("duplicator")
+setup()
 
-from local_repos import duplicate_repo_names, scan_local_git_repos  # noqa: E402
+from Special.duplicate_org._local_repos import duplicate_repo_names, scan_local_git_repos  # noqa: E402
 
 
 def make_worktree(path):

@@ -14,6 +14,7 @@ glyph becomes ``?`` and the command still finishes. Printing must never be the t
 from __future__ import annotations
 
 import sys
+import threading
 
 #: Characters outside cp1252, mapped to a plain-ASCII stand-in for ``ascii_fallback``.
 ASCII_EQUIVALENTS = {
@@ -64,3 +65,22 @@ def ascii_fallback(text: str) -> str:
     for glyph, plain in ASCII_EQUIVALENTS.items():
         text = text.replace(glyph, plain)
     return text
+
+
+#: Hold while printing from worker threads so parallel output stays one line per event.
+PRINT_LOCK = threading.Lock()
+
+
+def format_size(kb):
+    """Format a size in KB as a human-readable string. Tolerates None / bad input."""
+    try:
+        kb = int(kb)
+    except (TypeError, ValueError):
+        return "size unknown"
+    if kb < 0:
+        return "size unknown"
+    if kb < 1024:
+        return f"{kb} KB"
+    if kb < 1024 * 1024:
+        return f"{kb / 1024:.1f} MB"
+    return f"{kb / (1024 * 1024):.1f} GB"

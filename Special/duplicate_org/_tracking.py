@@ -9,8 +9,23 @@ so resume can't mix two unrelated operations.
 """
 
 import os
+from datetime import datetime
+from pathlib import Path
 
-from gh_common import RUNS_DIR
+from Basic._console import PRINT_LOCK
+
+#: Run and resume files. Gitignored; kept beside the operation so a resume finds them.
+RUNS_DIR = Path(__file__).resolve().parent / "runs"
+
+
+def log_message(message, log_file):
+    """Print to console and append a timestamped line to a log file (thread-safe)."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_entry = f"[{timestamp}] {message}"
+    with PRINT_LOCK:
+        print(message)
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(log_entry + '\n')
 
 
 def get_tracking_files(operation_mode, scope=None):

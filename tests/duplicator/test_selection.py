@@ -2,7 +2,7 @@
 test_selection
 ==============
 
-Self-contained tests for the duplicator's selection grammar (`gh_common.parse_selection`)
+Self-contained tests for the duplicator's selection grammar (`Basic/_confirm.parse_selection`)
 and the interactive namespace chooser (`batch.choose_orgs`). No network, no filesystem
 writes, and SYNTHETIC names only (org-a/org-b/..., alpha-repo/...) — never real repos.
 
@@ -17,10 +17,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import setup  # noqa: E402
 
-setup("duplicator")
+setup()
 
-import batch  # noqa: E402
-from gh_common import parse_selection  # noqa: E402
+from Basic._confirm import parse_selection  # noqa: E402
+from Special.duplicate_org import _batch as batch  # noqa: E402
 
 FAILS = []
 
@@ -72,7 +72,7 @@ if got_all != WANT:
     FAILS.append(f"choose_orgs: {got_all}")
 
 # ---- module wiring ----
-import github_org_duplicator as dup  # noqa: E402,F401
+import Special.duplicate_org.duplicate_org as dup  # noqa: E402,F401
 
 for obj, name in ((batch, "run_batch_download"), (batch, "run_single_repo"),
                   (dup, "choose_repo_subset")):

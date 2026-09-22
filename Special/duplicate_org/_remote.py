@@ -10,20 +10,16 @@ the pooled LFS probe with progress. The `gh` calls themselves live in
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
-_REPO_ROOT = str(Path(__file__).resolve().parent.parent)
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
 
-from Basic._providers.github import (  # noqa: E402
+from Basic._providers.github import (
     GhError,
     check_repo_for_lfs,
     fetch_org_repos,
     org_access_error,
     run_gh,
 )
-from Basic._run import run_checked  # noqa: E402
+from Basic._run import run_checked
 
 # The .gitattributes probe is a tiny single-file API read; it must never sit on the default
 # 120s gh timeout, and several can run at once.

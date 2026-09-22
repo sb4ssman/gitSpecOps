@@ -19,7 +19,6 @@ SYNC_DIR = ROOT / "git-sync-suggester"
 
 AREAS = {
     "archive": [ROOT / "git-archive-updater"],
-    "duplicator": [ROOT / "github-org-duplicator"],
     # Sync Suggester is itself split into folders; _paths.bootstrap() owns that list, so this
     # only needs the tool root where _paths.py lives.
     "sync": [SYNC_DIR],

@@ -129,7 +129,7 @@ The entry-point tools are:
 
 - `git-archive-updater/archive_manager.py` (front door: registry, launchers, scheduling)
 - `Special/archive_update.py` (standalone, git-only, update-only)
-- `github-org-duplicator/github_org_duplicator.py`
+- `Special/duplicate_org/duplicate_org.py`
 - `git-sync-suggester/sync_suggester.py` (cross-machine status, and the group operations that act
   on it — observation never mutates, mutation is always an invoked command)
 
@@ -204,7 +204,7 @@ running OS: `.sh` on Linux/macOS, `.ps1` + a `.bat` double-click shim on Windows
 
 - `update-archive` → `Special/archive_update.py`
 - `manage-archives` → `git-archive-updater/archive_manager.py`
-- `duplicate-github-org` → `github-org-duplicator/github_org_duplicator.py`
+- `duplicate-github-org` → `Special/duplicate_org/duplicate_org.py`
 - `suggest-sync` → `git-sync-suggester/sync_suggester.py`
 
 They are gitignored. To change launcher behavior, edit `LAUNCHER_SPECS` / the templates in
@@ -296,24 +296,26 @@ whoever builds it, so the safety model is not broken:
 
 ## GitHub Org Duplicator
 
-`github_org_duplicator.py` is the interactive, confirmation-heavy orchestrator. It checks `git`, `gh`, authentication, and org access before moving repositories. **It is GitHub-specific by design** (org concept, `gh repo create`, LFS probing); multi-host support is a stated goal, tracked in `working-notes.md`, and will enter through the shared provider seam — the archive tools are the multi-host frontier. The work is split into cohesive sibling modules in the same folder, imported with plain `import` (the entry point is always run as a script, so its directory is on `sys.path`):
+`Special/duplicate_org/duplicate_org.py` is the interactive, confirmation-heavy orchestrator. It checks `git`, `gh`, authentication, and org access before moving repositories. **It is GitHub-specific by design** (org concept, `gh repo create`, LFS probing); multi-host support is a stated goal, tracked in `working-notes.md`, and will enter through the shared provider seam — the archive tools are the multi-host frontier. The work is split into plumbing modules beside it in `Special/duplicate_org/`, imported by full path (`from Special.duplicate_org._batch import ...`):
 
-- `gh_common.py` - subprocess wrapper, print lock, run-file dir, console helpers
-- `gh_remote.py` - the duplicator's prerequisite checks (print and stop) and pooled LFS probe;
+- generic pieces live lower in the stack: prompts, `--answers`, the selection grammar and
+  directory prompts in `Basic/_confirm.py`; the print lock and `format_size` in `Basic/_console.py`;
+  subprocesses in `Basic/_run.py` (`gh_common.py` dissolved on 2026-09-22)
+- `_remote.py` - the duplicator's prerequisite checks (print and stop) and pooled LFS probe;
   the `gh` calls themselves are in `Basic/_providers/github.py`
-- `local_repos.py` - adapts shared repo discovery for direct/recursive upload scans + safe deletion
-- `tracking.py` - resume state / run files
-- `operations.py` - the per-repo download/upload/migrate workers
-- `batch.py` - modes 4 (batch) and 5 (single) flows, incl. their flag resolution
+- `_local_repos.py` - adapts shared repo discovery for direct/recursive upload scans + safe deletion
+- `_tracking.py` - resume state / run files, and the run log
+- `_operations.py` - the per-repo download/upload/migrate workers, plus the download-behavior text
+- `_batch.py` - modes 4 (batch) and 5 (single) flows, incl. their flag resolution
 
-Keep new GitHub/`gh` calls in `Basic/_providers/github.py` and new filesystem logic in `local_repos.py`; the orchestrator should stay flow-only.
+Keep new GitHub/`gh` calls in `Basic/_providers/github.py` and new filesystem logic in `_local_repos.py`; the orchestrator should stay flow-only.
 
 **Subprocess timing rules.** Every `gh` call goes through `Basic/_providers/github.run_gh` (120s
 default); every git call through `Basic/_run.run_checked` with `operations.GIT_OP_TIMEOUT_SECONDS` (3600s ceiling — a git op with no progress that
 long is hung, not slow — plus a forced `GIT_TERMINAL_PROMPT=0` so a missing credential fails fast
 instead of deadlocking a worker pool). Both raise `RuntimeError`/`GhError` on timeout; nothing
-blocks unbounded. Retries in `operations.py` use jittered backoff (`_retry_backoff`). The LFS
-`.gitattributes` probe (`gh_remote._check_lfs_flags`) is pooled (8 workers, 20s each) — it is a
+blocks unbounded. Retries in `_operations.py` use jittered backoff (`_retry_backoff`). The LFS
+`.gitattributes` probe (`_remote._check_lfs_flags`) is pooled (8 workers, 20s each) — it is a
 warning-only signal and must never gate or stall a run.
 
 **Non-interactive layer (added 2026-08-31).** Run with no flags it is still the interactive menu.
@@ -321,14 +323,14 @@ warning-only signal and must never gate or stall a run.
 --[no-]private --[no-]archived --[no-]forks --format --parallel --yes` for an unattended batch,
 and `--answers FILE` feeds any remaining prompt (one line each; blank = default) for every mode.
 This is why it exists: VS Code / CI type venv-activation lines into an open prompt and corrupt
-`input()`. `gh_common.use_scripted_answers()` holds the queue; `prompt_input()` serves from it,
+`input()`. `Basic/_confirm.use_scripted_answers()` holds the queue; `prompt_input()` serves from it,
 skips activation-noise lines (`_ACTIVATION_MARKERS`), and raises a clean `SystemExit` (not an
 `EOFError` traceback) when an answer is needed and none is available. `resolve_directory()` is the
 non-prompting twin of `prompt_for_directory()`. Argparse flags in the one script are fine — still
 no `src/` package, no console-script entry point. Modes 1-3 are flag-less for now (use `--answers`);
 giving them real flags can follow the same pattern.
 
-**Mode 5 spec resolution.** `batch._resolve_repo_or_prompt()` resolves the `owner/name`/URL spec
+**Mode 5 spec resolution.** `_batch._resolve_repo_or_prompt()` resolves the `owner/name`/URL spec
 *before* asking for a target directory and shows the matched repo. A bare token (no `/`, no
 `://`) is the trap: `gh repo view <name>` silently prepends the authenticated user as owner, so
 `_resolve_one_repo()` rejects a failed bare name with a specific message, and a bare name that
@@ -339,7 +341,7 @@ drives the prompts itself.
 Run/resume files live under:
 
 ```text
-github-org-duplicator/runs/
+Special/duplicate_org/runs/
 ```
 
 Keep output and tracking files there. Do not move them back to the repo root.
@@ -645,7 +647,7 @@ These are local artifacts and should remain ignored:
 - `git-archive-updater/managed_archives.json`
 - `git-archive-updater/runs/`
 - `git-archive-updater/refresh-managed-archives.*`
-- `github-org-duplicator/runs/`
+- `Special/duplicate_org/runs/`
 
 If tests or `uv run` recreate `uv.lock` or egg-info metadata, remove or ignore them according to `.gitignore`; do not treat them as source.
 
@@ -680,10 +682,10 @@ git history.
 Individually, plus the compile and `--help` smoke checks:
 
 ```powershell
-uv run python -m py_compile setup_gitspecops.py Special\archive_update.py Special\archive_sync.py git-archive-updater\archive_manager.py github-org-duplicator\github_org_duplicator.py
+uv run python -m py_compile setup_gitspecops.py Special\archive_update.py Special\archive_sync.py git-archive-updater\archive_manager.py Special\duplicate_org\duplicate_org.py
 uv run python Special\archive_update.py --help
 uv run python git-archive-updater\archive_manager.py --help
-uv run python github-org-duplicator\github_org_duplicator.py --help
+uv run python Special\duplicate_org\duplicate_org.py --help
 uv run python git-sync-suggester\sync_suggester.py --help
 uv run python tests\duplicator\test_selection.py
 uv run python tests\duplicator\test_local_repos.py

@@ -4,7 +4,7 @@ test_batch_args
 
 Offline tests for the duplicator's non-interactive layer: the CLI parser
 (`github_org_duplicator.parse_args`), the scripted-answer queue and activation-noise
-filter (`gh_common`), and filter resolution (`batch.ask_filters`).
+filter (`Basic/_confirm.py`), and filter resolution (`batch.ask_filters`).
 
 No network, no GitHub, SYNTHETIC values only.
 
@@ -21,11 +21,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import ROOT, setup  # noqa: E402
 
-setup("duplicator")
+setup()
 
-import gh_common  # noqa: E402
-import batch  # noqa: E402
-from github_org_duplicator import parse_args  # noqa: E402
+from Basic._console import format_size  # noqa: E402
+from Special.duplicate_org import _batch as batch  # noqa: E402
+from Special.duplicate_org.duplicate_org import parse_args  # noqa: E402
 
 FAILS = []
 
@@ -135,10 +135,10 @@ finally:
     batch.resolve_repo_details = _orig
 
 # format_size tolerates junk (used on gh diskUsage which can be null)
-check("format_size(None)", gh_common.format_size(None) == "size unknown")
-check("format_size(-1)", gh_common.format_size(-1) == "size unknown")
-check("format_size('nope')", gh_common.format_size("nope") == "size unknown")
-check("format_size(2048) still works", gh_common.format_size(2048) == "2.0 MB")
+check("format_size(None)", format_size(None) == "size unknown")
+check("format_size(-1)", format_size(-1) == "size unknown")
+check("format_size('nope')", format_size("nope") == "size unknown")
+check("format_size(2048) still works", format_size(2048) == "2.0 MB")
 
 # --- a hung command must never be retried -------------------------------------------
 # `CommandTimeout` subclasses `RuntimeError`, so a bare `except RuntimeError:` in a retry
@@ -146,7 +146,7 @@ check("format_size(2048) still works", gh_common.format_size(2048) == "2.0 MB")
 # Every retry loop in operations.py must therefore handle CommandTimeout first and re-raise.
 import ast  # noqa: E402
 
-OPERATIONS = ROOT / "github-org-duplicator" / "operations.py"
+OPERATIONS = ROOT / "Special" / "duplicate_org" / "_operations.py"
 tree = ast.parse(OPERATIONS.read_text(encoding="utf-8"))
 
 

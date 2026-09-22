@@ -12,10 +12,12 @@ import os
 import random
 import time
 
-from gh_common import PRINT_LOCK, format_size, log_message  # puts the repo root on sys.path
-from Basic._run import CommandTimeout, run_checked
+from Basic._confirm import prompt_input
+from Basic._console import PRINT_LOCK, format_size
 from Basic._providers.github import create_repo, ensure_repo
-from local_repos import safe_cleanup_directory
+from Basic._run import CommandTimeout, run_checked
+from Special.duplicate_org._local_repos import safe_cleanup_directory
+from Special.duplicate_org._tracking import log_message
 
 RETRY_ATTEMPTS = 3
 
@@ -273,3 +275,35 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
         log_message(error_msg, error_log)
         print()
         return {'status': 'failed', 'elapsed': elapsed, 'error': str(e)}
+
+
+def prompt_clone_format():
+    """Prompt until the user explicitly chooses a working or mirror clone."""
+    print("Download format:")
+    print("  1. Working repositories (regular clone)")
+    print("  2. Mirror repositories (--mirror, archival)")
+    while True:
+        choice = prompt_input("Format (1 or 2): ")
+        if choice in ("1", "2"):
+            return choice == "2"
+        print("Please choose 1 or 2.")
+
+
+def print_download_warnings() -> None:
+    """Uniform download limitations, shown before any download-mode confirmation."""
+    print()
+    print("-" * 60)
+    print("DOWNLOAD BEHAVIOR & LIMITATIONS (applies to every repo below)")
+    print("-" * 60)
+    print("• Arrival layout: <parent>/<namespace>/<repo> — one folder per namespace.")
+    print("• Regular clone: working copy of the default branch (others stay remote-tracking).")
+    print("• Mirror clone: full archival copy of all refs, no working tree.")
+    print("• Already-local repos are skipped; completed repos are skipped on rerun (resume).")
+    print("• Private repos appear only if your authenticated account can see them.")
+    print("• LFS repos are flagged; regular clones need `git lfs` installed for content.")
+    print("• Sizes shown are GitHub's reported size — real disk use can differ (history, LFS).")
+    print("• Failures are collected per repo; the run continues; details land in the runs/ logs.")
+    print("• Downloads are local-only: nothing is pushed, created, edited, or deleted remotely.")
+    print("• Interactive only — nothing here runs scheduled or in the background.")
+    print("-" * 60)
+    print()
