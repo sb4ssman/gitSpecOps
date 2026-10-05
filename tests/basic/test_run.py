@@ -5,6 +5,7 @@ directory that is not a repository.
 """
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import time
@@ -32,6 +33,15 @@ def check(label: str, ok: bool) -> None:
 ok = run([PY, "-c", "print('héllo ✓')"], timeout=30)
 check("ordinary run succeeds", ok.returncode == 0 and ok.stdout.strip() == "héllo ✓")
 check("ordinary run is not flagged", not ok.timed_out and not ok.missing)
+
+probe = "import os; print(os.environ.get('PYTHONUTF8'), os.environ.get('PYTHONIOENCODING'))"
+for name in ("PYTHONUTF8", "PYTHONIOENCODING"):
+    os.environ.pop(name, None)  # the caller said nothing, so the wrapper must supply it
+seen = run([PY, "-c", probe], timeout=30)
+check("children are told to speak UTF-8 (a Python child on Windows otherwise writes cp1252)",
+      seen.stdout.split() == ["1", "utf-8"])
+overridden = run([PY, "-c", probe], timeout=30, env={"PYTHONUTF8": "0", "PYTHONIOENCODING": "latin-1"})
+check("a caller's own setting still wins", overridden.stdout.split() == ["0", "latin-1"])
 
 missing = run(["gitspecops-no-such-binary"], timeout=5)
 check("missing binary is a result, not a raise", missing.missing and missing.returncode == 127)
