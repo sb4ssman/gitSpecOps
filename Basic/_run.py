@@ -14,6 +14,12 @@ worker pool wants an exception it can retry -- so they are two thin faces over o
   an invisible prompt -- which, under a thread pool, deadlocks the run. Auth belongs to the user.
 - **Structured results.** Decoding is UTF-8 with replacement, so a stray byte in a repo name
   never crashes a run. A missing binary or a timeout is a result with a flag, not a traceback.
+- **UTF-8 both ways.** Output is decoded as UTF-8, so every child is also told to produce it:
+  ``PYTHONUTF8=1`` and ``PYTHONIOENCODING=utf-8`` (unless the caller's environment says
+  otherwise). Without them a Python child on Windows writes cp1252 to a pipe, which then
+  decodes to the wrong characters or dies on a glyph like ``✓``. They are set for every child,
+  not only ones named ``python``, because a launcher, a ``.bat`` or ``uv run`` hides the
+  interpreter; other programs ignore them.
 - **No policy.** Callers own what they run. Mutating callers reach this only after their own
   plan -> confirm step.
 """
@@ -61,6 +67,8 @@ def run(argv: Sequence, *, timeout: float, cwd: Path | str | None = None,
     """Run argv (a list, never a shell string). Never raises for an ordinary failure."""
     argv = [str(part) for part in argv]
     child_env = dict(os.environ)
+    child_env.setdefault("PYTHONUTF8", "1")
+    child_env.setdefault("PYTHONIOENCODING", "utf-8")
     if _is_git(argv):
         child_env.setdefault("GIT_TERMINAL_PROMPT", "0")
     child_env.update(env or {})

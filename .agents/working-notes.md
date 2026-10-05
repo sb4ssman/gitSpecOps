@@ -11,12 +11,11 @@ _Last tended: 2026-09-22_
 
 Built `Special/inventory_export.py` / `inventory_restore.py` (see work log). Not yet done:
 
-- [x] Committed 2026-10-05. Full suite alone on Windows: 43/44; the one failure,
-  `basic/test_run.py` "ordinary run succeeds", is environmental and predates this work (fails
-  identically with the change stashed, passes with `PYTHONUTF8=1`): the test's child Python
-  prints `✓` to a pipe and the shell here has no UTF-8 mode set. **Open:** make the test set
-  `PYTHONUTF8=1`/`PYTHONIOENCODING` for its child, or decide `_run` should do so for Python
-  children, since a real caller could hit the same thing.
+- [x] Committed 2026-10-05 (`a7c339e`). The one suite failure then, `basic/test_run.py`, predated
+  it: a Python child writing `✓` to a pipe on Windows emits cp1252 unless UTF-8 mode is set.
+  Fixed 2026-10-05 at the cause: `Basic/_run.run` now sets `PYTHONUTF8=1` and
+  `PYTHONIOENCODING=utf-8` for every child (a caller's own value wins), pinned in
+  `tests/basic/test_run.py`. Full suite alone on Windows with neither variable set: 44/44.
 - [ ] **Not yet run on a second machine / Linux**: the real round trip (export here, restore there)
   is unproven. Path handling is POSIX-relative by design but only Windows has run it.
 - [ ] **Phase 3c: rebuild `materialize` on `_inventory.plan_restore`**, one clone planner not two.
