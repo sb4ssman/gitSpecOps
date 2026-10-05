@@ -1,5 +1,49 @@
 # Work log
 
+## 2026-10-05 — library inventory: export and restore (`Special/`)
+
+Prompted by a real failure: a folder-name map cannot clone a fleet, and the fleet manifests
+cannot either, by design (salted ids, no names or URLs). New, in `Special/`:
+`_inventory.py` (collection + pure restore planner), `inventory_export.py` (`EFFECT = "none"`),
+`inventory_restore.py` (`EFFECT = "local"`, clone-only, plan first, typed `CLONE`),
+pinned by `tests/special/test_inventory.py` on disposable repositories.
+
+- **The recorded remote URL is the source of truth for cloning**; `host/owner/name` is derived
+  from it for layout and identity. Every remote is recorded, not just origin, and `--layout
+  preserve` (recorded relative paths) or `canonical` (`host/owner/name`) is chosen at restore.
+- **Labelled roots, no drive letters.** `--root label=path` on export, `--map label=dest` on
+  restore, so each root can land on any drive or folder. `source_path` is recorded for the human
+  only; restore never reads it.
+- **Nothing is dropped.** Repositories with no remote, unpushed commits, uncommitted work or
+  stashes are recorded and flagged (`no-remote`, `unpushed-commits`, `uncommitted-work`,
+  `stashed`, ...), and restore names, per row, what a clone cannot bring back. A repository with
+  no remote still carries readme, project-file metadata, `.git/description`, and candidate origin
+  URLs found in them; restore uses a candidate only with `--use-candidates`, since a README link
+  is a lead and not evidence.
+- **Credentials never enter the file** (http(s) userinfo is stripped and flagged). Submodules and
+  linked worktrees are recorded and skipped on restore; nesting is recorded.
+- **Why it is separate from `materialize`:** `materialize` plans from a live local scan and
+  always lays out `host/owner/name`; this goes through a portable file. Phase 3c should rebuild
+  `materialize` on `_inventory.plan_restore` rather than keep two clone planners.
+- Default output is the gitignored `.agents/output/`: the file names every private repository.
+- **Ask for a file or folder only in a command, never in a function.** `Basic/_pick.py`
+  (`pick_open_file`, `pick_save_file`, `pick_directory`) opens a native tkinter dialog when one is
+  safe and asks in the terminal otherwise; both commands use it only when the path was not given
+  as a flag, and `--answers` / `--no-prompt` / `GITSPECOPS_NO_GUI=1` always keep it in the
+  terminal. Higher layers call the importable functions with explicit paths, so an unattended run
+  can never meet a dialog.
+- **Cause worth keeping: on Windows `isatty()` is True for the `NUL` device**, which is what a
+  scheduled or detached run is given, so "is stdin a terminal" would have let a hidden dialog
+  open. The test found it only because it ran the real commands with stdin on `NUL`.
+  `process.stdin_is_interactive()` is now an `_os/` component (Windows asks for a real console
+  mode; POSIX uses `isatty`), with the parity test covering all three OSes.
+- **Scattered repositories.** `--root` repeats (bare paths are auto-labelled `projects`,
+  `projects-2`, ...; the same folder twice counts once), `--repo PATH` records a single repository
+  under the reserved label `loose` with its original location, a root that is itself a repository
+  is kept, and a repository reachable two ways is recorded once. Restore takes one `--map` per
+  label, or `--dest` for all, or asks per label; `--dest DIR --layout canonical` is the
+  one-tidy-tree answer for a haphazard library, and `preserve` into one folder reports collisions.
+
 ## 2026-09-22 — migration phase 3a–3b: `Special/`, `Basic/` git commands, `archive_manage`
 
 **3a (two commits).** The archive tools moved to `Special/archive_update.py` and
