@@ -46,6 +46,11 @@ def use_scripted_answers(lines, *, strict: bool = False) -> None:
     _SCRIPTED_STRICT = bool(strict)
 
 
+def scripted_answers_active() -> bool:
+    """True when answers were pre-loaded, so a prompt will be served from them, not a person."""
+    return bool(_SCRIPTED_ANSWERS) or _SCRIPTED_STRICT
+
+
 def _looks_like_activation(lowered_value: str) -> bool:
     return any(marker in lowered_value for marker in _ACTIVATION_MARKERS)
 

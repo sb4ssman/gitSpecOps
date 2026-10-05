@@ -7,6 +7,30 @@ _Last tended: 2026-09-22_
 
 ## Open
 
+### 2026-10-05 — library inventory shipped (uncommitted); follow-ups
+
+Built `Special/inventory_export.py` / `inventory_restore.py` (see work log). Not yet done:
+
+- [x] Committed 2026-10-05. Full suite alone on Windows: 43/44; the one failure,
+  `basic/test_run.py` "ordinary run succeeds", is environmental and predates this work (fails
+  identically with the change stashed, passes with `PYTHONUTF8=1`): the test's child Python
+  prints `✓` to a pipe and the shell here has no UTF-8 mode set. **Open:** make the test set
+  `PYTHONUTF8=1`/`PYTHONIOENCODING` for its child, or decide `_run` should do so for Python
+  children, since a real caller could hit the same thing.
+- [ ] **Not yet run on a second machine / Linux**: the real round trip (export here, restore there)
+  is unproven. Path handling is POSIX-relative by design but only Windows has run it.
+- [ ] **Phase 3c: rebuild `materialize` on `_inventory.plan_restore`**, one clone planner not two.
+- [ ] **A diff mode** (`inventory_check`: inventory vs disk — missing, extra, origin mismatch) is the
+  natural "converge, with names" and is not built.
+- [ ] **Restore ignores the recorded branch** (it records it; clone checks out the remote default).
+  Decide whether to offer checking it out. Submodules are skipped, not cloned recursively.
+- [ ] **The real GUI dialogs are unverified.** Tests drive the terminal/scripted path only; open
+  the three dialogs once by hand on Windows (and on a Linux desktop, where tkinter may be absent
+  and should fall back to the terminal prompt).
+- [ ] No per-repository pick yet (restore takes everything, or `--only LABEL`). `parse_selection`
+  in `Basic/_confirm.py` is the grammar to reuse if wanted.
+- [ ] Mention the commands in the README Repo Shape / launcher list when 3c settles the layout.
+
 ### 2026-09-22 — migration: phases 1, 2, 3a–3b done; 3c next
 
 The target tree (revised 2026-09-21), the phases and the decisions are in

@@ -13,6 +13,14 @@ def spawn_options() -> dict:
     return {"start_new_session": True}
 
 
+def stdin_is_interactive() -> bool:
+    """True when stdin is a terminal (a person can answer)."""
+    try:
+        return os.isatty(0)
+    except (OSError, ValueError):
+        return False
+
+
 def kill_tree(proc: subprocess.Popen) -> None:
     """End proc's whole process group (see `spawn_options`). Never raises."""
     if proc.poll() is not None:

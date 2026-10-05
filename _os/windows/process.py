@@ -15,6 +15,20 @@ def spawn_options() -> dict:
     return {}
 
 
+def stdin_is_interactive() -> bool:
+    """True only when stdin is a real console. `isatty()` is not enough on Windows: it answers
+    True for the `NUL` device, which is what a scheduled or detached run is given, and a command
+    that believes a person is there would open a dialog nobody can see."""
+    try:
+        import ctypes
+        import msvcrt
+        mode = ctypes.c_uint32()
+        handle = msvcrt.get_osfhandle(0)
+        return bool(ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(mode)))
+    except (ImportError, OSError, ValueError, AttributeError):
+        return False
+
+
 def kill_tree(proc: subprocess.Popen) -> None:
     """End proc and all of its descendants. Never raises."""
     if proc.poll() is not None:
