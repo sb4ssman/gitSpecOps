@@ -1,7 +1,8 @@
 # Working notes
 
 Living todo / scratch pad. Add items freely; **prune regularly**. When something is done, move it
-into [`work-log.md`](work-log.md) with an absolute date. Dates are always absolute.
+into [`WORK-LOG.md`](WORK-LOG.md) (appended at the bottom, `YYYY-MM-DD HH:MM`) and delete it here.
+Dates are always absolute.
 
 _Last tended: 2026-09-22_
 
@@ -247,7 +248,7 @@ work log.
     `9989dc0`, before the 2026-09-03 work. Persistent per-root config and machine identity,
     peer-manifest aggregation with stale/expired rules, optional bounded fetch with honest
     `upstream_observed_at`, and visible polling/watch with semantic-change writes plus heartbeat
-    are all **already built** (see [`work-log.md`](work-log.md)). What genuinely remains from that
+    are all **already built** (see [`WORK-LOG.md`](WORK-LOG.md)). What genuinely remains from that
     list is **notifications**, then **explicit handoff**.
 
 - [ ] **`.venv` stays package-free — watch for regressions.** `[tool.uv] package = false` makes

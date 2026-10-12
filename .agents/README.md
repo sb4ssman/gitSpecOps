@@ -46,7 +46,7 @@ goal for seventeen days — see the correction note in the Sync Suggester sectio
 ### Start every session by looking, not remembering
 
 1. **Read this file**, then [`HANDOFF.md`](HANDOFF.md) for where the project stands right
-   now, then [`working-notes.md`](working-notes.md) for open items.
+   now, then [`WORKING-NOTES.md`](WORKING-NOTES.md) for open items.
 2. **Map the tree with the tool**, do not reconstruct it from memory or a few `ls` calls:
 
    ```bash
@@ -63,8 +63,8 @@ goal for seventeen days — see the correction note in the Sync Suggester sectio
 
 ### This is a PUBLIC repository — never write personal information into it
 
-Applies to **every tracked file**: code, comments, docstrings, tests, `working-notes.md`,
-`work-log.md`, `knowledge/`, and commit messages. Never commit:
+Applies to **every tracked file**: code, comments, docstrings, tests, `WORKING-NOTES.md`,
+`WORK-LOG.md`, `knowledge/`, and commit messages. Never commit:
 
 - **Absolute local paths** (`T:\…`, `/home/<you>`, `/srv/<drive>`, `C:\Users\…`) — use
   `<library-root>`, `/path/to/archive`, or a clearly invented example.
@@ -85,10 +85,12 @@ there freely. That is the release valve.
 
 ### Keeping the record
 
-- **Keep `working-notes.md` current** — a living todo / scratch pad. Add items as they arise; prune
+- **Keep `WORKING-NOTES.md` current** — a living todo / scratch pad. Add items as they arise; prune
   stale or resolved ones regularly. It is what saves the next session from reconstructing state.
-- **Graduate completed work into `work-log.md`** with an **absolute date** (e.g. `2026-07-21`).
-  Always write dates absolutely — never "yesterday" / "last week".
+- **Graduate completed work into `WORK-LOG.md`**: append at the **bottom**, newest last, as
+  `## YYYY-MM-DD HH:MM - <User> (<agent>) - <title>`, with the time read from the clock. Never
+  edit or delete a past entry — append a correction. The log is union-merged (`.gitattributes`),
+  so concurrent appends never conflict. Always write dates absolutely — never "yesterday".
 - **Record durable decisions and findings under `knowledge/`** (one topic per file). Working notes
   are transient; knowledge is kept.
 - **Record the bug's cause, not just its fix.** The valuable half is why it hid — which platform,
@@ -298,7 +300,7 @@ whoever builds it, so the safety model is not broken:
 
 ## GitHub Org Duplicator
 
-`Special/duplicate_org/duplicate_org.py` is the interactive, confirmation-heavy orchestrator. It checks `git`, `gh`, authentication, and org access before moving repositories. **It is GitHub-specific by design** (org concept, `gh repo create`, LFS probing); multi-host support is a stated goal, tracked in `working-notes.md`, and will enter through the shared provider seam — the archive tools are the multi-host frontier. The work is split into plumbing modules beside it in `Special/duplicate_org/`, imported by full path (`from Special.duplicate_org._batch import ...`):
+`Special/duplicate_org/duplicate_org.py` is the interactive, confirmation-heavy orchestrator. It checks `git`, `gh`, authentication, and org access before moving repositories. **It is GitHub-specific by design** (org concept, `gh repo create`, LFS probing); multi-host support is a stated goal, tracked in `WORKING-NOTES.md`, and will enter through the shared provider seam — the archive tools are the multi-host frontier. The work is split into plumbing modules beside it in `Special/duplicate_org/`, imported by full path (`from Special.duplicate_org._batch import ...`):
 
 - generic pieces live lower in the stack: prompts, `--answers`, the selection grammar and
   directory prompts in `Basic/_confirm.py`; the print lock and `format_size` in `Basic/_console.py`;

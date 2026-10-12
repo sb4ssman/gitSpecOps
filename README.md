@@ -337,6 +337,6 @@ python3 tests/run_all.py
 
 Working on this repo, human or agent? Start with
 [`.agents/README.md`](.agents/README.md) — the primary project brief — and the living
-[`.agents/working-notes.md`](.agents/working-notes.md).
+[`.agents/WORKING-NOTES.md`](.agents/WORKING-NOTES.md).
 
 Licensed under the Apache License 2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).

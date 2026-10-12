@@ -24,5 +24,6 @@ Architecture is a layer stack with a one-way import rule — see
 [`.agents/knowledge/architecture-layers.md`](.agents/knowledge/architecture-layers.md). Plain
 scripts throughout: no `src/` package, no console-script entry points.
 
-Keep [`.agents/working-notes.md`](.agents/working-notes.md) current as you work, and graduate
-completed work into [`.agents/work-log.md`](.agents/work-log.md) with an absolute date.
+Keep [`.agents/WORKING-NOTES.md`](.agents/WORKING-NOTES.md) current as you work, and graduate
+completed work into [`.agents/WORK-LOG.md`](.agents/WORK-LOG.md) — appended at the bottom,
+stamped `YYYY-MM-DD HH:MM`.

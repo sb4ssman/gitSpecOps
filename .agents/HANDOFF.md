@@ -2,7 +2,7 @@
 
 For the next session, human or LLM. Read [`README.md`](README.md) (the project brief) first. It
 opens with **What this is for**, and that section outranks every rule below it. Then this, then
-[`working-notes.md`](working-notes.md).
+[`WORKING-NOTES.md`](WORKING-NOTES.md).
 
 ## Your job: reorganize the guts into the agreed architecture
 
@@ -146,5 +146,5 @@ rewrite is the only complete fix and breaks every clone.
   account/org/repo names in code, comments, tests, notes, or commit messages.
   `test_repo_hygiene.py` enforces it and has already caught real leaks.
 - **Prior auth first; cross-platform first; stdlib only; plain scripts, no package.**
-- **Keep the record.** Update [`working-notes.md`](working-notes.md) as you go and graduate
-  finished work into [`work-log.md`](work-log.md) with an absolute date.
+- **Keep the record.** Update [`WORKING-NOTES.md`](WORKING-NOTES.md) as you go and graduate
+  finished work into [`WORK-LOG.md`](WORK-LOG.md), appended at the bottom with a `YYYY-MM-DD HH:MM` stamp.

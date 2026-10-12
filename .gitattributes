@@ -1,0 +1,3 @@
+# The work log is an append-only, timestamp-ordered stream: union-merge it so concurrent
+# appends never conflict. WORKING-NOTES is current state with deletions: never union it.
+.agents/WORK-LOG.md merge=union

@@ -4,7 +4,7 @@ Deliberately per-user, never system-wide: the fleet app must run **as the intera
 that Git ownership, the gh login, Tailscale identity and any synchronized-folder mount are the
 same ones the user has. A machine-wide service running as SYSTEM would see a different gh
 account and a different Tailscale identity -- the exact correctness trap recorded in
-``.agents/working-notes.md``. Nothing here elevates, and nothing here installs a service.
+``.agents/WORKING-NOTES.md``. Nothing here elevates, and nothing here installs a service.
 
 Every backend is reversible from the same API (``disable``) and inspectable (``status``), so a
 user is never left with a startup entry they cannot find. No backend writes outside the user's
