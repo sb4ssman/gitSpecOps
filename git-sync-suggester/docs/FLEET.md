@@ -131,8 +131,10 @@ python git-sync-suggester/sync_suggester.py fleet audit
 python git-sync-suggester/sync_suggester.py fleet audit --json
 ```
 
-This report finds missing origins or upstreams, plain-HTTP origins, detached heads, local-only
-commits, behind state, and tracked changes across every observed checkout. It changes no remote,
+This report finds missing origins or upstreams, plain-HTTP origins, detached heads, commits on
+no remote (any branch or tag), stashes, behind state, and tracked changes across every
+repository under the configured roots — found by its own walk, so a repository the live view
+cannot name (no origin) is still audited, and bare repositories are listed. It changes no remote,
 branch, index, or working file. Fleet-wide materialization and branch cleanup remain separate
 future operations; this audit deliberately does not invent repairs for ambiguous repositories.
 
@@ -207,9 +209,14 @@ source call it *recoverable elsewhere*. `recovery preview` reads a named bundle 
 `recovery retire --yes` freshly fetches `origin` and removes a local bundle only when the fetched
 upstream's tree exactly matches the bundle's staged, unstaged, and carried-file content.
 
-`safe-to-wipe` fresh-fetches every observed repository but never changes a working tree. It
-accepts a dirty checkout only when its exact current snapshot has been checksum-verified by
-another peer and it has no unpushed commits. All other ambiguous states remain blockers.
+`safe-to-wipe` walks the configured roots itself — hidden folders included, and each root
+itself — so it does not depend on what the live view observes. It fetches every remote of every
+repository but never changes a working tree. A repository blocks the verdict if it has no
+remote, cannot be fetched, holds a commit on any local branch, tag or HEAD that no remote has,
+holds a stash, is mid-merge/rebase, or is bare. A dirty checkout passes only when its exact
+current snapshot has been checksum-verified by another peer. The verdict names what it does not
+check: ignored files such as `.env`, files outside repositories, other filesystems mounted
+under a root, and remote branches deleted since the last fetch.
 
 ## Tray and start-at-login
 

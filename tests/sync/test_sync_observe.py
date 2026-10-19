@@ -18,7 +18,7 @@ from _bootstrap import setup  # noqa: E402
 setup("sync")
 
 
-from observer import RootSpec, _in_progress_operation, observe_roots  # noqa: E402
+from observer import RootSpec, in_progress_operation, observe_roots  # noqa: E402
 
 failures = []
 SECRET = "ab" * 32
@@ -53,7 +53,7 @@ with tempfile.TemporaryDirectory(prefix="sync-observe-") as tmp:
     repo = make_repo(collection, "alpha-repo", "https://example.test/sample-team/alpha-repo.git")
 
     # --- in-progress operations -----------------------------------------------------
-    check(_in_progress_operation(repo) is None,
+    check(in_progress_operation(repo) is None,
           "a quiet repository was reported as mid-operation")
 
     git_dir = Path(git(repo, "rev-parse", "--absolute-git-dir").stdout.strip())
@@ -70,13 +70,13 @@ with tempfile.TemporaryDirectory(prefix="sync-observe-") as tmp:
             target.mkdir()
         else:
             target.write_text("0" * 40 + "\n", encoding="utf-8")
-        check(_in_progress_operation(repo) == expected,
-              f"{marker} should report '{expected}', got {_in_progress_operation(repo)!r}")
+        check(in_progress_operation(repo) == expected,
+              f"{marker} should report '{expected}', got {in_progress_operation(repo)!r}")
         if is_dir:
             target.rmdir()
         else:
             target.unlink()
-    check(_in_progress_operation(repo) is None,
+    check(in_progress_operation(repo) is None,
           "the repository did not return to quiet after the markers were removed")
 
     # An in-progress operation must reach the manifest, since nothing set it before.

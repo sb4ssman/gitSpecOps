@@ -6,12 +6,12 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "git-sync-suggester"))
-sys.path.insert(0, str(ROOT / "git-sync-suggester" / "app"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from _bootstrap import setup  # noqa: E402
 
-from fleet_actions import apply_catchup, plan_catchup, render_catchup
+setup("sync")
+
+from fleet_actions import apply_catchup, plan_catchup, render_catchup  # noqa: E402
 
 
 def git(path: Path, *args: str) -> None:

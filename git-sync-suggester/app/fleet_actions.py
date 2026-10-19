@@ -10,9 +10,12 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
+from Basic._discovery import RepoHit, classify, find_repos
 from Basic._facts import repo_facts
 from Basic._identity import parse_remote_url
 from Basic._run import run_git
+
+from observer import in_progress_operation
 
 FETCH_TIMEOUT_SECONDS = 120
 PULL_TIMEOUT_SECONDS = 180
@@ -194,9 +197,152 @@ def audit_repositories(paths) -> list[dict]:
             findings.append(f"behind {facts['behind']}")
         if facts.get("dirty_index") or facts.get("dirty_work_tree"):
             findings.append("tracked changes")
+        unpushed = _unpushed_commits(path)
+        if unpushed:
+            findings.append(f"{unpushed} commit(s) on no remote (any branch or tag)")
+        stashes = _count_lines(path, ["stash", "list"])
+        if stashes:
+            findings.append(f"{stashes} stash(es)")
         rows.append({"path": path, "name": path.name, "origin": origin,
                      "findings": findings or ["no audited issue"]})
     return rows
+
+
+def every_repository(roots) -> tuple[list[RepoHit], list[dict]]:
+    """Every repository under the roots, found independently of the fleet observer.
+
+    The observer is built for a live view, so it skips what it cannot name (no parseable
+    `origin`) and walks past hidden, cache-like and `Library`/`env` folders. A verdict about
+    losing work may not inherit those choices: this walk enters hidden folders, skips only `.git`
+    internals, and checks each root itself. Returns (repositories, rows for unreadable roots).
+    """
+    found: dict[Path, RepoHit] = {}
+    problems = []
+    for root in roots:
+        root = Path(root).expanduser()
+        if not root.is_dir():
+            problems.append({"path": root, "name": root.name or str(root), "action": "root_missing",
+                             "detail": "This configured root is not a readable folder; nothing "
+                                       "under it was checked."})
+            continue
+        own = classify(root)
+        hits = ([own] if own else []) + find_repos(root, max_depth=None, include_hidden=True,
+                                                   skip_names=frozenset({".git"}))
+        for hit in hits:
+            found.setdefault(Path(hit.path).resolve(), hit)
+    return [found[path] for path in sorted(found, key=lambda p: str(p).casefold())], problems
+
+
+def _count_lines(path: Path, args: list[str]) -> int | None:
+    proc = run_git(path, args, timeout=45, env=NON_INTERACTIVE_GIT_ENV)
+    return None if proc.returncode else len([line for line in proc.stdout.splitlines() if line])
+
+
+def _unpushed_commits(path: Path) -> int | None:
+    """Commits reachable from HEAD, a local branch or a tag that no remote-tracking ref has."""
+    has_head = run_git(path, ["rev-parse", "--verify", "-q", "HEAD"],
+                       timeout=45, env=NON_INTERACTIVE_GIT_ENV).returncode == 0
+    proc = run_git(path, ["rev-list", "--count", *(["HEAD"] if has_head else []),
+                          "--branches", "--tags", "--not", "--remotes"],
+                   timeout=120, env=NON_INTERACTIVE_GIT_ENV)
+    text = proc.stdout.strip()
+    return int(text) if proc.returncode == 0 and text.isdigit() else None
+
+
+def _wipe_row(hit: RepoHit, recoverable) -> dict:
+    path = Path(hit.path).resolve()
+
+    def row(action, detail):
+        return {"path": path, "name": path.name, "action": action, "detail": detail}
+
+    if hit.kind == "bare":
+        return row("bare", "A bare repository: its refs are not compared with any remote here, "
+                           "so it may be the only copy. Prove it is a copy before wiping.")
+    remotes = run_git(path, ["remote"], timeout=45, env=NON_INTERACTIVE_GIT_ENV)
+    if remotes.returncode:
+        return row("status_unreadable", "Git could not read this repository: " + _message(remotes))
+    if not remotes.stdout.split():
+        return row("no_remote", "No remote at all: this machine may hold the only copy.")
+    # Every remote, not only origin; still no --prune (see _fetch).
+    fetched = run_git(path, ["-c", "credential.interactive=never", "fetch", "--all", "--quiet"],
+                      timeout=FETCH_TIMEOUT_SECONDS, env=NON_INTERACTIVE_GIT_ENV)
+    if fetched.returncode:
+        return row("fetch_failed", "Could not fetch, so the remote copy is unverified: "
+                                   + _message(fetched))
+
+    reasons = []
+    unpushed = _unpushed_commits(path)
+    if unpushed is None:
+        reasons.append(("unpushed_unknown", "Git could not count commits missing from remotes."))
+    elif unpushed:
+        reasons.append(("unpushed", f"{unpushed} commit(s) on a local branch, tag or HEAD are on "
+                                    "no remote."))
+    stashes = _count_lines(path, ["stash", "list"])
+    if stashes is None or stashes:
+        reasons.append(("stashed", f"{stashes} stash(es) exist only here." if stashes
+                                   else "Git could not list stashes."))
+    operation = in_progress_operation(path)
+    if operation:
+        reasons.append(("operation", f"A {operation} is in progress."))
+    dirty = _dirty(path)
+    if dirty is None:
+        reasons.append(("status_unreadable", "Git could not read status."))
+
+    if reasons:
+        return row(reasons[0][0], " ".join(detail for _, detail in reasons)
+                   + (" Uncommitted or untracked work is present too." if dirty else ""))
+    if dirty:
+        # A verified snapshot can cover the working tree, never commits or stashes (above).
+        if recoverable(path):
+            return row("recoverable", "Uncommitted work is covered by an exact snapshot another "
+                                      "peer has verified.")
+        return row("dirty", "Uncommitted or untracked work is present.")
+    return row("replaceable", "Every commit is on a remote; nothing uncommitted or stashed.")
+
+
+def plan_wipe(roots, recoverable=lambda _path: False) -> list[dict]:
+    """Fetch every repository under the roots and say whether each is safe to lose.
+
+    Read-only apart from `git fetch`. Anything that cannot be proven replaceable is a row that
+    blocks the verdict. `recoverable(path)` says whether a verified recovery snapshot covers a
+    checkout's present working tree.
+    """
+    hits, problems = every_repository(roots)
+    return problems + [_wipe_row(hit, recoverable) for hit in hits]
+
+
+WIPE_SAFE_ACTIONS = frozenset({"replaceable", "recoverable"})
+WIPE_SCOPE_NOTE = ("Checked: every Git repository under the configured roots, hidden folders "
+                   "included. Not checked: ignored files (such as .env), files outside a "
+                   "repository, other filesystems mounted under a root, anything outside the "
+                   "roots, and remote branches deleted since this machine last fetched them.")
+
+
+def render_wipe(rows: list[dict]) -> tuple[str, bool]:
+    """The verdict text and whether it is SAFE. No repositories at all is never SAFE."""
+    lines = ["SAFE-TO-WIPE AUDIT (fresh fetch of every remote; no working tree was changed)"]
+    repositories = [row for row in rows if row["action"] != "root_missing"]
+    unsafe = [row for row in rows if row["action"] not in WIPE_SAFE_ACTIONS]
+    recovered = [row for row in rows if row["action"] == "recoverable"]
+    if not repositories and not unsafe:
+        lines.append("SAFE-TO-WIPE: unproven — no repositories were found under the configured "
+                     "roots. Nothing was fetched or changed.")
+        return "\n".join(lines), False
+    if unsafe:
+        lines.append("NOT SAFE: this machine holds work or Git state that has not been proved "
+                     "replaceable:")
+        lines.extend(f"  {row['name']}: {row['action'].replace('_', ' ')} — {row['detail']}"
+                     for row in unsafe)
+        if recovered:
+            lines.append(f"  {len(recovered)} dirty checkout(s) are covered by an exact, "
+                         "peer-verified recovery snapshot; they do not block replacement.")
+        lines.append("Resolve every item above, then run this audit again.")
+    else:
+        lines.append(f"SAFE: all {len(repositories)} repositories are replaceable"
+                     + (f" ({len(recovered)} through a verified recovery snapshot)."
+                        if recovered else "."))
+    lines.append(WIPE_SCOPE_NOTE)
+    return "\n".join(lines), not unsafe
 
 
 def render_audit(rows: list[dict]) -> str:

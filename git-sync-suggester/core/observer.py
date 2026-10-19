@@ -91,7 +91,7 @@ def _status_counts(repo_path: Path) -> tuple[int, int, int] | None:
     return staged, unstaged, untracked
 
 
-def _in_progress_operation(repo_path: Path) -> str | None:
+def in_progress_operation(repo_path: Path) -> str | None:
     """Name the operation this repository is in the middle of, if any."""
     git_dir = git_stdout(repo_path, ["rev-parse", "--absolute-git-dir"])
     if not git_dir:
@@ -249,7 +249,7 @@ def observe_paths(paths: list[Path], secret: str | None = None,
             "unstaged": unstaged,
             "untracked": untracked,
             "stashes": int(stash_text) if stash_text and stash_text.isdigit() else 0,
-            "operation": _in_progress_operation(path),
+            "operation": in_progress_operation(path),
         })
         # Local-only: the catalog is never published, so it may hold the full identity.
         # host/owner are what let `converge` ask a provider to name a peer's hash.

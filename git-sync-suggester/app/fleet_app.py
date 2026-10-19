@@ -769,66 +769,42 @@ def command_catchup(args, config: dict) -> int:
 
 
 def command_safe_to_wipe(config: dict) -> int:
-    """A deliberately strict replacement audit. Unknown is never an all-clear."""
-    from fleet_actions import plan_catchup
+    """A deliberately strict replacement audit. Unknown is never an all-clear.
+
+    It walks the configured roots itself instead of trusting the fleet observer, which skips
+    repositories it cannot name and judges only the current branch (see fleet_actions.plan_wipe).
+    """
+    from fleet_actions import plan_wipe, render_wipe
     from fleet_observer import IncrementalObserver
     from recovery_runtime import RecoveryRuntime
-    from Basic._facts import repo_facts
 
     observer = IncrementalObserver(config)
-    count = observer.inventory()
-    if not count:
-        print("SAFE-TO-WIPE: unproven — no observed repositories. Nothing was fetched or changed.")
-        return 1
-    plan = plan_catchup(observer.paths)
+    observer.inventory()  # only to let recovery match a checkout to its repository id
     recovery = RecoveryRuntime(config, observer, log=lambda *_: None)
-    recovered = []
-    unsafe = []
-    for item in plan:
-        if item["action"] == "current":
-            continue
-        # A verified snapshot may cover uncommitted work, but never local commits that have
-        # not reached an upstream.  `plan_catchup` deliberately stops at dirtiness, so inspect
-        # this one extra fact before calling it replaceable.
-        facts = repo_facts(item["path"])
-        if (item["action"] == "dirty" and facts.get("upstream")
-                and facts.get("ahead") == 0
-                and recovery.current_snapshot_state(item["path"]) == "recoverable elsewhere"):
-            recovered.append(item)
-        else:
-            unsafe.append(item)
-    print("SAFE-TO-WIPE AUDIT (fresh fetch completed; no working tree was changed)")
-    if not unsafe:
-        if recovered:
-            print(f"SAFE: {count - len(recovered)} clean/current checkout(s), plus "
-                  f"{len(recovered)} dirty checkout(s) whose exact current work is verified "
-                  "recoverable on another peer.")
-        else:
-            print(f"SAFE: all {count} observed checkouts are clean and current with their upstreams.")
-        return 0
-    print("NOT SAFE: this machine holds work or Git state that has not been proved replaceable:")
-    for item in unsafe:
-        print(f"  {item['name']}: {item['action'].replace('_', ' ')} — {item['detail']}")
-    if recovered:
-        print(f"  {len(recovered)} dirty checkout(s) are covered by an exact, peer-verified "
-              "recovery snapshot; they do not block replacement.")
-    print("Resolve every remaining item, then run this audit again. A snapshot counts only when "
-          "it exactly matches current work and another peer has verified its checksum.")
-    return 1
+    rows = plan_wipe(config["roots"], recoverable=lambda path: (
+        recovery.current_snapshot_state(path) == "recoverable elsewhere"))
+    text, safe = render_wipe(rows)
+    print(text)
+    return 0 if safe else 1
 
 
 def command_audit(args, config: dict) -> int:
     """A fleet-scale report, deliberately without a repair side effect."""
-    from fleet_actions import audit_repositories, render_audit
-    from fleet_observer import IncrementalObserver
+    from fleet_actions import audit_repositories, every_repository, render_audit
 
-    observer = IncrementalObserver(config)
-    count = observer.inventory()
-    rows = audit_repositories(observer.paths)
+    # Its own walk, not the observer's inventory: that drops the repositories without an origin
+    # which are exactly what an audit exists to find.
+    hits, problems = every_repository(config["roots"])
+    rows = [{"path": row["path"], "name": row["name"], "origin": None,
+             "findings": ["configured root missing"]} for row in problems]
+    rows += [{"path": Path(hit.path), "name": Path(hit.path).name, "origin": None,
+              "findings": ["bare repository (not audited)"]} for hit in hits if hit.kind == "bare"]
+    rows += audit_repositories([hit.path for hit in hits if hit.kind != "bare"])
+    count = len(hits)
     if args.json:
         print(json.dumps([{**row, "path": str(row["path"])} for row in rows], indent=2))
     else:
-        print(f"Inventory found {count} observed repository(ies).")
+        print(f"Found {count} repository(ies) under the configured roots.")
         print(render_audit(rows))
     return 1 if any(item["findings"] != ["no audited issue"] for item in rows) else 0
 
