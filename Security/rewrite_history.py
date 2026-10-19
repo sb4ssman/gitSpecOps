@@ -175,12 +175,12 @@ def _mailmap_text(plan: dict) -> str:
 
 
 def _replacements_text(plan: dict) -> str:
-    lines = ["# git filter-repo --replace-text / --replace-message rules. PRIVATE: holds the",
-             "# real values. One rule per line: regex:<pattern>==><replacement>."]
-    for value, rule in plan["replacements"].items():
-        lines.append(f"# {rule['kind']}")
-        lines.append(f"regex:{_bounded(value)}==>{rule['with']}")
-    return "\n".join(lines) + "\n"
+    """Rules only, one per line. git filter-repo has **no comment syntax**: every line is a rule,
+    and a line without `==>` means "replace this literal text with ***REMOVED***". A `#` header
+    once did exactly that to every file quoting it -- verification caught it before any push
+    (2026-10-19). What each rule is for lives in expected.json and the printed summary."""
+    return "".join(f"regex:{_bounded(value)}==>{rule['with']}\n"
+                   for value, rule in plan["replacements"].items())
 
 
 def _planned_pattern(decided: dict):
@@ -199,7 +199,14 @@ def _refs(repo: Path) -> dict[str, dict]:
         tree = run_git(repo, ["rev-parse", f"{ref}^{{tree}}"]).stdout.strip()
         count = run_git(repo, ["rev-list", "--count", ref]).stdout.strip()
         if tree and count.isdigit():
-            refs[ref] = {"tree": tree, "commits": int(count)}
+            # Every file at the tip, so a failed comparison can name what changed: the rewrite
+            # repacks the clone and the original tree objects are gone afterwards.
+            files = {}
+            for line in run_git(repo, ["ls-tree", "-r", "-z", ref]).stdout.split("\0"):
+                meta, _, path = line.partition("\t")
+                if path and len(meta.split()) == 3:
+                    files[path] = meta.split()[2]
+            refs[ref] = {"tree": tree, "commits": int(count), "files": files}
     return refs
 
 
@@ -291,7 +298,12 @@ def verify(plan_dir: Path) -> tuple[bool, list[str]]:
             problems.append(f"{ref}: {before['commits']} commits before, {now['commits']} after")
         if (unchanged_files or (before.get("clean_tip") and not removed)) \
                 and now["tree"] != before["tree"]:
-            problems.append(f"{ref}: the current files changed, but they held no planned value")
+            before_files, after_files = before.get("files") or {}, now.get("files") or {}
+            changed = sorted(path for path in set(before_files) | set(after_files)
+                             if before_files.get(path) != after_files.get(path))
+            problems.append(f"{ref}: the current files changed, but they held no planned value: "
+                            + (", ".join(changed[:10]) + (" ..." if len(changed) > 10 else "")
+                               if changed else "(file list not recorded)"))
     lines = [f"Verified {report.commits} commit(s), {report.blobs} file version(s) in {mirror}"]
     lines += [f"  PROBLEM: {p}" for p in problems] or [
         "  clean: no planned value, no old identity; every ref has the same commit count"

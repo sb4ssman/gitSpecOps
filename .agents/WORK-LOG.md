@@ -1382,3 +1382,17 @@ tray; scheduling stays below `App/`; skins deferred; KDE on the Debian box.
 - **Handoff pushed** (normal push of 14 commits, checked first: the files pass the hygiene test
   and the commit messages carry no personal data). Next: the user applies the rewrite; then the
   Sb4ssport-Alpha repositories, before they go public.
+
+## 2026-10-19 13:55 - user (Claude Opus 5.5) - first rewrite caught by its own verification
+
+The user ran `apply` on this repository. `verify` refused it: "refs/heads/main: the current files
+changed, but they held no planned value". Nothing was pushed. **Cause:** git filter-repo has no
+comment syntax in its `--replace-text` file — every line is a rule, and a line without `==>`
+replaces that literal text with `***REMOVED***`. The planner wrote a two-line `#` header and a
+`# <kind>` label above each rule, so filter-repo rewrote the one file that quotes the header: the
+planner's own source, `Security/rewrite_history.py` (current and old versions). **Fix:** the rules
+file holds rules only (labels stay in `expected.json`); the plan records every tip file, so a
+failed comparison names the files that changed; a test asserts every rule line is a rule. Why it
+hid: the gated end-to-end test (which runs filter-repo) had never been run, and the only
+non-rule lines in the test fixture's rules file never appeared in its content. The spoiled
+clone stays in the ignored output folder; a fresh plan replaces it.

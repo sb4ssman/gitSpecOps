@@ -12,6 +12,7 @@ GITSPECOPS_RUN_REWRITE_TEST=1 is set -- run it once by hand; it touches only a t
 from __future__ import annotations
 
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -141,6 +142,13 @@ with tempfile.TemporaryDirectory(prefix="security-") as temp:
           and decided["replacements"]["other-invented-box"]["with"] == "machine-b"
           and decided["replacements"]["100.64.9.9"]["with"] == "<tailnet-ip>", decided)
     check("hand-added values are carried", "secret-org-name" in decided["replacements"])
+    # git filter-repo has no comment syntax: every line is a rule, and a line without `==>`
+    # replaces that literal text with ***REMOVED*** everywhere. A '#' header once rewrote the
+    # code that wrote it; verification caught it before any push.
+    rule_lines = [line for line in replacements.splitlines() if line.strip()]
+    check("the rules file holds rules only -- no comment, no line without ==>",
+          rule_lines and all(line.startswith("regex:") and "==>" in line for line in rule_lines),
+          replacements)
     check("the owner is never rewritten", "example-owner" not in decided["replacements"])
     check("rules are word-bounded regular expressions",
           "regex:(?i:(?<![A-Za-z0-9])100\\.64\\.9\\.9(?![A-Za-z0-9]))==><tailnet-ip>"
@@ -175,6 +183,19 @@ with tempfile.TemporaryDirectory(prefix="security-") as temp:
     check("an unrewritten mirror fails verification, naming what remains",
           not clean and any("still present" in line for line in lines)
           and any("still published" in line for line in lines), lines)
+    # A changed tip is named, file by file, not just reported as "changed".
+    expected_path = plan_dir / "expected.json"
+    saved = expected_path.read_text(encoding="utf-8")
+    tampered = json.loads(saved)
+    main_ref = tampered["refs"]["refs/heads/main"]
+    main_ref.update(tree="0" * 40, clean_tip=True)
+    main_ref["files"]["README.md"] = "0" * 40
+    tampered["remove_paths"] = []
+    expected_path.write_text(json.dumps(tampered), encoding="utf-8")
+    _clean, named = rewrite_history.verify(plan_dir)
+    expected_path.write_text(saved, encoding="utf-8")
+    check("a changed tip names the files that changed",
+          any("current files changed" in line and "README.md" in line for line in named), named)
     out = io.StringIO()
     with redirect_stdout(out):
         code = rewrite_history.main(["verify", str(plan_dir)])
