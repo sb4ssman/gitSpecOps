@@ -56,6 +56,15 @@ forks, so a rewrite now invalidates only the owner's own clones. The same person
 likely in the owner's other repositories — the self-doxxing scan idea in the working notes is
 the tool for finding where.
 
+## History rewritten, 2026-10-19
+
+The owner chose to rewrite. `Security/rewrite_history.py` did it in a clone (plan, apply with
+git filter-repo, verify), the owner force-pushed, and a scan of what GitHub then served found no
+personal identity on any commit and none of the values above in any file version or message.
+The judgement in "Why history was NOT rewritten here" below was made on 2026-09-11, before commit
+metadata had been examined; it is superseded. Old commits may linger in GitHub's caches by SHA
+until purged; the repository has no forks.
+
 ## If a secret is ever found in history
 
 Order matters, and the first step is the one people skip:

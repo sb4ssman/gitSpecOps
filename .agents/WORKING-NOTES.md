@@ -10,28 +10,27 @@ _Last tended: 2026-10-19 13:45 (three new top sections; everything below them is
 
 ### 2026-10-19 13:45 — where things stand (read this first)
 
-**Waiting on the user — the history rewrite of this repository (prepared, not applied).**
-The public history carries the user's personal email on 122 commits, a machine name in 2 commit
-author names, and tailnet addresses, machine names, a local folder path and private org names in
-old file versions (see `knowledge/repo-privacy-and-history.md`). `Security/rewrite_history.py`
-cleans that in a *copy*, proves the copy (same commit count, current files byte-identical), and
-prints the forced push for the user to run. Steps, always **from the repository folder**:
+**Done 2026-10-19 14:20 — this repository's public history is clean.** The user applied the
+rewrite and force-pushed it (`main` on GitHub: 82 commits, every author/committer the noreply
+address; tailnet addresses, machine names, a local folder path and private org names replaced by
+placeholders in every old file version and message). Verified before the push (same commits,
+current files byte-identical) and after it: `scan_history` over what GitHub serves finds only
+`Sb4ssport-Alpha`, kept on purpose. This checkout was moved onto the new history with
+`git reset --keep origin/main` after confirming a clean tree and identical tree ids.
 
-1. Make a fresh plan — a plan only covers commits that existed when it was made, so plan *after*
-   the last commit: `python Security/rewrite_history.py plan . --online --keep Sb4ssport-Alpha`
-   (Sb4ssport-Alpha is becoming this repo's public home, so its name stays). It prints the plan folder,
-   under the git-ignored `.agents/output/security/gitSpecOps/`.
-2. `python Security/rewrite_history.py apply "<plan folder>"`, type `REWRITE`. It verifies and
-   prints the push command.
-3. Run the printed `git -C "<plan folder>\mirror.git" push --force <origin> refs/heads/main`.
-4. In this checkout: `git fetch origin` then `git reset --hard origin/main` (safe: clean tree,
-   every commit carried over, files identical; ignored folders untouched). Other clones: the
-   same, or re-clone — never `git pull` old history into new.
-5. **No commits between step 1 and step 3**, or they are lost by the forced push.
-
-Known and accepted: the 5 commits made on GitHub's website lose their "Verified" badge. Optional
-first: practise on a throwaway repo with `$env:GITSPECOPS_RUN_REWRITE_TEST="1"; python
-tests\security\test_security.py` (the agent cannot run `filter-repo`: DCG blocks it, rightly).
+- The first `apply` was refused by its own verification (the rules-file comment bug, see the
+  work log); fixed, re-planned, applied cleanly.
+- Accepted: the 5 commits made on GitHub's website lost their "Verified" badge.
+- **Other clones** (the KDE box, any other machine): `git fetch origin` then
+  `git reset --keep origin/main` if clean, or re-clone. **Never `git pull`** — it merges the old
+  history back.
+- Optional: GitHub may serve old commits by SHA from caches for a while; with no forks or pull
+  requests, GitHub Support can purge them. Short SHAs quoted in old notes no longer resolve.
+- The plan folders under `.agents/output/security/gitSpecOps/` hold the real values and a spoiled
+  and a rewritten clone; they are ignored and can be deleted.
+- How to do this for another repository, from the gitSpecOps folder: `python Security/
+  rewrite_history.py plan <repo> --online`, review, `apply "<plan folder>"`, run the printed push,
+  then the printed fetch + `reset --keep`. Plan *after* the last commit; no commits until pushed.
 
 **Next target: Sb4ssport-Alpha's ten repositories, before they are made public.** Sb4ssport-
 Authority (another VS Code window) has collected evidence and a draft plan (paths in the user's

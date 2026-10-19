@@ -1396,3 +1396,18 @@ failed comparison names the files that changed; a test asserts every rule line i
 hid: the gated end-to-end test (which runs filter-repo) had never been run, and the only
 non-rule lines in the test fixture's rules file never appeared in its content. The spoiled
 clone stays in the ignored output folder; a fresh plan replaces it.
+
+## 2026-10-19 14:21 - user (Claude Opus 5.5) - history rewrite applied and pushed; checkout moved
+
+The user applied the fresh plan (verification: 82 commits, no planned value, no old identity,
+current files byte-identical) and ran the printed forced push; GitHub `main` went from the old
+history to the rewritten one. The agent then confirmed this checkout had no uncommitted changes
+and the same tree id as the new `origin/main`, and moved it with `git reset --keep origin/main`
+(no file changed). `scan_history` over what GitHub now serves: no personal identity on any
+commit, no tailnet address, machine name, local path or private org name in any file version or
+message; only `Sb4ssport-Alpha`, kept on purpose.
+
+The tool's printed next steps had said "re-clone", contradicting the in-place move the agent
+had given in chat. Both were safe; the printed text was the cautious general case. It now gives
+the in-place `fetch` + `reset --keep` for a clean, verified checkout and keeps "re-clone" for
+anything with uncommitted or later work.
