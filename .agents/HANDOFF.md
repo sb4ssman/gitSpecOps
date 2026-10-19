@@ -1,10 +1,37 @@
-# Handoff — 2026-09-21
+# Handoff — updated 2026-10-19
 
 For the next session, human or LLM. Read [`README.md`](README.md) (the project brief) first. It
 opens with **What this is for**, and that section outranks every rule below it. Then this, then
 [`WORKING-NOTES.md`](WORKING-NOTES.md).
 
-## Your job: reorganize the guts into the agreed architecture
+## Start here (2026-10-19): the product direction was re-anchored
+
+Read the top section of [`WORKING-NOTES.md`](WORKING-NOTES.md), "product direction … (HANDOFF)",
+before anything below. In short:
+
+- **The vision that must stick:** Sync Suggester replaces Sourcetree / GitHub Desktop / GitKraken
+  / the git CLI for daily use (they become surgical tools), every repo ends up more current on
+  every machine, and **at a glance the user sees what is out of sync on any machine** — a
+  per-machine *route* ("go to A and push x, y, z; then C pull").
+- **Decided:** a tray app on **Windows, Linux and macOS — all three critical**; the App may carry a
+  dependency or a native helper (operations stay stdlib); one re-runnable front-door setup where
+  every preference stays changeable; test the GitHub state repo, Dropbox and Syncthing; no
+  Obsidian; publish on sleep/shutdown; a second user gets their own fleet.
+- **Awaiting the user's yes:** one app named gitSpecOps with Sync Suggester as its home screen;
+  **rewriting the effect rule** (the "tray and dashboard only observe" invariant below, phase 5,
+  contradicts the vision — background observes except standing consent, foreground runs confirmed
+  commands); manifest schema v4 with names and head commit for the private repo transport; an
+  auto-update basket; sleep/lock triggers.
+- **The proposed path** starts with *trust* (read and run the tests — no one has audited what they
+  assert), then a throwaway foreground fleet across real machines, then a tray-toolkit spike,
+  *then* phase 3c and `App/`. The migration below is still right; its position in the order moved.
+- **Test counts in these documents are unverified claims.** Do not repeat them as fact.
+
+Everything from here down is the 2026-09-21 migration brief. It stays valid except where the
+section above says otherwise (phase 5's invariant; "stdlib only" now applies to the operations,
+not the optional App).
+
+## The migration: reorganize the guts into the agreed architecture
 
 The product direction, the layering and the diagram are **settled**. **Phases 1, 2 and 3a–3b are committed
 (2026-09-21/22). Phase 3c (Sync Suggester into `Elaborate/`) is next.** The user still has to
@@ -145,6 +172,7 @@ rewrite is the only complete fix and breaks every clone.
 - **Never commit personal information.** No local paths, machine names, addresses, or real
   account/org/repo names in code, comments, tests, notes, or commit messages.
   `test_repo_hygiene.py` enforces it and has already caught real leaks.
-- **Prior auth first; cross-platform first; stdlib only; plain scripts, no package.**
+- **Prior auth first; cross-platform first; stdlib only for the operations (the optional App may
+  carry a dependency or a native helper — user, 2026-10-19); plain scripts, no package.**
 - **Keep the record.** Update [`WORKING-NOTES.md`](WORKING-NOTES.md) as you go and graduate
   finished work into [`WORK-LOG.md`](WORK-LOG.md), appended at the bottom with a `YYYY-MM-DD HH:MM` stamp.

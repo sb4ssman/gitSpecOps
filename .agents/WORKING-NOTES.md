@@ -4,9 +4,217 @@ Living todo / scratch pad. Add items freely; **prune regularly**. When something
 into [`WORK-LOG.md`](WORK-LOG.md) (appended at the bottom, `YYYY-MM-DD HH:MM`) and delete it here.
 Dates are always absolute.
 
-_Last tended: 2026-09-22_
+_Last tended: 2026-10-19 (new top section only; everything below it is as of 2026-09-22/10-05)_
 
 ## Open
+
+### 2026-10-19 — product direction: the vision, what was decided, what is owed (HANDOFF)
+
+A long design discussion (2026-10-17 to 10-19) re-anchored the product. **Nothing in the code
+changed.** Read this section first; [`HANDOFF.md`](HANDOFF.md) points here.
+
+**The user's vision, in their words, and the one that must stick:** relegate Sourcetree, GitHub
+Desktop, GitKraken and the git CLI to *surgical tools*. Sync Suggester takes over day-to-day use.
+The result is that every repository is more up to date on every machine, and **at a glance the
+user can SEE what is out of sync on any given machine** — "go back to machine-A and push x, y, z;
+machine-B push some more; machine-C pull and push a mess; machine-D hasn't been online in a while
+and has even more." On boot or wake, pull-ff everything (including folders of public repos kept
+only to stay current). A tray app with notifications, a menu and a popup, or a dashboard of
+connected machines and repo states across them.
+
+**A caution carried from the start of the discussion:** an earlier session in this conversation
+repeated "44/44 green" from these notes as fact without opening a test or running the suite. The
+user was rightly alarmed. Test counts in these notes are counts of *scripts that exited 0*, written
+by the same sessions that wrote the code. **No one has audited what the tests assert.** Treat
+every pass count here as a claim until the suite has been read and run.
+
+#### Decided by the user
+
+- **A tray app, on Windows, Linux and macOS. All three are critical.** The tray is a must, not an
+  extra. Debian 13 with a desktop tray and macOS's menu bar both already show third-party icons
+  (the user sees another product's icon in both).
+- **Dependencies are acceptable for the App, and so is a native helper.** The operations stay
+  stdlib-only; the optional App may carry a dependency or ship a small native shell. Preference:
+  something that **looks the same everywhere**.
+- **The icon should carry information:** this machine out of sync / syncing / in sync, plus a dot
+  or coloured symbol per other enrolled machine, and some sign of whether each is online.
+  Dense at 16 px; **experiments are required**, viewed on all three OSes.
+- **One front door for setup** (agreed): one re-runnable flow asks base preferences — checks
+  (git, host login), roots, transports, baskets, triggers, notifications, tray and
+  start-at-login — and **every answer stays changeable** later (re-run setup or a settings page).
+  Today `run_setup` asks nothing and `fleet setup` is a separate second setup.
+- **Transports to try for real:** the private GitHub state repo (valued: "a special git repo
+  just for gitSpecOps to control"), **Dropbox** and **Syncthing**. **Obsidian is out** — the user
+  does not use it, and its sync is paid. Drop the "vault note" idea; the private repo can carry
+  human-readable per-machine notes instead (GitHub renders them, readable from a phone).
+- **Broadcast on sleep / shutdown** is wanted: not a scan (the peer already knows its state from
+  file events) but an immediate publish that bypasses the 1800 s repo-transport rate limit, ideally
+  saying "going to sleep" so peers show "asleep since 22:10" rather than "not seen".
+- **A second household user gets their own fleet on their own two Macs** — the first
+  stranger's-first-run test of the front door, when the time comes.
+- **State repo name:** any of `gitSpecOps-SYNC`, `gitSpecOps-sync`, `gitspecops-fleet-state` is
+  acceptable to the user. Today's default is `<login>/gitspecops-fleet-state`
+  (`git-sync-suggester/app/fleet_app.py`, the `candidate =` line in the state-repo prompt).
+  Recommended: `gitspecops-sync`. Not yet changed.
+
+#### Recommended, awaiting the user's yes
+
+1. **One app, named gitSpecOps, whose home screen is Sync Suggester.** Tray = glance, route lines,
+   notifications. Dashboard/popup = the route, the repo×machine grid, and daily git operations.
+   Operations = a runner for archive update, org duplication, inventory, each planned, shown and
+   confirmed. The terminal stays a first-class entry point. Sync Suggester's engine stays in
+   `Elaborate/` (it *is* "across machines and across time"); `App/` is the prominent part.
+2. **Rewrite the effect rule — it contradicts the vision.** The diagram footer says "the peer, tray
+   and dashboard only observe", and `architecture-layers.md` plans a test that everything reachable
+   from them or the scheduler is `EFFECT = "none"`. Committing/pushing from the app and ff-on-wake
+   both violate it, and the archive scheduled task (`--update`) already does. Proposed:
+   **background** (peer, scheduler, wake/sleep triggers) observes only, except a **standing
+   consent the user configured** (an auto-update basket: ff-only, clean, behind-only — as the
+   archive launchers already do); **foreground** (a tray item, a dashboard button) runs the same
+   command as the terminal with the same plan/show/confirm. Then update the diagram and phase 5.
+3. **Manifest schema v4 before any enrollment:** the private repo transport and the live tier
+   carry repository names, branch names and the head commit; the folder transport stays
+   names-free unless opted in. Rationale is already in `knowledge/manifest-privacy.md`: on a
+   private GitHub repo the salt "is no longer load-bearing" because GitHub hosts the repos being
+   described. Names are needed for the route ("push x, y, z"); the head commit lets the tool say
+   "C is on the commit A pushed" instead of inferring. The user asked "why can't we record
+   names?" — leaning yes, not formally confirmed.
+4. **A fourth basket scope, auto-update:** which namespaces may fast-forward unattended.
+5. **Triggers:** publish on sleep, shutdown and screen lock; the "before you leave" warning on lock.
+
+#### Still to ask
+
+- Which Debian desktop (KDE / GNOME / Xfce / Cinnamon) — GNOME shows tray icons only via an
+  extension.
+- Is the 2012 iMac (macOS Catalina 10.15 is its ceiling) a full peer, or acceptable headless if
+  the chosen tray toolkit will not support Catalina?
+
+#### New concepts from the discussion
+
+- **The route (itinerary).** The display contract is repo rows × machine cells; the missing view
+  is the same data per machine, **in an order you can follow**: "C: pull R, after A pushes" when A
+  is ahead on R and C has R. Computed by the peer and shipped in the contract (skins never
+  classify). Repos only a peer holds render `repo:abcd1234` until names arrive (v4) or `converge`
+  resolves them. Last-known state survives staleness, so an offline machine reads "last seen 12
+  days ago; then held unpushed work in 5 repositories".
+- **Notification texts (draft),** each a route line, announced only on transitions (the tray
+  already suppresses the first paint): caught up N, 2 need you here (names); machine-B pushed 4,
+  3 are clean fast-forwards here; unfinished work on this machine (before you leave);
+  machine-D not seen for 12 days, held unpushed work; diverged on A and C, needs a decision;
+  fleet clear; publishing paused (host login expired).
+- **Tray menu** shows the top route lines, Preview catch-up, Open dashboard. No separate tkinter
+  popup: a popup window, if any, renders our own HTML so it is identical on every OS.
+
+#### Verified in the code this session (read, not run)
+
+- **The tray is Windows-only** (`app/fleet_tray.py`, ctypes; `supported()` is `win32`). Its icon
+  is a 16×16 dot drawn in code (`_make_icon`, hardcoded 16 px — should draw at the real
+  `SM_CXSMICON` size). It handles neither power events (`WM_POWERBROADCAST`), session end
+  (`WM_QUERYENDSESSION`), lock, nor balloon clicks (`NIN_BALLOONUSERCLICK`). Notify texts today:
+  "Fleet needs attention", "Fleet problem", "Fleet clear".
+- **macOS has no tray, no file-event backend and no scheduler** (`_os/macos/` reports
+  unsupported); start-at-login (LaunchAgent) exists. Nothing records gitSpecOps ever running on a
+  Mac. **Linux has no tray**; file events and XDG/systemd autostart exist.
+- **No by-machine view** in the dashboard JS.
+- **`run_setup` asks no questions** (launchers, `.venv`, prerequisite report only).
+- **Basic has no diff, commit, log, branch/switch or stash** — the gap between this and "Sourcetree
+  becomes surgical". The architecture diagram never listed them either.
+- **AI-friendliness:** strong for an AI *developing* gitSpecOps; weak for an AI helping a user
+  *use* it — it would read these notes as its own instructions. Needed: a fork at the top of
+  `AGENTS.md` ("helping someone use this? read the usage guide; leave `.agents/` alone"), a usage
+  guide (commands, `--answers`, `--no-prompt`, `--json` where it exists), and a line that plans and
+  confirmations belong to the human even when an AI holds `--yes`.
+
+#### Tray toolkit: run a spike before choosing
+
+What can look identical everywhere is **our icon** (we draw it) and **a popup that renders our
+HTML**; the right-click menu is native per OS and should be. Candidates for a thin shell:
+
+- **A — Python:** pystray + pywebview. Stays in one language; Linux leans on system
+  GTK/AppIndicator packages (the usual breakage).
+- **B — Tauri:** small Rust shell, OS webview, talks to the engine over the loopback HTTP API the
+  tray already uses in connect mode. Adds a Rust build toolchain.
+- (A Go helper like Tailscale's tray was considered; Go ≥ 1.23 does not run on macOS 10.15.)
+
+Spike: the same tiny tray (icon cycling states, three menu items, a popup showing the route, one
+notification) in A and B, on Windows 11, Debian 13 and the Catalina iMac; keep the one that broke
+least. First icon experiment: a stdlib script rendering candidates to PNG at 16/20/24/32 px.
+Design idea: the Git logo's branch graph (CC BY 3.0, attribution required) with **each node a
+machine** — main node = this machine, branch nodes = peers, filled = online, ring = offline;
+shape as well as colour, for colour-blind users. On macOS the menu-bar item can show text beside
+a monochrome template icon ("↑3 ↓2 ●●○").
+
+#### Transport facts that matter for testing
+
+- **Dropbox** has a server, so an offline machine's last report waits there. Its free plan allows
+  3 devices.
+- **Syncthing** is free but peer-to-peer: a report moves only while two devices are online at once,
+  so a rarely-online machine can publish and sleep unseen unless one node stays up.
+- **GitHub state repo** has a server and needs nothing new installed. Every Contents API write is
+  a commit, so the repo's history is a free log of every machine's state over time.
+- **Sleep/shutdown hooks:** use the tray (runs as the user, has the host login). Windows gives about
+  2 s on `PBT_APMSUSPEND`; `WM_QUERYENDSESSION` + `ShutdownBlockReasonCreate` can hold shutdown
+  until a publish finishes; lock notifications have no deadline. Modern Standby laptops report
+  sleep differently — test on real hardware. Avoid Task Scheduler event triggers (late) and Group
+  Policy shutdown scripts (run as SYSTEM). Linux: systemd-logind delay inhibitors.
+- **Self-update for a source checkout:** gitSpecOps is a Git repo, so it can sit in the
+  auto-update basket and fast-forward like anything else; missing are a restart offer after
+  self-update and regenerating launchers. The installed-app updater (signed manifest, rollback)
+  is designed in `knowledge/distribution.md`, unbuilt.
+
+#### Test machines available (generic descriptions)
+
+Windows 11 (primary); one box dual-booting Windows and Debian 13 (two identities on one hardware,
+never online together — a curious case if a shared data partition is visible to both); an old
+Windows 10 laptop; a 2012 iMac (Catalina ceiling — the compatibility canary); an old Windows 10
+desktop at a remote site (the real rarely-online "machine-D"); a second user's two MacBooks (their
+own fleet).
+
+#### Proposed path (the user agreed the earlier order; this re-sequencing is not yet confirmed)
+
+Each step ends in something visible:
+
+1. **Trust.** Read the tests (what each asserts, fakes, never touches) and run the suite on
+   Windows 11, Debian and the iMac — the Mac's first run ever.
+2. **Throwaway fleet.** Foreground `fleet run` peers, no start-at-login (so the migration need not
+   come first), on a disposable fleet key, trying the GitHub repo, Dropbox and Syncthing. A Mac
+   peer needs a file-event backend first (FSEvents via ctypes is plausible); until then `check`.
+3. **Tray spike + icon experiments.** Choose the toolkit.
+4. **Make it real.** Phase 3c, `App/` with the chosen tray, schema v4, the rewritten effect rule,
+   the diagram updated.
+5. **Seeing.** Real enrollment with start-at-login; the route; notifications; sleep/wake/lock
+   triggers; the auto-update basket. Delivers "at a glance, what's out of sync on any machine".
+6. **Doing.** diff, commit with review, branch/switch, stash in `Basic/`, exposed in the app.
+   Delivers "Sourcetree becomes surgical". Remote device jobs (ask an online peer to push) after.
+7. **The second user's fleet.** The one front door plus portable builds for their Macs.
+
+Also still owed by the user, unchanged: the scheduled-task replacement and three archive
+launchers (below), the history-rewrite decision before public promotion, and cutting v0.2.0.
+
+### 2026-10-19 — side quest: a self-doxxing scan across the user's own fleet
+
+Idea from the user: with everything gitSpecOps already knows about a user's fleet, a script could
+**take what is known about the user and work backwards**, scanning their repositories for
+personal information they leaked themselves. Not built; recorded for design.
+
+- **Seeds it can gather without asking:** `git config` name and email, the host CLI's login,
+  machine labels and hostnames, home-directory paths, tailnet addresses the fleet has seen, and
+  the namespaces/orgs in the inventory. Plus anything the user adds (real name, phone, street,
+  other emails).
+- **Known credentials** (tokens, keys) may be supplied **at run time only**: held in memory or
+  compared by hash, **never written to disk or to the report** — the report names the location
+  and a redacted fingerprint. This keeps the prior-auth rule: gitSpecOps never stores a credential.
+- **Scope:** working trees, **full history** (every blob, as the 2026-09-11 audit of this repo
+  did — see `knowledge/repo-privacy-and-history.md`), and **commit metadata** (author/committer
+  emails are themselves a self-dox), across every repository the fleet knows, on this machine or
+  as a plan for others.
+- **Report-only, `EFFECT = "none"`.** Any fix (rewrite, rotate) is a separate decision with its
+  own warnings; a history rewrite breaks every clone. The report itself names private
+  repositories and personal data, so it goes to the gitignored `.agents/output/` like the
+  inventory, and never into the fleet manifest.
+- **Reuse:** `tests/repo/test_repo_hygiene.py` patterns and the seven secret shapes from the
+  history audit. Layer: a Special operation (one repo scan repeated with judgment), with an
+  Elaborate wrapper if it plans across machines.
 
 ### 2026-10-05 — library inventory shipped (uncommitted); follow-ups
 

@@ -1291,3 +1291,22 @@ pinned by `tests/special/test_inventory.py` on disposable repositories.
   is kept, and a repository reachable two ways is recorded once. Restore takes one `--map` per
   label, or `--dest` for all, or asks per label; `--dest DIR --layout canonical` is the
   one-tidy-tree answer for a haphazard library, and `preserve` into one folder reports collisions.
+
+## 2026-10-19 13:00 — product direction discussion recorded for handoff (no code changed)
+
+A design discussion across three sessions (2026-10-17 to 10-19) re-anchored the product on the
+user's vision: Sync Suggester replaces desktop Git clients for daily use, and the user sees at a
+glance what is out of sync on every machine. Recorded in `WORKING-NOTES.md` (top section) and
+the head of `HANDOFF.md`: decisions taken (a tray on all three OSes; dependencies allowed for the
+optional App; one front-door setup; Dropbox, Syncthing and the GitHub state repo to be tested;
+publish on sleep/shutdown; a second user's own fleet), recommendations awaiting a yes (one app
+named gitSpecOps; rewriting the effect rule, which contradicts the vision and is already broken
+by the archive scheduled task; schema v4 with names; an auto-update basket), facts verified by
+reading the code (Windows-only tray; macOS lacks tray, file events and scheduler; no by-machine
+view; `run_setup` asks nothing; Basic lacks diff/commit/log/branch/stash), a tray-toolkit spike
+plan, and a proposed path that begins with auditing the tests. Also recorded: a side-quest idea
+for a report-only self-doxxing scan across the user's own fleet.
+
+Lesson worth keeping: a session repeated this file's test pass counts as fact without opening a
+test. Pass counts here are claims by the sessions that wrote the code; no audit of what the tests
+assert has been done.
