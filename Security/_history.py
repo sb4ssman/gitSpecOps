@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from Basic._run import run_git
+from Security._contents import image_metadata, is_archive, is_image, open_archive
 from Security._patterns import find
 
 _TIMEOUT = 600
@@ -64,6 +65,9 @@ class HistoryReport:
     signed: int = 0                                  # commits carrying a signature
     paths: set = field(default_factory=set)          # every path ever published
     binary: dict = field(default_factory=dict)       # path -> blob count read as binary
+    archives: dict = field(default_factory=dict)     # archive path -> members read inside it
+    uninspected: dict = field(default_factory=dict)  # path (or archive!member) -> why not read
+    located_images: set = field(default_factory=set)  # images whose EXIF holds a GPS position
     exposures: dict = field(default_factory=dict)    # (kind, value) -> Exposure
     identities: dict = field(default_factory=dict)   # (name, email) -> Identity
 
@@ -128,7 +132,7 @@ def _read_blobs(repo: Path, shas: list[str]):
             data = proc.stdout.read(size)
             proc.stdout.read(1)  # the newline after each object
             if header[1] == "blob":
-                yield sha, data.decode("utf-8", errors="replace"), b"\0" in data[:8000]
+                yield sha, data.decode("utf-8", errors="replace"), b"\0" in data[:8000], data
     finally:
         proc.stdout.close()
         try:
@@ -145,12 +149,63 @@ def _tips(repo: Path, refs: list[str]) -> set[str]:
     return {_git(repo, ["rev-parse", f"{ref}^{{commit}}"]).strip() for ref in refs}
 
 
+def tip_matching_files(repo: Path, ref: str, pattern) -> set[str]:
+    """The paths of files at `ref`'s tip whose content matches `pattern` (compiled)."""
+    paths_of: dict[str, set] = {}
+    for line in _git(repo, ["ls-tree", "-r", "-z", ref]).split("\0"):
+        meta, _, path = line.partition("\t")
+        parts = meta.split()
+        if path and len(parts) == 3 and parts[1] == "blob":
+            paths_of.setdefault(parts[2], set()).add(path)
+    return {path for sha, text, _binary, _data in _read_blobs(repo, sorted(paths_of))
+            if pattern.search(text) for path in paths_of[sha]}
+
+
 def tip_matches(repo: Path, ref: str, pattern) -> bool:
     """Whether any file at `ref`'s tip matches `pattern` (a compiled regular expression)."""
-    shas = {parts[2] for parts in
-            (line.split() for line in _git(repo, ["ls-tree", "-r", ref]).splitlines())
-            if len(parts) >= 3 and parts[1] == "blob"}
-    return any(pattern.search(text) for _sha, text, _binary in _read_blobs(repo, sorted(shas)))
+    return bool(tip_matching_files(repo, ref, pattern))
+
+
+def _match(report: HistoryReport, paths: set, text: str, patterns: dict, current: bool) -> None:
+    for found in find(text, patterns):
+        exposure = report.exposure(found.kind, found.value)
+        exposure.paths.update(paths)
+        exposure.current = exposure.current or current
+
+
+def _image(report: HistoryReport, paths: set, data: bytes, patterns: dict, current: bool) -> None:
+    metadata = image_metadata(data)
+    if metadata is None:
+        return
+    for text in metadata.texts:
+        _match(report, paths, text, patterns, current)
+    if metadata.gps:
+        report.located_images.update(paths)
+
+
+def _inspect(report: HistoryReport, paths: set, data: bytes, patterns: dict,
+             current: bool) -> None:
+    """Open what a text scan reads as noise: an archive's members, an image's metadata.
+
+    A finding inside an archive is recorded under `archive!member`, so the report says where it
+    is and the rewrite planner knows text replacement cannot reach it.
+    """
+    archives = sorted(path for path in paths if is_archive(path))
+    if archives:
+        opened = open_archive(archives[0], data)
+        for path in archives:
+            report.archives[path] = len(opened.members)
+            for member, why in opened.skipped:
+                report.uninspected[f"{path}!{member}" if member else path] = why
+        for member, content in opened.members:
+            inside = {f"{path}!{member}" for path in archives}
+            _match(report, inside, content.decode("utf-8", errors="replace"), patterns, current)
+            for found in find(member, patterns):
+                report.exposure(found.kind, found.value).in_paths.update(inside)
+            if is_image(member):
+                _image(report, inside, content, patterns, current)
+    elif any(is_image(path) for path in paths):
+        _image(report, paths, data, patterns, current)
 
 
 def _commit_records(repo: Path, refs: list[str]):
@@ -172,18 +227,17 @@ def scan_history(repo: Path, refs: list[str], patterns: dict) -> HistoryReport:
                if len(parts) >= 3 and parts[1] == "blob"}
     report.blobs = 0
     report.paths = {path for paths in paths_of.values() for path in paths}
-    for sha, text, binary in _read_blobs(repo, sorted(paths_of)):
+    for sha, text, binary, data in _read_blobs(repo, sorted(paths_of)):
         report.blobs += 1
         if binary:
-            # Still scanned (strings survive in bytecode and many formats), but compressed or
-            # encoded content -- archives, images -- cannot be read this way. Reported, so no
-            # one mistakes "nothing found" for "inspected".
+            # Still scanned (strings survive in bytecode and many formats). Archives and image
+            # metadata are opened as well (`_contents`); what cannot be opened is listed in
+            # `uninspected`, so no one mistakes "nothing found" for "inspected".
             for path in paths_of[sha]:
                 report.binary[path] = report.binary.get(path, 0) + 1
-        for found in find(text, patterns):
-            exposure = report.exposure(found.kind, found.value)
-            exposure.paths.update(paths_of[sha])
-            exposure.current = exposure.current or sha in at_tips
+        _match(report, paths_of[sha], text, patterns, sha in at_tips)
+        if binary or any(is_archive(path) or is_image(path) for path in paths_of[sha]):
+            _inspect(report, paths_of[sha], data, patterns, sha in at_tips)
     for path in {p for paths in paths_of.values() for p in paths}:
         for found in find(path, patterns):
             report.exposure(found.kind, found.value).in_paths.add(path)

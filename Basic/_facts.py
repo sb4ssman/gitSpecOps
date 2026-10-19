@@ -51,6 +51,19 @@ def ahead_behind(repo_path: Path) -> dict | None:
     return {"behind": int(parts[0]), "ahead": int(parts[1])}
 
 
+def shares_history(repo_path: Path) -> bool | None:
+    """Whether HEAD and its upstream have any commit in common; None when git cannot say.
+
+    False is not ordinary divergence: it means the upstream was rewritten (or replaced) after
+    this clone was made, so every commit differs. `git pull` then refuses ("unrelated
+    histories"), and forcing it would merge the old history back in.
+    """
+    proc = run_git(repo_path, ["merge-base", "HEAD", "@{upstream}"])
+    if proc.returncode == 0:
+        return True
+    return False if proc.returncode == 1 else None
+
+
 def remote_urls(repo_path: Path) -> dict[str, str]:
     """Every remote's fetch URL, by name. Empty when there is no remote (or git failed)."""
     proc = run_git(repo_path, ["remote", "-v"])

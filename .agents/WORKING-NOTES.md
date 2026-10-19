@@ -4,9 +4,60 @@ Living todo / scratch pad. Add items freely; **prune regularly**. When something
 into [`WORK-LOG.md`](WORK-LOG.md) (appended at the bottom, `YYYY-MM-DD HH:MM`) and delete it here.
 Dates are always absolute.
 
-_Last tended: 2026-10-19 13:45 (three new top sections; everything below them is as of 2026-09-22/10-05)_
+_Last tended: 2026-10-19 16:15 (new top section; the 13:45 one below it is kept for its how-to)_
 
 ## Open
+
+### 2026-10-19 16:15 — where things stand (read this first)
+
+**Sb4ssport-Alpha: the tools are ready; the plans are not made yet, on purpose.** The
+Sb4ssport-Authority window committed and pushed a "checkpoint before sanitization" into all ten
+repositories at 15:37; a plan covers only the commits that exist when it is made, so plans wait
+until that agent has stopped committing. A rehearsal on Orbital-Workshop (the only hard one)
+planned, applied **in the mirror only** and verified clean under the new per-file accounting.
+Rehearsal plan folders sit in `.agents/output/security/Orbital-Workshop/rehearsal-*` (ignored,
+deletable; `rm -rf` is blocked by the user's guard hook, so they stay until the user removes them).
+
+What the run looks like, from this folder, once Authority is quiet:
+
+1. `python Security/scan_folder.py <Sb4ssport-Alpha folder> --online --plan --keep <IOCCC magic>`
+   (the IOCCC value is a published contest constant in third-party archives; the full report
+   names it). One table, one plan per repository, one printed `apply` line for all of them.
+2. Review each plan's `summary.txt`; `apply` them all (one typed confirmation).
+3. Push each mirror (printed). These repos have no ruleset yet; add one after the push.
+4. `python Security/rewrite_history.py follow <repo>` for each checkout, on every machine.
+5. `relink <every plan> --checkout <repo>` in each checkout: the repos quote each other's
+   commits ("shape update to <id>"); commit the edits.
+
+**Decided by the user for Alpha (2026-10-19 16:10):** the other account (its old personal name, under
+both the personal address and its own noreply address) becomes the main identity -- `--mine`
+its noreply address; losing "Verified" on the signed commits is fine; author names of the form
+`<login>@<machine>` and `<login>@unassigned` are the user's convention and stay. The login in
+work-log headings is the public handle the commits carry anyway: kept. Authority has finished
+committing; no more work there until the rewrite is done.
+
+**Fixed today while getting ready (each would have broken or weakened the Alpha rewrite):**
+see the work log, 16:15. In short: placeholders with backslashes crashed filter-repo; values in
+file *names* survived; an old personal address under a second name was left on 86 commits and
+never searched for in contents; `--mine` could not claim a noreply address; `follow` matched
+commits by timestamp and could hide same-second local work; 253 lockfile checksums and several
+fixtures read as secrets; archives, Office files and image metadata were not opened; "nothing
+else changed" was not checked at all once any path was removed.
+
+**This repository's rewrite: done (14:20).** 4 of 5 machines moved; the fifth (an old Windows 10
+machine elsewhere) the user is content to leave -- `follow` handles it whenever it is touched,
+and Sync Suggester now flags such a clone ("upstream history was rewritten"). GitHub ruleset on
+`main` since 2026-10-19 15:21: no deletion, no force push, linear history (a stale clone cannot
+merge the old history back in). A future rewrite of this repository must pause that ruleset for
+its one forced push. Still to do by the user: GitHub → Settings → Emails → "Block command line
+pushes that expose my email".
+
+**Manifest v5 (names) is written up for decision** in `knowledge/manifest-privacy.md` ("Proposed
+schema v5"). The number v4 is already taken by the at-risk fields.
+
+**Then:** the first test on the Linux box (the suite has never run off Windows), the foreground
+fleet peer on this PC and that box (the user has never seen their dashboard), the tray trial,
+phase 3c.
 
 ### 2026-10-19 13:45 — where things stand (read this first)
 
@@ -22,8 +73,14 @@ current files byte-identical) and after it: `scan_history` over what GitHub serv
   work log); fixed, re-planned, applied cleanly.
 - Accepted: the 5 commits made on GitHub's website lost their "Verified" badge.
 - **Other clones** (the KDE box, any other machine): `git fetch origin` then
-  `git reset --keep origin/main` if clean, or re-clone. **Never `git pull`** — it merges the old
-  history back.
+  `git reset --keep origin/main` if clean, or re-clone (now: `rewrite_history.py follow`).
+  4 of 5 machines moved as of 2026-10-19 15:10.
+  **Tested 2026-10-19 on a stale copy:** old and new histories share no commit, so `git pull`
+  does *not* silently merge the old history back — merge mode says "refusing to merge unrelated
+  histories", ff-only refuses, rebase mode stops on a conflict at the first old commit (run
+  `git rebase --abort`). The real ways it returns are deliberate: `--allow-unrelated-histories`,
+  pushing through that rebase, or pushing a branch from the stale clone. "No common ancestor
+  with its upstream" is therefore an exact detector for a clone that predates a rewrite.
 - Optional: GitHub may serve old commits by SHA from caches for a while; with no forks or pull
   requests, GitHub Support can purge them. Short SHAs quoted in old notes no longer resolve.
 - The plan folders under `.agents/output/security/gitSpecOps/` hold the real values and a spoiled
@@ -38,9 +95,8 @@ paste; private, under that repo's ignored `.agents/output/`). Plan agreed in cha
 with gitSpecOps's own `scan_history` (reports land in *this* checkout's
 `.agents/output/security/<repo>/`, readable by both agents), cross-check against Authority's
 numbers (112 commits, 196 email fields, 29 generated-cache paths, 12 signed commits), then plan
-per repo. Still missing from our side: gitleaks (optional; `winget install Gitleaks.Gitleaks`),
-unpacking archives (two over 8 MiB), updating commit SHAs quoted inside files after a rewrite
-(filter-repo's commit map), and a fleet-level wrapper for many repos at once. Authority's
+per repo. The missing pieces listed here on 13:45 (archives, quoted commit ids, a wrapper for
+many repos) were built at 16:15 -- see the section above; gitleaks stays optional. Authority's
 separate code-safety concerns (Ground-Support deletion validation, Windhawk restore, DCG
 installer trust) belong in those repos as their own fixes.
 

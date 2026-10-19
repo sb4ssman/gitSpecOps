@@ -1411,3 +1411,61 @@ The tool's printed next steps had said "re-clone", contradicting the in-place mo
 had given in chat. Both were safe; the printed text was the cautious general case. It now gives
 the in-place `fetch` + `reset --keep` for a clean, verified checkout and keeps "re-clone" for
 anything with uncommitted or later work.
+
+## 2026-10-19 16:15 - user (Claude Opus 5.5) - Security tools ready for Sb4ssport-Alpha; follow, relink, scan_folder; safeguards
+
+**Safeguards.** GitHub ruleset on this repository's `main` (no deletion, no force push, linear
+history), created 15:21 at the user's request: a clone made before the rewrite can no longer
+merge the old history back in and push it. Secret scanning and push protection were already on.
+Tested on a stale copy: `git pull` there refuses in every mode (the histories share no commit),
+so the earlier note "a pull merges it back" was wrong; corrected.
+
+**New:** `Security/scan_folder.py` (every repository under a folder, one table, `--plan` writes
+every plan); `rewrite_history.py follow` (moves a pre-rewrite clone with `reset --keep` only after
+proving every commit on the branch has a rewritten counterpart -- same author and committer
+times -- and no tracked file is changed; names stale branches and tags); `rewrite_history.py
+relink` (commit ids quoted in files, from filter-repo's commit maps, several plans at once since
+repositories quote each other; edits only, never commits); `apply`/`verify` take many plans with
+one confirmation; `--remove-path`. `Security/_contents.py` opens archives (zip and its Office /
+EPUB / jar / wheel kin, tar.*, gz/bz2/xz, nested once; 7z/rar reported as not inspected; bounded
+against bombs) and reads image metadata (PNG text chunks, EXIF text incl. Windows' UTF-16 tags,
+XMP, and whether EXIF holds a GPS position). `Basic/_facts.shares_history`; the Sync Suggester
+observer reports "upstream history was rewritten; move this clone with ... follow" instead of
+plain divergence.
+
+**Defects found and fixed on the way (all would have hit the Alpha rewrite):**
+
+- A placeholder with backslashes (`C:\Users\<you>`) is a `re.sub` template: filter-repo crashed
+  with "bad escape \U". Found by running the gated end-to-end test, which had last been skipped.
+- `--replace-text` never touches file *names*: a value in a path survived and verification
+  refused. Now a `--filename-callback` applies the same rules file (no value on a command line).
+- The configured address is the noreply one, so an old personal address in history was known to
+  no seed: commits under a second name were left as someone else's (86 in one repository), and
+  file contents were never searched for it. An address any of your identities used is now yours
+  under every name, and is searched for.
+- Verification skipped "nothing else changed" entirely once any path was removed. Now per file:
+  a current file may differ only if it held a planned value, was removed, or was renamed by a rule.
+- Values filter-repo cannot reach (binary files: it skips any blob with a NUL in its first 8 KiB;
+  archive members) are named at plan time with the fix (`--remove-path`), instead of surfacing
+  as a refused verification.
+- `follow` first recognised a rewritten commit by its author and committer times; commits made
+  in the same second share both, so a never-pushed commit could pass as published and be hidden
+  by the move (the full suite caught it; the focused run was too slow to). It now proves what
+  the remote held from the remote-tracking reflog files (old and new value of every line -- a
+  fresh clone's cloned-at value survives only there), and refuses when there is no record.
+- `--mine` re-attributed only identities already counted as personal data, so another account's
+  *noreply* address could not be claimed; now it can (the user's decision for Orbital-Workshop).
+- False secrets: 253 `uv.lock` checksums, a download manifest's `"sha256"`, bitmap rows in a game
+  file, a key *header* in a scanner's own test, a test fixture assigning "sample-value" as a
+  password, `/home/linuxbrew`. The 64-hex rule now looks at context and digit variety; a key
+  block needs a key body.
+
+**Alpha status.** Scanned all ten (122 commits including Authority's 15:37 checkpoints): one
+personal address on every repository's older commits; in Orbital-Workshop also user paths,
+home-folder names and bytecode (removed), and six IOCCC archives that are clean of personal data
+once the contest's own magic constant is kept. Rehearsal on Orbital-Workshop: planned, applied in
+the mirror, verified clean (74 commits). Real plans wait until the Authority agent stops
+committing. The plumbing moved to `Security/_rewrite.py` and `Security/_report.py` (commands
+may not import sibling commands). Tests: `tests/security/test_security.py` 81 checks, gated
+rewrite included, all pass; full suite 48/48 files on Windows (before the last `--mine` fix,
+which the security, hygiene and import-direction tests then re-ran green).

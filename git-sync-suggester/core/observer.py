@@ -14,7 +14,7 @@ if _REPO_ROOT not in sys.path:
 
 from Basic._discovery import find_repos  # noqa: E402
 from Basic._facts import (git_stdout, remote_urls, repo_facts, root_commit,  # noqa: E402
-                          unpushed_commits)
+                          shares_history, unpushed_commits)
 from Basic._identity import parse_remote_url  # noqa: E402
 from Basic._run import run_git  # noqa: E402
 
@@ -271,6 +271,11 @@ def observe_paths(paths: list[Path], secret: str | None = None,
         if counts is None:
             issues.append(f"status unreadable, so uncommitted work cannot be ruled out: {path}")
             continue
+        if facts.get("ahead") and facts.get("behind") and shares_history(path) is False:
+            # Not ordinary divergence: the upstream's history was rewritten after this clone
+            # was made (every commit differs). A pull refuses; merging would bring it back.
+            issues.append("upstream history was rewritten; move this clone with "
+                          f"Security/rewrite_history.py follow: {path}")
         repo_id, kind, has_remote, host, owner, name = _identity(path, facts, secret)
         staged, unstaged, untracked = counts
         stash_text = git_stdout(path, ["rev-list", "--walk-reflogs", "--count", "refs/stash"])

@@ -26,7 +26,10 @@ SECRETS = {
     "a 64-hex value (the fleet-secret shape)": re.compile(r"\b[0-9a-f]{64}\b"),
     "a GitHub token": re.compile(r"\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})"),
     "an AWS access key": re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
-    "a private key block": re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    # A header with a key after it (optional `Proc-Type:` lines, then base64). A header alone --
+    # a scanner's own test string, a document about keys -- holds nothing to steal.
+    "a private key block": re.compile(
+        r"-----BEGIN [A-Z ]*PRIVATE KEY-----\s*(?:[A-Za-z-]+:[^\n]*\n\s*)*[A-Za-z0-9+/=]{40}"),
     "an assigned credential": re.compile(
         r"(?i)\b(password|passwd|secret|api_?key|token)\s*[:=]\s*[\"'][^\"'\s]{8,}[\"']"),
 }
@@ -35,7 +38,9 @@ PERSONAL = {
     # The account segment must look like a name, so the documented shape `C:\Users\…` is not one.
     "a Windows user path": re.compile(r"(?i)[A-Z]:\\Users\\[\w.$-]{2,}"),
     "a Windows drive path": re.compile(r"(?i)\b[D-Z]:\\(?:Github|Users|Projects)\b"),
-    "a POSIX home path": re.compile(r"/home/(?!u/|someone/)[a-z0-9._-]{2,}"),
+    # /home/linuxbrew is Homebrew's documented prefix on Linux, the same on every machine.
+    "a POSIX home path": re.compile(r"/home/(?!u/|someone/|linuxbrew(?![a-z0-9._-]))"
+                                    r"[a-z0-9._-]{2,}"),
     "a real Tailscale address": re.compile(
         r"\b100\.(?:6[5-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b"),
 }
@@ -61,13 +66,36 @@ class Finding:
     start: int
 
 
+#: What precedes a published checksum: `sha256:` in a uv.lock, `"sha256": "` in a download
+#: manifest, `--hash=sha256:` in pip, `integrity` in npm. Hundreds per lockfile; never secrets.
+_CHECKSUM_CONTEXT = re.compile(r"(?i)(sha-?256|checksum|digest|integrity|hash)\W{0,6}$")
+#: Words that mark an assigned credential as a test fixture or a documentation example.
+_FIXTURE_WORDS = re.compile(r"(?i)sample|example|dummy|placeholder|changeme|fake|redacted|xxxx")
+
+
+def _random_hex(text: str, match) -> bool:
+    # A random 64-hex secret uses nearly all sixteen digits; a run like `bbbbccccbbaa...`
+    # (bitmap rows, padding in a game file) is data, not a key.
+    return (len(set(match.group(0))) >= 10
+            and not _CHECKSUM_CONTEXT.search(text[max(0, match.start() - 24):match.start()]))
+
+
+#: Second opinions on a match, given the text around it: False drops the match.
+_PLAUSIBLE = {
+    "a 64-hex value (the fleet-secret shape)": _random_hex,
+    "an assigned credential": lambda text, match: not _FIXTURE_WORDS.search(match.group(0)),
+}
+
+
 def find(text: str, patterns: dict) -> list[Finding]:
     """Every match of every pattern in `text`, unless the matched text itself is allowed."""
     found = []
     for kind, pattern in patterns.items():
+        plausible = _PLAUSIBLE.get(kind)
         for match in pattern.finditer(text):
-            if not ALLOWED.search(match.group(0)):
-                found.append(Finding(kind, match.group(0), match.start()))
+            value = match.group(0)
+            if not ALLOWED.search(value) and (plausible is None or plausible(text, match)):
+                found.append(Finding(kind, value, match.start()))
     return found
 
 

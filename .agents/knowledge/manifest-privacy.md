@@ -114,7 +114,48 @@ This is what makes a zero-friction join possible for the repo transport specific
 key can live in the private repo, so a second machine needs only `--state-repo owner/name`. Do not
 generalise that to the folder transport.
 
-## Options (a design decision, not a bug fix)## Options (a design decision, not a bug fix)
+## Proposed schema v5 (2026-10-19): names where the transport already knows them — awaiting the user
+
+The question long called "v4 with names" is now **v5**: v4's number went to the at-risk fields
+above. Nothing here is built.
+
+**Why names are wanted.** The route ("go to A and push x, y, z; C pull R") must name a
+repository the reading machine may not hold. Today a peer's repository renders `repo:abcd1234`
+until `converge` resolves it, which works only for remote identities under owners the host
+provider can list, and never for a repository with no remote. The live tier already sends
+`names` beside the manifest; the stored manifests (the ones an offline machine leaves behind)
+do not, so the route is weakest exactly when it matters: machine-D, not seen in a week.
+
+**The proposal.** Per record, optional and gated by the transport:
+
+- `name`: `{host, owner, name}` -- the same triple the local catalog and the live tier hold;
+- `branch`: the readable branch name beside `branch_id`;
+- `head`: the checked-out commit, so "C is on the commit A pushed" is a fact, not an inference
+  from two machines' differently-stale fetches (also detects a rewritten history across machines).
+
+The envelope says whether it carries them (`carries_names: true`), and `validate_manifest`
+refuses those keys in a manifest that does not, so a names-free transport cannot receive them
+by accident.
+
+- **Private GitHub state repository:** on by default. GitHub already hosts the repositories
+  being described; whoever can read the state repository could read far more already.
+- **Synced folder (Dropbox, Syncthing):** off by default, opt-in per fleet. The provider reads
+  every byte; this is where the salt still earns its keep.
+- **Live tier:** unchanged (it already carries names).
+- **Publish basket:** unchanged and still first: a withheld namespace sends nothing at all.
+
+**Costs.** The state repository becomes a readable list of every repository, branch and current
+commit on every machine -- including private repositories' names, which are the sensitive part
+(a project's name before it is public). A commit id identifies a public repository outright,
+which is why v2 dropped `head`. Encrypting names under the fleet secret is the alternative, but
+the standard library has no cipher, and a home-made one is not worth trusting with this.
+
+**Decisions owed:** names on the repository transport (recommended yes); `head` (recommended
+yes); readable branch names (recommended yes); the folder transport stays names-free unless
+opted in (recommended yes). Hard break as always: nothing is enrolled, so v4 is refused with
+"re-run check on that machine".
+
+## Options (a design decision, not a bug fix)
 
 1. **Salt the identity.** `HMAC-SHA256(secret, host/owner/name)` with the secret stored only in
    local config and never in a manifest. Closes the brute-force hole cheaply. Costs: the secret
