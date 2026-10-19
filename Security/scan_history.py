@@ -25,7 +25,7 @@ if _ROOT not in sys.path:
 from Basic._console import enable_unicode_output  # noqa: E402
 from Security._history import HistoryReport, public_refs, scan_history  # noqa: E402
 from Security._patterns import SECRETS, mask  # noqa: E402
-from Security._repo import patterns_for  # noqa: E402
+from Security._repo import patterns_for, write_report  # noqa: E402
 from Security._seeds import identity_seeds  # noqa: E402
 
 EFFECT = "none"
@@ -44,6 +44,13 @@ def render(report: HistoryReport, show_values: bool = False) -> tuple[str, int]:
             findings += 1
             lines.append(f"  {shown(person.email)} / {shown(person.name)}: {person.concern} — "
                          f"{person.commits} commit(s), {person.first[:10]} to {person.last[:10]}")
+    if show_values:
+        # The full report lists every identity, not only the problems: you should see exactly
+        # what history says about who wrote it.
+        lines.append(f"\nEvery author/committer identity ({len(report.identities)}):")
+        for person in sorted(report.identities.values(), key=lambda p: -p.commits):
+            lines.append(f"  {person.email} / {person.name}: {person.commits} commit(s) — "
+                         + (person.concern or "fine (noreply or the host's own)"))
     secrets = [e for e in report.exposures.values() if e.kind in SECRETS]
     others = [e for e in report.exposures.values() if e.kind not in SECRETS]
     for title, group in (("Secrets — rotate these first; removing them does not un-publish them",
@@ -85,6 +92,8 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--no-tailnet", action="store_true")
     parser.add_argument("--show-values", action="store_true",
                         help="print values instead of masking them (local use only)")
+    parser.add_argument("--no-report", action="store_true",
+                        help="do not write the full report file")
     args = parser.parse_args(argv)
     repo = args.repo.resolve()
     chosen = args.ref or (["--all"] if args.all_refs else public_refs(repo))
@@ -96,6 +105,10 @@ def main(argv: list[str]) -> int:
     report = scan_history(repo, chosen, patterns_for(repo, seeds, args.public_repo))
     text, findings = render(report, args.show_values)
     print(text)
+    if not args.no_report:
+        full, _ = render(report, show_values=True)
+        print(f"\nFull report, values unmasked (git-ignored, never published): "
+              f"{write_report(repo, 'history', full)}")
     return 1 if findings else 0
 
 

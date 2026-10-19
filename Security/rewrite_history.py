@@ -50,12 +50,12 @@ if _ROOT not in sys.path:
 
 from Basic._confirm import confirm_typed  # noqa: E402
 from Basic._console import enable_unicode_output  # noqa: E402
-from Basic._paths import config_home  # noqa: E402
 from Basic._run import run, run_git  # noqa: E402
 from Security._history import scan_history, tip_matches  # noqa: E402
 from Security._patterns import SECRETS, mask  # noqa: E402
 from Security._seeds import identity_seeds  # noqa: E402
-from Security._repo import owner as repository_owner, patterns_for  # noqa: E402
+from Security._repo import (is_ignored, output_dir, owner as repository_owner,  # noqa: E402
+                            patterns_for)
 
 EFFECT = "local"  # writes a private plan folder and rewrites a mirror clone; never the checkout
 
@@ -205,7 +205,7 @@ def _refs(repo: Path) -> dict[str, dict]:
 
 def default_plan_dir(repo: Path) -> Path:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return config_home() / "security" / f"{repo.name}-{stamp}"
+    return output_dir(repo) / f"rewrite-{stamp}"
 
 
 def plan(repo: Path, into: Path, *, seeds: dict, target: tuple[str, str] | None = None,
@@ -216,9 +216,9 @@ def plan(repo: Path, into: Path, *, seeds: dict, target: tuple[str, str] | None 
     personal address): identities using them are re-attributed to `target`.
     """
     repo, into = repo.resolve(), into.resolve()
-    if into == repo or repo in into.parents:
-        raise ValueError("the plan folder holds the real values; it may not be inside the "
-                         "repository")
+    if into == repo or (repo in into.parents and not is_ignored(repo, into / "x")):
+        raise ValueError("the plan folder holds the real values; inside the repository it must "
+                         "be a folder git ignores (such as .agents/output/)")
     if into.exists() and any(into.iterdir()):
         raise ValueError(f"plan folder is not empty: {into}")
     target = target or _git_identity(repo)

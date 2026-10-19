@@ -24,7 +24,7 @@ if _ROOT not in sys.path:
 from Basic._console import enable_unicode_output  # noqa: E402
 from Security._patterns import (PERSONAL, SECRETS, find, identity_patterns,  # noqa: E402
                                 line_of, mask)
-from Security._repo import own_repository_name, tracked_files  # noqa: E402
+from Security._repo import own_repository_name, tracked_files, write_report  # noqa: E402
 from Security._seeds import identity_seeds  # noqa: E402
 
 EFFECT = "none"
@@ -71,6 +71,8 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--no-tailnet", action="store_true", help="skip tailnet names/addresses")
     parser.add_argument("--show-values", action="store_true",
                         help="print identity values instead of masking them (local use only)")
+    parser.add_argument("--no-report", action="store_true",
+                        help="do not write the full report file")
     args = parser.parse_args(argv)
     repo = args.repo.resolve()
     names = tracked_files(repo)
@@ -80,15 +82,17 @@ def main(argv: list[str]) -> int:
     public = [*filter(None, [own_repository_name(repo)]), *args.public_repo]
     seeds = identity_seeds(tailnet=not args.no_tailnet, online=args.online, cwd=repo)
     findings = scan_files(repo, names, seeds, public, frozenset(args.exclude), args.show_values)
-    print(f"Scanned {len(names)} tracked file(s) in {repo.name} "
-          f"({sum(len(v) for v in seeds.values())} identity value(s) from this machine).")
-    if not findings:
-        print("Nothing found.")
-        return 0
-    print(f"{len(findings)} finding(s):")
+    header = (f"Scanned {len(names)} tracked file(s) in {repo.name} "
+              f"({sum(len(v) for v in seeds.values())} identity value(s) from this machine).")
+    print(header)
+    print(f"{len(findings)} finding(s):" if findings else "Nothing found.")
     for line in findings:
         print(f"  {line}")
-    return 1
+    if findings and not args.no_report:
+        full = scan_files(repo, names, seeds, public, frozenset(args.exclude), show_values=True)
+        path = write_report(repo, "tree", "\n".join([header, *full]))
+        print(f"\nFull report, values unmasked (git-ignored, never published): {path}")
+    return 1 if findings else 0
 
 
 if __name__ == "__main__":

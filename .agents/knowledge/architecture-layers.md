@@ -291,7 +291,15 @@ and the fleet (Elaborate) or the App may call it — for example a fleet-wide au
 - `_patterns.py` — the one set of detection rules, shared with the repository's own hygiene test.
 - `_seeds.py` — the runner's identity, read at run time and held in memory only.
 - `_history.py` — reads everything a history publishes, commit identities included.
-- `scan_tree.py`, `scan_history.py` — read-only commands (`EFFECT = "none"`).
+- `scan_tree.py`, `scan_history.py` — read-only commands (`EFFECT = "none"`). Masked on screen;
+  each writes a full, unmasked report.
+- `scan_secrets.py` — runs **gitleaks** when it is installed. gitleaks is optional, like the
+  tray: the front-door setup offers it, nothing requires it.
+- **Output lives in this checkout's git-ignored `.agents/output/security/<repo>/`**, whatever
+  repository was scanned, so the person and their agents read it in place (user's decision,
+  2026-10-19); the per-user folder is the fallback when that folder is not ignored. A plan may
+  sit inside the scanned repository only where git ignores it.
+- The never-publish list stays in the per-user folder: it serves every repository.
 - `rewrite_history.py` — `plan` (private plan folder outside the repository + a bare clone),
   `apply` (git filter-repo in that clone only, after a typed confirmation), `verify`. Its
   `EFFECT` is `local`. **The forced push that publishes a rewrite is never performed by

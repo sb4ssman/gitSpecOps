@@ -96,6 +96,9 @@ every pass count here as a claim until the suite has been read and run.
   (git, host login), roots, transports, baskets, triggers, notifications, tray and
   start-at-login — and **every answer stays changeable** later (re-run setup or a settings page).
   Today `run_setup` asks nothing and `fleet setup` is a separate second setup.
+  **Optional components it offers (decided 2026-10-19):** the tray app's dependencies, and
+  **gitleaks** for `Security/scan_secrets.py` (winget / brew / package manager). Neither is
+  ever required; the tools say how to install them when absent.
 - **Transports to try for real:** the private GitHub state repo (valued: "a special git repo
   just for gitSpecOps to control"), **Dropbox** and **Syncthing**. **Obsidian is out** — the user
   does not use it, and its sync is paid. Drop the "vault note" idea; the private repo can carry

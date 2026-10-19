@@ -198,8 +198,41 @@ with tempfile.TemporaryDirectory(prefix="security-") as temp:
         print("skip  the rewrite itself (set GITSPECOPS_RUN_REWRITE_TEST=1 with git-filter-repo "
               "installed to run it; it touches only a temporary folder)")
 
+# --- where output goes: inside gitSpecOps, but only somewhere git will never publish ---------
+from Security._repo import is_ignored, output_dir  # noqa: E402
+
+where = output_dir(ROOT / "some-scanned-repo")
+check("reports land in this checkout's git-ignored output folder",
+      ROOT / ".agents" / "output" in where.parents and is_ignored(ROOT, where / "report.txt"),
+      where)
+check("a tracked path is not mistaken for an ignored one", not is_ignored(ROOT, ROOT / "README.md"))
+
+# --- gitleaks: optional, summarized, never required -------------------------------------------
+from Security import scan_secrets  # noqa: E402
+
+lines = scan_secrets.summarize([
+    {"RuleID": "github-pat", "Commit": "a" * 40, "File": "notes.md", "Secret": "REDACTED"},
+    {"RuleID": "github-pat", "Commit": "b" * 40, "File": "notes.md", "Secret": "REDACTED"},
+    {"RuleID": "aws-access-token", "Commit": "b" * 40, "File": "deploy.sh", "Secret": "REDACTED"}])
+check("a gitleaks summary counts rules, commits and files",
+      "3 candidate secret(s) in 2 commit(s), 2 file(s)" in lines[0]
+      and any("github-pat: 2" in line for line in lines), lines)
+check("an empty gitleaks report reads as nothing found",
+      scan_secrets.summarize([]) == ["gitleaks found nothing."])
+original_find = scan_secrets.find_gitleaks
+scan_secrets.find_gitleaks = lambda: None
+try:
+    err = io.StringIO()
+    from contextlib import redirect_stderr  # noqa: E402
+    with redirect_stderr(err):
+        code = scan_secrets.main([str(ROOT)])
+    check("without gitleaks: exit 2 and say how to install it, nothing else",
+          code == 2 and "winget install" in err.getvalue())
+finally:
+    scan_secrets.find_gitleaks = original_find
+
 # The commands are importable and answer --help by path from anywhere.
-for name in ("scan_tree.py", "scan_history.py", "rewrite_history.py"):
+for name in ("scan_tree.py", "scan_history.py", "scan_secrets.py", "rewrite_history.py"):
     done = subprocess.run([sys.executable, str(ROOT / "Security" / name), "--help"],
                           capture_output=True, text=True, cwd=tempfile.gettempdir(), timeout=60)
     check(f"Security/{name} --help works from another folder", done.returncode == 0, done.stderr)
