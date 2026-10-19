@@ -17,11 +17,16 @@ before anything below. In short:
   dependency or a native helper (operations stay stdlib); one re-runnable front-door setup where
   every preference stays changeable; test the GitHub state repo, Dropbox and Syncthing; no
   Obsidian; publish on sleep/shutdown; a second user gets their own fleet.
-- **Awaiting the user's yes:** one app named gitSpecOps with Sync Suggester as its home screen;
-  **rewriting the effect rule** (the "tray and dashboard only observe" invariant below, phase 5,
-  contradicts the vision — background observes except standing consent, foreground runs confirmed
-  commands); manifest schema v4 with names and head commit for the private repo transport; an
-  auto-update basket; sleep/lock triggers.
+- **Decided 2026-10-19 (second session):** one app named gitSpecOps; **the effect rule is
+  rewritten** (background observes, or acts under a standing consent the user configured;
+  foreground runs the same confirmed command) — see the brief's three rules and
+  `knowledge/architecture-layers.md`; machine mailboxes; CLI-first for agents; sleep/lock
+  triggers; diff/commit/branch/stash in `Basic/`; KDE on the Debian box. Placement: the
+  dashboard stays with Sync Suggester, the tray is `App/` (see "Revisions, 2026-10-19" in the
+  architecture document). **Still awaiting:** manifest schema v4 with names; the auto-update
+  basket's details.
+- **Test audit done 2026-10-19:** [`knowledge/test-suite-audit.md`](knowledge/test-suite-audit.md).
+  `safe-to-wipe` and the duplicator cleanup were fixed the same day.
 - **The proposed path** starts with *trust* (read and run the tests — no one has audited what they
   assert), then a throwaway foreground fleet across real machines, then a tray-toolkit spike,
   *then* phase 3c and `App/`. The migration below is still right; its position in the order moved.
@@ -109,9 +114,12 @@ Phase 1 is where to start. Do not begin a phase until the one before it is commi
    to `_os/windows/tray.py`, with linux/macos files reporting "unsupported". Create all three skins. Rename `tests/` to `_tests/`
    with subfolders mirroring the layers.
 5. **Effect declarations and the invariant test.** Every operation declares
-   `EFFECT = "none" | "local" | "remote"` as a module-level constant. A test collects them by
-   scanning the layer folders and asserts that everything reachable from the peer, tray,
-   dashboard or scheduler is `"none"`.
+   `EFFECT = "none" | "local" | "remote"` as a module-level constant, plus `CONSENT = "<name>"`
+   when a background entry point may run it under a standing consent. A test collects them by
+   scanning the layer folders and asserts the rule in `architecture-layers.md` "Every operation
+   declares its effect" (rewritten 2026-10-19): background reaches only `"none"` or a
+   consent-gated operation that checks its consent; no remote, committing or destructive
+   operation may declare a consent.
 
 ## Things that will bite you
 

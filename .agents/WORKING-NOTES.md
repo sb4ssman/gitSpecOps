@@ -42,8 +42,16 @@ _Last tended: 2026-10-19 11:30 (two new top sections; everything below them is a
   2026-09-01; it still pointed at the deleted `gitArchiveUpdater\` folder). The three archives'
   `update_archive` launchers are stale for the same reason.
 
-**Still unanswered:** manifest schema v4 with names (item 3), the auto-update basket (item 4),
-and the effect-rule rewrite (item 2: the user asked for context first; context given in chat).
+**Decided later the same day:** the effect-rule rewrite (done in the brief, both READMEs,
+CLAUDE.md/AGENTS.md, `architecture-layers.md`, HANDOFF phase 5 and the local diagram file — the
+*published* diagram canvas still shows the old footer); mailboxes; CLI-first with flag strings
+and settings, **not** blanket `--json`; the dashboard stays with Sync Suggester (a setting
+chooses terminal or dashboard), the tray is `App/`, scheduling and start-at-login stay below
+`App/`; skins deferred to `modern` only; **KDE Plasma** on the Debian box. Recorded in
+`architecture-layers.md` "Revisions, 2026-10-19".
+
+**Still unanswered:** manifest schema v4 with names (item 3), the auto-update basket's details
+(item 4). The user has **never seen their own dashboard** — show it on the first enrollment.
 
 ### 2026-10-19 — product direction: the vision, what was decided, what is owed (HANDOFF)
 

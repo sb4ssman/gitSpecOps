@@ -13,8 +13,9 @@ contradicts the goal, the goal wins and the rule is the defect.
 Three things that are easy to get backwards:
 
 - **These tools perform Git operations** — that is the product, not a compromise. The boundary is
-  *observation never mutates; mutation is always a command the user invoked*, planned, shown and
-  confirmed.
+  *observation never mutates; background change happens only under a standing consent the user
+  configured (fast-forward of clean, behind-only checkouts); everything else is a command the
+  user invoked*, planned, shown and confirmed.
 - **Prior auth first.** Shell out to already-authenticated host CLIs; never store, configure, or
   prompt for a credential.
 - **Cross-platform first**, and git-agnostic as the direction of travel — host-specific code

@@ -24,11 +24,23 @@ everything in order for every machine — including after not touching a compute
 Simple, visual, and **equally operable from the terminal**, like the first two tools.
 
 **Therefore these tools perform Git operations.** That is the point. The safety model is about
-*how* they act — never *whether*. Two rules, not one:
+*how* they act — never *whether*. Three rules (rewritten 2026-10-19 with the user; the earlier
+"the peer, tray and dashboard only observe" contradicted the goal — catching up on wake, and
+committing or pushing from the app, are what the product is for):
 
-1. **Watching never changes anything.** No mutation is ever a side effect of observation or of
-   time passing. A daemon that silently pulls is the actual catastrophe.
-2. **Every mutation is a command the user invoked**, planned, shown, and confirmed:
+1. **Watching never changes anything by itself.** Observing, publishing this machine's status
+   and fetching are the background's whole job. No change to a repository is ever a side effect
+   of observation or of time passing. A daemon that *decides* to pull is the catastrophe.
+2. **Background change only under standing consent the user configured.** The peer, the
+   scheduler and the wake / sleep / login triggers may change a repository only through a
+   consent the user set up explicitly — named, narrow, visible in the app, revocable, logged —
+   and only within the safe class: fast-forward of a clean, behind-only checkout (the
+   auto-update basket; the archive launchers already work this way). A request arriving from
+   another machine's mailbox runs unattended only if such a consent covers it; otherwise it
+   waits on this machine as a suggestion. Commit, merge, rebase, reset, rename, delete, origin
+   rewrites and anything forced are never covered by any consent.
+3. **Everything else is a command the user invoked**, from the terminal, a tray item or a
+   dashboard button alike — the same command, the same plan → show → confirm:
    detect → plan → approve → execute → review. Fast-forward-only pulls, non-force pushes, nothing
    auto-committed.
 

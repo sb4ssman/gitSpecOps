@@ -194,9 +194,32 @@ touching Git. So each operation declares one module-level field:
 It is `none`, which is exactly why the background peer may run it. The peer writing its own
 manifests and logs is `none` too: that is the tool's bookkeeping, not your repository.
 
-A test collects every declaration by scanning the layer folders and asserts the rule that matters:
+*Rewritten 2026-10-19 with the user.* The rule this section used to assert — "everything
+reachable from the peer, tray, dashboard or scheduler is `EFFECT = "none"`" — contradicted the
+product: catching up on wake, and committing or pushing from the app, are what it is for, and
+the archive scheduled task (`--update`) already broke it. The rule is now about **who started
+the change**, not which process runs it:
 
-> Everything reachable from the peer, tray, dashboard or scheduler is `EFFECT = "none"`.
+- **Background entry points** — the peer, the scheduler, wake / sleep / login triggers, and a
+  request arriving in this machine's mailbox from another machine. Everything they reach is
+  `EFFECT = "none"`, **or** is a consent-gated operation: it declares
+  `CONSENT = "<name>"` beside its `EFFECT` and checks, at run time, that the user configured
+  that consent for that repository. Without the consent it does nothing and reports a suggestion.
+- **Standing consents** are named, narrow, visible in the app, revocable and logged. Only the
+  safe class may ever be one: fast-forward of a clean, behind-only checkout after a fresh fetch
+  (the auto-update basket; the archive launchers' `--update`). A push of a clean, ahead-only
+  checkout is a candidate the user may enable later, explicitly; nothing is on by default.
+  **Never** a consent: commit, merge, rebase, reset, rename, delete, origin rewrite, anything
+  forced — the operations already kept out of every launcher.
+- **Foreground entry points** — the terminal, a tray menu item, a dashboard button — run the
+  *same command* with the same plan → show → confirm. A button is not a back door and not a
+  second policy.
+
+A test collects every declaration by scanning the layer folders and asserts:
+
+> Everything reachable from a background entry point is `EFFECT = "none"`, or declares a
+> `CONSENT` and checks it before acting; and no operation whose `EFFECT` is `"remote"` or that
+> commits, merges, rebases, resets, renames or deletes declares a `CONSENT` at all.
 
 ## Sequencing: this precedes enrolling machines
 
@@ -226,3 +249,34 @@ Decided by the user while reviewing the folder map, before phase 1 began:
   eligibility against approved remotes, so in phase 3 it goes to `Special/_archive_plan.py`, not
   `Basic/_facts.py` as the first map said.
 
+
+## Revisions, 2026-10-19
+
+Decided by the user after the test audit:
+
+- **The effect rule is rewritten** — see "Every operation declares its effect" above, and the
+  brief's three rules. Background observes, or acts only under a standing consent; foreground
+  runs the same confirmed command.
+- **The dashboard stays with Sync Suggester, not in `App/`.** Whether `check` / `peer` prints to
+  the terminal or opens the dashboard and keeps it refreshed is a setting (and a flag), so the
+  dashboard is useful with no tray at all. Its server, the display contract and the skin it
+  serves live beside the Sync Suggester engine in `Elaborate/` (exact file names settle in
+  phase 3c). The tray *opens* it; it does not own it.
+- **`App/` is the tray / menu-bar app** — the live presence: the glance, notifications, the
+  menu, and live updates between peers that are online together on the tailnet.
+- **Scheduling and start-at-login are owned below `App/`.** `archive_manage` and the per-OS
+  `_os/*/schedule.py` / `launcher.py` already own the archive refresh; the peer's start-at-login
+  joins them on the same footing. The App only gives controls that call those commands, so
+  every schedule can be set, inspected and removed from the terminal too.
+- **Skins: `modern` only, for now.** `lcars` and `retro` are deferred, not dropped; the display
+  contract keeps them possible.
+- **Command surface for people and agents.** Every command can be fully specified by flags —
+  a complete set of flags never prompts — so an agent (or a script) drives it with a string of
+  flags. Higher-level operations read saved settings, so they run with no flags at all and the
+  same flags override a setting for one run. Machine-readable output is added where something
+  consumes it, deliberately, not to every command. A usage guide instructs agents; plans and
+  confirmations belong to the human even when an agent holds the flags.
+- **Mailboxes:** each machine has an inbox in the private state repository (delivered at once
+  over the tailnet when both are online). Requests are a small fixed set of verbs, never a
+  shell; they run unattended only under a standing consent, otherwise they wait as suggestions.
+- **KDE Plasma on the Debian box** (Wayland): StatusNotifierItem tray icons work natively.

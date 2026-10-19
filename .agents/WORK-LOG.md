@@ -1310,3 +1310,32 @@ for a report-only self-doxxing scan across the user's own fleet.
 Lesson worth keeping: a session repeated this file's test pass counts as fact without opening a
 test. Pass counts here are claims by the sessions that wrote the code; no audit of what the tests
 assert has been done.
+
+## 2026-10-19 12:00 - user (Claude Opus 5.5) - test audit; safe-to-wipe and duplicator fixes; effect rule rewritten
+
+**Audit.** First read of what every test asserts, alongside its source; each confirmed defect was
+reproduced on disposable repositories before being written down. Full record:
+`knowledge/test-suite-audit.md`. Suite run on Windows 11 / Python 3.14: 44/44 files before the
+fixes, 46/46 after (two new files). Not yet run on Linux or macOS.
+
+**Fixed, each pinned by a test that fails on the old code:**
+
+- `fleet safe-to-wipe` printed SAFE over the only copy of work (no remote, side-branch commits,
+  a stash, a remote not named `origin`). Cause: it trusted the observer's inventory, which drops
+  what it cannot name, and judged only the current branch. It and `fleet audit` now walk the
+  roots themselves (`fleet_actions.every_repository`).
+- The duplicator deleted a non-repository folder sharing a repository's name (any `config`
+  entry passed as "a repository"), could delete its own parent folder, and on Windows could not
+  remove a real clone at all (read-only git objects). Existing folders are now refused, never
+  deleted.
+- `Basic/pull.py` read git's English wording; it now compares HEAD.
+
+**Why it hid:** the unit tests fed the verdict functions hand-picked inputs; the real commands
+fed them the observer's inventory. A unit test passing over a broken integration — the pattern
+to hunt for next.
+
+**Effect rule rewritten with the user** (three rules in the brief; `architecture-layers.md`):
+background observes, or acts only under a standing consent the user configured, within the safe
+class; foreground runs the same confirmed command. Also decided: mailboxes; CLI-first via flag
+strings and settings, not blanket JSON; the dashboard stays with Sync Suggester; `App/` is the
+tray; scheduling stays below `App/`; skins deferred; KDE on the Debian box.

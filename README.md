@@ -56,8 +56,10 @@ the laptop." Then it helps you fix it: group fast-forward everything after weeks
 ahead-only work, clone a set you are missing, or recover uncommitted work stranded on a machine
 that is currently switched off.
 
-**Watching never changes anything** — the tray, the dashboard, the background peer and its
-scheduled fetch only observe. Every change is a command you ran, with a plan shown first and
+**Watching never changes anything by itself.** The background peer observes, publishes and
+fetches. It changes a repository only where you set up a standing consent for it — fast-forward
+of clean, behind-only checkouts, say, on wake — and never commits, merges, rebases or forces.
+Everything else is a command you ran, from the terminal or a button, with a plan shown first and
 nothing ambiguous applied.
 
 ---
@@ -293,9 +295,13 @@ that versioned contract rather than reclassifying Git facts.
   collected, never fatal, and reported at the end. Nothing ambiguous is auto-applied.
 - **Destructive-adjacent actions are interactive-only** and require typed confirmation. They are
   structurally excluded from scheduled and launcher runs.
-- **Watching never changes anything; mutation is always a command you invoked.** The peer, the
-  tray, the dashboard and the scheduled fetch only observe and report — nothing is changed as a
-  side effect of observation, or of time passing. Sync Suggester's mutating operations
+- **Watching never changes anything by itself; background change only under a consent you
+  configured; everything else is a command you invoked.** Nothing is changed as a side effect of
+  observation, or of time passing. The only unattended change is one you set up explicitly and
+  can see and revoke — fast-forward of a clean, behind-only checkout, as the archive launchers
+  already do — and no consent can cover a commit, merge, rebase, reset, rename, delete or force.
+  A tray item or dashboard button runs the same command as the terminal, with the same plan and
+  confirmation. Sync Suggester's mutating operations
   (`fleet catchup --apply`, `fleet materialize --apply`, recovery restore) are named, confirmed,
   refuse to run beside a live peer, and follow the same plan-then-approve ladder as the rest.
 - **Bounded everything.** Per-command timeouts, bounded discovery, bounded thread pools, forced
