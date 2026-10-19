@@ -11,6 +11,11 @@ keeps it -- nothing is asked for, stored or printed:
 - online, only when asked: the GitHub organizations the `gh` login belongs to (an org's name is
   often the most identifying thing in a repository).
 
+- your own list: `<per-user gitSpecOps folder>/security/never_publish.txt`, one value per line
+  (`#` starts a comment) -- what no lookup can find: a private organization or repository name,
+  a street, a phone number. It lives outside every repository, so the list itself can never be
+  published, and every scan reads it offline, the repository's own hygiene test included.
+
 Values too short or too generic to scan for are dropped (see `_patterns.usable_identity`).
 """
 from __future__ import annotations
@@ -19,6 +24,7 @@ import json
 import socket
 from pathlib import Path
 
+from Basic._paths import config_home
 from Basic._run import run
 
 _TIMEOUT = 30
@@ -52,6 +58,23 @@ def _organizations() -> list[str]:
     return sorted({line.strip() for line in text.splitlines() if line.strip()})
 
 
+LISTED_KIND = "a value you listed as never to publish"
+
+
+def never_publish_path() -> Path:
+    return config_home() / "security" / "never_publish.txt"
+
+
+def listed_values(path: Path | None = None) -> list[str]:
+    """The person's own never-publish list, or nothing when there is none."""
+    try:
+        text = (path or never_publish_path()).read_text(encoding="utf-8")
+    except OSError:
+        return []
+    return [line.split("#", 1)[0].strip() for line in text.splitlines()
+            if line.split("#", 1)[0].strip()]
+
+
 def identity_seeds(*, tailnet: bool = True, online: bool = False,
                    cwd: Path | None = None) -> dict[str, list[str]]:
     """`{kind: [values]}`. `cwd` reads that repository's own git identity (it may differ)."""
@@ -69,4 +92,5 @@ def identity_seeds(*, tailnet: bool = True, online: bool = False,
         seeds["a tailnet address"] = addresses
     if online:
         seeds["a GitHub organization you belong to"] = _organizations()
+    seeds[LISTED_KIND] = listed_values()
     return {kind: [value for value in values if value] for kind, values in seeds.items()}

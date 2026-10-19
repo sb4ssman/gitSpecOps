@@ -114,15 +114,15 @@
   - `git-lfs` was absent and this box has no passwordless sudo — installed the standalone
     `git-lfs` 3.6.1 binary to `~/.local/bin`, ran `git lfs install`, and launched the job with
     `~/.local/bin` on PATH. Only one repo in the set uses LFS
-    (`example-org-4/magiconion-sample-client`); its LFS blobs were verified as real content, not
+    (`example-org-a/magiconion-sample-client`); its LFS blobs were verified as real content, not
     pointers.
-  - **Post-run trim (per user):** the `example-org-4` org was not wanted — `example-org-4-Inc` is the
-    keeper. Removed `example-org-4` from the archive (moved to
+  - **Post-run trim (per user):** the `example-org-a` org was not wanted — `example-org-b` is the
+    keeper. Removed `example-org-a` from the archive (moved to
     `<archive-root>/Github/.trash-<namespace>-<date>`, ~37 GB — final `rm -rf` left for the user
     to run; the sandbox refuses recursive delete outside `/tmp`) and deleted its four
-    `runs/*__example-org-4.txt` resume files. Also fully removed git-lfs again: `git lfs uninstall`
+    `runs/*__example-org-a.txt` resume files. Also fully removed git-lfs again: `git lfs uninstall`
     (global config + repo hooks) and deleted `~/.local/bin/git-lfs`. Active archive is now 8
-    namespaces; `example-org-4-Inc` intact at 55 repos.
+    namespaces; `example-org-b` intact at 55 repos.
 
 - **Completed a pre-commit family audit and refreshed the root README.** Reframed the project as
   three repository-level special operations and documented Sync Suggester's one-machine usefulness
@@ -1339,3 +1339,24 @@ background observes, or acts only under a standing consent the user configured, 
 class; foreground runs the same confirmed command. Also decided: mailboxes; CLI-first via flag
 strings and settings, not blanket JSON; the dashboard stays with Sync Suggester; `App/` is the
 tray; scheduling stays below `App/`; skins deferred; KDE on the Debian box.
+
+## 2026-10-19 13:03 - user (Claude Opus 5.5) - fleet map sees at-risk work; Security/ tools; history rewrite prepared
+
+- **Observer (manifest v4):** no-remote repositories and side-branch commits now reach the fleet
+  map; checkouts sharing an identity are merged so no work hides (see `test-suite-audit.md`).
+- **Duplicator:** an empty destination folder is used, a non-empty one refused (user's
+  decision); a failed download leaves no half-clone. Default state repo: `gitspecops-state`.
+- **`Security/`** (new, between Special and Elaborate): shared detection rules, run-time
+  identity seeds (git/gh identity, host, home folder, tailnet names and addresses, GitHub orgs
+  online, and a private never-publish list in the per-user folder), `scan_tree`,
+  `scan_history`, `rewrite_history` (plan / apply in a bare clone / verify; the forced push is
+  the person's). Re-attributes only the runner's own identities; removes generated caches
+  rather than editing them; reports signed commits and unreadable binaries — points raised by
+  an outside review of the same problem across the user's other repositories.
+- **Live leak fixed in place:** two private organization names were in this file's 2026-09
+  entry, in the current public tree, invisible to the offline guard (org names need the network).
+  They were replaced in that entry directly — a deliberate exception to "never edit a past
+  entry", because the alternative was publishing them again with every commit. The org names
+  are now on the never-publish list, so the offline hygiene test catches them from here on.
+- **History rewrite prepared, not applied:** the plan lives outside the repository. Applying it
+  and the forced push are the user's.

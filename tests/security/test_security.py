@@ -67,6 +67,8 @@ check("a seeded machine name is found",
       [f.value for f in find("ran on invented-host today", patterns)] == ["invented-host"])
 check("a longer word containing it is not",
       not find("invented-hostname-x", {"m": patterns["a tailnet machine name"]}))
+check("punctuation does not shield a value (runs/__name.txt, x-name)",
+      len(find("runs/__invented-host.txt and x-invented-host", patterns)) == 2)
 check("the owner of a public repository is excused there",
       not find("https://example.test/example-owner/proj.git", patterns))
 check("the owner beside any other repository is not",
@@ -141,7 +143,8 @@ with tempfile.TemporaryDirectory(prefix="security-") as temp:
     check("hand-added values are carried", "secret-org-name" in decided["replacements"])
     check("the owner is never rewritten", "example-owner" not in decided["replacements"])
     check("rules are word-bounded regular expressions",
-          "regex:(?i:(?<![\\w.-])100\\.64\\.9\\.9(?![\\w-]))==><tailnet-ip>" in replacements,
+          "regex:(?i:(?<![A-Za-z0-9])100\\.64\\.9\\.9(?![A-Za-z0-9]))==><tailnet-ip>"
+          in replacements,
           replacements)
     check("every identity of yours maps to the public one",
           f"{TARGET[0]} <{TARGET[1]}> Example Owner <someone.real@example-mail.invalid>" in mailmap

@@ -83,6 +83,10 @@ def usable_identity(value: str) -> bool:
 def identity_patterns(seeds: dict[str, list[str]], public_repositories=()) -> dict:
     """One case-insensitive pattern per kind of identity, matching whole values only.
 
+    "Whole" means not inside a longer run of letters and digits. Punctuation does not shield a
+    value: `runs/__private-org.txt` and `x-private-org` still name it (until 2026-10-19 an
+    underscore or hyphen beside a value hid it from every scan).
+
     `public_repositories` names repositories whose `<owner>/<name>` is the project's public
     identity (a clone URL, a release slug): the owner is excused right there and nowhere else,
     so `<owner>/<name>-state` -- a private repository's name -- is still a finding.
@@ -94,7 +98,8 @@ def identity_patterns(seeds: dict[str, list[str]], public_repositories=()) -> di
         usable = sorted({v.strip() for v in values if usable_identity(v)}, key=len, reverse=True)
         if usable:
             alternatives = "|".join(re.escape(v) for v in usable)
-            patterns[kind] = re.compile(rf"(?i)(?<![\w.-])(?:{alternatives})(?![\w-]){excuse}")
+            patterns[kind] = re.compile(
+                rf"(?i)(?<![A-Za-z0-9])(?:{alternatives})(?![A-Za-z0-9]){excuse}")
     return patterns
 
 

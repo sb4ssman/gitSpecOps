@@ -70,6 +70,7 @@ PLACEHOLDERS = {
     "a real Tailscale address": "<tailnet-ip>",
     "a tailnet address": "<tailnet-ip>",
     "your home folder's name": "<you>",
+    "a value you listed as never to publish": "<private>",
 }
 MACHINE_KINDS = ("a tailnet machine name", "this machine's host name")
 ORGANIZATION_KIND = "a GitHub organization you belong to"
@@ -86,7 +87,7 @@ def _git_identity(repo: Path) -> tuple[str, str]:
 def _bounded(value: str) -> str:
     """The replacement rule for one value: case-insensitive, whole value only."""
     # A scoped flag, so rules can also be joined into one pattern (verification does).
-    return rf"(?i:(?<![\w.-]){re.escape(value)}(?![\w-]))"
+    return rf"(?i:(?<![A-Za-z0-9]){re.escape(value)}(?![A-Za-z0-9]))"
 
 
 #: Generated files that should never have been published. Removing them from history is
