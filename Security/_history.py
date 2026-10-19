@@ -145,6 +145,14 @@ def _tips(repo: Path, refs: list[str]) -> set[str]:
     return {_git(repo, ["rev-parse", f"{ref}^{{commit}}"]).strip() for ref in refs}
 
 
+def tip_matches(repo: Path, ref: str, pattern) -> bool:
+    """Whether any file at `ref`'s tip matches `pattern` (a compiled regular expression)."""
+    shas = {parts[2] for parts in
+            (line.split() for line in _git(repo, ["ls-tree", "-r", ref]).splitlines())
+            if len(parts) >= 3 and parts[1] == "blob"}
+    return any(pattern.search(text) for _sha, text, _binary in _read_blobs(repo, sorted(shas)))
+
+
 def _commit_records(repo: Path, refs: list[str]):
     """Yield (sha, author name, author email, committer name, committer email, date, message)."""
     text = _git(repo, ["log", "--format=%H%x00%an%x00%ae%x00%cn%x00%ce%x00%aI%x00%B%x01", *refs])

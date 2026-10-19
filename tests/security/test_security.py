@@ -157,6 +157,9 @@ with tempfile.TemporaryDirectory(prefix="security-") as temp:
           "*.pyc" in decided["remove_paths"] and "__pycache__/*" in decided["remove_paths"],
           decided["remove_paths"])
     check("binary content is reported as only partly inspectable", decided["binary_paths"] >= 1)
+    check("each ref records whether its tip holds a planned value",
+          decided["refs"]["refs/heads/main"].get("clean_tip") is False,
+          decided["refs"])  # the tip still holds the planted .pyc with a user path
     check("the mirror is a bare clone of branches and tags",
           (plan_dir / "mirror.git" / "HEAD").is_file()
           and "refs/heads/main" in decided["refs"]

@@ -52,7 +52,7 @@ from Basic._confirm import confirm_typed  # noqa: E402
 from Basic._console import enable_unicode_output  # noqa: E402
 from Basic._paths import config_home  # noqa: E402
 from Basic._run import run, run_git  # noqa: E402
-from Security._history import scan_history  # noqa: E402
+from Security._history import scan_history, tip_matches  # noqa: E402
 from Security._patterns import SECRETS, mask  # noqa: E402
 from Security._seeds import identity_seeds  # noqa: E402
 from Security._repo import owner as repository_owner, patterns_for  # noqa: E402
@@ -183,6 +183,12 @@ def _replacements_text(plan: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _planned_pattern(decided: dict):
+    """Every planned value as one pattern (the same rules filter-repo applies), or None."""
+    values = list(decided["replacements"])
+    return re.compile("|".join(f"(?:{_bounded(v)})" for v in values)) if values else None
+
+
 def _refs(repo: Path) -> dict[str, dict]:
     """Every ref's commit count and tip tree, for proving later that nothing else changed."""
     refs = {}
@@ -234,7 +240,13 @@ def plan(repo: Path, into: Path, *, seeds: dict, target: tuple[str, str] | None 
     remote_branches = [ref.split("/", 3)[3] for ref in run_git(
         repo, ["for-each-ref", "--format=%(refname)", "refs/remotes/origin"]).stdout.split()
         if not ref.endswith("/HEAD")]
-    decided.update({"repository": str(repo), "origin": origin, "refs": _refs(mirror),
+    refs = _refs(mirror)
+    planned = _planned_pattern(decided)
+    for ref, facts in refs.items():
+        # Per ref: a tip holding no planned value must come out byte-identical. (The published
+        # tip may still hold one that the local tip has already lost.)
+        facts["clean_tip"] = planned is None or not tip_matches(mirror, ref, planned)
+    decided.update({"repository": str(repo), "origin": origin, "refs": refs,
                     "remote_branches": remote_branches,
                     "planned_at": datetime.now().isoformat(timespec="seconds")})
     (into / "mailmap.txt").write_text(_mailmap_text(decided), encoding="utf-8")
@@ -248,10 +260,8 @@ def verify(plan_dir: Path) -> tuple[bool, list[str]]:
     plan_dir = plan_dir.resolve()
     expected = json.loads((plan_dir / "expected.json").read_text(encoding="utf-8"))
     mirror = plan_dir / "mirror.git"
-    values = list(expected["replacements"])
-    patterns = {"a planned value": re.compile("|".join(f"(?:{_bounded(v)})" for v in values))} \
-        if values else {}
-    report = scan_history(mirror, ["--all"], patterns)
+    planned = _planned_pattern(expected)
+    report = scan_history(mirror, ["--all"], {"a planned value": planned} if planned else {})
     problems = []
     for exposure in report.exposures.values():
         problems.append(f"still present: {mask(exposure.value)} in "
@@ -279,12 +289,17 @@ def verify(plan_dir: Path) -> tuple[bool, list[str]]:
         if now["commits"] > before["commits"] or (now["commits"] < before["commits"]
                                                   and not removed):
             problems.append(f"{ref}: {before['commits']} commits before, {now['commits']} after")
-        if unchanged_files and now["tree"] != before["tree"]:
+        if (unchanged_files or (before.get("clean_tip") and not removed)) \
+                and now["tree"] != before["tree"]:
             problems.append(f"{ref}: the current files changed, but they held no planned value")
     lines = [f"Verified {report.commits} commit(s), {report.blobs} file version(s) in {mirror}"]
     lines += [f"  PROBLEM: {p}" for p in problems] or [
         "  clean: no planned value, no old identity; every ref has the same commit count"
-        + ("; current files byte-identical" if unchanged_files else "")]
+        + ("; current files byte-identical on " + ", ".join(
+            ref for ref, before in expected["refs"].items()
+            if unchanged_files or (before.get("clean_tip") and not removed))
+           if unchanged_files or any(b.get("clean_tip") for b in expected["refs"].values())
+           else "")]
     return not problems, lines
 
 
