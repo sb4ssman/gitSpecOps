@@ -10,15 +10,16 @@ _Last tended: 2026-10-19 16:15 (new top section; the 13:45 one below it is kept 
 
 ### 2026-10-19 16:15 — where things stand (read this first)
 
-**Sb4ssport-Alpha: the tools are ready; the plans are not made yet, on purpose.** The
-Sb4ssport-Authority window committed and pushed a "checkpoint before sanitization" into all ten
-repositories at 15:37; a plan covers only the commits that exist when it is made, so plans wait
-until that agent has stopped committing. A rehearsal on Orbital-Workshop (the only hard one)
-planned, applied **in the mirror only** and verified clean under the new per-file accounting.
-Rehearsal plan folders sit in `.agents/output/security/Orbital-Workshop/rehearsal-*` (ignored,
-deletable; `rm -rf` is blocked by the user's guard hook, so they stay until the user removes them).
+**Sb4ssport-Alpha: ten plans written 2026-10-19 16:16, waiting for the user's `apply`.** Made
+after the Authority window finished committing (122 commits incl. its 15:37 checkpoints;
+Authority stays idle until this is done), with the IOCCC constant kept and the old account's
+noreply address claimed. Plans: `.agents/output/security/<repo>/rewrite-20261019-1616*`
+(ignored). Cross-checked with Authority's evidence: 12 signed commits (9 + 3), generated caches
+removed. Orbital-Workshop: 3 identities, 7 values; the other nine: one identity each, no values.
+A rehearsal of Orbital-Workshop (applied in its mirror only) verified clean; the `rehearsal-*`
+folders are deletable (`rm -rf` is blocked by the user's guard hook).
 
-What the run looks like, from this folder, once Authority is quiet:
+The run, from this folder:
 
 1. `python Security/scan_folder.py <Sb4ssport-Alpha folder> --online --plan --keep <IOCCC magic>`
    (the IOCCC value is a published contest constant in third-party archives; the full report
