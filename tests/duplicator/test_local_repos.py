@@ -13,7 +13,14 @@ from _bootstrap import setup  # noqa: E402
 
 setup()
 
-from Special.duplicate_org._local_repos import duplicate_repo_names, scan_local_git_repos  # noqa: E402
+from Basic._console import enable_unicode_output  # noqa: E402
+from Special.duplicate_org._local_repos import (  # noqa: E402
+    duplicate_repo_names,
+    safe_cleanup_directory,
+    scan_local_git_repos,
+)
+
+enable_unicode_output()  # as the duplicator's entry point does; cleanup prints ⚠
 
 
 def make_worktree(path):
@@ -61,6 +68,48 @@ with tempfile.TemporaryDirectory(prefix="repo-discovery-test-") as temp:
     ])
     if list(collisions) != ["same-repo"]:
         failures.append(f"duplicate names: {collisions}")
+
+# --- cleanup deletes only what discovery itself calls a repository ---------------------------
+# The bug this pins (2026-10-19): any folder holding an entry named `config` or `HEAD` was
+# treated as a repository and deleted. The batch download skips only folders the scan above
+# recognizes, so a plain project folder sharing a repository's name reached the cleanup -- and
+# a `config/` subfolder, common in ordinary projects, was enough to have it removed.
+with tempfile.TemporaryDirectory(prefix="cleanup-test-") as temp:
+    parent = Path(temp) / "dest"
+
+    lookalikes = {
+        "config-folder": lambda p: (p / "config").mkdir(parents=True),
+        "config-file": lambda p: (p.mkdir(parents=True), (p / "config").write_text("x")),
+        "head-file": lambda p: (p.mkdir(parents=True), (p / "HEAD").write_text("x")),
+    }
+    for name, build in lookalikes.items():
+        folder = parent / name
+        build(folder)
+        (folder / "precious.txt").write_text("exists nowhere else\n", encoding="utf-8")
+        if scan_local_git_repos(parent / name):
+            failures.append(f"{name}: the scan should not call this a repository")
+        if safe_cleanup_directory(str(folder), str(parent), name):
+            failures.append(f"{name}: cleanup reported success on a non-repository")
+        if not (folder / "precious.txt").exists():
+            failures.append(f"{name}: a non-repository folder was deleted")
+
+    make_worktree(parent / "real-clone")
+    if not safe_cleanup_directory(str(parent / "real-clone"), str(parent), "real-clone"):
+        failures.append("a real repository inside the parent was not cleaned up")
+    if (parent / "real-clone").exists():
+        failures.append("cleanup reported success but the repository is still there")
+
+    make_bare(parent / "mirror-clone.git")
+    if not safe_cleanup_directory(str(parent / "mirror-clone.git"), str(parent), "mirror-clone"):
+        failures.append("a real mirror repository inside the parent was not cleaned up")
+
+    outside = Path(temp) / "elsewhere"
+    make_worktree(outside)
+    if safe_cleanup_directory(str(outside), str(parent), "elsewhere") or not outside.exists():
+        failures.append("cleanup reached outside its parent")
+    make_worktree(parent)
+    if safe_cleanup_directory(str(parent), str(parent), "dest") or not parent.exists():
+        failures.append("cleanup deleted the parent folder itself")
 
 if failures:
     print("LOCAL-REPOS-TESTS FAILED:")

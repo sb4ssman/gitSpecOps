@@ -52,13 +52,12 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
         else:
             repo_final_path = os.path.join(temp_dir, repo_name)
 
-        # Clean up any leftover directory first (safely)
+        # Anything already here was not made by this run. The batch skips folders discovery
+        # recognizes as repositories, so what remains is the user's own folder -- possibly the
+        # only copy of something. It is never deleted as a "leftover"; this repository fails.
         if os.path.exists(repo_final_path):
-            with PRINT_LOCK:
-                print(f"  → [{repo_name}] Cleaning up leftover directory...")
-            if not safe_cleanup_directory(repo_final_path, temp_dir, repo_name):
-                with PRINT_LOCK:
-                    print(f"  ⚠ [{repo_name}] Warning: Could not safely clean up directory")
+            raise RuntimeError(f"{repo_final_path} already exists and is not a repository this "
+                               "run cloned; it was left untouched (move it aside to download here)")
 
         clone_url = f"https://github.com/{source_org}/{repo_name}.git"
 
@@ -186,17 +185,17 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
         print("  ⚠ This repo uses Git LFS")
 
     repo_temp_path = os.path.join(temp_dir, repo_name)
+    created = False  # cleanup may remove only a mirror this run cloned
 
     try:
         # Step 1: Clone from source org
         print(f"  → Cloning from {source_org}...")
 
-        # Clean up any leftover temp directory first (safely)
+        # A folder already at the working path was not made by this run: refuse, never delete.
         if os.path.exists(repo_temp_path):
-            print("  → Cleaning up leftover temp directory...")
-            if not safe_cleanup_directory(repo_temp_path, temp_dir, repo_name):
-                print("  ⚠ Warning: Could not safely clean up temp directory")
-                print("  → Attempting clone anyway...")
+            raise RuntimeError(f"{repo_temp_path} already exists and is not a mirror this run "
+                               "cloned; it was left untouched (choose an empty working folder)")
+        created = True
 
         clone_url = f"https://github.com/{source_org}/{repo_name}.git"
 
@@ -266,8 +265,8 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
         return {'status': 'success', 'elapsed': elapsed}
 
     except Exception as e:
-        # Clean up on failure for migrate mode (safely)
-        if os.path.exists(repo_temp_path):
+        # Clean up on failure for migrate mode (safely) -- only what this run cloned
+        if created and os.path.exists(repo_temp_path):
             safe_cleanup_directory(repo_temp_path, temp_dir, repo_name)
 
         elapsed = time.time() - start_time

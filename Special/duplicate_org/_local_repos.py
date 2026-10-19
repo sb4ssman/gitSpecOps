@@ -9,12 +9,13 @@ expected parent, actually a git repo, name as expected). Pure filesystem; no git
 
 import os
 import shutil
-import time
+import stat
+import sys
 from pathlib import Path
 
 # Shared discovery lives at the repo root. Keep direct script execution working.
 
-from Basic._discovery import find_repos
+from Basic._discovery import classify, find_repos
 
 
 def scan_local_git_repos(directory_path, recursive=False):
@@ -50,63 +51,59 @@ def duplicate_repo_names(repos):
     return {name: paths for name, paths in grouped.items() if len(paths) > 1}
 
 
+def _clear_readonly_and_retry(func, path, _exc):
+    """Git marks object files read-only; on Windows `rmtree` cannot remove them until cleared."""
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
+
 def safe_cleanup_directory(directory_path, expected_parent_dir, repo_name):
-    """
-    Safely clean up a directory, verifying it's safe to delete.
+    """Delete a clone this run made, but only after proving that is what it is.
 
-    Args:
-        directory_path: Full path to directory to delete
-        expected_parent_dir: Parent directory this should be in
-        repo_name: Expected repository name for validation
+    Refuses (returns False, deletes nothing) unless all of these hold:
 
-    Returns:
-        bool: True if cleanup succeeded or wasn't needed, False if unsafe
+    - the folder is strictly *inside* ``expected_parent_dir`` -- never the parent itself;
+    - shared discovery (`Basic._discovery.classify`) calls it a repository -- the same test
+      the scan uses, so "is this a repository?" can never get two answers;
+    - its name is ``repo_name`` or ``repo_name.git``.
+
+    Callers must also never pass a folder that existed before this run cloned it: a folder the
+    user made is not a leftover, whatever it contains.
+
+    Returns True if the folder is gone (or never existed), False if it was refused or survived.
     """
     if not os.path.exists(directory_path):
         return True
 
-    # Verify path is within expected parent (prevent path traversal)
     try:
         abs_directory = os.path.abspath(directory_path)
         abs_parent = os.path.abspath(expected_parent_dir)
-        if os.path.commonpath([abs_directory, abs_parent]) != abs_parent:
-            print(f"  ⚠ ERROR: Path {directory_path} is outside expected parent {expected_parent_dir}")
-            return False
-    except Exception as e:
-        print(f"  ⚠ ERROR: Could not validate path safety: {str(e)}")
+        inside = (abs_directory != abs_parent
+                  and os.path.commonpath([abs_directory, abs_parent]) == abs_parent)
+    except ValueError as e:  # different drives on Windows, or a mix of absolute and relative
+        print(f"  ⚠ ERROR: Could not validate path safety: {e}")
+        return False
+    if not inside:
+        print(f"  ⚠ ERROR: {directory_path} is not inside {expected_parent_dir}; not deleted")
         return False
 
-    # Verify it's actually a git repository
-    is_git_repo = False
-    if os.path.isdir(directory_path):
-        # Check for bare repo (mirror) - has HEAD or config at root
-        if os.path.exists(os.path.join(directory_path, 'HEAD')) or os.path.exists(os.path.join(directory_path, 'config')):
-            is_git_repo = True
-        # Check for regular repo - has .git subfolder
-        elif os.path.isdir(os.path.join(directory_path, '.git')):
-            is_git_repo = True
-
-    if not is_git_repo:
-        print(f"  ⚠ ERROR: {directory_path} does not appear to be a git repository")
+    if classify(Path(abs_directory)) is None:
+        print(f"  ⚠ ERROR: {directory_path} is not a git repository; not deleted")
         return False
 
-    # Verify repo name matches expected pattern (basic check)
-    dir_name = os.path.basename(directory_path)
-    expected_name = repo_name if not dir_name.endswith('.git') else f"{repo_name}.git"
-    if dir_name != expected_name and dir_name != repo_name:
-        # Allow some flexibility for .git suffix
-        if not (dir_name == f"{repo_name}.git" or dir_name == repo_name):
-            print(f"  ⚠ WARNING: Directory name '{dir_name}' doesn't match expected '{repo_name}'")
-            # Don't fail on this, but warn
+    if os.path.basename(abs_directory) not in (repo_name, f"{repo_name}.git"):
+        print(f"  ⚠ ERROR: {directory_path} is not named {repo_name!r}; not deleted")
+        return False
 
-    # Safe to delete
     try:
-        shutil.rmtree(directory_path, ignore_errors=False)
-        time.sleep(0.5)
-        if os.path.exists(directory_path):
-            print("  ⚠ Warning: Directory still exists after cleanup attempt")
-            return False
-        return True
-    except Exception as e:
-        print(f"  ⚠ Warning: Could not fully clean up directory: {str(e)}")
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(abs_directory, onexc=_clear_readonly_and_retry)
+        else:
+            shutil.rmtree(abs_directory, onerror=_clear_readonly_and_retry)
+    except OSError as e:
+        print(f"  ⚠ Warning: Could not fully clean up directory: {e}")
         return False
+    if os.path.exists(abs_directory):
+        print("  ⚠ Warning: Directory still exists after cleanup attempt")
+        return False
+    return True
