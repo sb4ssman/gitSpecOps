@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -12,11 +13,13 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from Basic._discovery import find_repos  # noqa: E402
-from Basic._facts import git_stdout, repo_facts  # noqa: E402
+from Basic._facts import (git_stdout, remote_urls, repo_facts, root_commit,  # noqa: E402
+                          unpushed_commits)
 from Basic._identity import parse_remote_url  # noqa: E402
 from Basic._run import run_git  # noqa: E402
 
-from manifest import branch_id, repository_id, utc_now  # noqa: E402
+from manifest import (branch_id, local_repository_id, repository_id,  # noqa: E402
+                      root_repository_id, utc_now)
 
 DEFAULT_FETCH_WORKERS = 4
 DEFAULT_FETCH_TIMEOUT_SECONDS = 60
@@ -55,6 +58,10 @@ class Observation:
     # is what lets a table show "main" instead of an opaque id — the same arrangement that
     # already keeps repository names off the wire.
     branches: dict[str, str] = field(default_factory=dict)
+    # The checkout each record came from, aligned with `repositories`. The catalog is keyed by
+    # identity, so two checkouts of one repository (a second clone, a copied folder) share one
+    # catalog entry; only this keeps every folder known, so neither stops being watched.
+    locations: list[Path] = field(default_factory=list)
 
 
 def _status_counts(repo_path: Path) -> tuple[int, int, int] | None:
@@ -89,6 +96,39 @@ def _status_counts(repo_path: Path) -> tuple[int, int, int] | None:
         if record.startswith("2 "):
             index += 1  # porcelain -z emits the original rename path as another field
     return staged, unstaged, untracked
+
+
+#: The pseudo-namespace of repositories no host can name: `local/no-remote` when there is no
+#: remote at all, `local/unrecognized-remote` when the remote's URL names no host/owner/name
+#: (a path, a bare folder). Readable in the dashboard and selectable in a basket like any
+#: namespace; never sent to a provider.
+LOCAL_HOST = "local"
+NO_REMOTE_OWNER = "no-remote"
+UNRECOGNIZED_REMOTE_OWNER = "unrecognized-remote"
+
+
+def _identity(path: Path, facts: dict, secret: str | None):
+    """`(repo_id, kind, has_remote, host, owner, name)` for one repository.
+
+    A remote identity when any remote names a host/owner/name -- `origin` first, then the
+    others by name, so a remote called `github` still counts. Otherwise the root commit, so the
+    same history matches across machines. Otherwise (no commits yet) a per-machine digest.
+    Until 2026-10-19 the absence of a parseable `origin` dropped the repository altogether.
+    """
+    urls = remote_urls(path)
+    ordered = ([urls["origin"]] if "origin" in urls else []) + \
+              [url for remote, url in sorted(urls.items()) if remote != "origin"]
+    for url in ordered:
+        parsed = parse_remote_url(url)
+        if parsed:
+            host, owner, name = parsed
+            return repository_id(host, owner, name, secret), "remote", True, host, owner, name
+    owner = UNRECOGNIZED_REMOTE_OWNER if urls else NO_REMOTE_OWNER
+    root = root_commit(path)
+    if root:
+        return root_repository_id(root, secret), "root", bool(urls), LOCAL_HOST, owner, path.name
+    return (local_repository_id(socket.gethostname(), str(path), secret), "local", bool(urls),
+            LOCAL_HOST, owner, path.name)
 
 
 def in_progress_operation(repo_path: Path) -> str | None:
@@ -208,6 +248,7 @@ def observe_paths(paths: list[Path], secret: str | None = None,
     guessed counts. A caller holding a last-known record keeps it (see IncrementalObserver).
     """
     repositories: list[dict] = []
+    locations: list[Path] = []
     catalog: dict[str, dict] = {}
     branches: dict[str, str] = {}
     issues: list[str] = []
@@ -226,18 +267,14 @@ def observe_paths(paths: list[Path], secret: str | None = None,
             issues.append(f"git cannot read this repository (check folder ownership or "
                           f"safe.directory): {path}")
             continue
-        parsed = parse_remote_url(facts.get("origin"))
-        if not parsed:
-            issues.append(f"missing or unrecognized origin: {path}")
-            continue
         counts = _status_counts(path)
         if counts is None:
             issues.append(f"status unreadable, so uncommitted work cannot be ruled out: {path}")
             continue
-        host, owner, name = parsed
-        repo_id = repository_id(host, owner, name, secret)
+        repo_id, kind, has_remote, host, owner, name = _identity(path, facts, secret)
         staged, unstaged, untracked = counts
         stash_text = git_stdout(path, ["rev-list", "--walk-reflogs", "--count", "refs/stash"])
+        locations.append(path)
         repositories.append({
             "repo_id": repo_id,
             "branch_id": branch_id(facts.get("branch"), secret),
@@ -250,15 +287,21 @@ def observe_paths(paths: list[Path], secret: str | None = None,
             "untracked": untracked,
             "stashes": int(stash_text) if stash_text and stash_text.isdigit() else 0,
             "operation": in_progress_operation(path),
+            "identity": kind,
+            "has_remote": has_remote,
+            "unpushed": unpushed_commits(path),
         })
         # Local-only: the catalog is never published, so it may hold the full identity.
-        # host/owner are what let `converge` ask a provider to name a peer's hash.
+        # host/owner are what let `converge` ask a provider to name a peer's hash; `identity`
+        # tells it which entries no provider can know (see LOCAL_HOST).
         catalog[repo_id] = {"display_name": name, "path": str(path),
-                            "host": host, "owner": owner, "name": name}
+                            "host": host, "owner": owner, "name": name, "identity": kind}
         local_branch = facts.get("branch")
         if local_branch:
             branches[branch_id(local_branch, secret)] = local_branch
 
-    repositories.sort(key=lambda repo: catalog[repo["repo_id"]]["display_name"].lower())
-    return Observation(repositories=repositories, catalog=catalog, issues=issues,
-                       branches=branches)
+    order = sorted(range(len(repositories)), key=lambda index: (
+        catalog[repositories[index]["repo_id"]]["display_name"].lower(), str(locations[index])))
+    return Observation(repositories=[repositories[index] for index in order], catalog=catalog,
+                       issues=issues, branches=branches,
+                       locations=[locations[index] for index in order])

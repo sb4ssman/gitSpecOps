@@ -52,7 +52,7 @@ opt-in saved-work snapshots; it never shares them through the GitHub state repos
 content is never published by this release.
 
 - **Durable:** a private, writable GitHub state repository accessed through your `gh` login.
-  The app writes one names-free v3 manifest per machine through the Contents API; it never
+  The app writes one names-free v4 manifest per machine through the Contents API; it never
   clones that state repository. Creating it requires an explicit setup choice or `--create-repo`.
 - **Medium:** an existing folder managed by your own sync client. No particular client is
   required; gitSpecOps does not install or configure one.

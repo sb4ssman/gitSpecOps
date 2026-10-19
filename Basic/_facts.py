@@ -51,6 +51,44 @@ def ahead_behind(repo_path: Path) -> dict | None:
     return {"behind": int(parts[0]), "ahead": int(parts[1])}
 
 
+def remote_urls(repo_path: Path) -> dict[str, str]:
+    """Every remote's fetch URL, by name. Empty when there is no remote (or git failed)."""
+    proc = run_git(repo_path, ["remote", "-v"])
+    urls: dict[str, str] = {}
+    if proc.returncode != 0:
+        return urls
+    for line in proc.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[2] == "(fetch)":
+            urls.setdefault(parts[0], parts[1])
+    return urls
+
+
+def root_commit(repo_path: Path) -> str | None:
+    """The root commit reachable from HEAD, or None (no commits yet, or git failed).
+
+    Identical in every clone of the same history, so it identifies a repository that has no
+    remote. With several roots (merged histories) the smallest SHA is taken: any fixed rule
+    works, as long as every machine applies the same one.
+    """
+    proc = run_git(repo_path, ["rev-list", "--max-parents=0", "HEAD"])
+    roots = proc.stdout.split() if proc.returncode == 0 else []
+    return min(roots) if roots else None
+
+
+def unpushed_commits(repo_path: Path) -> int | None:
+    """Commits reachable from HEAD, a local branch or a tag that no remote-tracking ref has.
+
+    Unlike ahead/behind this covers every branch, not only the checked-out one, and needs no
+    upstream. Counted against the remote-tracking refs as last fetched. None when git cannot say.
+    """
+    has_head = run_git(repo_path, ["rev-parse", "--verify", "-q", "HEAD"]).returncode == 0
+    proc = run_git(repo_path, ["rev-list", "--count", *(["HEAD"] if has_head else []),
+                               "--branches", "--tags", "--not", "--remotes"])
+    text = proc.stdout.strip()
+    return int(text) if proc.returncode == 0 and text.isdigit() else None
+
+
 def repo_facts(repo_path: Path) -> dict:
     """Read-only facts about one repository. Ambiguity is reported, never guessed."""
     path = Path(repo_path)

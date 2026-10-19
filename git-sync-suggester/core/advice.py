@@ -13,12 +13,22 @@ from __future__ import annotations
 
 # Facts that mean "there is something outstanding here". Order is display order, not
 # precedence — every one that applies is reported.
-PENDING_FLAGS = ("operation", "dirty", "diverged", "ahead", "behind", "stashed", "no_upstream")
+PENDING_FLAGS = ("operation", "dirty", "no_remote", "diverged", "ahead", "unpushed", "behind",
+                 "stashed", "no_upstream")
 
 
 def dirty_count(repo: dict) -> int:
     """Staged + unstaged + untracked entries. Untracked counts: it is still unsaved work."""
     return sum(int(repo.get(key) or 0) for key in ("staged", "unstaged", "untracked"))
+
+
+def elsewhere_unpushed(repo: dict) -> int:
+    """Commits on no remote that the current branch's `ahead` does not already account for:
+    work on other branches or tags, or on a branch with no upstream."""
+    unpushed = repo.get("unpushed")
+    if not isinstance(unpushed, int) or repo.get("has_remote", True) is False:
+        return 0
+    return max(0, unpushed - int(repo.get("ahead") or 0))
 
 
 def repository_flags(repo: dict) -> frozenset[str]:
@@ -31,7 +41,12 @@ def repository_flags(repo: dict) -> frozenset[str]:
         flags.add("dirty")
     if int(repo.get("stashes") or 0):
         flags.add("stashed")
-    if ahead is None or behind is None or not repo.get("has_upstream"):
+    if elsewhere_unpushed(repo):
+        flags.add("unpushed")
+    if repo.get("has_remote", True) is False:
+        # No remote at all: "no upstream" would undersell it -- this is the only copy.
+        flags.add("no_remote")
+    elif ahead is None or behind is None or not repo.get("has_upstream"):
         flags.add("no_upstream")
     else:
         if ahead and behind:
@@ -55,16 +70,23 @@ def describe_repository(repo: dict) -> str:
         parts.append(str(repo.get("operation")))
     if "dirty" in flags:
         parts.append(f"dirty {dirty_count(repo)}")
+    if "no_remote" in flags:
+        parts.append("no remote")
     if "diverged" in flags:
         parts.append(f"diverged {ahead}/{behind}")
     elif "ahead" in flags:
         parts.append(f"ahead {ahead}")
     elif "behind" in flags:
         parts.append(f"behind {behind}")
+    if "unpushed" in flags:
+        parts.append(f"{elsewhere_unpushed(repo)} unpushed on other branches/tags")
     if "stashed" in flags:
         parts.append(f"{stashes} stash" + ("es" if stashes != 1 else ""))
     if "no_upstream" in flags:
         parts.append("no upstream")
+    checkouts = int(repo.get("checkouts") or 1)
+    if checkouts > 1:
+        parts.append(f"{checkouts} checkouts")
     return ", ".join(parts) if parts else "clean"
 
 
@@ -82,12 +104,16 @@ def secondary_facts(repo: dict, headline: str) -> str:
         extras.append(f"{repo.get('operation')} in progress")
     if "dirty" in flags:
         extras.append(f"dirty {dirty_count(repo)}")
+    if "no_remote" in flags:
+        extras.append("no remote")
     if "diverged" in flags:
         extras.append(f"diverged {ahead}/{behind}")
     elif "ahead" in flags:
         extras.append(f"ahead {ahead}")
     elif "behind" in flags:
         extras.append(f"behind {behind}")
+    if "unpushed" in flags:
+        extras.append(f"{elsewhere_unpushed(repo)} unpushed on other branches/tags")
     if "stashed" in flags:
         extras.append(f"{stashes} stash" + ("es" if stashes != 1 else ""))
     return ", ".join(extras)
@@ -101,6 +127,8 @@ def classify_repository(repo: dict) -> tuple[str, str]:
         return "operation", f"finish {repo['operation']}"
     if dirty:
         return "dirty", "COMMIT or preserve"
+    if repo.get("has_remote", True) is False:
+        return "local_only", "only copy: ADD A REMOTE and push"
     if int(repo.get("stashes") or 0):
         return "stashed", f"review {repo['stashes']} stash(es)"
     if ahead is None or behind is None or not repo.get("has_upstream"):
@@ -109,6 +137,8 @@ def classify_repository(repo: dict) -> tuple[str, str]:
         return "diverged", "human decision"
     if ahead:
         return "ahead", f"PUSH suggested ↑{ahead}"
+    if elsewhere_unpushed(repo):
+        return "unpushed", f"PUSH other branches/tags ({elsewhere_unpushed(repo)} on no remote)"
     if behind:
         return "behind", f"PULL suggested ↓{behind}"
     return "synced", "clean and synchronized"

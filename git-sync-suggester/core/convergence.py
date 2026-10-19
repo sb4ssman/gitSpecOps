@@ -81,7 +81,9 @@ def namespaces_from_catalog(catalog: dict[str, dict]) -> list[tuple[str, str]]:
     pairs = {
         (entry["host"], entry["owner"])
         for entry in catalog.values()
-        if entry.get("host") and entry.get("owner")
+        # A root- or locally-identified repository has no host to ask (its namespace is the
+        # observer's `local/...` pseudo-namespace); only a remote identity is resolvable.
+        if entry.get("host") and entry.get("owner") and entry.get("identity", "remote") == "remote"
     }
     return sorted(pairs)
 

@@ -25,6 +25,14 @@ information published, and nothing lost. Identifiers also shrink — 128 bits of
 repository and 64 for a branch are far beyond collision range here — which matters at scale,
 where the record size is what decides how many repositories fit in one manifest.
 
+**v4 stops dropping the work most at risk** (2026-10-19). v3 could identify a repository only
+by its remote, so one with no remote -- the only copy of its whole history -- was left out, and
+ahead/behind covered only the checked-out branch. Each record now says how its `repo_id` was
+derived (`identity`: `remote`, `root` -- an HMAC of the root commit, identical in every clone of
+the same history -- or `local`, a per-machine digest for a repository with no commits),
+whether it has any remote (`has_remote`), and how many commits on any branch, tag or HEAD no
+remote has (`unpushed`). Still no names, paths or branch strings: two counts and a kind.
+
 See `.agents/knowledge/manifest-privacy.md` for the full analysis.
 """
 
@@ -37,10 +45,14 @@ import json
 import secrets
 from datetime import datetime, timezone
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 FLEET_SECRET_BYTES = 32
 FLEET_ID_LABEL = b"gitspecops-sync-suggester-fleet-id"
 BRANCH_LABEL = b"branch:"
+ROOT_LABEL = b"root:"
+LOCAL_LABEL = b"local:"
+#: How a record's repo_id was derived. "remote" is the only kind a host provider can resolve.
+IDENTITY_KINDS = frozenset({"remote", "root", "local"})
 # 128 bits for a repository and 64 for a branch. Both are far beyond collision range for any
 # realistic fleet, and the saving is what keeps a large manifest inside one API read.
 REPO_ID_HEX = 32
@@ -52,6 +64,7 @@ MANIFEST_KEYS = frozenset({
 REPOSITORY_KEYS = frozenset({
     "repo_id", "branch_id", "has_upstream", "upstream_observed_at", "ahead", "behind",
     "staged", "unstaged", "untracked", "stashes", "operation",
+    "identity", "has_remote", "unpushed", "checkouts",
 })
 
 
@@ -108,6 +121,26 @@ def repository_id(host: str, owner: str, name: str, secret: str | None = None) -
     return _digest(identity, secret, REPO_ID_HEX)
 
 
+def root_repository_id(root_sha: str, secret: str | None = None) -> str:
+    """Digest of a repository's root commit: the identity of a repository with no usable remote.
+
+    Two machines holding the same history produce the same id without exchanging a name. A
+    shared root (a template, a fork) is evidence of sameness, not proof -- which is why a remote
+    identity, when there is one, always wins over this.
+    """
+    return _digest(ROOT_LABEL + root_sha.lower().encode("ascii"), secret, REPO_ID_HEX)
+
+
+def local_repository_id(machine_token: str, path: str, secret: str | None = None) -> str:
+    """Digest for a repository with no commits and no remote: nothing else identifies it.
+
+    Per machine by construction (`machine_token` is the host name), so it never matches a
+    repository elsewhere -- an empty history has nothing to match on.
+    """
+    return _digest(LOCAL_LABEL + f"{machine_token}\0{path}".encode("utf-8"), secret,
+                   REPO_ID_HEX)
+
+
 def branch_id(branch: str | None, secret: str | None = None) -> str | None:
     """Digest of a branch name, or None on a detached HEAD.
 
@@ -119,8 +152,52 @@ def branch_id(branch: str | None, secret: str | None = None) -> str | None:
     return _digest(BRANCH_LABEL + branch.encode("utf-8"), secret, BRANCH_ID_HEX)
 
 
+def _merge_counts(values, combine):
+    known = [value for value in values if isinstance(value, int)]
+    return combine(known) if known else None
+
+
+def merge_checkouts(repositories: list[dict]) -> list[dict]:
+    """One record per repository identity, combining checkouts so no work is hidden.
+
+    Two checkouts of one repository on one machine -- a second clone, a copied folder, a linked
+    worktree -- share an identity. Keeping only one let a dirty copy hide behind a clean one,
+    and a report carrying both was refused by every peer. Combined: dirt and stashes add up,
+    ahead / behind / unpushed take the worst case, an upstream or a fresh fetch counts only if
+    every checkout has one, and `checkouts` says how many folders stand behind the record.
+    """
+    groups: dict[str, list[dict]] = {}
+    for repo in repositories:
+        groups.setdefault(repo["repo_id"], []).append(repo)
+    merged = []
+    for repo_id, group in groups.items():
+        if len(group) == 1:
+            merged.append(group[0])
+            continue
+        stamps = [repo.get("upstream_observed_at") for repo in group]
+        record = dict(group[0])
+        record.update({
+            "staged": sum(int(repo.get("staged") or 0) for repo in group),
+            "unstaged": sum(int(repo.get("unstaged") or 0) for repo in group),
+            "untracked": sum(int(repo.get("untracked") or 0) for repo in group),
+            "stashes": sum(int(repo.get("stashes") or 0) for repo in group),
+            "ahead": _merge_counts([repo.get("ahead") for repo in group], max),
+            "behind": _merge_counts([repo.get("behind") for repo in group], max),
+            "unpushed": _merge_counts([repo.get("unpushed") for repo in group], max),
+            "has_upstream": all(repo.get("has_upstream") for repo in group),
+            "has_remote": all(repo.get("has_remote", True) for repo in group),
+            "upstream_observed_at": None if None in stamps else min(stamps),
+            "operation": next((repo["operation"] for repo in group if repo.get("operation")),
+                              None),
+            "checkouts": sum(int(repo.get("checkouts") or 1) for repo in group),
+        })
+        merged.append(record)
+    return merged
+
+
 def build_manifest(fleet_id: str, machine_id: str, machine_label: str, repositories: list[dict],
                    observed_at: str | None = None) -> dict:
+    repositories = merge_checkouts(repositories)
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "fleet_id": fleet_id,
@@ -134,7 +211,7 @@ def build_manifest(fleet_id: str, machine_id: str, machine_label: str, repositor
 
 
 def validate_manifest(value: object) -> dict:
-    """Validate the small v3 boundary and reject fields that could leak local metadata."""
+    """Validate the small v4 boundary and reject fields that could leak local metadata."""
     if not isinstance(value, dict):
         raise ValueError("manifest must be a JSON object")
     extra_manifest_keys = set(value) - MANIFEST_KEYS
@@ -143,7 +220,7 @@ def validate_manifest(value: object) -> dict:
     version = value.get("schema_version")
     if version != SCHEMA_VERSION:
         detail = (" (written by an older Sync Suggester; re-run 'check' on that machine)"
-                  if version in (1, 2) else "")
+                  if version in (1, 2, 3) else "")
         raise ValueError(f"unsupported schema_version: {version!r}{detail}")
     for key in ("fleet_id", "machine_id", "machine_label", "observed_at"):
         if not isinstance(value.get(key), str) or not value[key]:
@@ -163,6 +240,17 @@ def validate_manifest(value: object) -> dict:
                             f"repositories[{index}].branch_id")
         if not isinstance(repo.get("has_upstream", False), bool):
             raise ValueError(f"repositories[{index}].has_upstream must be a boolean")
+        if not isinstance(repo.get("has_remote", True), bool):
+            raise ValueError(f"repositories[{index}].has_remote must be a boolean")
+        if repo.get("identity", "remote") not in IDENTITY_KINDS:
+            raise ValueError(f"repositories[{index}].identity must be one of "
+                             f"{sorted(IDENTITY_KINDS)}")
+        unpushed = repo.get("unpushed")
+        if unpushed is not None and (type(unpushed) is not int or unpushed < 0):
+            raise ValueError(f"repositories[{index}].unpushed must be a non-negative integer")
+        checkouts = repo.get("checkouts", 1)
+        if type(checkouts) is not int or checkouts < 1:
+            raise ValueError(f"repositories[{index}].checkouts must be a positive integer")
     return value
 
 

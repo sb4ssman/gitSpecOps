@@ -56,12 +56,14 @@ class IncrementalObserver:
         self._path_issues.clear()
         self._issues = list(observation.issues)
         self.excluded_from_observation = 0
-        for repo in observation.repositories:
-            catalog = observation.catalog[repo["repo_id"]]
+        for repo, location in zip(observation.repositories, observation.locations):
+            # Per checkout, not per identity: two checkouts of one repository each stay
+            # watched; `build_manifest` merges them into one record when reporting.
+            catalog = {**observation.catalog[repo["repo_id"]], "path": str(location)}
             if not self.observes(catalog):
                 self.excluded_from_observation += 1
                 continue
-            path = Path(catalog["path"]).resolve()
+            path = Path(location).resolve()
             # A rescan does not un-check a remote that was fetched a few minutes ago.
             repo["upstream_observed_at"] = self._fetched_at.get(path)
             self._repos[path] = repo

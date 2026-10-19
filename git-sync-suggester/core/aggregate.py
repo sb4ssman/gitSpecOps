@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from advice import classify_repository, secondary_facts
+from advice import classify_repository, elsewhere_unpushed, secondary_facts
 from config import display_name_for
 from manifest import decode_manifest
 
@@ -27,10 +27,12 @@ EXPIRED = "expired"
 SEVERITY = {
     "collision": 90,
     "operation": 80,
+    "local_only": 75,
     "dirty": 70,
     "stale_work": 65,
     "diverged": 60,
     "ahead": 50,
+    "unpushed": 45,
     "behind": 40,
     "stashed": 30,
     "unknown": 20,
@@ -40,7 +42,8 @@ SEVERITY = {
 # Rows at or below this need no action; the dashboard folds them away unless asked for all.
 QUIET_SEVERITY = SEVERITY["stale_peer"]
 # States that mean "someone left unfinished work here" — these survive going stale.
-WORK_STATES = frozenset({"dirty", "operation", "diverged", "ahead", "stashed"})
+WORK_STATES = frozenset({"dirty", "operation", "local_only", "diverged", "ahead", "unpushed",
+                         "stashed"})
 
 
 def parse_timestamp(text: object) -> datetime | None:
@@ -251,6 +254,18 @@ def _row_advice(name: str, cells: dict[str, Cell], views: list[MachineView]) -> 
         return "stale_work", _with_extras(
             f"last known uncommitted work on {label[mid]} ({age_phrase(cell.age)})", cell)
 
+    alone = machines_with("local_only")
+    if alone:
+        names = ", ".join(label[mid] for mid, _ in alone)
+        mid, cell = alone[0]
+        if len(alone) > 1:
+            text = f"NO REMOTE: copies on {names}, none on a server — add a remote and push"
+        else:
+            text = f"ONLY COPY: no remote, held only on {names} — add a remote and push"
+        if not cell.trusted:
+            text += f" (last seen {age_phrase(cell.age)})"
+        return ("local_only" if cell.trusted else "stale_work"), _with_extras(text, cell)
+
     diverged = machines_with("diverged")
     if diverged:
         mid, cell = diverged[0]
@@ -263,6 +278,15 @@ def _row_advice(name: str, cells: dict[str, Cell], views: list[MachineView]) -> 
         suffix = "" if cell.trusted else f" (last seen {age_phrase(cell.age)})"
         return ("ahead" if cell.trusted else "stale_work",
                 _with_extras(f"PUSH {label[mid]} ↑{count}{suffix}", cell))
+
+    unpushed = machines_with("unpushed")
+    if unpushed:
+        mid, cell = unpushed[0]
+        count = elsewhere_unpushed(cell.repo)
+        suffix = "" if cell.trusted else f" (last seen {age_phrase(cell.age)})"
+        return ("unpushed" if cell.trusted else "stale_work", _with_extras(
+            f"PUSH {label[mid]}: {count} commit(s) on other branches/tags are on no remote"
+            f"{suffix}", cell))
 
     behind = machines_with("behind")
     if behind:
@@ -336,6 +360,10 @@ def cell_text(cell: Cell) -> str:
         parts.append(f"↑{ahead}")
     elif behind:
         parts.append(f"↓{behind}")
+    if repo.get("has_remote", True) is False:
+        parts.append("⊘")
+    if elsewhere_unpushed(repo):
+        parts.append(f"⇡{elsewhere_unpushed(repo)}")
     if int(repo.get("stashes") or 0):
         parts.append(f"⚑{repo['stashes']}")
     if not parts:
@@ -404,5 +432,6 @@ def render_dashboard(views: list[MachineView], rows: list[Row], now: datetime,
             f"different fleet secret (fleet {manifest.get('fleet_id')}) and is excluded — "
             "re-run init on that machine with this fleet's secret.")
     lines.append("Legend: ✓ clean  ✎ uncommitted  ↑ ahead  ↓ behind  ↕ diverged  "
-                 "⚑ stash  ⚠ attention  ? unknown  - not present")
+                 "⚑ stash  ⊘ no remote  ⇡ unpushed on other branches/tags  ⚠ attention  ? unknown  "
+                 "- not present")
     return "\n".join(lines)

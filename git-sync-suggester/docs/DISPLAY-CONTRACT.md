@@ -51,8 +51,9 @@ skin is `ui/fleet_dashboard.html`, `ui/fleet_standard.css` and `ui/fleet_standar
   `severity`, status text or tone.
 - `tone` is one of `danger`, `warning`, `success`, `neutral` or `muted`. It conveys emphasis,
   not meaning; the adjacent text and state remain required for accessibility.
-- `tags` drive filtering. Current tags include `attention`, `dirty`, `ahead`, `stale` and
-  `missing`. Additive tags may appear later and must be ignored safely by older clients.
+- `tags` drive filtering. Current tags include `attention`, `dirty`, `ahead` (any commit on no
+  remote: current branch ahead, or other branches/tags), `local_only` (no remote at all: the only
+  copy), `stale` and `missing`. Additive tags may appear later and must be ignored safely by older clients.
 - `state` preserves the existing aggregate state vocabulary. `description` is display-ready
   and retains compound facts such as dirty plus ahead.
 - A missing machine cell is explicit: `present=false`, `freshness=absent`, `facts=null`.

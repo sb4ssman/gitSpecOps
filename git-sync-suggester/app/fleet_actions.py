@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 
 from Basic._discovery import RepoHit, classify, find_repos
-from Basic._facts import repo_facts
+from Basic._facts import repo_facts, unpushed_commits
 from Basic._identity import parse_remote_url
 from Basic._run import run_git
 
@@ -197,7 +197,7 @@ def audit_repositories(paths) -> list[dict]:
             findings.append(f"behind {facts['behind']}")
         if facts.get("dirty_index") or facts.get("dirty_work_tree"):
             findings.append("tracked changes")
-        unpushed = _unpushed_commits(path)
+        unpushed = unpushed_commits(path)
         if unpushed:
             findings.append(f"{unpushed} commit(s) on no remote (any branch or tag)")
         stashes = _count_lines(path, ["stash", "list"])
@@ -238,16 +238,6 @@ def _count_lines(path: Path, args: list[str]) -> int | None:
     return None if proc.returncode else len([line for line in proc.stdout.splitlines() if line])
 
 
-def _unpushed_commits(path: Path) -> int | None:
-    """Commits reachable from HEAD, a local branch or a tag that no remote-tracking ref has."""
-    has_head = run_git(path, ["rev-parse", "--verify", "-q", "HEAD"],
-                       timeout=45, env=NON_INTERACTIVE_GIT_ENV).returncode == 0
-    proc = run_git(path, ["rev-list", "--count", *(["HEAD"] if has_head else []),
-                          "--branches", "--tags", "--not", "--remotes"],
-                   timeout=120, env=NON_INTERACTIVE_GIT_ENV)
-    text = proc.stdout.strip()
-    return int(text) if proc.returncode == 0 and text.isdigit() else None
-
 
 def _wipe_row(hit: RepoHit, recoverable) -> dict:
     path = Path(hit.path).resolve()
@@ -271,7 +261,7 @@ def _wipe_row(hit: RepoHit, recoverable) -> dict:
                                    + _message(fetched))
 
     reasons = []
-    unpushed = _unpushed_commits(path)
+    unpushed = unpushed_commits(path)
     if unpushed is None:
         reasons.append(("unpushed_unknown", "Git could not count commits missing from remotes."))
     elif unpushed:

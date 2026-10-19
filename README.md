@@ -236,8 +236,9 @@ new status.
 
 ### What crosses the wire
 
-Published manifests (schema v3) identify repositories by `HMAC-SHA256(fleet secret,
-host/owner/name)`. No display names, URLs, paths, filenames, diffs, commit messages, commit SHAs,
+Published manifests (schema v4) identify repositories by `HMAC-SHA256(fleet secret,
+host/owner/name)` — or, for a repository with no usable remote, an HMAC of its root commit, so
+the only copy of something is still on the map. No display names, URLs, paths, filenames, diffs, commit messages, commit SHAs,
 or source content — a record is salted digests and small integers. Readable names come from an
 unsynchronized local catalog. The live tier shares readable names *within your own private
 tailnet* only. Details and honest limits:

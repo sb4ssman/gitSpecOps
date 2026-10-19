@@ -77,6 +77,26 @@ A published record is now:
 
 Salted digests and small integers. There is nothing left in it that names anything.
 
+## Schema v4 (2026-10-19): the work most at risk is no longer invisible
+
+v3 could only identify a repository by its remote, so a repository with **no remote** — the only
+copy of its whole history — was dropped from the map, and ahead/behind covered only the
+checked-out branch. v4 adds, per record:
+
+- `identity`: how `repo_id` was derived — `remote` (as before), `root` (HMAC of the root commit
+  under the fleet secret: identical in every clone of the same history, so two machines match
+  without exchanging a name; a shared root, as in a template or fork, is evidence rather than
+  proof, which is why a remote identity always wins), or `local` (no commits yet: a per-machine
+  digest that never matches anything elsewhere).
+- `has_remote`: whether any remote exists.
+- `unpushed`: commits on any branch, tag or HEAD that no remote-tracking ref has.
+- `checkouts`: how many folders on this machine share the identity (merged so no work hides).
+
+What it adds to the published bytes: one of three words, a boolean and two small integers. It
+reveals *that* a machine holds N repositories with no remote, not which; the root-commit digest
+is salted exactly like the name digest. Names (the separate v4 question of carrying readable
+names on the private repo transport) are still not in the record.
+
 ## The transport determines how much the salt is worth
 
 Worth stating plainly, because an earlier version of this note said "a secret stored beside the

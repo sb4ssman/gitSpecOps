@@ -94,13 +94,18 @@ with tempfile.TemporaryDirectory(prefix="sync-observe-") as tmp:
           "upstream_observed_at was stamped without --fetch")
     check(not quiet.issues, f"a no-fetch observation reported issues: {quiet.issues}")
 
-    # --- an unparseable origin is skipped, with a reason ----------------------------
+    # --- an unparseable origin is observed, never guessed into a host identity ------
+    # Until 2026-10-19 it was skipped with an issue line, so a repository whose remote is a
+    # path (often the only real copy) never reached the fleet. It is now observed under its
+    # root commit and marked; no host/owner/name is invented for it.
     make_repo(collection, "odd-remote", "/some/local/path/not/a/url")
     odd = observe_roots([RootSpec(collection)], SECRET)
-    check(any("unrecognized origin" in issue for issue in odd.issues),
-          f"a repository with an unusable origin was not reported: {odd.issues}")
-    check(len(odd.repositories) == 1,
-          "a repository with an unusable origin should be skipped, not guessed at")
+    check(len(odd.repositories) == 2,
+          f"a repository with an unusable origin must still be observed: {odd.repositories}")
+    odd_entry = next(e for e in odd.catalog.values() if e["display_name"] == "odd-remote")
+    check(odd_entry["identity"] == "root" and odd_entry["host"] == "local"
+          and odd_entry["owner"] == "unrecognized-remote",
+          f"an unusable origin must not be guessed into a host identity: {odd_entry}")
 
     # --- fetch success and failure, with the network boundary stubbed ---------------
     make_repo(collection, "beta-repo", "https://example.test/sample-team/beta-repo.git")
@@ -116,7 +121,7 @@ with tempfile.TemporaryDirectory(prefix="sync-observe-") as tmp:
 
     check(sorted(attempted) == ["alpha-repo", "beta-repo", "odd-remote"],
           f"fetch was not attempted for every discovered repository: {sorted(attempted)}")
-    check(len(fetched.repositories) == 2,
+    check(len(fetched.repositories) == 3,
           f"a failed fetch lost a repository: {len(fetched.repositories)}")
     check(stamps.get("alpha-repo") is not None,
           "a successful fetch did not stamp upstream_observed_at")
@@ -133,7 +138,7 @@ with tempfile.TemporaryDirectory(prefix="sync-observe-") as tmp:
 
     survived = observe_roots([RootSpec(collection)], SECRET, fetch=True,
                              fetcher=exploding_fetch)
-    check(len(survived.repositories) == 2,
+    check(len(survived.repositories) == 3,
           "a raising fetcher took the whole observation down; failures must be collected")
     check(all(r["upstream_observed_at"] is None for r in survived.repositories),
           "a repository was stamped despite the fetch raising")

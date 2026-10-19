@@ -34,6 +34,9 @@ def validate_report(report: dict, machine_id: str, fleet_id: str) -> dict:
                 continue
             if type(value) is not int or value < 0:
                 raise ValueError(f"invalid {key} count")
+        unpushed = repo.get("unpushed")
+        if unpushed is not None and (type(unpushed) is not int or unpushed < 0):
+            raise ValueError("invalid unpushed count")
         if repo.get("operation") not in (None, "merge", "rebase", "cherry-pick", "revert", "bisect"):
             raise ValueError("invalid operation")
     names = report["names"]

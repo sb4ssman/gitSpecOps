@@ -17,8 +17,14 @@ _Last tended: 2026-10-19 11:30 (two new top sections; everything below them is a
 - [x] **`fleet safe-to-wipe` said SAFE (exit 0) over the only copy of work.** Fixed and pinned
   2026-10-19 (and `fleet audit`, same cause).
 - [x] **Duplicator cleanup `rmtree`d a non-repository folder.** Fixed and pinned 2026-10-19.
-- [ ] **The observer / fleet map still cannot see no-remote repositories or side-branch work**
-  (audit #3). Needed for the fleet map; design in `knowledge/at-risk-work.md`.
+- [x] **The observer / fleet map now sees no-remote repositories and side-branch work**
+  (audit #3, manifest schema v4, 2026-10-19). Still open from `knowledge/at-risk-work.md`: the
+  fleet-wide `at-risk` command and "probably the same" labelling for root-only matches.
+- [ ] **The duplicator refuses a non-empty destination folder.** An empty one now works. Adopting
+  a non-empty folder (init + fetch + checkout, refusing any overwrite) is possible but mixes the
+  user's files into a working tree; offer it only as an explicit opt-in, if wanted.
+- [ ] **Personal data in public history** — see `knowledge/repo-privacy-and-history.md`
+  (2026-10-19 rescan). The user decides on a history rewrite; 0 forks makes now the cheapest time.
 
 **Decided by the user this session:**
 

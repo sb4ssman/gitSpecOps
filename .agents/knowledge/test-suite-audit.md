@@ -61,7 +61,17 @@ repository; and on Windows it could not remove a real clone at all (git writes o
 read-only, and a plain `rmtree` stops on them) — the retry cleanup had never worked there. Both
 fixed and pinned. Shared discovery (`Basic/_discovery.find_repos`) never checks the root itself
 and skips hidden, `env`, `Library`, `node_modules`-like folders; right for a live view, wrong for
-any verdict about losing work — #3 (the observer and the fleet map) is still open.
+any verdict about losing work.
+
+**#3 fixed 2026-10-19 (manifest schema v4):** the observer now observes every repository —
+identity from any parseable remote (not only `origin`), else the root commit, else a per-machine
+digest — and records `has_remote` and `unpushed` (all branches and tags). New states
+`local_only` ("only copy", danger) and `unpushed`; both survive staleness. Pinned by
+`tests/sync/test_observe_at_risk.py`, red on the old code. **Found while fixing:** two checkouts
+of one repository on one machine shared an identity, so the inventory kept one folder and
+dropped the other — which one depended on sort order, and the test first passed by that luck —
+and a report carrying both was refused by every peer. Now every folder stays watched and
+`build_manifest` merges them into one record that hides no work (`checkouts: N`).
 
 ## Plausible defects (read, not reproduced)
 

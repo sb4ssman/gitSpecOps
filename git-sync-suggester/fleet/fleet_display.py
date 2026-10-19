@@ -35,16 +35,18 @@ def _cell(cell):
     tags = []
     if "dirty" in flags:
         tags.append("dirty")
-    if flags & {"ahead", "diverged"}:
+    if "no_remote" in flags:
+        tags.append("local_only")
+    if flags & {"ahead", "diverged", "unpushed"}:
         tags.append("ahead")
     if cell.freshness != "current":
         tags.append("stale")
     description = describe_repository(cell.repo)
     if cell.freshness != "current":
         description = f"Last known: {description} ({cell.freshness})"
-    if flags & {"dirty", "operation", "diverged"}:
+    if flags & {"dirty", "operation", "diverged", "no_remote"}:
         tone = "danger"
-    elif flags & {"ahead", "behind", "stashed"} or cell.freshness != "current":
+    elif flags & {"ahead", "unpushed", "behind", "stashed"} or cell.freshness != "current":
         tone = "warning"
     elif "no_upstream" in flags:
         tone = "neutral"
@@ -54,7 +56,8 @@ def _cell(cell):
             "description": description, "tone": tone, "tags": tags,
             "facts": {key: cell.repo.get(key) for key in (
                 "staged", "unstaged", "untracked", "stashes", "ahead", "behind",
-                "operation", "has_upstream", "upstream_observed_at")}}
+                "operation", "has_upstream", "upstream_observed_at", "has_remote", "unpushed",
+                "identity")}}
 
 
 def _remote_checked(row, now, fetch_seconds) -> bool:
@@ -177,6 +180,7 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
                     {"id": "attention", "label": "Needs attention"},
                     {"id": "dirty", "label": "Uncommitted work"},
                     {"id": "ahead", "label": "Unpushed commits"},
+                    {"id": "local_only", "label": "No remote (only copy)"},
                     {"id": "stale", "label": "Stale reports"},
                     {"id": "missing", "label": "Not reported on a machine"}],
         "notices": [{"id": "cached-refs", "tone": "neutral", "text": remote_notice},
