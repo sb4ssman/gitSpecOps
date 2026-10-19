@@ -33,12 +33,38 @@ def _retry_backoff(attempt):
     return 5 * (attempt + 1) + random.uniform(0, 3)
 
 
+def _is_empty_dir(path):
+    try:
+        return os.path.isdir(path) and not os.listdir(path)
+    except OSError:
+        return False
+
+
+def _undo_own_clone(path, parent, repo_name, keep_empty_folder):
+    """Remove what this run cloned at `path`; put back the empty folder if the user had one.
+
+    A half-finished clone left in place has a `.git`, so the next batch run would count it as
+    already downloaded and skip it for good.
+    """
+    if os.path.exists(path) and not _is_empty_dir(path):
+        safe_cleanup_directory(path, parent, repo_name)
+    if keep_empty_folder and not os.path.exists(path):
+        os.makedirs(path, exist_ok=True)
+
+
 def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirror, completed_file, success_log, error_log):
-    """Download a single repository. Safe to run from a thread pool."""
+    """Download a single repository. Safe to run from a thread pool.
+
+    The destination may be absent or an empty folder (git clones into either). Anything else
+    already there is refused and left untouched.
+    """
     repo_name = repo['name']
     start_time = time.time()
     repo_size = format_size(repo.get('diskUsage', 0))
     uses_lfs = repo.get('uses_lfs', False)
+    repo_final_path = None
+    was_empty_folder = False
+    cloning = False
 
     try:
         with PRINT_LOCK:
@@ -54,10 +80,13 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
 
         # Anything already here was not made by this run. The batch skips folders discovery
         # recognizes as repositories, so what remains is the user's own folder -- possibly the
-        # only copy of something. It is never deleted as a "leftover"; this repository fails.
+        # only copy of something. An empty one is a prepared destination; anything else is
+        # never deleted as a "leftover", and this repository fails.
         if os.path.exists(repo_final_path):
-            raise RuntimeError(f"{repo_final_path} already exists and is not a repository this "
-                               "run cloned; it was left untouched (move it aside to download here)")
+            if not _is_empty_dir(repo_final_path):
+                raise RuntimeError(f"{repo_final_path} already exists and is not empty; it was left "
+                                   "untouched (move it aside, or empty it, to download here)")
+            was_empty_folder = True
 
         clone_url = f"https://github.com/{source_org}/{repo_name}.git"
 
@@ -67,6 +96,7 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
         # Clone with retries
         clone_cmd = ['git', 'clone', '--mirror', clone_url, repo_final_path] if use_mirror \
             else ['git', 'clone', clone_url, repo_final_path]
+        cloning = True  # from here, whatever is at repo_final_path is this run's own
         for attempt in range(RETRY_ATTEMPTS):
             try:
                 run_checked(clone_cmd, timeout=GIT_OP_TIMEOUT_SECONDS)
@@ -80,9 +110,9 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
                     print(f"  → [{repo_name}] clone attempt {attempt + 1} failed "
                           f"({str(exc).splitlines()[-1][:120]}); retrying...")
                 # A partial clone left behind will make the retry fail on "directory exists".
-                if os.path.exists(repo_final_path):
-                    safe_cleanup_directory(repo_final_path, temp_dir, repo_name)
+                _undo_own_clone(repo_final_path, temp_dir, repo_name, was_empty_folder)
                 time.sleep(_retry_backoff(attempt))
+        cloning = False
 
         # Mark as complete
         with PRINT_LOCK:
@@ -98,6 +128,8 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
         return {'status': 'success', 'repo': repo_name, 'time': elapsed}
 
     except Exception as e:
+        if cloning:
+            _undo_own_clone(repo_final_path, temp_dir, repo_name, was_empty_folder)
         elapsed = time.time() - start_time
         error_msg = f"✗ {repo_name} FAILED after {elapsed:.1f}s: {str(e)}"
         log_message(error_msg, error_log)
@@ -186,15 +218,19 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
 
     repo_temp_path = os.path.join(temp_dir, repo_name)
     created = False  # cleanup may remove only a mirror this run cloned
+    was_empty_folder = False
 
     try:
         # Step 1: Clone from source org
         print(f"  → Cloning from {source_org}...")
 
-        # A folder already at the working path was not made by this run: refuse, never delete.
+        # A folder already at the working path was not made by this run: an empty one is used
+        # (and left empty afterwards); anything else is refused, never deleted.
         if os.path.exists(repo_temp_path):
-            raise RuntimeError(f"{repo_temp_path} already exists and is not a mirror this run "
-                               "cloned; it was left untouched (choose an empty working folder)")
+            if not _is_empty_dir(repo_temp_path):
+                raise RuntimeError(f"{repo_temp_path} already exists and is not empty; it was "
+                                   "left untouched (choose an empty working folder)")
+            was_empty_folder = True
         created = True
 
         clone_url = f"https://github.com/{source_org}/{repo_name}.git"
@@ -210,8 +246,7 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
             except RuntimeError:
                 if attempt < max_retries - 1:
                     print(f"  → Clone attempt {attempt + 1} failed, retrying...")
-                    if os.path.exists(repo_temp_path):
-                        safe_cleanup_directory(repo_temp_path, temp_dir, repo_name)
+                    _undo_own_clone(repo_temp_path, temp_dir, repo_name, was_empty_folder)
                     time.sleep(_retry_backoff(attempt))
                 else:
                     raise
@@ -250,8 +285,7 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
 
         # Step 4: Clean up temp directory (safely)
         print("  → Cleaning up...")
-        if os.path.exists(repo_temp_path):
-            safe_cleanup_directory(repo_temp_path, temp_dir, repo_name)
+        _undo_own_clone(repo_temp_path, temp_dir, repo_name, was_empty_folder)
 
         # Step 5: Mark as complete
         with PRINT_LOCK:
@@ -266,8 +300,8 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
 
     except Exception as e:
         # Clean up on failure for migrate mode (safely) -- only what this run cloned
-        if created and os.path.exists(repo_temp_path):
-            safe_cleanup_directory(repo_temp_path, temp_dir, repo_name)
+        if created:
+            _undo_own_clone(repo_temp_path, temp_dir, repo_name, was_empty_folder)
 
         elapsed = time.time() - start_time
         error_msg = f"✗ {repo_name} FAILED after {elapsed:.1f}s: {str(e)}"

@@ -84,6 +84,37 @@ try:
                   (folder / "precious.txt").exists())
             check(f"download ({label}) never starts a clone over it", fake.calls == [])
 
+        # An empty folder the user made in advance is a destination, not an obstacle: git
+        # itself clones into an existing empty folder. It must still be there after a failure.
+        for mirror in (False, True):
+            label = "mirror" if mirror else "working"
+            dest = tmp / f"dest-empty-{label}"
+            empty = dest / ("tool.git" if mirror else "tool")
+            empty.mkdir(parents=True)
+            ops.run_checked = FakeGit()
+            result = run_quietly(lambda: ops.download_single_repo(
+                {"name": "tool"}, 1, 1, "example-org", str(dest), mirror, *logs))
+            check(f"download ({label}) into an empty folder the user made succeeds",
+                  result["status"] == "success" and any(empty.iterdir()))
+            dest = tmp / f"dest-empty-fails-{label}"
+            empty = dest / ("tool.git" if mirror else "tool")
+            empty.mkdir(parents=True)
+            ops.run_checked = FakeGit(fail_first=ops.RETRY_ATTEMPTS)
+            result = run_quietly(lambda: ops.download_single_repo(
+                {"name": "tool"}, 1, 1, "example-org", str(dest), mirror, *logs))
+            check(f"a failed download ({label}) leaves the user's empty folder in place, empty",
+                  result["status"] == "failed" and empty.is_dir() and not any(empty.iterdir()))
+
+        # A half-finished clone has a .git, so the next batch run would count it as downloaded
+        # and skip it for good. A failed download must leave nothing behind.
+        dest = tmp / "dest-gives-up"
+        dest.mkdir()
+        ops.run_checked = FakeGit(fail_first=ops.RETRY_ATTEMPTS)
+        result = run_quietly(lambda: ops.download_single_repo(
+            {"name": "tool"}, 1, 1, "example-org", str(dest), False, *logs))
+        check("a download that gives up leaves no half-clone to be mistaken for a finished one",
+              result["status"] == "failed" and not (dest / "tool").exists())
+
         dest = tmp / "dest-retry"
         dest.mkdir()
         fake = ops.run_checked = FakeGit(fail_first=1)
@@ -104,6 +135,16 @@ try:
         check("migrate over an existing folder fails", result.get("status") == "failed")
         check("migrate leaves the existing folder untouched", (mine / "precious.txt").exists())
         check("migrate never clones or pushes over it", fake.calls == [])
+
+        prepared = tmp / "migrate-prepared"
+        (prepared / "tool").mkdir(parents=True)
+        ops.run_checked = FakeGit()
+        result = run_quietly(lambda: ops.process_migrate_repo(
+            {"name": "tool", "isPrivate": True}, "example-org", "example-dest", str(prepared),
+            *logs))
+        check("migrate through an empty folder the user made succeeds and leaves it empty",
+              result.get("status") == "success" and (prepared / "tool").is_dir()
+              and not any((prepared / "tool").iterdir()))
 
         fresh = tmp / "migrate-fresh"
         fresh.mkdir()
