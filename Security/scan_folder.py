@@ -154,8 +154,7 @@ def main(argv: list[str]) -> int:
         print(f"\n{len(plans)} plan(s) written. Review each plan's summary.txt, then "
               "apply them all with one confirmation:")
         print(f"  python Security/rewrite_history.py apply {quoted}")
-        print("After pushing and `follow`, fix quoted ids in each checkout with every plan:")
-        print(f"  python Security/rewrite_history.py relink {quoted} --checkout <repo>")
+        print("It prints the forced pushes and the one `finish` command that comes after them.")
     return 1 if any(row["needs rewrite"] or row["secrets"] for row in rows.values()) else 0
 
 

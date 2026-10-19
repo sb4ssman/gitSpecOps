@@ -24,11 +24,14 @@ The run, from this folder:
 1. `python Security/scan_folder.py <Sb4ssport-Alpha folder> --online --plan --keep <IOCCC magic>`
    (the IOCCC value is a published contest constant in third-party archives; the full report
    names it). One table, one plan per repository, one printed `apply` line for all of them.
-2. Review each plan's `summary.txt`; `apply` them all (one typed confirmation).
-3. Push each mirror (printed). These repos have no ruleset yet; add one after the push.
-4. `python Security/rewrite_history.py follow <repo>` for each checkout, on every machine.
-5. `relink <every plan> --checkout <repo>` in each checkout: the repos quote each other's
-   commits ("shape update to <id>"); commit the edits.
+2. Review each plan's `summary.txt`; `apply` them all (one typed confirmation). It prints the
+   forced pushes and one `finish` line.
+3. Run the printed pushes (the user's step).
+4. `finish <every plan>` once: moves this machine's ten checkouts (`follow`) and updates the
+   commit ids they quote of each other (`relink`); then commit + push those edits normally.
+   Other machines: `follow <repo>`.
+5. Agent, afterwards: the `main` ruleset on each repository (after the forced push, never
+   before -- it would block it); secret scanning + push protection when each goes public.
 
 **Decided by the user for Alpha (2026-10-19 16:10):** the other account (its old personal name, under
 both the personal address and its own noreply address) becomes the main identity -- `--mine`
@@ -53,8 +56,9 @@ merge the old history back in). A future rewrite of this repository must pause t
 its one forced push. Still to do by the user: GitHub → Settings → Emails → "Block command line
 pushes that expose my email".
 
-**Manifest v5 (names) is written up for decision** in `knowledge/manifest-privacy.md` ("Proposed
-schema v5"). The number v4 is already taken by the at-risk fields.
+**Manifest v5: decided 2026-10-19 16:30 -- names, branches and head by default** on every
+transport, one setting to turn them off (`knowledge/manifest-privacy.md`, "Proposed schema v5").
+Not built. The number v4 is already taken by the at-risk fields.
 
 **Then:** the first test on the Linux box (the suite has never run off Windows), the foreground
 fleet peer on this PC and that box (the user has never seen their dashboard), the tray trial,

@@ -399,32 +399,33 @@ def verify(plan_dir: Path) -> tuple[bool, list[str]]:
     return not problems, lines
 
 
-def push_steps(plan_dir: Path) -> list[str]:
+def push_command(plan_dir: Path) -> str:
+    """The forced push that publishes one plan's rewritten mirror."""
     expected = json.loads((plan_dir / "expected.json").read_text(encoding="utf-8"))
     mirror = plan_dir.resolve() / "mirror.git"
     remote = expected.get("origin") or "<your remote URL>"
     branches = sorted(expected.get("remote_branches") or [])
     heads = " ".join(f"refs/heads/{b}" for b in branches) or "refs/heads/main"
     tags = any(ref.startswith("refs/tags/") for ref in expected["refs"])
-    repository = expected.get("repository", "<repo>")
+    return f'git -C "{mirror}" push --force {remote} {heads}' + (" 'refs/tags/*'" if tags else "")
+
+
+def push_steps(plan_dirs) -> list[str]:
+    """What to do after a clean `apply`, for one plan or a set rewritten together."""
+    plan_dirs = [Path(plan_dirs)] if isinstance(plan_dirs, (str, Path)) else list(plan_dirs)
+    quoted = " ".join(f'"{path.resolve()}"' for path in plan_dirs)
     return [
         "Next steps are yours (a forced push replaces published history):",
-        "  1. Push the rewritten branches that exist on the remote (a ruleset that blocks force",
-        "     pushes must be paused for this push):",
-        f'     git -C "{mirror}" push --force {remote} {heads}'
-        + (" 'refs/tags/*'" if tags else ""),
-        "     (local-only branches in the mirror are not pushed; push any you want explicitly)",
-        "  2. Move the checkout you planned from onto the new history. `follow` fetches, proves",
-        "     no commit of yours exists only there, then runs `git reset --keep`:",
-        f'       python Security/rewrite_history.py follow "{repository}"',
-        "  3. Every other clone, on every machine: the same `follow` (or re-clone). A plain",
-        "     `git pull` there refuses -- the histories share no commit; never force it with",
-        "     --allow-unrelated-histories, and never push a branch from an unmoved clone.",
-        "  4. Commit ids quoted inside files (work logs, notes) still name the old commits;",
-        "     messages were updated by filter-repo. In the moved checkout:",
-        f'       python Security/rewrite_history.py relink "{plan_dir.resolve()}"',
-        "     (name every plan of a set rewritten together: repositories quote each other)",
-        "  5. The host may keep serving old commits by SHA from caches. With no forks or pull",
+        "  1. Publish: one forced push per repository (pause any ruleset that blocks force",
+        "     pushes for this push only):",
+        *(f"       {push_command(path)}" for path in plan_dirs),
+        "  2. Then, once, for this machine's checkouts -- moves each onto its new history and",
+        "     updates the commit ids quoted in its files (never commits; review, commit, push):",
+        f"       python Security/rewrite_history.py finish {quoted}",
+        "  3. Every other machine's clone: `python Security/rewrite_history.py follow <repo>`",
+        "     (or re-clone). A plain `git pull` there refuses -- the histories share no commit;",
+        "     never force it with --allow-unrelated-histories.",
+        "  4. The host may keep serving old commits by SHA from caches. With no forks or pull",
         "     requests, ask the host's support to purge them if that matters to you.",
     ]
 
@@ -604,6 +605,39 @@ def follow(repo: Path, *, fetch: bool = True, assume_yes: bool = False) -> int:
               "again) -- delete or move each:")
         print("\n".join(f"  {name}" for name in stale))
     return 0
+
+
+def finish(plan_dirs, *, assume_yes: bool = False, fetch: bool = True) -> int:
+    """After the forced pushes: move every plan's checkout onto its new history (`follow`), then
+    update the commit ids quoted in each with every plan's map (`relink`). Never commits."""
+    plan_dirs = [Path(path).resolve() for path in plan_dirs]
+    repos = [Path(json.loads((path / "expected.json").read_text(encoding="utf-8"))["repository"])
+             for path in plan_dirs]
+    print("For each checkout: fetch, prove nothing unpushed would be hidden, `git reset --keep`")
+    print("onto the rewritten history, then update the commit ids quoted in its files:")
+    print("\n".join(f"  {repo}" for repo in repos))
+    if not assume_yes and not prompt_yes_no("Go ahead?", default=False):
+        print("Nothing was changed.")
+        return 1
+    status, moved = 0, []
+    for repo in repos:
+        print(f"\n== {repo.name}")
+        if follow(repo, fetch=fetch, assume_yes=True):
+            status = 1
+        else:
+            moved.append(repo)
+    print()
+    for repo in moved:
+        try:
+            _lines, total = relink(plan_dirs, repo, write=True)
+        except ValueError:
+            print(f"{repo.name}: still on the old history -- was its forced push made?")
+            status = 1
+            continue
+        print(f"{repo.name}: {total} quoted commit id(s) updated" if total
+              else f"{repo.name}: no quoted commit ids")
+    print("\nNothing was committed. In each checkout: review `git diff`, commit, push normally.")
+    return status
 
 
 def _summary(decided: dict, into: Path) -> list[str]:

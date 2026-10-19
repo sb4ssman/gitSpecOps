@@ -150,10 +150,13 @@ commit on every machine -- including private repositories' names, which are the 
 which is why v2 dropped `head`. Encrypting names under the fleet secret is the alternative, but
 the standard library has no cipher, and a home-made one is not worth trusting with this.
 
-**Decisions owed:** names on the repository transport (recommended yes); `head` (recommended
-yes); readable branch names (recommended yes); the folder transport stays names-free unless
-opted in (recommended yes). Hard break as always: nothing is enrolled, so v4 is refused with
-"re-run check on that machine".
+**Decided by the user, 2026-10-19 16:30: names by default.** `name`, `branch` and `head` are
+carried by default, on every transport, with one setting to turn them off. The user's reasoning:
+the fleet is the user's own machines, authenticated to the host through `gh`, and the state
+lives in a private repository; hiding names from oneself costs the route its usefulness. The
+one place a third party reads every byte is a synced folder (Dropbox): setup says so beside
+the setting rather than defaulting it off. The salted ids stay, for matching. Hard break as
+always: nothing is enrolled, so v4 is refused with "re-run check on that machine". Not built yet.
 
 ## Options (a design decision, not a bug fix)
 

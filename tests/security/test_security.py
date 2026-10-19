@@ -507,6 +507,7 @@ def rewrite_bare(bare: Path, work: Path) -> None:
                                 check=True).stdout.strip()
         mapping[sha] = parent
     git(work, "push", "-q", "--force", "origin", f"{parent}:refs/heads/main")
+    return mapping
 
 
 # Every commit in one second: matching rewritten commits by their times once let `follow` take
@@ -577,6 +578,40 @@ with tempfile.TemporaryDirectory(prefix="security-follow-") as temp:
           any(issue.startswith("upstream history was rewritten; move this clone with "
                                "Security/rewrite_history.py follow: ")
               for issue in observation.issues), observation.issues)
+
+# --- finish: after the forced push, one command moves the checkout and relinks it -------------
+with tempfile.TemporaryDirectory(prefix="security-finish-") as temp:
+    tmp = Path(temp)
+    bare = tmp / "remote.git"
+    git(tmp, "init", "-q", "--bare", "-b", "main", str(bare))
+    seed = tmp / "seed"
+    git(tmp, "clone", "-q", str(bare), str(seed))
+    (seed / "f.txt").write_text("one\n")
+    commit(seed, "one")
+    first = git(seed, "rev-parse", "HEAD").strip()
+    (seed / "LOG.md").write_text(f"see {first[:7]}\n")
+    commit(seed, "two")
+    git(seed, "push", "-q", "origin", "main")
+    work = tmp / "work"
+    git(tmp, "clone", "-q", str(bare), str(work))
+    mapping = rewrite_bare(bare, seed)
+    plan_dir = tmp / "plan"
+    (plan_dir / "mirror.git" / "filter-repo").mkdir(parents=True)
+    (plan_dir / "mirror.git" / "filter-repo" / "commit-map").write_text(
+        "old new\n" + "".join(f"{old} {new}\n" for old, new in mapping.items()), encoding="ascii")
+    (plan_dir / "expected.json").write_text(json.dumps({"repository": str(work), "refs": {}}),
+                                            encoding="utf-8")
+    with redirect_stdout(io.StringIO()) as out:
+        finished = _rewrite.finish([plan_dir], assume_yes=True)
+    check("finish moves the checkout and relinks its quoted ids, committing nothing",
+          finished == 0 and shares_history(work) is True
+          and (work / "LOG.md").read_text() == f"see {mapping[first][:7]}\n"
+          and git(work, "status", "--porcelain").strip() == "M LOG.md", out.getvalue())
+    steps = "\n".join(_rewrite.push_steps([plan_dir, plan_dir]))
+    check("after apply: one push line per plan, then a single finish line",
+          steps.count("push --force") == 2 and steps.count("rewrite_history.py finish") == 1,
+          steps)
+
 os.environ.pop("GIT_AUTHOR_DATE")
 os.environ.pop("GIT_COMMITTER_DATE")
 

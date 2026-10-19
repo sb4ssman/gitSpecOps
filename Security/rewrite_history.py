@@ -6,6 +6,7 @@ move every clone onto the new history and fix the commit ids quoted in its files
                                                [--remove-path PATH] [--mine EMAIL]
     python Security/rewrite_history.py apply  PLAN_DIR [PLAN_DIR ...] [--yes]
     python Security/rewrite_history.py verify PLAN_DIR [PLAN_DIR ...]
+    python Security/rewrite_history.py finish PLAN_DIR [PLAN_DIR ...] [--yes]
     python Security/rewrite_history.py follow [REPO] [--yes]
     python Security/rewrite_history.py relink PLAN_DIR [PLAN_DIR ...] [--checkout PATH]
                                                [--write]
@@ -41,6 +42,9 @@ changed: same commit count on every ref, and an identical tip tree wherever the 
 held no planned value. Then it prints the push steps. **Pushing is yours.** It replaces
 published history (a forced push, which gitSpecOps never performs itself).
 
+**finish** is what to run once the forced pushes are made: `follow` for every plan's own
+checkout, then `relink` in each with every plan's commit map.
+
 **follow** moves a clone made before the rewrite -- on any machine -- onto the new history: it
 fetches, refuses if a tracked file is changed or any commit on the branch was never on the
 remote (the remote-tracking reflogs record what the remote held), then runs `git reset --keep`.
@@ -66,8 +70,8 @@ from Basic._confirm import confirm_typed  # noqa: E402
 from Basic._console import enable_unicode_output  # noqa: E402
 from Basic._run import run  # noqa: E402
 from Security._rewrite import (REWRITE_TIMEOUT_SECONDS, _filename_callback,  # noqa: E402
-                               _summary, default_plan_dir, follow, plan, push_steps, relink,
-                               verify)
+                               _summary, default_plan_dir, finish, follow, plan,
+                               push_steps, relink, verify)
 from Security._seeds import identity_seeds  # noqa: E402
 
 # Writes a private plan folder and rewrites a mirror clone; `follow` moves a branch with
@@ -123,6 +127,9 @@ def main(argv: list[str]) -> int:
     a.add_argument("--yes", action="store_true", help="skip the typed confirmation")
     v = sub.add_parser("verify", help="prove each mirror is clean; print the push steps")
     v.add_argument("plan_dirs", type=Path, nargs="+", metavar="PLAN_DIR")
+    n = sub.add_parser("finish", help="after the pushes: follow and relink every plan's checkout")
+    n.add_argument("plan_dirs", type=Path, nargs="+", metavar="PLAN_DIR")
+    n.add_argument("--yes", action="store_true", help="go ahead without asking")
     f = sub.add_parser("follow", help="move a clone made before the rewrite onto the new history")
     f.add_argument("repo", nargs="?", type=Path, default=Path("."))
     f.add_argument("--yes", action="store_true", help="move without asking")
@@ -156,6 +163,8 @@ def main(argv: list[str]) -> int:
                        remove=args.remove_path)
         print("\n".join(_summary(decided, into.resolve())))
         return 0
+    if args.action == "finish":
+        return finish(args.plan_dirs, assume_yes=args.yes)
     if args.action == "follow":
         return follow(args.repo, fetch=not args.no_fetch, assume_yes=args.yes)
     if args.action == "relink":
@@ -190,7 +199,7 @@ def main(argv: list[str]) -> int:
         if not args.yes and not confirm_typed(CONFIRMATION, f"Type {CONFIRMATION} to proceed: "):
             print("Nothing was rewritten.")
             return 1
-    status = 0
+    status, ready = 0, []
     for plan_dir in plan_dirs:
         if args.action == "apply" and _apply(plan_dir):
             status = 1
@@ -198,9 +207,14 @@ def main(argv: list[str]) -> int:
         clean, lines = verify(plan_dir)
         print("\n".join(lines))
         if clean:
-            print("\n".join(push_steps(plan_dir)))
+            ready.append(plan_dir)
         else:
             status = 1
+    if ready and not status:
+        print("\n" + "\n".join(push_steps(ready)))
+    elif ready:
+        print("\nNot every plan verified: fix those and run `verify` on all of them before "
+              "pushing any.")
     return status
 
 
