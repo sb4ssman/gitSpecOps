@@ -97,8 +97,8 @@ try:
             failures.append(f"accepted a bad repo spec: {bad!r}")
         except ValueError:
             pass
-    check(repo_transport.RepoTransport("sb4ssman/gitSpecOps-state").spec
-          == "sb4ssman/gitSpecOps-state", "a valid spec was not kept")
+    check(repo_transport.RepoTransport("example-owner/gitSpecOps-state").spec
+          == "example-owner/gitSpecOps-state", "a valid spec was not kept")
 
     # --- listing ---------------------------------------------------------------------
     fake = install([[{"name": "b.json", "type": "file"}, {"name": "a.json", "type": "file"},

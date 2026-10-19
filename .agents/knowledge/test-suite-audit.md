@@ -104,9 +104,15 @@ any verdict about losing work — #3 (the observer and the fleet map) is still o
   parity passes and says nothing about behavior there.
 - `repo/test_repo_hygiene`: a match is skipped if **anything on the same line** is allowed, and
   `<[a-z-]+>` matches every HTML tag. It also cannot know the owner's real names: a real account
-  name sits in a `test_repo_transport` fixture today. Fix: match the allowlist against the match
-  only, and seed extra patterns at run time from `git config user.email`, the `gh` login and the
-  hostname — never written to disk.
+  name sits in a `test_repo_transport` fixture today. **Fixed 2026-10-19.** Reproduced first on
+  invented files: a path beside an HTML tag or a placeholder, an address and even a GitHub token
+  beside `example.com` all passed; so did anything past column 500 (lines were truncated). Now the
+  allowlist judges the matched text only, whole files are scanned, and a new check seeds
+  patterns at run time from the git identity, the `gh` login (read offline from gh's config),
+  the host name and the home folder's name — held in memory, reported as *kind* and location,
+  never value. Only the owner of the project's public repositories and the authorship files are
+  excused. It caught the fixture at once (now `example-owner/…`). A self-test runs the scanner on
+  invented files and was shown to fail against the old logic.
 
 ## Tests that pin code slated for deletion
 
