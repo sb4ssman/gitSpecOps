@@ -4,9 +4,46 @@ Living todo / scratch pad. Add items freely; **prune regularly**. When something
 into [`WORK-LOG.md`](WORK-LOG.md) (appended at the bottom, `YYYY-MM-DD HH:MM`) and delete it here.
 Dates are always absolute.
 
-_Last tended: 2026-10-19 (new top section only; everything below it is as of 2026-09-22/10-05)_
+_Last tended: 2026-10-19 11:30 (two new top sections; everything below them is as of 2026-09-22/10-05)_
 
 ## Open
+
+### 2026-10-19 11:30 — decisions taken, and the test audit (read this first)
+
+**The suite has now been read and run.** Full findings and the repair order:
+[`knowledge/test-suite-audit.md`](knowledge/test-suite-audit.md). Windows 11, 44/44 files pass,
+53 s. Two confirmed defects come before any enrollment that relies on a verdict:
+
+- [x] **`fleet safe-to-wipe` said SAFE (exit 0) over the only copy of work.** Fixed and pinned
+  2026-10-19 (and `fleet audit`, same cause).
+- [x] **Duplicator cleanup `rmtree`d a non-repository folder.** Fixed and pinned 2026-10-19.
+- [ ] **The observer / fleet map still cannot see no-remote repositories or side-branch work**
+  (audit #3). Needed for the fleet map; design in `knowledge/at-risk-work.md`.
+
+**Decided by the user this session:**
+
+- **Yes: one app named gitSpecOps**, Sync Suggester as its home screen. The folder is **`App/`**:
+  tray / menu-bar app plus the dashboard.
+- **Yes: the tray trial**, on this Windows machine and the Debian box. **Debian runs Wayland**
+  (desktop environment still to confirm: GNOME needs an extension for tray icons; KDE does not).
+- **The 2012 iMac is optional** — it will be sold; use it while it lasts, skip it if the toolkit
+  cannot support Catalina. Newer Macs are available for testing.
+- **Yes: phase 3c and `App/`**, kicked off.
+- **Yes: sleep / shutdown / lock triggers** (item 5).
+- **Yes: diff, commit, branch/switch, stash in `Basic/`** (path step 6).
+- **The user wants to act through gitSpecOps**: alerts that say "commit here / pull there", and
+  the fix done from the same place. Cheap watching (kernel file events, no polling) on all three
+  OSes is the requirement behind "simple watchdogs".
+- **New ask: machines instructing each other** ("next time online: push this"), and
+  **LLM-driven operation** across machines (an agent on one machine asks a peer to commit/push).
+  Design discussion opened in chat; not decided. Existing design note: "Actionable Fleet
+  dashboard … a narrow device job protocol rather than a generic remote shell" (below).
+- **Scheduled archive refresh: the user is removing it for now** (it has been failing since
+  2026-09-01; it still pointed at the deleted `gitArchiveUpdater\` folder). The three archives'
+  `update_archive` launchers are stale for the same reason.
+
+**Still unanswered:** manifest schema v4 with names (item 3), the auto-update basket (item 4),
+and the effect-rule rewrite (item 2: the user asked for context first; context given in chat).
 
 ### 2026-10-19 — product direction: the vision, what was decided, what is owed (HANDOFF)
 

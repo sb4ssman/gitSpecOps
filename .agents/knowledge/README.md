@@ -24,6 +24,10 @@ decision and its rationale, a non-obvious constraint, an investigation result.
   personal data, no secrets.
 - [`shared-layer.md`](shared-layer.md) — *superseded by the layer stack; kept for history.* The `shared/` cross-operation primitive layer: admission
   rule, module list, import mechanics, Linux notes.
+- [`test-suite-audit.md`](test-suite-audit.md) — **2026-10-19, first read of what the tests
+  assert.** Strong where it exists; confirmed defects (safe-to-wipe says SAFE over unpushed work;
+  duplicator cleanup deletes a non-repository folder), the untested mutating verbs, weak
+  assertions, and the repair order.
 - [`tiers-and-capture.md`](tiers-and-capture.md) — what each tier is supposed to be able to
   *rescue*, not merely how fast it is.
 - [`venv-and-editors.md`](venv-and-editors.md) — why `.venv` must stay package-free (an editable
