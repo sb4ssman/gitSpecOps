@@ -87,6 +87,27 @@ with tempfile.TemporaryDirectory(prefix="basic-git-") as tmp:
     check("the remote kept the other machine's commit",
           "add c.txt" in git(bare, "log", "--oneline", "main"))
 
+# git translates its messages; the pull result must come from HEAD, not from English wording.
+# This Windows git build ships no translations, so the translated output is played by a fake.
+from Basic import pull as pull_module  # noqa: E402
+from Basic._run import Result  # noqa: E402
+
+_real_run_git = pull_module.run_git
+for moved, label in ((False, "already current"), (True, "updated")):
+    heads = iter(["a" * 40, ("b" if moved else "a") * 40])
+
+    def translated(repo, args, **_kwargs):
+        if args[:1] == ["rev-parse"]:
+            return Result(args, 0, next(heads) + "\n", "")
+        # A translated "Already up to date." on a no-op, and on a real update, alike.
+        return Result(args, 0, "Bereits aktuell.\n", "")
+
+    pull_module.run_git = translated
+    try:
+        check(f"a translated git still reports '{label}'", fast_forward("unused") == label)
+    finally:
+        pull_module.run_git = _real_run_git
+
 push_code = (ROOT / "Basic" / "push.py").read_text(encoding="utf-8").split('"""', 2)[2]
 check("Basic/push.py code has no force option", "force" not in push_code.lower())
 

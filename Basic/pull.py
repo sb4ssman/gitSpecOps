@@ -25,16 +25,25 @@ UPDATED = "updated"
 ALREADY_CURRENT = "already current"
 
 
+def _head(repo: Path | str) -> str | None:
+    proc = run_git(repo, ["rev-parse", "--verify", "-q", "HEAD"])
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
 def fast_forward(repo: Path | str, remote: str = "origin") -> str:
-    """Fetch, then `pull --ff-only`. Returns "updated", "already current", or "failed: ..."."""
+    """Fetch, then `pull --ff-only`. Returns "updated", "already current", or "failed: ...".
+
+    Whether anything moved is read from HEAD before and after, never from git's wording:
+    git translates its messages, so "Already up to date." reads differently elsewhere.
+    """
     fetched = run_git(repo, ["fetch", remote])
     if fetched.returncode != 0:
         return f"failed: fetch: {fetched.stderr.strip() or 'error'}"
+    before = _head(repo)
     pulled = run_git(repo, ["pull", "--ff-only"])
     if pulled.returncode != 0:
         return f"failed: pull --ff-only: {pulled.stderr.strip() or 'not a fast-forward'}"
-    combined = f"{pulled.stdout}\n{pulled.stderr}".lower()
-    return ALREADY_CURRENT if ("up to date" in combined or "up-to-date" in combined) else UPDATED
+    return ALREADY_CURRENT if _head(repo) == before else UPDATED
 
 
 def main(argv: list[str]) -> int:
