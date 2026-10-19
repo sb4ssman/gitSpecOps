@@ -16,7 +16,6 @@ and deliberately says nothing about git history, which no test can retroactively
 Offline: `git ls-files` plus local reads. No network.
 """
 import re
-import socket
 import subprocess
 import sys
 import tempfile
@@ -27,45 +26,17 @@ from _bootstrap import ROOT, setup  # noqa: E402
 
 setup()
 
-# --------------------------------------------------------------------------- what must never ship
-
-SECRETS = {
-    "a 64-hex value (the fleet-secret shape)": re.compile(r"\b[0-9a-f]{64}\b"),
-    "a GitHub token": re.compile(r"\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})"),
-    "an AWS access key": re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
-    "a private key block": re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
-    "an assigned credential": re.compile(
-        r"(?i)\b(password|passwd|secret|api_?key|token)\s*[:=]\s*[\"'][^\"'\s]{8,}[\"']"),
-}
-
-PERSONAL = {
-    # The account segment must look like a name, so the documented shape `C:\Users\…` is not one.
-    "a Windows user path": re.compile(r"(?i)[A-Z]:\\Users\\[\w.$-]{2,}"),
-    "a Windows drive path": re.compile(r"(?i)\b[D-Z]:\\(?:Github|Users|Projects)\b"),
-    "a POSIX home path": re.compile(r"/home/(?!u/|someone/)[a-z0-9._-]{2,}"),
-    "a real Tailscale address": re.compile(
-        r"\b100\.(?:6[5-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b"),
-}
-
-#: Values that look like findings but are documentation or invented data. Every entry is an
-#: explicit decision, not a convenience, and it is tested against **the matched text only**.
-#: Until 2026-10-19 it was also tested against the whole line, so anything allowed anywhere on a
-#: line -- including any HTML tag, via the placeholder entry -- excused a real path, address or
-#: token beside it. Entries that only ever mattered at line level were dropped with that change.
-ALLOWED = re.compile(
-    r"""(?ix)
-    example\.(com|test|org)     # reserved documentation domains
-  | <[a-z-]+>                   # an intentional placeholder
-    """)
+# The rules themselves live in Security/_patterns.py and the run-time identity in
+# Security/_seeds.py, shared with the Security commands, so "is this a leak?" has one answer.
+from Security._patterns import ALLOWED, PERSONAL, SECRETS  # noqa: E402,F401
+from Security._patterns import identity_patterns as _identity_patterns  # noqa: E402
+from Security._seeds import identity_seeds  # noqa: E402
 
 #: Names that are the project's own public identity: the owner of these public repositories,
 #: and the authorship files. Anywhere else, the owner's login is a disclosure (a private
 #: repository name, an account in a fixture).
 PUBLIC_REPOSITORIES = ("gitSpecOps", "PythonTools")
 AUTHORSHIP_FILES = {"NOTICE", "pyproject.toml", "LICENSE"}
-
-#: Identity values too generic to scan for without drowning in noise.
-GENERIC_IDENTITIES = {"user", "admin", "root", "home", "test", "runner", "localhost", "owner"}
 
 #: Files whose job is to describe these patterns. Excluding them is safe precisely because a
 #: real leak would also have to appear somewhere else to matter.
@@ -107,36 +78,12 @@ def scan(names, patterns, label, root=None, show=True):
 
 
 def owner_identity():
-    """The identity of the person running this, read now and held only in memory.
-
-    No test can know a real name in advance, so a real account once sat in a fixture
-    unnoticed. These are the values most likely to leak: the git identity, the `gh` login (read
-    from gh's own config, offline), the host name and the home folder's name. Unavailable or
-    generic values are skipped. Nothing here is written anywhere or printed.
-    """
-    def output(argv):
-        try:
-            done = subprocess.run(argv, capture_output=True, text=True, timeout=30, check=False)
-        except (OSError, subprocess.TimeoutExpired):
-            return ""
-        return done.stdout.strip() if done.returncode == 0 else ""
-
-    found = {
-        "your git email": output(["git", "config", "user.email"]),
-        "your git name": output(["git", "config", "user.name"]),
-        "your gh login": output(["gh", "config", "get", "user", "-h", "github.com"]),
-        "this machine's host name": socket.gethostname(),
-        "your home folder's name": Path.home().name,
-    }
-    return {kind: value for kind, value in found.items()
-            if len(value) >= 4 and value.lower() not in GENERIC_IDENTITIES}
+    """The runner's identity, offline and local only (no network in this suite)."""
+    return identity_seeds(tailnet=True, online=False, cwd=ROOT)
 
 
 def identity_patterns(identity):
-    """One case-insensitive pattern per identity value, excusing only the public repositories."""
-    public = "|".join(re.escape(name) for name in PUBLIC_REPOSITORIES)
-    return {kind: re.compile(rf"(?i)(?<![\w.-]){re.escape(value)}(?![\w-])(?!/(?:{public})(?![\w-]))")
-            for kind, value in identity.items()}
+    return _identity_patterns(identity, PUBLIC_REPOSITORIES)
 
 
 def test_no_secrets_in_tracked_files(names):
@@ -179,7 +126,7 @@ def test_the_guard_itself_catches_what_it_claims(_names):
         "documented-shape.txt": ("never commit C:\\Users\\… or /home/<you>", False),
         "reserved-domain.txt": ("password = 'example.test'", False),
     }
-    identity = {"an invented login": "inventedlogin"}
+    identity = {"an invented login": ["inventedlogin"]}
     owner_cases = {
         "fixture.py": ("RepoTransport('inventedlogin/private-state')", True),
         "readme.md": ("git clone https://github.com/inventedlogin/gitSpecOps.git", False),

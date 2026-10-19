@@ -144,10 +144,10 @@ def main():
     for exists, answer, expected in [
         (False, "", []),
         (False, "yes", []),
-        (False, "CREATE example/gitspecops-fleet-state",
-         ["--repo", "example/gitspecops-fleet-state", "--create-repo"]),
-        (True, "USE example/gitspecops-fleet-state",
-         ["--repo", "example/gitspecops-fleet-state"]),
+        (False, "CREATE example/gitspecops-state",
+         ["--repo", "example/gitspecops-state", "--create-repo"]),
+        (True, "USE example/gitspecops-state",
+         ["--repo", "example/gitspecops-state"]),
     ]:
         output = io.StringIO()
         with patch("builtins.input", side_effect=["y", "", answer]), \

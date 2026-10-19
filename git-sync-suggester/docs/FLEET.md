@@ -72,7 +72,7 @@ python git-sync-suggester/sync_suggester.py fleet run
 keys, catalogs, and SQLite databases outside synchronized state folders.
 
 Guided setup offers durable status first. After you opt in, it uses the current `gh` login to
-suggest `owner/gitspecops-fleet-state`. Enter another accessible owner/name to override it.
+suggest `owner/gitspecops-state`. Enter another accessible owner/name to override it.
 The walkthrough explains the app-managed `machines/` files and publication conditions.
 Type `CREATE owner/name` to request creation or `USE owner/name` to approve an existing private,
 writable repository. Enter skips that choice. Merely accepting a suggested name creates nothing.

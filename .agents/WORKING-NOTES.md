@@ -20,9 +20,11 @@ _Last tended: 2026-10-19 11:30 (two new top sections; everything below them is a
 - [x] **The observer / fleet map now sees no-remote repositories and side-branch work**
   (audit #3, manifest schema v4, 2026-10-19). Still open from `knowledge/at-risk-work.md`: the
   fleet-wide `at-risk` command and "probably the same" labelling for root-only matches.
-- [ ] **The duplicator refuses a non-empty destination folder.** An empty one now works. Adopting
-  a non-empty folder (init + fetch + checkout, refusing any overwrite) is possible but mixes the
-  user's files into a working tree; offer it only as an explicit opt-in, if wanted.
+- [x] **Duplicator destination folders — decided 2026-10-19:** an empty folder is used; a
+  non-empty one is refused, as git itself refuses, and the user fixes it. No "adopt a non-empty
+  folder" scheme.
+- [x] **Default state repository name — decided 2026-10-19: `<login>/gitspecops-state`**
+  (setup suggests it; any owner/name may be entered instead).
 - [ ] **Personal data in public history** — see `knowledge/repo-privacy-and-history.md`
   (2026-10-19 rescan). The user decides on a history rewrite; 0 forks makes now the cheapest time.
 
@@ -103,10 +105,8 @@ every pass count here as a claim until the suite has been read and run.
   saying "going to sleep" so peers show "asleep since 22:10" rather than "not seen".
 - **A second household user gets their own fleet on their own two Macs** — the first
   stranger's-first-run test of the front door, when the time comes.
-- **State repo name:** any of `gitSpecOps-SYNC`, `gitSpecOps-sync`, `gitspecops-fleet-state` is
-  acceptable to the user. Today's default is `<login>/gitspecops-fleet-state`
-  (`git-sync-suggester/app/fleet_app.py`, the `candidate =` line in the state-repo prompt).
-  Recommended: `gitspecops-sync`. Not yet changed.
+- **State repo name:** decided later the same day — the default is `<login>/gitspecops-state`
+  (changed in `fleet_app.py`); the user may name any owner/name.
 
 #### Recommended, awaiting the user's yes
 

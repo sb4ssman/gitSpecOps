@@ -280,3 +280,19 @@ Decided by the user after the test audit:
   over the tailnet when both are online). Requests are a small fixed set of verbs, never a
   shell; they run unattended only under a standing consent, otherwise they wait as suggestions.
 - **KDE Plasma on the Debian box** (Wayland): StatusNotifierItem tray icons work natively.
+
+## Revisions, 2026-10-19 (later): `Security/`
+
+At the user's request, the scanning and history-cleanup tools live in their own folder,
+**`Security/`**, ranked in the import rule between `Special/` and `Elaborate/`
+(`_os -> Basic -> Special -> Security -> Elaborate -> App`): it builds on Basic and Special,
+and the fleet (Elaborate) or the App may call it — for example a fleet-wide audit later.
+
+- `_patterns.py` — the one set of detection rules, shared with the repository's own hygiene test.
+- `_seeds.py` — the runner's identity, read at run time and held in memory only.
+- `_history.py` — reads everything a history publishes, commit identities included.
+- `scan_tree.py`, `scan_history.py` — read-only commands (`EFFECT = "none"`).
+- `rewrite_history.py` — `plan` (private plan folder outside the repository + a bare clone),
+  `apply` (git filter-repo in that clone only, after a typed confirmation), `verify`. Its
+  `EFFECT` is `local`. **The forced push that publishes a rewrite is never performed by
+  gitSpecOps**: the tool prints it, the person runs it.

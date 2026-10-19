@@ -1,6 +1,6 @@
 """The layer stack's one-way import rule, read straight from the source.
 
-    _os  ->  Basic  ->  Special  ->  Elaborate  ->  App
+    _os  ->  Basic  ->  Special  ->  Security  ->  Elaborate  ->  App
 
 A file may import the stdlib, `_os`, its own layer's plumbing, and any layer before its own.
 It may not import:
@@ -26,7 +26,7 @@ from _bootstrap import ROOT, setup  # noqa: E402
 
 setup()
 
-ORDER = ["_os", "Basic", "Special", "Elaborate", "App"]
+ORDER = ["_os", "Basic", "Special", "Security", "Elaborate", "App"]
 RANK = {name: rank for rank, name in enumerate(ORDER)}
 STDLIB = set(sys.stdlib_module_names) | {"__future__"}
 failures: list[str] = []

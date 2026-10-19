@@ -304,7 +304,7 @@ def guided_durable_arguments() -> list[str]:
     suggestion = ""
     try:
         login = run_gh(["api", "user", "--jq", ".login"], timeout=30).stdout.strip()
-        candidate = f"{login}/gitspecops-fleet-state"
+        candidate = f"{login}/gitspecops-state"
         RepoTransport(candidate)  # validate before presenting CLI output as a name
         suggestion = candidate
     except (GhError, OSError, ValueError):
