@@ -31,6 +31,31 @@ unreachable/dangling objects, and no regex set is exhaustive. For an independent
 `gitleaks detect --log-opts=--all` or `trufflehog git file://.`, and check GitHub's own secret
 scanning (free and on by default for public repositories) under the repository's Security tab.
 
+## Rescan, 2026-10-19 (hardened scanner, run-time identity seeds, commit metadata)
+
+Re-run over every blob reachable from the public branch (1018 objects) and every commit
+message, with the hardened patterns and the runner's own identity seeds. Values are recorded
+here by *kind only* — this is a public file.
+
+- **Commit metadata is the largest exposure, and the 2026-09-11 audit did not look at it.**
+  61 public commits (2025-11-16 to 2026-10-12) carry the owner's **personal email address** as
+  author and committer. GitHub serves it on every commit page and `.patch` URL. Commits since
+  then use a GitHub noreply address. Two commits carry a **Windows machine name** in the author
+  name (`HOST\user`, the default when git has no configured name).
+- File content, history only (none in the current tree): three tailnet addresses, this
+  machine's host name, a local drive/folder layout path; the earlier audit also lists other
+  machine names and private namespace names.
+- The owner's login appears where it is the project's public identity (repository URLs,
+  copyright), and in one test fixture naming a state repository that does not exist.
+- No secrets, again.
+
+What can be done: set the GitHub account to keep email private and to block command-line pushes
+that expose it (prevents recurrence in *every* repository). A history rewrite (filter-repo with a
+mailmap for authors and replace-text for content) is the only removal. The repository has no
+forks, so a rewrite now invalidates only the owner's own clones. The same personal address is
+likely in the owner's other repositories — the self-doxxing scan idea in the working notes is
+the tool for finding where.
+
 ## If a secret is ever found in history
 
 Order matters, and the first step is the one people skip:
