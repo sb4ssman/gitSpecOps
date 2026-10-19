@@ -4,7 +4,17 @@ For the next session, human or LLM. Read [`README.md`](README.md) (the project b
 opens with **What this is for**, and that section outranks every rule below it. Then this, then
 [`WORKING-NOTES.md`](WORKING-NOTES.md).
 
-## Start here (2026-10-19): the product direction was re-anchored
+## Start here (2026-10-19 13:46): read the top section of WORKING-NOTES.md
+
+"Where things stand" there is current. In one breath: the tests were audited and five real
+defects fixed (safe-to-wipe, the duplicator, the observer's blind spots, pull, the hygiene
+guard); the effect rule was rewritten with the user; a `Security/` folder now scans and cleans
+repository histories; **this repository's history rewrite is prepared and waiting for the user**
+(make a fresh plan first — the steps are in the notes); the Sb4ssport-Alpha repositories are the
+next Security target, before they go public. Test counts below this line were claims until
+2026-10-19; since then the suite has been read and run (48/48 on Windows; not yet on Linux/macOS).
+
+## Earlier (2026-10-19 morning): the product direction was re-anchored
 
 Read the top section of [`WORKING-NOTES.md`](WORKING-NOTES.md), "product direction … (HANDOFF)",
 before anything below. In short:

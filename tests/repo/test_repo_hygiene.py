@@ -120,7 +120,9 @@ def test_the_guard_itself_catches_what_it_claims(_names):
         "alone.txt": ("library at C:\\Users\\inventedperson\\code", True),
         "html.txt": ("<div>library at C:\\Users\\inventedperson\\code</div>", True),
         "placeholder.txt": ("use <library-root>, not C:\\Users\\inventedperson\\code", True),
-        "domain.txt": ("see example.com; peer at <tailnet-ip>", True),
+        # Assembled at run time, so no file holds an address the scanners would flag (or a
+        # history rewrite would have to be told to keep).
+        "domain.txt": ("see example.com; peer at " + ".".join(["100", "101", "102", "103"]), True),
         "token.txt": ("token = 'ghp_" + "A" * 30 + "'  # example.com", True),
         "late.txt": ("x" * 600 + " ghp_" + "B" * 30, True),
         "documented-shape.txt": ("never commit C:\\Users\\… or /home/<you>", False),

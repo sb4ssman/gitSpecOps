@@ -1360,3 +1360,25 @@ tray; scheduling stays below `App/`; skins deferred; KDE on the Debian box.
   are now on the never-publish list, so the offline hygiene test catches them from here on.
 - **History rewrite prepared, not applied:** the plan lives outside the repository. Applying it
   and the forced push are the user's.
+
+## 2026-10-19 13:46 - user (Claude Opus 5.5) - Security output in the repo's ignored folder; handoff
+
+- **Output location (user's decision):** every Security command now writes to this checkout's
+  git-ignored `.agents/output/security/<repo>/`, whatever it scanned, so the user and the agents
+  in neighbouring windows read results in place; the per-user folder is the fallback. A plan may
+  sit inside the scanned repository only where git ignores it. (Correction to the previous
+  entry: plans no longer live outside the repository by default.)
+- **Reports:** masked on screen, full and unmasked in the report file, which now lists *every*
+  author/committer identity found (the user asked whether it reports the emails it finds — it
+  previously listed only the problem ones). The scanned repository's own owner name is public
+  identity and no longer reported.
+- **`Security/scan_secrets.py`:** runs gitleaks when installed; optional, to be offered by the
+  front-door setup like the tray. Says how to install it otherwise.
+- **The user's first attempt to apply** ran from the home folder, so the scripts were not found
+  and nothing happened — instructions now always say "from the repository folder". The rewrite
+  is still waiting; a fresh plan must be made after this handoff commit (a plan covers only the
+  commits that existed when it was made). Earlier plan folders in the per-user folder and the
+  ignored output folder are stale.
+- **Handoff pushed** (normal push of 14 commits, checked first: the files pass the hygiene test
+  and the commit messages carry no personal data). Next: the user applies the rewrite; then the
+  Sb4ssport-Alpha repositories, before they go public.

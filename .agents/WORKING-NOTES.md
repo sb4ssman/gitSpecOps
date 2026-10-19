@@ -4,11 +4,60 @@ Living todo / scratch pad. Add items freely; **prune regularly**. When something
 into [`WORK-LOG.md`](WORK-LOG.md) (appended at the bottom, `YYYY-MM-DD HH:MM`) and delete it here.
 Dates are always absolute.
 
-_Last tended: 2026-10-19 11:30 (two new top sections; everything below them is as of 2026-09-22/10-05)_
+_Last tended: 2026-10-19 13:45 (three new top sections; everything below them is as of 2026-09-22/10-05)_
 
 ## Open
 
-### 2026-10-19 11:30 — decisions taken, and the test audit (read this first)
+### 2026-10-19 13:45 — where things stand (read this first)
+
+**Waiting on the user — the history rewrite of this repository (prepared, not applied).**
+The public history carries the user's personal email on 122 commits, a machine name in 2 commit
+author names, and tailnet addresses, machine names, a local folder path and private org names in
+old file versions (see `knowledge/repo-privacy-and-history.md`). `Security/rewrite_history.py`
+cleans that in a *copy*, proves the copy (same commit count, current files byte-identical), and
+prints the forced push for the user to run. Steps, always **from the repository folder**:
+
+1. Make a fresh plan — a plan only covers commits that existed when it was made, so plan *after*
+   the last commit: `python Security/rewrite_history.py plan . --online --keep Sb4ssport-Alpha`
+   (Sb4ssport-Alpha is becoming this repo's public home, so its name stays). It prints the plan folder,
+   under the git-ignored `.agents/output/security/gitSpecOps/`.
+2. `python Security/rewrite_history.py apply "<plan folder>"`, type `REWRITE`. It verifies and
+   prints the push command.
+3. Run the printed `git -C "<plan folder>\mirror.git" push --force <origin> refs/heads/main`.
+4. In this checkout: `git fetch origin` then `git reset --hard origin/main` (safe: clean tree,
+   every commit carried over, files identical; ignored folders untouched). Other clones: the
+   same, or re-clone — never `git pull` old history into new.
+5. **No commits between step 1 and step 3**, or they are lost by the forced push.
+
+Known and accepted: the 5 commits made on GitHub's website lose their "Verified" badge. Optional
+first: practise on a throwaway repo with `$env:GITSPECOPS_RUN_REWRITE_TEST="1"; python
+tests\security\test_security.py` (the agent cannot run `filter-repo`: DCG blocks it, rightly).
+
+**Next target: Sb4ssport-Alpha's ten repositories, before they are made public.** Sb4ssport-
+Authority (another VS Code window) has collected evidence and a draft plan (paths in the user's
+paste; private, under that repo's ignored `.agents/output/`). Plan agreed in chat: scan each repo
+with gitSpecOps's own `scan_history` (reports land in *this* checkout's
+`.agents/output/security/<repo>/`, readable by both agents), cross-check against Authority's
+numbers (112 commits, 196 email fields, 29 generated-cache paths, 12 signed commits), then plan
+per repo. Still missing from our side: gitleaks (optional; `winget install Gitleaks.Gitleaks`),
+unpacking archives (two over 8 MiB), updating commit SHAs quoted inside files after a rewrite
+(filter-repo's commit map), and a fleet-level wrapper for many repos at once. Authority's
+separate code-safety concerns (Ground-Support deletion validation, Windhawk restore, DCG
+installer trust) belong in those repos as their own fixes.
+
+**Security/ — what exists now** (details in `knowledge/architecture-layers.md`, last revision):
+`scan_tree`, `scan_history` (masked on screen, full report to the ignored output folder, every
+commit identity listed), `scan_secrets` (gitleaks when installed), `rewrite_history`
+(plan / apply / verify). Identity comes from the machine (git, gh, hostname, home folder,
+tailnet, GitHub orgs with `--online`) plus the private never-publish list at
+`<per-user gitSpecOps folder>/security/never_publish.txt` (seeded with the user's orgs except
+Sb4ssport-Alpha; the offline hygiene test reads it too).
+
+**Then, from the product path:** run the suite on the KDE box; a foreground fleet peer on this
+PC and the KDE box (show the user their dashboard for the first time); the tray trial in `App/`;
+phase 3c. Setup (one front door) offers the optional pieces: tray dependencies and gitleaks.
+
+### 2026-10-19 11:30 — decisions taken, and the test audit
 
 **The suite has now been read and run.** Full findings and the repair order:
 [`knowledge/test-suite-audit.md`](knowledge/test-suite-audit.md). Windows 11, 44/44 files pass,
