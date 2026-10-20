@@ -4,12 +4,75 @@ Living todo / scratch pad. Add items freely; **prune regularly**. When something
 into [`WORK-LOG.md`](WORK-LOG.md) (appended at the bottom, `YYYY-MM-DD HH:MM`) and delete it here.
 Dates are always absolute.
 
-_Last tended: 2026-10-19 17:20 (new top section; the 16:15 and 13:45 ones below are kept for
-their how-to)_
+_Last tended: 2026-10-19 19:45 (handoff section on top; 17:20, 16:15 and 13:45 below it)_
 
 ## Open
 
-### 2026-10-19 17:20 — where things stand (read this first)
+### 2026-10-19 19:45 — HANDOFF: the Security design is unsettled; the user's directions
+
+**Stop and read this before touching `Security/`.** The session ended with the user rightly
+frustrated: the agent proposed three different shapes for the Security code in a row, and the
+last one contradicted gitSpecOps's own architecture (it put security plumbing in `Basic/`).
+
+**What the user said, to carry forward (their words, condensed):**
+
+- **`Basic/` is for bog-standard git and host operations, one at a time.** Security work is not
+  that. Never put security code or plumbing in `Basic/`. "These are not bog-standard git
+  operations ... you need to bump up some levels." The user wondered whether the first tier
+  belongs in `Special/`. Not decided.
+- **Structure must follow the gitSpecOps spirit:** smaller operations, each callable on its
+  own, reused by higher ones -- repeated, recursive, or in sequence. The main security
+  operations are named as such and call the lower pieces in order. `rewrite_history` is *one*
+  component (called by something else, with flags), not the centre of Security.
+- **Security is more than history rewriting.** Today it is mostly that. The gaps the agent
+  named: prevention (a check of outgoing commits and of each machine's git identity -- the
+  personal address got onto commits through a machine's config) and host settings (secret
+  scanning, push protection, branch rules). Whether and how to build these: **not decided.**
+- **Hand-holding for big operations.** Critical stops must really stop: say what to inspect and
+  where (Sourcetree, the files, "have your LLM look"), say the tool will wait, and continue only
+  on a typed word -- never a y/N or "press any key" that can be hit by accident. The rewrite
+  run had no stop between "rewritten" and "pushed"; the user wants the tool to get them all
+  the way there, holding their hand. Concise output, not verbose.
+- **The never-publish list must be visible.** If setup or any tool would create it, show what
+  it would write first and offer to add custom entries; give a clear way to edit it later (the
+  app must have one); every checker prints what it loaded before checking. **Open question,
+  unanswered:** print the values in full or masked (the agent suggested masked).
+- **Names from other machines: yes, by default** (manifest v5, decided 16:30; not built).
+- **The user wants a full setup walk-through** of the fleet app "as it stands", seeing
+  everything it sets up -- after the above is resolved.
+
+**What to do first next session:** agree the Security structure *with the user* before writing
+code. Read `knowledge/architecture-layers.md` (the import rule ranks `Security` between Special
+and Elaborate) and present one consistent proposal in the project's own terms, briefly. Do not
+redesign in chat three times.
+
+**Other machines -- the sticky note the user can send now** (plain git, tested here on fake
+clones in every state: clean-stale moves; unpushed commit or edited file is held; current is
+left alone; a second run changes nothing). For each high-risk checkout (the Alpha repos and
+gitSpecOps): fetch; if it shares history with `origin/main` say "same"; else count commits not
+in `origin/main` nor `origin/main@{1}` and edited tracked files; if both are 0, `git reset --keep
+origin/main`, else print HOLD. Replace `<library>` with that machine's folder:
+
+```powershell
+$repos = @(Get-ChildItem <library>\Sb4ssport-Alpha -Directory | ForEach-Object FullName) + '<library>\<you>\gitSpecOps'; foreach ($p in $repos) { if (-not (Test-Path "$p\.git")) { continue }; $n = Split-Path $p -Leaf; git -C $p fetch -q origin; git -C $p merge-base HEAD origin/main *> $null; if ($?) { "same $n - already on the new history"; continue }; $mine = git -C $p rev-list --count HEAD --not origin/main 'origin/main@{1}' 2>$null; $known = $?; $edits = @(git -C $p status --porcelain --untracked-files=no).Count; if (-not $known -or $mine -ne '0' -or $edits) { "HOLD $n - unpushed commits: $(if ($known) { $mine } else { '?' }), edited files: $edits" } else { git -C $p reset -q --keep origin/main; "ok   $n - now $(git -C $p log -1 --format='%h %s')" } }
+```
+
+```sh
+for p in <library>/Sb4ssport-Alpha/*/ <library>/<you>/gitSpecOps; do [ -e "$p/.git" ] || continue; n=$(basename "$p"); git -C "$p" fetch -q origin; if git -C "$p" merge-base HEAD origin/main >/dev/null 2>&1; then echo "same $n - already on the new history"; continue; fi; mine=$(git -C "$p" rev-list --count HEAD --not origin/main 'origin/main@{1}' 2>/dev/null) || mine='?'; edits=$(git -C "$p" status --porcelain --untracked-files=no | wc -l | tr -d ' '); if [ "$mine" = 0 ] && [ "$edits" = 0 ]; then git -C "$p" reset -q --keep origin/main && echo "ok   $n - now $(git -C "$p" log -1 --format='%h %s')"; else echo "HOLD $n - unpushed commits: $mine, edited files: $edits"; fi; done
+```
+
+`--keep` moves the branch
+and the files but refuses to overwrite uncommitted edits; it does not protect unpushed commits,
+which is what the count is for. The older `rewrite_history.py follow PATH --match` does the same
+with a stronger proof (reflog files).
+
+**State of the code (committed, pushed at 17:20; nothing since):** `Security/` = `scan_tree`,
+`scan_history`, `scan_secrets`, `scan_folder`, `rewrite_history` (plan / apply / verify / finish
+/ follow / relink) over plumbing `_rewrite`, `_report`, `_history`, `_contents`, `_patterns`,
+`_seeds`, `_repo`. Suite 48/48 on Windows. The never-publish list now holds the old account name
+(private file, outside the repository).
+
+### 2026-10-19 17:20 — where things stand
 
 **Sb4ssport-Alpha: rewritten, published and finished on this machine (17:00).** All ten repos
 force-pushed by the user, every checkout here moved, 64 quoted ids relinked (four commits, each

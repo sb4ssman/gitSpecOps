@@ -4,7 +4,17 @@ For the next session, human or LLM. Read [`README.md`](README.md) (the project b
 opens with **What this is for**, and that section outranks every rule below it. Then this, then
 [`WORKING-NOTES.md`](WORKING-NOTES.md).
 
-## Start here (2026-10-19 13:46): read the top section of WORKING-NOTES.md
+## Start here (2026-10-19 19:45): read the HANDOFF section at the top of WORKING-NOTES.md
+
+Since the 13:46 note below: this repository's history rewrite is done; the ten Sb4ssport-Alpha
+repositories were rewritten, published and caught up on this machine; other machines still
+need catching up (a tested plain-git note exists). **The Security code's structure is not
+settled and the user has given directions for it** -- `Basic/` holds only plain git/host
+operations; security operations are built from smaller callable pieces in the gitSpecOps
+spirit; big operations need real, typed stops; the never-publish list must be visible. Agree
+the structure with the user before writing code. Then the setup walk-through the user wants.
+
+## Earlier (2026-10-19 13:46)
 
 "Where things stand" there is current. In one breath: the tests were audited and five real
 defects fixed (safe-to-wipe, the duplicator, the observer's blind spots, pull, the hygiene

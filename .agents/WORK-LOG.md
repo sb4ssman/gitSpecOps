@@ -1492,3 +1492,18 @@ which the security, hygiene and import-direction tests then re-ran green).
   11 matching checkouts, all current, nothing moved. Tests: finish commits and pushes only its
   own files (an untracked file stays untracked); a sweep moves a stale clone and leaves current
   ones; a match that names nothing changes nothing. Full suite 48/48 on Windows.
+
+## 2026-10-19 19:45 - user (Claude Opus 5.5) - handoff: other machines' note; Security design unsettled
+
+- **A plain-git note for the other machines,** at the user's request (the temporary-clone
+  `follow` line "did not jive"): fetch, "same" if the checkout shares history with
+  `origin/main`, else count unpushed commits (against `origin/main` and `origin/main@{1}`) and
+  edited tracked files, and `reset --keep` only when both are zero. Tested in PowerShell and sh
+  on scratch fixtures in every state, twice each. A first version wrongly held an
+  already-current fresh clone (no reflog); fixed with the shared-history check first.
+- **The user's feedback on the tools:** no stop between rewriting and pushing (the agent's
+  PowerShell loop made that worse); big operations must stop on a typed word and say what to
+  inspect; the never-publish list must be shown when loaded and before it is first written.
+- **The Security structure was discussed and not settled.** The agent proposed three shapes in
+  a row, the last against the architecture (security plumbing in `Basic/`). The user's
+  directions are recorded in WORKING-NOTES ("HANDOFF", 19:45). No code changed after 17:20.
