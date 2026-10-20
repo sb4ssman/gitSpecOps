@@ -7,7 +7,7 @@ move every clone onto the new history and fix the commit ids quoted in its files
     python Security/rewrite_history.py apply  PLAN_DIR [PLAN_DIR ...] [--yes]
     python Security/rewrite_history.py verify PLAN_DIR [PLAN_DIR ...]
     python Security/rewrite_history.py finish PLAN_DIR [PLAN_DIR ...] [--yes]
-    python Security/rewrite_history.py follow [REPO] [--yes]
+    python Security/rewrite_history.py follow [PATH ...] [--match TEXT] [--yes]
     python Security/rewrite_history.py relink PLAN_DIR [PLAN_DIR ...] [--checkout PATH]
                                                [--write]
 
@@ -43,11 +43,16 @@ held no planned value. Then it prints the push steps. **Pushing is yours.** It r
 published history (a forced push, which gitSpecOps never performs itself).
 
 **finish** is what to run once the forced pushes are made: `follow` for every plan's own
-checkout, then `relink` in each with every plan's commit map.
+checkout, `relink` in each with every plan's commit map, then a commit of exactly those files
+and an ordinary push (`--no-commit` stops before committing).
 
 **follow** moves a clone made before the rewrite -- on any machine -- onto the new history: it
 fetches, refuses if a tracked file is changed or any commit on the branch was never on the
 remote (the remote-tracking reflogs record what the remote held), then runs `git reset --keep`.
+Given folders, it does this for every checkout under them (`--match` narrows by origin URL):
+all are checked first, refusals are listed with the reason, and one answer moves the rest --
+one line per machine. On a machine whose own gitSpecOps predates the rewrite, run it from a
+fresh clone: `git clone <gitSpecOps URL> <temp>` then `python <temp>/Security/...`.
 
 **relink** rewrites commit ids quoted in a moved checkout's tracked files (work logs, notes) to
 the new ids, from filter-repo's commit map, and leaves the edits for you to review and commit.
@@ -70,7 +75,8 @@ from Basic._confirm import confirm_typed  # noqa: E402
 from Basic._console import enable_unicode_output  # noqa: E402
 from Basic._run import run  # noqa: E402
 from Security._rewrite import (REWRITE_TIMEOUT_SECONDS, _filename_callback,  # noqa: E402
-                               _summary, default_plan_dir, finish, follow, plan,
+                               _summary, default_plan_dir, finish, follow, follow_many,
+                               plan,
                                push_steps, relink, verify)
 from Security._seeds import identity_seeds  # noqa: E402
 
@@ -130,8 +136,14 @@ def main(argv: list[str]) -> int:
     n = sub.add_parser("finish", help="after the pushes: follow and relink every plan's checkout")
     n.add_argument("plan_dirs", type=Path, nargs="+", metavar="PLAN_DIR")
     n.add_argument("--yes", action="store_true", help="go ahead without asking")
+    n.add_argument("--no-commit", action="store_true",
+                   help="leave the updated ids uncommitted for review")
     f = sub.add_parser("follow", help="move a clone made before the rewrite onto the new history")
-    f.add_argument("repo", nargs="?", type=Path, default=Path("."))
+    f.add_argument("paths", nargs="*", type=Path, default=[Path(".")], metavar="PATH",
+                   help="a checkout, or folders to search for checkouts (default: here)")
+    f.add_argument("--match", action="append", default=[], metavar="TEXT",
+                   help="only checkouts whose origin URL contains TEXT (repeatable)")
+    f.add_argument("--depth", type=int, default=3, help="how deep to search folders")
     f.add_argument("--yes", action="store_true", help="move without asking")
     f.add_argument("--no-fetch", action="store_true", help="use the refs as last fetched")
     r = sub.add_parser("relink", help="update commit ids quoted in a moved checkout's files")
@@ -164,9 +176,13 @@ def main(argv: list[str]) -> int:
         print("\n".join(_summary(decided, into.resolve())))
         return 0
     if args.action == "finish":
-        return finish(args.plan_dirs, assume_yes=args.yes)
+        return finish(args.plan_dirs, assume_yes=args.yes, publish=not args.no_commit)
     if args.action == "follow":
-        return follow(args.repo, fetch=not args.no_fetch, assume_yes=args.yes)
+        single = len(args.paths) == 1 and (args.paths[0] / ".git").exists()
+        if single and not args.match:
+            return follow(args.paths[0], fetch=not args.no_fetch, assume_yes=args.yes)
+        return follow_many(args.paths, match=args.match, depth=args.depth,
+                           fetch=not args.no_fetch, assume_yes=args.yes)
     if args.action == "relink":
         plan_dirs = [path.resolve() for path in args.plan_dirs]
         expected = json.loads((plan_dirs[0] / "expected.json").read_text(encoding="utf-8"))

@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 from Basic._confirm import prompt_yes_no
+from Basic._discovery import find_repos
 from Basic._run import run, run_git
 from Security._history import NOREPLY_SUFFIX, scan_history, tip_matching_files
 from Security._patterns import SECRETS, mask
@@ -462,7 +463,8 @@ def references(text: str, mapping: dict[str, str], olds: list[str] | None = None
     return found
 
 
-def relink(plan_dirs, checkout: Path, *, write: bool = False) -> tuple[list[str], int]:
+def relink(plan_dirs, checkout: Path, *, write: bool = False,
+           edited: list | None = None) -> tuple[list[str], int]:
     """(report lines, references found) in `checkout`'s tracked text files; edits when `write`.
 
     `plan_dirs` is one applied plan or several: their commit maps are merged, because
@@ -495,6 +497,8 @@ def relink(plan_dirs, checkout: Path, *, write: bool = False) -> tuple[list[str]
             for offset, old, new in reversed(found):
                 text = text[:offset] + new + text[offset + len(old):]
             path.write_bytes(text.encode("utf-8"))
+            if edited is not None:
+                edited.append(name)
     return lines, total
 
 
@@ -530,6 +534,81 @@ def published_before(repo: Path, new_tip: str) -> list[str]:
             if run_git(repo, ["merge-base", value, new_tip]).returncode == 1]
 
 
+def assess(repo: Path, *, fetch: bool = True) -> dict:
+    """What `follow` would do for one checkout. Changes nothing but a fetch.
+
+    `action` is "move" (the branch predates a rewrite and nothing would be lost), "current"
+    (nothing to follow), "skip" (no upstream) or "refuse" (with `why`: something could be lost,
+    or nothing proves it could not).
+    """
+    repo = Path(repo).resolve()
+    found = {"repo": repo, "action": "refuse", "why": "", "hint": "", "stale": []}
+    branch = run_git(repo, ["branch", "--show-current"]).stdout.strip()
+    found["branch"] = branch
+    if not branch:
+        found["why"] = "detached HEAD: check out the branch to move first"
+        return found
+    if fetch:
+        fetched = run_git(repo, ["fetch", "--prune"], timeout=REWRITE_TIMEOUT_SECONDS)
+        if fetched.returncode:
+            found["why"] = f"fetch failed: {fetched.stderr.strip()}"
+            return found
+    upstream = run_git(repo, ["rev-parse", "--abbrev-ref", "--symbolic-full-name",
+                              "@{upstream}"]).stdout.strip()
+    found["upstream"] = upstream
+    if not upstream:
+        found.update(action="skip", why=f"{branch} has no upstream")
+        return found
+    if run_git(repo, ["merge-base", "HEAD", upstream]).returncode == 0:
+        found.update(action="current", why=f"{branch} shares history with {upstream}")
+        return found
+    if run_git(repo, ["status", "--porcelain", "--untracked-files=no"]).stdout.strip():
+        found["why"] = ("uncommitted changes to tracked files: commit or stash them first (or "
+                        "re-clone into a new folder and carry them over)")
+        return found
+    new_tip = run_git(repo, ["rev-parse", upstream]).stdout.strip()
+    published = published_before(repo, new_tip)
+    if not published:
+        found["why"] = ("no record of what the remote held before the rewrite (no "
+                        "remote-tracking reflog entry from the old history), so unpushed work "
+                        "cannot be ruled out: re-clone into a new folder and compare instead")
+        return found
+    alone = run_git(repo, ["rev-list", "HEAD", "--not", *published]).stdout.split()
+    if alone:
+        subjects = [run_git(repo, ["log", "-1", "--format=%h %s", sha]).stdout.strip()
+                    for sha in alone[:20]]
+        found["why"] = (f"{len(alone)} commit(s) on {branch} were never on the remote; moving "
+                        "would hide them:\n" + "\n".join(f"    {s}" for s in subjects))
+        # The newest commit of this branch that the remote held: where the local work starts.
+        base = run_git(repo, ["merge-base", "HEAD", *published]).stdout.strip()
+        if base:
+            found["hint"] = ("check their author identity, then replay them onto the new "
+                             f"history with: git rebase --onto {upstream} {base[:12]} {branch}")
+        return found
+    # Old history = related to this branch's old tip and not to the new upstream (an unrelated
+    # orphan branch such as gh-pages is neither, and is left out).
+    found["stale"] = [other for other in run_git(repo, ["for-each-ref", "--format=%(refname:short)",
+                                                        "refs/heads", "refs/tags"]).stdout.split()
+                      if other != branch
+                      and run_git(repo, ["merge-base", other, "HEAD"]).returncode == 0
+                      and run_git(repo, ["merge-base", other, upstream]).returncode]
+    found.update(action="move", old_tip=run_git(repo, ["rev-parse", "--short", "HEAD"]).stdout
+                 .strip(), new_tip=new_tip[:7])
+    return found
+
+
+def _move(found: dict) -> bool:
+    """`git reset --keep` onto the upstream, for an assessment that said "move"."""
+    moved = run_git(found["repo"], ["reset", "--keep", found["upstream"]])
+    if moved.returncode:
+        print(f"  git reset --keep refused: {moved.stderr.strip()}", file=sys.stderr)
+        return False
+    if found["stale"]:
+        print("  still pointing into the old history (pushing any of these would publish it "
+              "again) -- delete or move each: " + ", ".join(found["stale"]))
+    return True
+
+
 def follow(repo: Path, *, fetch: bool = True, assume_yes: bool = False) -> int:
     """Move the checked-out branch of a pre-rewrite clone onto its rewritten upstream.
 
@@ -538,83 +617,101 @@ def follow(repo: Path, *, fetch: bool = True, assume_yes: bool = False) -> int:
     the remote-tracking reflogs show), or no record of the old history at all. Other local
     branches and tags still pointing into the old history are named, not moved.
     """
-    repo = Path(repo).resolve()
-    branch = run_git(repo, ["branch", "--show-current"]).stdout.strip()
-    if not branch:
-        print("Detached HEAD: check out the branch to move first.", file=sys.stderr)
-        return 2
-    if fetch:
-        fetched = run_git(repo, ["fetch", "--prune"], timeout=REWRITE_TIMEOUT_SECONDS)
-        if fetched.returncode:
-            print(f"fetch failed: {fetched.stderr.strip()}", file=sys.stderr)
-            return 2
-    upstream = run_git(repo, ["rev-parse", "--abbrev-ref", "--symbolic-full-name",
-                              "@{upstream}"]).stdout.strip()
-    if not upstream:
-        print(f"{branch} has no upstream to follow.", file=sys.stderr)
-        return 2
-    if run_git(repo, ["merge-base", "HEAD", upstream]).returncode == 0:
-        print(f"{branch} shares history with {upstream}: nothing to follow (a normal pull "
-              "handles it).")
-        return 0
-    if run_git(repo, ["status", "--porcelain", "--untracked-files=no"]).stdout.strip():
-        print("Uncommitted changes to tracked files: commit or stash them first (or re-clone "
-              "into a new folder and carry them over).", file=sys.stderr)
+    found = assess(repo, fetch=fetch)
+    if found["action"] in ("current", "skip"):
+        print(f"{found['why']}: nothing to follow"
+              + (" (a normal pull handles it)." if found["action"] == "current" else "."))
+        return 0 if found["action"] == "current" else 2
+    if found["action"] == "refuse":
+        print(f"Nothing was changed: {found['why']}", file=sys.stderr)
+        if found["hint"]:
+            print(found["hint"], file=sys.stderr)
         return 1
-    new_tip = run_git(repo, ["rev-parse", upstream]).stdout.strip()
-    published = published_before(repo, new_tip)
-    if not published:
-        print("No record of what the remote held before the rewrite (no remote-tracking reflog "
-              "entry from the old history), so unpushed work cannot be ruled out. Nothing was "
-              "changed: re-clone into a new folder and compare instead.", file=sys.stderr)
-        return 1
-    alone = run_git(repo, ["rev-list", "HEAD", "--not", *published]).stdout.split()
-    if alone:
-        print(f"{len(alone)} commit(s) on {branch} were never on the remote; moving would hide "
-              "them. Nothing was changed:", file=sys.stderr)
-        for sha in alone[:20]:
-            subject = run_git(repo, ["log", "-1", "--format=%h %s", sha]).stdout.strip()
-            print(f"  {subject}", file=sys.stderr)
-        # The newest commit of this branch that the remote held: where the local work starts.
-        base = run_git(repo, ["merge-base", "HEAD", *published]).stdout.strip()
-        if base:
-            print("Check their author identity, then replay them onto the new history with:\n"
-                  f"  git rebase --onto {upstream} {base[:12]} {branch}", file=sys.stderr)
-        return 1
-    old_tip = run_git(repo, ["rev-parse", "--short", "HEAD"]).stdout.strip()
-    # Old history = related to this branch's old tip and not to the new upstream (an unrelated
-    # orphan branch such as gh-pages is neither, and is left out).
-    stale = [other for other in run_git(repo, ["for-each-ref", "--format=%(refname:short)",
-                                               "refs/heads", "refs/tags"]).stdout.split()
-             if other != branch
-             and run_git(repo, ["merge-base", other, "HEAD"]).returncode == 0
-             and run_git(repo, ["merge-base", other, upstream]).returncode]
-    print(f"Every commit on {branch} was on the remote before the rewrite.")
-    print(f"Move {branch}: {old_tip} (old history) -> {new_tip[:7]} with `git reset --keep`.")
+    print(f"Every commit on {found['branch']} was on the remote before the rewrite.")
+    print(f"Move {found['branch']}: {found['old_tip']} (old history) -> {found['new_tip']} with "
+          "`git reset --keep`.")
     if not assume_yes and not prompt_yes_no("Move it now?", default=False):
         print("Nothing was changed.")
         return 1
-    moved = run_git(repo, ["reset", "--keep", upstream])
-    if moved.returncode:
-        print(f"git reset --keep refused: {moved.stderr.strip()}", file=sys.stderr)
+    if not _move(found):
         return 1
-    print(f"Moved {branch} onto {upstream}. The old commits stay in this clone's reflog, on no "
-          "branch, until git expires them; nothing pushes them.")
-    if stale:
-        print("Still pointing into the old history (pushing any of these would publish it "
-              "again) -- delete or move each:")
-        print("\n".join(f"  {name}" for name in stale))
+    print(f"Moved {found['branch']} onto {found['upstream']}. The old commits stay in this "
+          "clone's reflog, on no branch, until git expires them; nothing pushes them.")
     return 0
 
 
-def finish(plan_dirs, *, assume_yes: bool = False, fetch: bool = True) -> int:
-    """After the forced pushes: move every plan's checkout onto its new history (`follow`), then
-    update the commit ids quoted in each with every plan's map (`relink`). Never commits."""
+def repositories_under(paths, *, match=(), depth: int = 3) -> list[Path]:
+    """Every checkout at or under `paths` whose origin URL contains one of `match` (any, when
+    none is given)."""
+    found = []
+    for path in (Path(p).resolve() for p in paths):
+        if (path / ".git").exists():
+            found.append(path)
+        else:
+            found += [Path(hit.path) for hit in find_repos(path, max_depth=depth)
+                      if hit.kind != "bare"]
+    match = [text.lower() for text in match]
+    return [repo for repo in dict.fromkeys(found)
+            if not match or any(text in run_git(repo, ["remote", "get-url", "origin"])
+                                .stdout.lower() for text in match)]
+
+
+def follow_many(paths, *, match=(), depth: int = 3, fetch: bool = True,
+                assume_yes: bool = False) -> int:
+    """`follow` for every checkout under `paths`: assess all, show all, ask once, move.
+
+    One line on another machine handles everything it holds: current checkouts are left
+    alone, refusals are listed with the reason, and nothing moves before the one answer.
+    """
+    repos = repositories_under(paths, match=match, depth=depth)
+    if not repos:
+        print("No matching repositories found.", file=sys.stderr)
+        return 2
+    print(f"Checking {len(repos)} repositor{'y' if len(repos) == 1 else 'ies'} (fetching each)...")
+    results = [assess(repo, fetch=fetch) for repo in repos]
+    moves = [r for r in results if r["action"] == "move"]
+    refused = [r for r in results if r["action"] == "refuse"]
+    current = [r for r in results if r["action"] in ("current", "skip")]
+    print(f"\nAlready current or nothing to follow: {len(current)}")
+    if refused:
+        print(f"Refused -- nothing will change in these ({len(refused)}):")
+        for r in refused:
+            print(f"  {r['repo']}: {r['why']}")
+            if r["hint"]:
+                print(f"    {r['hint']}")
+    if not moves:
+        print("Nothing to move.")
+        return 1 if refused else 0
+    print(f"To move onto the rewritten history ({len(moves)}):")
+    print("\n".join(f"  {r['repo']}  {r['branch']}: {r['old_tip']} -> {r['new_tip']}"
+                    for r in moves))
+    if not assume_yes and not prompt_yes_no(f"Move these {len(moves)} now?", default=False):
+        print("Nothing was changed.")
+        return 1
+    failed = 0
+    for r in moves:
+        print(f"== {r['repo'].name}")
+        failed += not _move(r)
+    print(f"\nMoved {len(moves) - failed}; refused {len(refused)}; failed {failed}. The old "
+          "commits stay in each clone's reflog, on no branch; nothing pushes them.")
+    return 1 if failed or refused else 0
+
+
+RELINK_MESSAGE = "Update quoted commit ids after the history rewrite"
+
+
+def finish(plan_dirs, *, assume_yes: bool = False, fetch: bool = True,
+           publish: bool = True) -> int:
+    """After the forced pushes: move every plan's checkout onto its new history (`follow`),
+    update the commit ids quoted in each with every plan's map (`relink`), then commit exactly
+    those files and push them -- an ordinary fast-forward push (`publish=False` stops before
+    committing). Nothing else in a checkout is staged or committed."""
     plan_dirs = [Path(path).resolve() for path in plan_dirs]
     repos = [Path(json.loads((path / "expected.json").read_text(encoding="utf-8"))["repository"])
              for path in plan_dirs]
     print("For each checkout: fetch, prove nothing unpushed would be hidden, `git reset --keep`")
-    print("onto the rewritten history, then update the commit ids quoted in its files:")
+    print("onto the rewritten history, update the commit ids quoted in its files"
+          + (", then commit those files and push them (an ordinary push):" if publish else ":"))
     print("\n".join(f"  {repo}" for repo in repos))
     if not assume_yes and not prompt_yes_no("Go ahead?", default=False):
         print("Nothing was changed.")
@@ -628,15 +725,32 @@ def finish(plan_dirs, *, assume_yes: bool = False, fetch: bool = True) -> int:
             moved.append(repo)
     print()
     for repo in moved:
+        edited: list[str] = []
         try:
-            _lines, total = relink(plan_dirs, repo, write=True)
+            _lines, total = relink(plan_dirs, repo, write=True, edited=edited)
         except ValueError:
             print(f"{repo.name}: still on the old history -- was its forced push made?")
             status = 1
             continue
-        print(f"{repo.name}: {total} quoted commit id(s) updated" if total
-              else f"{repo.name}: no quoted commit ids")
-    print("\nNothing was committed. In each checkout: review `git diff`, commit, push normally.")
+        if not total:
+            print(f"{repo.name}: no quoted commit ids")
+            continue
+        if not publish:
+            print(f"{repo.name}: {total} quoted commit id(s) updated (not committed)")
+            continue
+        committed = run_git(repo, ["commit", "-q", "-m", RELINK_MESSAGE, "--", *edited])
+        if committed.returncode == 0:
+            # `commit -- <paths>` commits exactly those files; anything else stays as it was.
+            pushed = run_git(repo, ["push", "-q"], timeout=REWRITE_TIMEOUT_SECONDS)
+        if committed.returncode or pushed.returncode:
+            print(f"{repo.name}: {total} id(s) updated, but "
+                  + ("the commit" if committed.returncode else "the push") + " failed: "
+                  + (committed if committed.returncode else pushed).stderr.strip())
+            status = 1
+            continue
+        print(f"{repo.name}: {total} quoted commit id(s) updated, committed and pushed")
+    if not publish:
+        print("\nNothing was committed. In each checkout: review `git diff`, commit, push.")
     return status
 
 

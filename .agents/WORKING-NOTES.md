@@ -4,20 +4,40 @@ Living todo / scratch pad. Add items freely; **prune regularly**. When something
 into [`WORK-LOG.md`](WORK-LOG.md) (appended at the bottom, `YYYY-MM-DD HH:MM`) and delete it here.
 Dates are always absolute.
 
-_Last tended: 2026-10-19 16:15 (new top section; the 13:45 one below it is kept for its how-to)_
+_Last tended: 2026-10-19 17:20 (new top section; the 16:15 and 13:45 ones below are kept for
+their how-to)_
 
 ## Open
 
-### 2026-10-19 16:15 — where things stand (read this first)
+### 2026-10-19 17:20 — where things stand (read this first)
 
-**Sb4ssport-Alpha: ten plans written 2026-10-19 16:16, waiting for the user's `apply`.** Made
-after the Authority window finished committing (122 commits incl. its 15:37 checkpoints;
-Authority stays idle until this is done), with the IOCCC constant kept and the old account's
-noreply address claimed. Plans: `.agents/output/security/<repo>/rewrite-20261019-1616*`
-(ignored). Cross-checked with Authority's evidence: 12 signed commits (9 + 3), generated caches
-removed. Orbital-Workshop: 3 identities, 7 values; the other nine: one identity each, no values.
-A rehearsal of Orbital-Workshop (applied in its mirror only) verified clean; the `rehearsal-*`
-folders are deletable (`rm -rf` is blocked by the user's guard hook).
+**Sb4ssport-Alpha: rewritten, published and finished on this machine (17:00).** All ten repos
+force-pushed by the user, every checkout here moved, 64 quoted ids relinked (four commits, each
+checked to name the same commit as before), committed and pushed normally by the agent. An
+independent rescan of every rewritten copy found only the org's own name, the login (kept) and
+the IOCCC constant (kept); every identity is the noreply one. An untracked `NEW-NOTES.md` in
+Sb4ssport-Authority is the Authority window's to deal with -- **not ours**. The Authority window
+should be told the history changed before it resumes.
+
+- **Other machines** (nearly all hold some of these repos, and gitSpecOps itself may be stale):
+  one line each, from a fresh temporary clone so it works however stale that machine is --
+  see the work log 17:20, built on `follow PATH --match TEXT` (folder
+  sweep: checks everything first, lists refusals, asks once). Smoke-tested here: 11 found, 0
+  to move.
+- **No rulesets on the Alpha repos** -- the user declined (2026-10-19 16:50). gitSpecOps keeps
+  its own.
+- `finish` now commits exactly the files it relinked and pushes them (`--no-commit` to stop).
+- **Next:** enroll this machine in the foreground and show the user its dashboard; then the
+  Linux box. `fleet_app.py preflight` is green here (git, gh, Tailscale, port 8760).
+
+### 2026-10-19 16:15 — the Alpha run, as planned
+
+**Sb4ssport-Alpha: ten plans written 2026-10-19 16:16.** Made after the Authority window
+finished committing (122 commits incl. its 15:37 checkpoints), with the IOCCC constant kept and
+the old account's noreply address claimed. Plans: `.agents/output/security/<repo>/
+rewrite-20261019-1616*` (ignored). Cross-checked with Authority's evidence: 12 signed commits
+(9 + 3), generated caches removed. A rehearsal of Orbital-Workshop verified clean; the
+`rehearsal-*` folders are deletable (`rm -rf` is blocked by the user's guard hook).
 
 The run, from this folder:
 
@@ -30,8 +50,8 @@ The run, from this folder:
 4. `finish <every plan>` once: moves this machine's ten checkouts (`follow`) and updates the
    commit ids they quote of each other (`relink`); then commit + push those edits normally.
    Other machines: `follow <repo>`.
-5. Agent, afterwards: the `main` ruleset on each repository (after the forced push, never
-   before -- it would block it); secret scanning + push protection when each goes public.
+5. (Dropped by the user: no ruleset on these repositories.) Secret scanning + push
+   protection when each goes public remains a suggestion.
 
 **Decided by the user for Alpha (2026-10-19 16:10):** the other account (its old personal name, under
 both the personal address and its own noreply address) becomes the main identity -- `--mine`

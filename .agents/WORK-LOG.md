@@ -1469,3 +1469,26 @@ committing. The plumbing moved to `Security/_rewrite.py` and `Security/_report.p
 may not import sibling commands). Tests: `tests/security/test_security.py` 81 checks, gated
 rewrite included, all pass; full suite 48/48 files on Windows (before the last `--mine` fix,
 which the security, hygiene and import-direction tests then re-ran green).
+
+## 2026-10-19 17:20 - user (Claude Opus 5.5) - Sb4ssport-Alpha rewritten and published; follow sweeps folders
+
+- **The run:** the user applied all ten plans (each verified clean: 122 commits, no planned
+  value, no old identity, current files byte-identical but for planned changes), force-pushed
+  all ten with one PowerShell loop, and ran `finish` (all ten checkouts moved; 64 quoted ids
+  relinked). An independent rescan of the rewritten copies with every seed -- including the old
+  account name, added to the private never-publish list after planning -- found nothing
+  personal; all 244 author/committer fields are the noreply identity (or GitHub's own, on 12
+  web commits). The agent checked each relinked id names the same commit as before (four
+  distinct: three from Structural-Engineering, one from the site repo, quoted across repos),
+  ran Structural-Engineering's tests (11 pass, its fixtures quote one of those ids), then
+  committed exactly the relinked files in nine repos and pushed them normally.
+- **The user asked why a step remained after `finish`:** nothing had failed; the edits were
+  left uncommitted by design. `finish` now commits exactly the files it relinked and pushes them
+  (`--no-commit` keeps the old behaviour). The user declined rulesets on the Alpha repos.
+- **`follow` sweeps folders:** `follow PATH... [--match TEXT] [--depth N]` assesses every
+  checkout found (fetching each), lists the ones it refuses with the reason, asks once, then
+  moves the rest. For another machine, one line from a fresh temporary clone, so it works
+  however stale that machine's own gitSpecOps is. Smoke-tested here over the whole library:
+  11 matching checkouts, all current, nothing moved. Tests: finish commits and pushes only its
+  own files (an untracked file stays untracked); a sweep moves a stale clone and leaves current
+  ones; a match that names nothing changes nothing. Full suite 48/48 on Windows.

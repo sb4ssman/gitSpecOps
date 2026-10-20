@@ -601,12 +601,26 @@ with tempfile.TemporaryDirectory(prefix="security-finish-") as temp:
         "old new\n" + "".join(f"{old} {new}\n" for old, new in mapping.items()), encoding="ascii")
     (plan_dir / "expected.json").write_text(json.dumps({"repository": str(work), "refs": {}}),
                                             encoding="utf-8")
+    (work / "scratch.txt").write_text("mine, untracked\n")
     with redirect_stdout(io.StringIO()) as out:
         finished = _rewrite.finish([plan_dir], assume_yes=True)
-    check("finish moves the checkout and relinks its quoted ids, committing nothing",
+    check("finish moves the checkout, relinks its quoted ids, commits exactly those and pushes",
           finished == 0 and shares_history(work) is True
           and (work / "LOG.md").read_text() == f"see {mapping[first][:7]}\n"
-          and git(work, "status", "--porcelain").strip() == "M LOG.md", out.getvalue())
+          and git(work, "status", "--porcelain").strip() == "?? scratch.txt"
+          and git(work, "log", "-1", "--format=%s").strip() == _rewrite.RELINK_MESSAGE
+          and git(work, "rev-parse", "HEAD") == git(bare, "rev-parse", "main"), out.getvalue())
+
+    # Another machine: one line moves every stale checkout under a folder, refusing the unsafe.
+    with redirect_stdout(io.StringIO()):
+        nothing = _rewrite.follow_many([tmp], match=["no-such-remote"], assume_yes=True)
+    check("a --match that names nothing changes nothing", nothing == 2)
+    with redirect_stdout(io.StringIO()) as out:
+        swept = _rewrite.follow_many([tmp], match=["remote.git"], assume_yes=True)
+    check("one sweep moves every stale clone under a folder and leaves current ones alone",
+          shares_history(seed) is True and shares_history(work) is True
+          and git(seed, "rev-parse", "HEAD") == git(bare, "rev-parse", "main")
+          and swept == 0 and "Moved 1; refused 0" in out.getvalue(), out.getvalue())
     steps = "\n".join(_rewrite.push_steps([plan_dir, plan_dir]))
     check("after apply: one push line per plan, then a single finish line",
           steps.count("push --force") == 2 and steps.count("rewrite_history.py finish") == 1,
