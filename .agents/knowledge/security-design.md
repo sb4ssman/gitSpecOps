@@ -2,7 +2,7 @@
 
 **Status:** agreed with the user 2026-10-20. Replaces the `Security/` folder built on 2026-10-19,
 which cleaned this repository and ten others successfully but had the wrong shape. Nothing here
-is built yet except `Basic/reset_keep.py`. The plan to get here is at the end.
+is built yet beyond phase 1 (Basic, done 2026-10-20). The plan to get here is at the end.
 
 **No backwards compatibility.** No version tag, no `_archive/` folder, no shims: the old code is
 deleted at the cut-over and git history keeps it. No machine is enrolled anywhere, so nothing
@@ -169,7 +169,11 @@ findings against the old tools on real repositories (this one, the Alpha set) by
 from a temporary worktree of a pre-cut-over commit -- verification, not compatibility.
 
 0. **Record** -- this document. Done 2026-10-20.
-1. **Basic** -- `reset_keep` (done 2026-10-20), `commit`, the `_facts` additions, `_objects`.
+1. **Basic** -- done 2026-10-20: `reset_keep`, `commit`, the `_facts` additions (`ref_snapshot`,
+   `remote_refs`, `would_track`, `identity_settings`, `next_commit_identity`), `_objects`
+   (`file_versions`, `files_at`, `commits`, `read_blobs`), and `_run.stream` beneath it. One
+   finding on the way: the old reader took paths from `rev-list --objects`, which names each
+   object once, so a file whose content matched another's was never seen under its own name.
 2. **Rewriting history** (Special, general) -- `_rewrite_rule`, `_rewrite_plan`,
    `_history_rewriter`, `_rewrite_proof`, `_commit_map`; `rewrite_history`, `follow_rewrite`,
    `relink_ids`. One gated end-to-end test on a disposable repository seeded with every case

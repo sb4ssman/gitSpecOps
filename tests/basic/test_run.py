@@ -18,7 +18,7 @@ setup()
 
 from Basic import _run  # noqa: E402
 from Basic._run import (CommandFailed, CommandTimeout, run, run_checked,  # noqa: E402
-                        run_git)
+                        run_git, stream)
 
 FAILS: list[str] = []
 PY = sys.executable
@@ -71,6 +71,64 @@ for argv, label in (([PY, "-c", "raise SystemExit(3)"], "nonzero exit"),
         check(f"run_checked raises CommandFailed on {label}", False)
     except CommandFailed:
         check(f"run_checked raises CommandFailed on {label}", True)
+
+# stream(): the batch face. Big enough that writing stdin inline would fill both pipes.
+ECHO = ("import sys\n"
+        "for line in sys.stdin.buffer:\n"
+        "    sys.stdout.buffer.write(line.upper())\n")
+lines = [f"line {i:06d} {'x' * 80}\n".encode() for i in range(20000)]
+with stream([PY, "-c", ECHO], timeout=120, feed=lines) as out:
+    echoed = out.stdout.read().splitlines(keepends=True)
+check("stream feeds and reads 2 MB both ways without deadlock",
+      len(echoed) == len(lines) and echoed[-1] == lines[-1].upper())
+
+started = time.monotonic()
+try:
+    with stream([PY, "-c", "import time; time.sleep(60)"], timeout=0.5) as out:
+        out.stdout.read()
+    check("stream raises CommandTimeout at its deadline", False)
+except CommandTimeout:
+    check("stream raises CommandTimeout at its deadline", True)
+check(f"stream's timeout kills the tree promptly ({time.monotonic() - started:.1f}s < 20s)",
+      time.monotonic() - started < 20)
+
+try:
+    with stream([PY, "-c", "print('partial'); raise SystemExit(3)"], timeout=30) as out:
+        out.stdout.read()
+    check("stream raises CommandFailed on a nonzero exit", False)
+except CommandTimeout:
+    check("stream raises CommandFailed on a nonzero exit", False)
+except CommandFailed:
+    check("stream raises CommandFailed on a nonzero exit", True)
+
+try:
+    with stream(["gitspecops-no-such-binary"], timeout=5) as out:
+        pass
+    check("stream raises CommandFailed for a missing binary", False)
+except CommandFailed:
+    check("stream raises CommandFailed for a missing binary", True)
+
+# Bytes, not text: a text-mode stdout on Windows writes "y\r\n".
+FOREVER = "import sys\nwhile True:\n    sys.stdout.buffer.write(b'y\\n'); sys.stdout.flush()\n"
+started = time.monotonic()
+with stream([PY, "-c", FOREVER], timeout=60) as out:
+    first = out.stdout.readline()
+    out.stop()
+check("stop() ends an endless command early, without an error",
+      first == b"y\n" and time.monotonic() - started < 20)
+
+
+def first_line(argv):
+    with stream(argv, timeout=60) as out:
+        yield out._proc
+        yield out.stdout.readline()
+
+
+reader = first_line([PY, "-c", FOREVER])
+child = next(reader)
+next(reader)
+reader.close()   # an abandoned generator leaves the block early
+check("an abandoned stream's command is killed", child.poll() is not None)
 
 env_probe = [PY, "-c", "import os; print(os.environ.get('GITSPECOPS_PROBE'))"]
 check("caller env reaches the child", run(env_probe, timeout=30, env={"GITSPECOPS_PROBE": "x"}).stdout.strip() == "x")

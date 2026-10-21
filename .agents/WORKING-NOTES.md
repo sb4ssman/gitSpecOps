@@ -25,7 +25,10 @@ settled). Decided with the user:
 - **`shared/` deleted by the user**; the version is read from `pyproject.toml` by
   `git-sync-suggester/core/version.py`.
 
-**Next:** phase 1 remainder -- `Basic/commit.py`, the `_facts` additions, `Basic/_objects.py`.
+**Phase 1 (Basic) done 2026-10-20** -- see the work log. **Next: phase 2**, general history
+rewriting in `Special/`: `_rewrite_rule`, `_rewrite_plan`, `_history_rewriter`,
+`_rewrite_proof`, `_commit_map`; `rewrite_history`, `follow_rewrite`, `relink_ids`; the gated
+end-to-end specimen test (cases listed in the design document).
 **Open:** the watch list's name; deleting three 2026-10-19 plan folders in the per-user
 `security/` folder (they hold real values; awaiting the user's word).
 

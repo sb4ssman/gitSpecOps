@@ -17,6 +17,8 @@ from _bootstrap import ROOT, setup  # noqa: E402
 setup()
 
 from Basic.clone import clone  # noqa: E402
+from Basic.commit import COMMITTED, NOTHING_TO_COMMIT  # noqa: E402
+from Basic.commit import commit as commit_paths  # noqa: E402
 from Basic.fetch import fetch  # noqa: E402
 from Basic.pull import ALREADY_CURRENT, UPDATED, fast_forward  # noqa: E402
 from Basic.push import push  # noqa: E402
@@ -111,6 +113,33 @@ with tempfile.TemporaryDirectory(prefix="basic-git-") as tmp:
     check("reset_keep refuses a detached HEAD",
           reset_keep(mine, head).startswith("failed:") and git(mine, "rev-parse", "HEAD") == upstream)
 
+    # commit: exactly the named paths, whatever else is staged.
+    work = tmp / "work"
+    clone(str(bare), work)
+    identity(work)
+    (work / "a.txt").write_text("named change", encoding="utf-8")
+    (work / "new.txt").write_text("new file", encoding="utf-8")
+    (work / "b.txt").unlink()
+    (work / "other.txt").write_text("staged, not named", encoding="utf-8")
+    git(work, "add", "other.txt")
+    before = git(work, "rev-parse", "HEAD")
+    check("commit commits the named paths",
+          commit_paths(work, ["a.txt", "new.txt", "b.txt"], "named only") == COMMITTED)
+    in_commit = set(git(work, "show", "--name-only", "--format=", "HEAD").splitlines())
+    check("the commit holds a change, a new file and a deletion -- and nothing else",
+          in_commit == {"a.txt", "new.txt", "b.txt"} and git(work, "rev-parse", "HEAD^") == before)
+    check("another staged file stays staged and uncommitted",
+          git(work, "diff", "--cached", "--name-only") == "other.txt")
+    check("naming unchanged paths is 'nothing to commit'",
+          commit_paths(work, ["a.txt"], "again") == NOTHING_TO_COMMIT)
+    check("commit refuses to run without named paths",
+          commit_paths(work, [], "everything?").startswith("failed:"))
+    check("commit refuses an empty message",
+          commit_paths(work, ["other.txt"], "  ").startswith("failed:"))
+    git(work, "checkout", "-q", "--detach")
+    check("commit refuses a detached HEAD",
+          commit_paths(work, ["other.txt"], "orphan").startswith("failed:"))
+
 # git translates its messages; the pull result must come from HEAD, not from English wording.
 # This Windows git build ships no translations, so the translated output is played by a fake.
 from Basic import pull as pull_module  # noqa: E402
@@ -137,6 +166,10 @@ check("Basic/push.py code has no force option", "force" not in push_code.lower()
 reset_code = (ROOT / "Basic" / "reset_keep.py").read_text(encoding="utf-8").split('"""', 2)[2]
 check("Basic/reset_keep.py code has no other reset mode",
       not any(mode in reset_code for mode in ("--hard", "--mixed", "--soft", "--merge")))
+commit_code = (ROOT / "Basic" / "commit.py").read_text(encoding="utf-8").split('"""', 2)[2]
+check("Basic/commit.py code cannot commit everything, amend, commit empty or skip hooks",
+      not any(flag in commit_code for flag in ('"-a"', "--all", "--amend", "--allow-empty",
+                                                "--no-verify", '"-n"')))
 
 if FAILS:
     print(f"\n{len(FAILS)} FAILED")

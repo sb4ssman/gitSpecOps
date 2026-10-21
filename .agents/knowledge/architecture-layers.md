@@ -83,10 +83,12 @@ gitSpecOps/
 │   ├── _discovery.py
 │   ├── _facts.py
 │   ├── _files.py               atomic writes
+│   ├── _objects.py             reading a range of history: every path, commit, file version
 │   ├── _identity.py
 │   ├── _paths.py               per-user state folder
 │   ├── _run.py                 the one subprocess wrapper (git and host CLIs)
 │   ├── clone.py
+│   ├── commit.py               exactly the named paths; never -a, --amend, empty, --no-verify
 │   ├── discover.py             find repositories under a root
 │   ├── fetch.py
 │   ├── pull.py                 fast-forward only

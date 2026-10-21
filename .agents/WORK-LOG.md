@@ -1529,3 +1529,29 @@ which the security, hygiene and import-direction tests then re-ran green).
   became a single-source test plus "unreadable is unknown, not a crash". The planned
   `App/version.py` was wrong: the display contract (Elaborate) needs the number.
 - Full suite 48/48 on Windows.
+
+## 2026-10-20 18:22 - user (Claude Opus 5.5) - Security rebuild phase 1: Basic
+
+- **`Basic/commit.py`** -- commits exactly the named paths (`add` then `commit --only`), so
+  other staged changes stay staged; refuses no paths, an empty message, a detached HEAD;
+  "nothing to commit" when the paths are unchanged. No `-a`, `--amend`, empty commit or hook
+  skipping exists in its code (pinned by a test).
+- **`Basic/_run.stream()`** -- the wrapper's streaming face. The old history reader called
+  `subprocess.Popen` directly, so it had none of the wrapper's care (no process-tree kill on
+  Windows, no no-prompt environment). Feeds stdin from a thread (2 MB each way tested), a
+  deadline that kills the tree, `CommandFailed` on a nonzero exit, `stop()` and an abandoned
+  generator both end the child.
+- **`Basic/_objects.py`** -- `file_versions` (every path of every file version, from
+  `log --raw -m --root`), `files_at`, `commits` (raw objects: signature present or not, no
+  mailmap, no signing tool, a message's own indentation kept), `read_blobs` (streamed; a missing
+  id is reported as None; a short answer raises). **Finding:** the old reader took paths from
+  `rev-list --objects`, which names each object once -- a file whose content matched another
+  file's was never seen under its own name, so a value in that name could not be found. Checked
+  on a scratch repository; also checked that the old `%an/%ae` reads were *not* mailmapped.
+- **`Basic/_facts`** -- `ref_snapshot` (raises; tags record their own object and the commit),
+  `remote_refs` (`ls-remote --refs`; None when unreachable), `would_track` (False only on
+  positive evidence), `identity_settings` (value, scope, origin) and `next_commit_identity`.
+- Tests: `tests/basic/test_objects.py` (new, a repository built with every case), commit cases
+  in `test_git_ops.py`, stream cases in `test_run.py`. Two test-side Windows traps on the way,
+  both text-mode pipes writing `\r\n`. A large shell heredoc was blocked by the user's guard
+  hook; edits went through the edit tool instead.

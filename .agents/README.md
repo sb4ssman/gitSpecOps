@@ -177,7 +177,17 @@ the others are commands, runnable by path:
   whose child is the real program; killing only the launcher left the child holding the output
   pipe, so a timed-out call hung until the child exited on its own — a timeout that did not
   bound anything. Both earlier wrappers had this.
-- `_facts.py` — read-only repository facts (`repo_facts`, ahead/behind, top level).
+  `stream()` (2026-10-20) is its streaming face, for `git cat-file --batch`: same environment,
+  a deadline that kills the tree, and a raise -- never a short read passed off as complete.
+- `_facts.py` — read-only repository facts (`repo_facts`, ahead/behind, top level), plus
+  (2026-10-20) `ref_snapshot` (raises: it is taken as proof), `remote_refs` (what the remote
+  serves now), `would_track` (False only on positive evidence) and the identity facts
+  (`identity_settings` with each value's source; `next_commit_identity`, git's own guesses
+  included).
+- `_objects.py` — reading a range of history: every file version under **every** path it had
+  (from per-commit diffs; `rev-list --objects` names each object once, so identical content
+  hid a second file name), commit records parsed from the raw objects (no mailmap, no signing
+  tool), and streamed file contents.
 - `_identity.py` — parse any remote URL into host/owner/name.
 - `_discovery.py` — find repositories on disk. **Cross-filesystem exclusion happens only on
   positive evidence** — an unknown device id never means "skip". Windows is why:
@@ -192,6 +202,8 @@ the others are commands, runnable by path:
 - `_files.py` — `atomic_write_bytes`, for every state file.
 - `_paths.py` — the per-user state folder (`config_home()`, `sync_home()`); never the checkout.
 - `status.py`, `discover.py` — read-only commands over `_facts` and `_discovery`.
+- `commit.py` (2026-10-20) — commits exactly the named paths; no `-a`, `--amend`, empty commit
+  or hook skipping exists in its code (pinned).
 
 `_os/` sits beneath every layer and holds per-OS components: `_os/windows/`, `_os/linux/` and
 `_os/macos/` carry the same files with the same functions (`tests/os/test_os_parity.py`), and

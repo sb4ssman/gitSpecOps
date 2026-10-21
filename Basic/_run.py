@@ -22,13 +22,20 @@ worker pool wants an exception it can retry -- so they are two thin faces over o
   interpreter; other programs ignore them.
 - **No policy.** Callers own what they run. Mutating callers reach this only after their own
   plan -> confirm step.
+
+`stream()` is the third face, for output too large to collect at once (every file version in a
+history, through `git cat-file --batch`). The same care applies -- environment, required
+timeout, whole-tree kill -- because a reader that bypassed this wrapper once had none of it.
 """
 from __future__ import annotations
 
 import os
 import subprocess
+import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import IO, Iterable, Iterator, Sequence
 
 from _os.current import process as _process
 
@@ -62,21 +69,25 @@ def _is_git(argv: Sequence) -> bool:
     return bool(argv) and os.path.basename(str(argv[0])).split(".")[0].lower() == "git"
 
 
-def run(argv: Sequence, *, timeout: float, cwd: Path | str | None = None,
-        env: dict[str, str] | None = None, capture: bool = True) -> Result:
-    """Run argv (a list, never a shell string). Never raises for an ordinary failure."""
-    argv = [str(part) for part in argv]
+def _child_env(argv: list[str], env: dict[str, str] | None) -> dict[str, str]:
     child_env = dict(os.environ)
     child_env.setdefault("PYTHONUTF8", "1")
     child_env.setdefault("PYTHONIOENCODING", "utf-8")
     if _is_git(argv):
         child_env.setdefault("GIT_TERMINAL_PROMPT", "0")
     child_env.update(env or {})
+    return child_env
+
+
+def run(argv: Sequence, *, timeout: float, cwd: Path | str | None = None,
+        env: dict[str, str] | None = None, capture: bool = True) -> Result:
+    """Run argv (a list, never a shell string). Never raises for an ordinary failure."""
+    argv = [str(part) for part in argv]
     try:
         proc = subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE if capture else None,
                                 stderr=subprocess.PIPE if capture else None, text=True,
-                                encoding="utf-8", errors="replace", env=child_env,
-                                **_process.spawn_options())
+                                encoding="utf-8", errors="replace",
+                                env=_child_env(argv, env), **_process.spawn_options())
     except FileNotFoundError:
         # Also raised for a cwd that does not exist; either way the child never ran.
         return Result(argv, EXIT_NOT_FOUND, "", f"command not found: {argv[0]}", missing=True)
@@ -135,3 +146,107 @@ def run_git(repo_path: Path | str, args: Iterable[str], timeout: float | None = 
     """`git <args>` in repo_path with the configured default timeout. Never raises."""
     return run(["git", *args], cwd=repo_path, env=env,
                timeout=GIT_TIMEOUT_SECONDS if timeout is None else timeout)
+
+
+class Stream:
+    """A running command's binary stdout, read by the caller as it arrives."""
+
+    def __init__(self, proc: subprocess.Popen):
+        self.stdout: IO[bytes] = proc.stdout
+        self.timed_out = False
+        self.stopped = False
+        self._proc = proc
+
+    def stop(self) -> None:
+        """End the command early: the caller has read all it wants. Not a failure."""
+        self.stopped = True
+        _process.kill_tree(self._proc)
+
+
+@contextmanager
+def stream(argv: Sequence, *, timeout: float, cwd: Path | str | None = None,
+           env: dict[str, str] | None = None,
+           feed: Iterable[bytes] | None = None) -> Iterator[Stream]:
+    """Run argv and hand its binary stdout to the caller while it runs.
+
+    `feed` is written to stdin from a thread -- written inline, a request/response command
+    deadlocks as soon as both pipes fill -- then stdin is closed. The `timeout` is a deadline for
+    the whole command: when it passes, the tree is killed, the caller's reads end, and
+    `CommandTimeout` is raised on leaving the block. A missing binary, or a nonzero exit after
+    the caller read to the end, raises `CommandFailed`; a partial read must never pass for a
+    complete one. Leaving the block early (an exception, an abandoned generator) or calling
+    `stop()` kills the tree and raises nothing new.
+    """
+    argv = [str(part) for part in argv]
+    try:
+        proc = subprocess.Popen(argv, cwd=cwd,
+                                stdin=subprocess.PIPE if feed is not None else subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                env=_child_env(argv, env), **_process.spawn_options())
+    except FileNotFoundError:
+        raise CommandFailed(f"Command not found: {argv[0]}") from None
+    except (PermissionError, NotADirectoryError) as exc:
+        raise CommandFailed(f"cannot start {argv[0]}: {exc}") from None
+    handle = Stream(proc)
+    deadline = time.monotonic() + timeout
+    errors: list[bytes] = []
+
+    def expire() -> None:
+        handle.timed_out = True
+        _process.kill_tree(proc)
+
+    def collect_errors() -> None:
+        try:
+            errors.append(proc.stderr.read())
+        except (OSError, ValueError):
+            pass
+
+    def write() -> None:
+        try:
+            for chunk in feed:
+                proc.stdin.write(chunk)
+            proc.stdin.close()
+        except (OSError, ValueError):
+            pass   # the command ended (or was killed) before taking everything
+
+    timer = threading.Timer(timeout, expire)
+    timer.daemon = True
+    timer.start()
+    helpers = [threading.Thread(target=collect_errors, daemon=True)]
+    if feed is not None:
+        helpers.append(threading.Thread(target=write, daemon=True))
+    for helper in helpers:
+        helper.start()
+    finished = False
+    try:
+        yield handle
+        finished = True
+    finally:
+        if finished and not handle.stopped:
+            try:
+                proc.wait(timeout=max(0.0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                handle.timed_out = True
+        timer.cancel()
+        if proc.poll() is None:
+            _process.kill_tree(proc)
+        for pipe in (proc.stdout, proc.stdin):
+            try:
+                if pipe:
+                    pipe.close()
+            except OSError:
+                pass
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            pass
+        for helper in helpers:
+            helper.join(timeout=5)
+    if handle.stopped:
+        return
+    command = " ".join(argv)
+    if handle.timed_out:
+        raise CommandTimeout(f"Command timed out after {timeout}s (treated as hung): {command}")
+    if proc.returncode:
+        detail = b"".join(errors).decode("utf-8", errors="replace").strip()
+        raise CommandFailed(f"Command failed: {command}\n{detail}")
