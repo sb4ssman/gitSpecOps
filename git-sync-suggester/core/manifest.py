@@ -33,6 +33,16 @@ the same history -- or `local`, a per-machine digest for a repository with no co
 whether it has any remote (`has_remote`), and how many commits on any branch, tag or HEAD no
 remote has (`unpushed`). Still no names, paths or branch strings: two counts and a kind.
 
+**v5 carries names by default** (decided by the user 2026-10-19, built 2026-10-21). The route
+("go to A and push x; C pull y") must name a repository the reading machine may not hold, and
+v4 could only say `repo abcd1234…` until something resolved it -- weakest exactly for the
+machine not seen in a week. Each record may now carry `name` (`{host, owner, name}`), the
+readable `branch` and the checked-out `head`. The envelope's `carries_names` says whether it
+does, and validation refuses those keys in a manifest that says it does not, so a names-free
+publication cannot carry them by accident. `build_manifest` strips them unless asked, so
+"off" is the default *of the code* and "on" is the default *of the setting* (`share_names`).
+The salted ids stay: they are what records are matched on. Paths never leave the machine.
+
 See `.agents/knowledge/manifest-privacy.md` for the full analysis.
 """
 
@@ -45,7 +55,7 @@ import json
 import secrets
 from datetime import datetime, timezone
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 FLEET_SECRET_BYTES = 32
 FLEET_ID_LABEL = b"gitspecops-sync-suggester-fleet-id"
 BRANCH_LABEL = b"branch:"
@@ -60,12 +70,16 @@ BRANCH_ID_HEX = 16
 
 MANIFEST_KEYS = frozenset({
     "schema_version", "fleet_id", "machine_id", "machine_label", "observed_at", "repositories",
+    "carries_names",
 })
+#: Readable fields, present only in a manifest whose `carries_names` is true.
+NAME_KEYS = frozenset({"name", "branch", "head"})
+IDENTITY_NAME_KEYS = ("host", "owner", "name")
 REPOSITORY_KEYS = frozenset({
     "repo_id", "branch_id", "has_upstream", "upstream_observed_at", "ahead", "behind",
     "staged", "unstaged", "untracked", "stashes", "operation",
     "identity", "has_remote", "unpushed", "checkouts",
-})
+}) | NAME_KEYS
 
 
 def utc_now() -> str:
@@ -165,6 +179,7 @@ def merge_checkouts(repositories: list[dict]) -> list[dict]:
     and a report carrying both was refused by every peer. Combined: dirt and stashes add up,
     ahead / behind / unpushed take the worst case, an upstream or a fresh fetch counts only if
     every checkout has one, and `checkouts` says how many folders stand behind the record.
+    A branch or head the checkouts disagree on is None: one value would be a guess.
     """
     groups: dict[str, list[dict]] = {}
     for repo in repositories:
@@ -191,12 +206,19 @@ def merge_checkouts(repositories: list[dict]) -> list[dict]:
                               None),
             "checkouts": sum(int(repo.get("checkouts") or 1) for repo in group),
         })
+        for key in ("branch", "head"):
+            if key in record and len({repo.get(key) for repo in group}) > 1:
+                record[key] = None
         merged.append(record)
     return merged
 
 
 def build_manifest(fleet_id: str, machine_id: str, machine_label: str, repositories: list[dict],
-                   observed_at: str | None = None) -> dict:
+                   observed_at: str | None = None, *, carries_names: bool = False) -> dict:
+    """The manifest a machine publishes. Readable names are kept only with `carries_names`."""
+    if not carries_names:
+        repositories = [{key: value for key, value in repo.items() if key not in NAME_KEYS}
+                        for repo in repositories]
     repositories = merge_checkouts(repositories)
     manifest = {
         "schema_version": SCHEMA_VERSION,
@@ -204,14 +226,34 @@ def build_manifest(fleet_id: str, machine_id: str, machine_label: str, repositor
         "machine_id": machine_id,
         "machine_label": machine_label,
         "observed_at": observed_at or utc_now(),
+        "carries_names": bool(carries_names),
         "repositories": repositories,
     }
     validate_manifest(manifest)
     return manifest
 
 
+def _validate_names(repo: dict, label: str) -> None:
+    name = repo.get("name")
+    if name is not None:
+        if not isinstance(name, dict) or set(name) != set(IDENTITY_NAME_KEYS) or not all(
+                isinstance(name[key], str) and name[key] for key in IDENTITY_NAME_KEYS):
+            raise ValueError(f"{label}.name must be {{host, owner, name}} with non-empty strings")
+    branch = repo.get("branch")
+    if branch is not None and (not isinstance(branch, str) or not branch):
+        raise ValueError(f"{label}.branch must be a non-empty string or null")
+    head = repo.get("head")
+    if head is not None:
+        if not isinstance(head, str) or len(head) not in (40, 64):
+            raise ValueError(f"{label}.head must be a full commit id or null")
+        try:
+            int(head, 16)
+        except ValueError as exc:
+            raise ValueError(f"{label}.head is not hexadecimal") from exc
+
+
 def validate_manifest(value: object) -> dict:
-    """Validate the small v4 boundary and reject fields that could leak local metadata."""
+    """Validate the small v5 boundary and reject fields that could leak local metadata."""
     if not isinstance(value, dict):
         raise ValueError("manifest must be a JSON object")
     extra_manifest_keys = set(value) - MANIFEST_KEYS
@@ -219,12 +261,15 @@ def validate_manifest(value: object) -> dict:
         raise ValueError(f"manifest has forbidden/unknown fields: {sorted(extra_manifest_keys)}")
     version = value.get("schema_version")
     if version != SCHEMA_VERSION:
-        detail = (" (written by an older Sync Suggester; re-run 'check' on that machine)"
-                  if version in (1, 2, 3) else "")
+        detail = (" (written by an older gitSpecOps; update it and let that machine publish "
+                  "again)" if version in (1, 2, 3, 4) else "")
         raise ValueError(f"unsupported schema_version: {version!r}{detail}")
     for key in ("fleet_id", "machine_id", "machine_label", "observed_at"):
         if not isinstance(value.get(key), str) or not value[key]:
             raise ValueError(f"{key} must be a non-empty string")
+    carries_names = value.get("carries_names")
+    if not isinstance(carries_names, bool):
+        raise ValueError("carries_names must be true or false")
     repositories = value.get("repositories")
     if not isinstance(repositories, list):
         raise ValueError("repositories must be a list")
@@ -234,6 +279,11 @@ def validate_manifest(value: object) -> dict:
         extra = set(repo) - REPOSITORY_KEYS
         if extra:
             raise ValueError(f"repositories[{index}] has forbidden/unknown fields: {sorted(extra)}")
+        named = set(repo) & NAME_KEYS
+        if named and not carries_names:
+            raise ValueError(f"repositories[{index}] carries {sorted(named)} in a manifest that "
+                             "does not carry names")
+        _validate_names(repo, f"repositories[{index}]")
         _require_digest(repo.get("repo_id"), REPO_ID_HEX, f"repositories[{index}].repo_id")
         if repo.get("branch_id") is not None:
             _require_digest(repo["branch_id"], BRANCH_ID_HEX,

@@ -29,6 +29,7 @@ from fleet_config import new_config  # noqa: E402
 from fleet_display import build_display  # noqa: E402
 from fleet_observer import IncrementalObserver  # noqa: E402
 from fleet_store import validate_report  # noqa: E402
+from local_view import display_from_manifests  # noqa: E402
 from manifest import SCHEMA_VERSION, build_manifest, fleet_id_for, validate_manifest  # noqa: E402
 from observer import RootSpec, observe_roots  # noqa: E402
 
@@ -158,10 +159,13 @@ with tempfile.TemporaryDirectory(prefix="at-risk-") as temp:
 
     # --- the manifest carries the new facts and nothing more -------------------------------
     manifest = build_manifest(FLEET, "machine-a", "A", observation.repositories)
-    check("the manifest is schema v4", manifest["schema_version"] == SCHEMA_VERSION == 4)
+    check("the manifest is schema v5", manifest["schema_version"] == SCHEMA_VERSION == 5)
+    check("names are left out unless asked for", manifest["carries_names"] is False and not any(
+        set(repo) & {"name", "branch", "head"} for repo in manifest["repositories"]))
     for bad in ({"identity": "name"}, {"has_remote": "yes"}, {"unpushed": -1},
                 {"unpushed": "3"}):
-        record = {**observation.repositories[0], **bad}
+        # The published (name-free) record, so the only thing wrong is `bad`.
+        record = {**manifest["repositories"][0], **bad}
         try:
             validate_manifest({**manifest, "repositories": [record]})
             check(f"a record with {bad} is refused", False)
@@ -170,6 +174,65 @@ with tempfile.TemporaryDirectory(prefix="at-risk-") as temp:
     payload = str(manifest)
     check("no folder name or path is published", "only-copy" not in payload
           and str(tmp) not in payload)
+
+    # --- v5: names, branch and head where names are shared; paths never --------------------
+    named = build_manifest(FLEET, "machine-a", "A", observation.repositories,
+                           carries_names=True)
+    records = {repo["name"]["name"]: repo for repo in named["repositories"]}
+    only = records.get("only-copy", {})
+    check("a named manifest names every repository, the no-remote one included",
+          named["carries_names"] is True and only.get("name", {}).get("owner") == "no-remote")
+    check("it carries the readable branch and the checked-out commit",
+          only.get("branch") == git(lib / "only-copy", "branch", "--show-current").strip()
+          and only.get("head") == git(lib / "only-copy", "rev-parse", "HEAD").strip(),
+          (only.get("branch"), only.get("head")))
+    check("still no path is published", str(tmp) not in str(named))
+    for bad in ({"name": {"host": "h", "owner": "o"}}, {"name": "o/n"}, {"branch": ""},
+                {"head": "abc"}, {"head": "g" * 40}):
+        try:
+            validate_manifest({**named, "repositories": [{**named["repositories"][0], **bad}]})
+            check(f"a named record with {bad} is refused", False)
+        except ValueError:
+            check(f"a named record with {bad} is refused", True)
+    try:
+        validate_manifest({**manifest, "repositories": [named["repositories"][0]]})
+        check("names in a manifest that says it carries none are refused", False)
+    except ValueError:
+        check("names in a manifest that says it carries none are refused", True)
+    two = [{**named["repositories"][0], "head": "a" * 40},
+           {**named["repositories"][0], "head": "b" * 40}]
+    merged = build_manifest(FLEET, "machine-a", "A", two, carries_names=True)["repositories"]
+    check("two checkouts on different commits merge to an unknown head, not a guess",
+          len(merged) == 1 and merged[0]["head"] is None)
+
+    # --- v5 on another machine: it holds none of these repositories itself ----------------
+    shared_b = build_manifest(FLEET, "machine-b", "B", observation.repositories,
+                              carries_names=True)
+    quiet_c = build_manifest(FLEET, "machine-c", "C", observation.repositories)
+    for order in ((shared_b, quiet_c), (quiet_c, shared_b)):
+        seen = display_from_manifests(list(order), fleet_id=FLEET)
+        named_rows = {row["name"] for row in seen["rows"]}
+        check("a machine holding none of them sees their names, whatever the reading order",
+              "team/pushed" in named_rows and not any(n.startswith("unidentified")
+                                                       for n in named_rows), sorted(named_rows))
+    seen = display_from_manifests([shared_b, quiet_c], fleet_id=FLEET)
+    pushed_row = next(row for row in seen["rows"] if row["name"] == "team/pushed")
+    check("the sharing machine's branch and commit reach the detail; the other's do not",
+          pushed_row["cells"]["machine-b"]["facts"]["branch"] == "main"
+          and len(pushed_row["cells"]["machine-b"]["facts"]["head"] or "") == 40
+          and pushed_row["cells"]["machine-c"]["facts"]["head"] is None)
+    withheld = display_from_manifests([quiet_c], fleet_id=FLEET)
+    check("without names, a stranger's repositories stay honest placeholders",
+          all(row["name"].startswith("unidentified") for row in withheld["rows"]))
+
+    quiet_peer = IncrementalObserver({**new_config("machine-a", "A", [lib], SECRET),
+                                      "share_names": False})
+    quiet_peer.inventory()
+    quiet_report = quiet_peer.report()
+    shared, _ = quiet_peer.shared_report(quiet_report)
+    check("with names turned off, nothing named leaves the machine by any route",
+          shared["manifest"]["carries_names"] is False and shared["names"] == {}
+          and quiet_report["names"])   # ...while its own dashboard still names them
 
     # --- end to end: the live peer's report, the store's boundary, the display -------------
     observer = IncrementalObserver(new_config("machine-a", "A", [lib], SECRET))

@@ -629,10 +629,21 @@ Providers register themselves and the registry loads them, so nothing needs to b
 (Until 2026-09-21 a CLI helper, `_register_providers()`, had to import an archive-tool facade for
 this, and it did so by putting another tool's folder on `sys.path`.)
 
-### Manifest schema v4 and the fleet secret
+### Manifest schema v5 and the fleet secret
 
-Synced manifests identify repositories by `HMAC-SHA256(fleet_secret, host/owner/name)` — no names,
-paths, URLs, or commit SHAs. A repository with no usable remote is identified by an HMAC of its
+**v5 (built 2026-10-21): names by default.** Each record may carry `name` (`{host, owner,
+name}`), the readable `branch` and the checked-out `head`; the envelope's `carries_names` says
+whether it does, and `validate_manifest` refuses those fields in a manifest that says it does
+not. `build_manifest` strips them unless `carries_names=True`, so the *code* defaults to off and
+the *setting* (`share_names`, fleet config; `--withhold-names`; a setup question) defaults to
+on. Off means off on every route, the live tier included; the machine's own dashboard still
+names its own repositories. Readers take a carried name when they know none themselves, from
+any manifest, before building rows — so a names-off machine can never replace another machine's
+real name with a placeholder. The salted ids below stay: records are matched on them. The
+legacy `check`/`watch` path publishes names-free v5 until phase 3c removes it.
+
+Synced manifests identify repositories by `HMAC-SHA256(fleet_secret, host/owner/name)` — never
+paths or URLs. A repository with no usable remote is identified by an HMAC of its
 root commit instead (v4, 2026-10-19; v3 dropped such repositories from the map entirely), and
 checkouts sharing an identity on one machine are merged into one record that hides no work. Three rules govern the secret; none of them are negotiable:
 
@@ -653,8 +664,8 @@ look like it shared no repositories with anyone — a configuration error disgui
 secret, readable names in the local-only catalog's `branches` map), and `upstream` became the
 boolean `has_upstream` because every consumer only tested it for truthiness. Identifiers shrank to
 128 bits for a repository and 64 for a branch — beyond collision range here, and record size is
-what decides how many repositories fit in one manifest at scale. A published record is now salted
-digests and small integers; nothing in it names anything.
+what decides how many repositories fit in one manifest at scale. A v3/v4 record was salted
+digests and small integers; v5 adds names back, deliberately and by setting (above).
 
 **How much the salt is worth depends on the transport**, and that is not a contradiction of the
 "never store the secret beside the data" rule — it is the scope of it. A cloud folder's provider

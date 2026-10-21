@@ -57,6 +57,7 @@ def _cell(cell):
             "facts": {key: cell.repo.get(key) for key in (
                 "staged", "unstaged", "untracked", "stashes", "ahead", "behind",
                 "operation", "has_upstream", "upstream_observed_at", "has_remote", "unpushed",
+                "branch", "head",
                 "identity")}}
 
 

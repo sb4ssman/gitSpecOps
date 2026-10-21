@@ -114,7 +114,7 @@ This is what makes a zero-friction join possible for the repo transport specific
 key can live in the private repo, so a second machine needs only `--state-repo owner/name`. Do not
 generalise that to the folder transport.
 
-## Proposed schema v5 (2026-10-19): names where the transport already knows them — awaiting the user
+## Schema v5 (decided 2026-10-19, built 2026-10-21): names by default
 
 The question long called "v4 with names" is now **v5**: v4's number went to the at-risk fields
 above. Nothing here is built.
@@ -156,7 +156,10 @@ the fleet is the user's own machines, authenticated to the host through `gh`, an
 lives in a private repository; hiding names from oneself costs the route its usefulness. The
 one place a third party reads every byte is a synced folder (Dropbox): setup says so beside
 the setting rather than defaulting it off. The salted ids stay, for matching. Hard break as
-always: nothing is enrolled, so v4 is refused with "re-run check on that machine". Not built yet.
+always: nothing is enrolled, so v4 is refused ("update it and let that machine publish
+again"). **Built 2026-10-21:** the setting is `share_names` (default true; `--withhold-names`;
+a setup question that names the synced-folder caveat). Off means off on every route, the live
+tier included. Two checkouts that disagree on branch or head publish None, not a guess.
 
 ## Options (a design decision, not a bug fix)
 

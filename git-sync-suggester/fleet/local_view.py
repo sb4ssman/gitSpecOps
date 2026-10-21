@@ -20,12 +20,12 @@ from fleet_display import build_display
 
 
 def _identity(repo_id: str, entry: dict | None) -> dict:
-    """A readable identity when the local catalog knows one; an honest placeholder otherwise.
+    """A readable identity when anyone has given one; an honest placeholder otherwise.
 
-    Peers publish salted digests, so a repository this machine has never seen itself genuinely
-    cannot be named here. That is the privacy boundary working as designed, not a defect --
-    `converge` is what resolves those ids, and inventing a plausible name would be worse than
-    showing the digest.
+    The local catalog and live peers come first; then the name a manifest carries itself (v5,
+    when its machine shares names). A peer that withholds names publishes salted digests only,
+    so a repository this machine has never seen genuinely cannot be named here -- and inventing
+    a plausible name would be worse than showing the digest.
     """
     entry = entry or {}
     owner = entry.get("owner")
@@ -45,7 +45,7 @@ def reports_from_manifests(manifests: list[dict], catalog: dict | None = None,
         for record in manifest.get("repositories") or []:
             repo_id = record.get("repo_id")
             if repo_id:
-                names[repo_id] = _identity(repo_id, catalog.get(repo_id))
+                names[repo_id] = _identity(repo_id, catalog.get(repo_id) or record.get("name"))
         reports.append({"manifest": manifest, "names": names, "issues": []})
     if reports and issues:
         # Unreadable manifests are attached to the reading machine, so they surface in the UI
@@ -85,6 +85,12 @@ def display_from_manifests(manifests: list[dict], fleet_id: str | None = None,
     combined = dict(catalog or {})
     for repo_id, identity in (names or {}).items():
         combined.setdefault(repo_id, identity)
+    # Every name any manifest carries, before any report is built: otherwise a machine that
+    # withholds names could replace another machine's real name with a placeholder.
+    for manifest in manifests:
+        for record in manifest.get("repositories") or []:
+            if record.get("repo_id") and record.get("name"):
+                combined.setdefault(record["repo_id"], record["name"])
     reports = reports_from_manifests(manifests, combined, issues)
     return build_display(reports, fleet_id or "local", now=now, stale_seconds=stale_seconds,
                          settings=settings)

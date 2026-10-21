@@ -126,17 +126,21 @@ def main():
     rejected(lambda: validate_server_url("http://user:password@100.64.0.1:8765"))
     with patch("fleet_app.run_gh", return_value=Mock(returncode=1)):
         rejected(require_gh)
-    # Setup asks for the library, the scan acknowledgement, then each optional transport.
-    with patch("builtins.input", side_effect=["/libraries/code", "SCAN", "", "", "", "", ""]), \
-            patch("fleet_app.preflight_state", return_value={
-                "git": True, "github": True, "tailnet": True, "dashboard": True,
-                "port": 8760, "folders": []}), \
-            patch("fleet_app.run_gh", side_effect=AssertionError("GitHub is optional")):
-        setup = setup_arguments(Path("test-config"))
-        assert setup.command == "peer" and setup.root == ["/libraries/code"]
-        assert setup.acknowledge_initial_scan is True
-        assert setup.repo is None and setup.folder is None
-        assert setup.no_tailnet is False  # blank answer keeps the tailnet tier
+    # Setup asks for the library, the scan acknowledgement, each optional transport, then
+    # whether to share names (manifest v5).
+    for names_answer, withheld in (("", False), ("n", True)):
+        with patch("builtins.input", side_effect=["/libraries/code", "SCAN", "", "", "", "",
+                                                  "", names_answer]), \
+                patch("fleet_app.preflight_state", return_value={
+                    "git": True, "github": True, "tailnet": True, "dashboard": True,
+                    "port": 8760, "folders": []}), \
+                patch("fleet_app.run_gh", side_effect=AssertionError("GitHub is optional")):
+            setup = setup_arguments(Path("test-config"))
+            assert setup.command == "peer" and setup.root == ["/libraries/code"]
+            assert setup.acknowledge_initial_scan is True
+            assert setup.repo is None and setup.folder is None
+            assert setup.no_tailnet is False  # blank answer keeps the tailnet tier
+            assert setup.withhold_names is withheld  # names are shared unless declined
 
     # A suggested name is not permission to create or publish. No mutation occurs while
     # collecting setup arguments, even when the user explicitly selects creation.

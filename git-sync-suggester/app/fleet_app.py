@@ -167,7 +167,7 @@ def configure(args, directory: Path) -> dict:
         raise ValueError("--fleet-secret must be 64 hexadecimal characters")
     config = new_config(machine_id, args.label or label, args.root, secret,
                         debounce_seconds=args.debounce_seconds, local_port=args.local_port,
-                        transports=transports)
+                        transports=transports, share_names=not args.withhold_names)
     validate(config)
     write_json(path, config)
     print(f"Saved: {path}\nTransports:\n{describe(config)}")
@@ -208,6 +208,8 @@ def build_parser():
     peer.add_argument("--no-tailnet", action="store_true",
                       help="do not talk to peers over Tailscale")
     peer.add_argument("--tailnet-port", type=int, default=DEFAULT_TAILNET_PORT)
+    peer.add_argument("--withhold-names", action="store_true",
+                      help="publish salted ids only, not repository names, branches and commits")
     peer.add_argument("--configure-only", action="store_true")
 
     commands.add_parser("run", help="resume this peer; installs no service")
@@ -316,7 +318,8 @@ def guided_durable_arguments() -> list[str]:
           "Changes waiting for that interval are kept for later delivery while the app runs;\n"
           "failed writes retry after the interval. Stopping the app can leave changes unsent.\n"
           "This stores status only: no source files, repository history, or recovery snapshots.\n"
-          "Repository and branch identities in those status files are salted digests.\n"
+          "By default each status file names your repositories, branches and current commits,\n"
+          "so every machine can show what the others hold (you can withhold names below).\n"
           "You can inspect the repository; gitSpecOps never clones it.\n")
     prompt = f"State repository [{suggestion}]: " if suggestion else "State repository owner/name: "
     spec = input(prompt).strip() or suggestion
@@ -418,6 +421,12 @@ def setup_arguments(directory: Path, configure_only=False):
     elif input("Talk directly to your other machines over Tailscale? [Y/n]: ").strip().lower() \
             in ("n", "no"):
         arguments.append("--no-tailnet")
+    print("\nYour other machines see this one's repository names, branches and current commits,\n"
+          "so each can show what the others hold. Without names they see salted ids only."
+          + ("\nA synced folder's provider (Dropbox, ...) can read those names too." if folder
+             else ""))
+    if input("Share names with your other machines? [Y/n]: ").strip().lower() in ("n", "no"):
+        arguments.append("--withhold-names")
     if configure_only:
         arguments.append("--configure-only")
     return build_parser().parse_args(arguments)

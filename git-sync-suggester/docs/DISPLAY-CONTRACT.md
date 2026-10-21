@@ -59,6 +59,9 @@ skin is `ui/fleet_dashboard.html`, `ui/fleet_standard.css` and `ui/fleet_standar
 - A missing machine cell is explicit: `present=false`, `freshness=absent`, `facts=null`.
 - Raw counts remain in `facts` for detail views. Human interfaces should normally start with
   `description`, then reveal counts on selection.
+- `facts.branch` and `facts.head` (added 2026-10-21, manifest v5) are the machine's checked-out
+  branch and full commit id, or `null` when that machine withholds names or its checkouts
+  disagree. A skin shows `null` as "not shared", never as "detached".
 - Notices about cached remote refs and stale reports are part of the contract. A skin may
   relocate them but must not hide them behind an error-only path.
 - `capabilities` advertises availability; it grants no authorization. Mutating endpoints need

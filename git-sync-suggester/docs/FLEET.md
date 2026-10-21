@@ -52,8 +52,9 @@ opt-in saved-work snapshots; it never shares them through the GitHub state repos
 content is never published by this release.
 
 - **Durable:** a private, writable GitHub state repository accessed through your `gh` login.
-  The app writes one names-free v4 manifest per machine through the Contents API; it never
-  clones that state repository. Creating it requires an explicit setup choice or `--create-repo`.
+  The app writes one v5 manifest per machine through the Contents API; it never clones that
+  state repository. By default the manifest names your repositories, branches and current
+  commits; `--withhold-names` (or "no" at setup) publishes salted ids only. Creating it requires an explicit setup choice or `--create-repo`.
 - **Medium:** an existing folder managed by your own sync client. No particular client is
   required; gitSpecOps does not install or configure one.
 - **Live:** optional Tailscale peer discovery and pulls every 30 seconds. Peers expose GET-only
@@ -184,8 +185,9 @@ The scopes are independent and never imply one another. Widening `observe` does 
 an existing, separately confirmed recovery folder is present.
 
 Selection is by namespace (`host/owner`), with modes `all`, `none`, `only` and `except`.
-Matching happens locally, from repository names that never leave the machine: a manifest carries
-salted digests, so no peer can see, apply, or infer another machine's baskets.
+Matching happens locally, on this machine's own repository names: a withheld repository sends
+nothing at all -- no record, no id, no name -- so no peer can see, apply, or infer another
+machine's baskets.
 
 Narrowing is never silent. A withheld repository stays on this machine's own dashboard, marked
 *not published*, and the dashboard states how many repositories are withheld or unobserved.

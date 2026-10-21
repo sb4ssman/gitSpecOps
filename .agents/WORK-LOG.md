@@ -1555,3 +1555,32 @@ which the security, hygiene and import-direction tests then re-ran green).
   in `test_git_ops.py`, stream cases in `test_run.py`. Two test-side Windows traps on the way,
   both text-mode pipes writing `\r\n`. A large shell heredoc was blocked by the user's guard
   hook; edits went through the edit tool instead.
+
+## 2026-10-21 12:40 - user (Claude Opus 5.5) - manifest v5: names by default; back to the product
+
+- **Direction (user):** Security parked after its phase 1; back to the product. Order: v5, the
+  KDE tray and macOS menu bar (then the first real fleet run), dashboard group actions (fetch
+  group/all, ff-pull group/all), phase 3c, remote-everything on demand. Recorded in
+  WORKING-NOTES ("2026-10-21 HANDOFF").
+- **Manifest v5** (decided 2026-10-19). Records may carry `name` (`{host, owner, name}`),
+  `branch` and `head`; the envelope's `carries_names` says so and validation refuses them in a
+  manifest that says otherwise. `build_manifest` strips them unless `carries_names=True` (the
+  code defaults off; the setting defaults on). Fleet config `share_names` (default true),
+  `peer --withhold-names`, and a setup question naming the synced-folder caveat; `describe()`
+  prints the choice. Off means off everywhere, the live tier included; the machine's own
+  dashboard still names its own repositories. Checkouts that disagree on branch or head publish
+  None. v1-v4 manifests are refused with "update it and let that machine publish again".
+- **Readers:** a carried name is used where this machine knows none, gathered from every
+  manifest *before* rows are built -- otherwise a names-off machine read last would have
+  replaced another machine's real name with a placeholder. The detail panel shows each
+  machine's branch and short commit ("Not shared" when withheld); the display contract gains
+  `facts.branch` / `facts.head` (additive).
+- Setup's old text ("identities ... are salted digests") would have become false; rewritten.
+  The legacy `check`/`watch` path publishes names-free v5 until phase 3c removes it.
+- **Tests:** schema, names-only-when-carried, malformed names refused, the no-remote repository
+  named, branch and head carried, paths never; on a machine holding none of the repositories,
+  names arrive whatever the reading order; names off leaves nothing named by any route; setup's
+  new question. One existing at-risk check had begun passing for the wrong reason (raw records
+  now carry names, so validation refused them for that) -- it now tests the published record.
+- Full suite 49/49 on Windows; one run before it lost `test_git_client` to a 3 s loopback
+  timeout (passed alone 5x; noted as a watch item).

@@ -167,6 +167,8 @@ def validate(config: dict) -> dict:
     fetch_minutes = config.get("fetch_minutes", DEFAULT_FETCH_MINUTES)
     if type(fetch_minutes) is not int or fetch_minutes < 0:
         raise ValueError("fetch_minutes must be a whole number of minutes (0 turns fetching off)")
+    if not isinstance(config.get("share_names", True), bool):
+        raise ValueError("share_names must be true or false")
     # A peer with no transports is still legitimate: it observes itself and shows its own
     # dashboard. That is a useful single-machine tool, and refusing it would make the fleet
     # features a precondition for the basic ones.
@@ -194,10 +196,12 @@ DEFAULT_FETCH_MINUTES = 15
 
 def new_config(machine_id: str, label: str, roots, fleet_secret: str, *,
                debounce_seconds: float = 0.75, local_port: int = DEFAULT_LOCAL_PORT,
-               transports: dict | None = None, scopes: dict | None = None) -> dict:
+               transports: dict | None = None, scopes: dict | None = None,
+               share_names: bool = True) -> dict:
     return {
         "version": CONFIG_VERSION, "mode": "peer",
         "fetch_minutes": DEFAULT_FETCH_MINUTES,
+        "share_names": share_names,
         "baskets": baskets.validate_scopes(scopes) if scopes
                    else copy.deepcopy(baskets.DEFAULT_SCOPES),
         "recovery": {"location": None, "confirmed": False, "policies": {}},
@@ -228,4 +232,14 @@ def describe(config: dict) -> str:
         lines.append(f"  tailnet  port {tailnet['port']} (peers pull from each other)")
     if not lines:
         lines.append("  (none — this peer observes itself and shows its own dashboard)")
+    if shares_names(config):
+        lines.append("  names    shared: repository names, branches and current commits"
+                     + (" (the synced folder's provider can read them too)" if folder else ""))
+    else:
+        lines.append("  names    withheld: other machines see salted ids only")
     return "\n".join(lines)
+
+
+def shares_names(config: dict) -> bool:
+    """Whether this machine publishes readable names (manifest v5). On unless turned off."""
+    return config.get("share_names", True) is True

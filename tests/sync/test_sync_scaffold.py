@@ -104,7 +104,7 @@ stale = {**manifest, "schema_version": 1}
 try:
     encode_manifest(stale)
 except ValueError as exc:
-    if "re-run" not in str(exc):
+    if "publish again" not in str(exc):
         failures.append(f"a v1 manifest was rejected without actionable guidance: {exc}")
 else:
     failures.append("a v1 manifest was accepted by the v2 validator")

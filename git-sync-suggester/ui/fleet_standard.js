@@ -120,6 +120,8 @@ function showDetail(row) {
         ['Ahead', cell.facts.ahead ?? 'Unknown'], ['Behind', cell.facts.behind ?? 'Unknown'],
         ['Upstream', cell.facts.has_upstream ? 'Configured' : 'Unknown'],
         ['Operation', cell.facts.operation ?? 'None'],
+        ['Branch', cell.facts.branch ?? 'Not shared'],
+        ['Commit', cell.facts.head ? cell.facts.head.slice(0, 10) : 'Not shared'],
       ];
       for (const [term, value] of entries) facts.append(node('dt', term), node('dd', String(value)));
       section.append(facts);

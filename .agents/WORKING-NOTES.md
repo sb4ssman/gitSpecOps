@@ -8,6 +8,33 @@ _Last tended: 2026-10-20 (handoff section on top; the 2026-10-19 sections below 
 
 ## Open
 
+### 2026-10-21 — HANDOFF: back to the product; the order of work (user's decision)
+
+The user stepped back from Security to the product: one git client built around many repos on
+many machines -- see every out-of-sync repository everywhere (and what exists remotely), and
+fix it from that view, on trusted auth (`gh`, git, Tailscale, a synced folder). The order:
+
+1. **Manifest v5 -- DONE 2026-10-21** (names, branch, head by default; `share_names`).
+2. **Linux tray (KDE Plasma, StatusNotifierItem) and the macOS menu bar.** Then the first real
+   run of the fleet: the user wants v5 and the KDE tray in place before running it.
+3. **Dashboard buttons:** the basic actions plus **fetch group, fetch all, fast-forward pull
+   group, fast-forward pull all** -- each the same command as the terminal's, plan -> confirm.
+4. **Phase 3c:** part out Sync Suggester -- its high-level `sync_suggester` operation in its
+   place, its components in theirs (layers).
+5. **Remote everything, on demand:** gather remote metadata (provider) for comparison and
+   exploration -- what is on GitHub that no machine holds, and how remote heads compare with
+   v5's per-machine heads. Discussed 2026-10-21; not designed.
+
+**Parked (2026-10-21), with what brings each back:** the Security rebuild after phase 1
+(phases 2-6, `knowledge/security-design.md`) -- the next time a repository needs cleaning or is
+about to go public; the old `Security/` tools keep working until then. The watch list's levels
+(never / watch), per-repository acceptance, and push-time prevention -- same trigger. Phase 1's
+Basic operations stay and serve the fleet (commit, reset_keep, identity facts).
+
+**Flake seen once (2026-10-21):** `tests/fleet/test_git_client.py` timed out (3 s socket read
+on its loopback test server) during a full-suite run; it passed alone five times and the next
+full run was 49/49. Watch for a repeat before widening the timeout.
+
 ### 2026-10-20 — HANDOFF: the Security rebuild is designed and agreed; phase 1 begun
 
 **Read [`knowledge/security-design.md`](knowledge/security-design.md) before touching any security

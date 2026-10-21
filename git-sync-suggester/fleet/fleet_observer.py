@@ -36,6 +36,11 @@ class IncrementalObserver:
     def paths(self) -> tuple[Path, ...]:
         return tuple(self._repos)
 
+    @property
+    def shares_names(self) -> bool:
+        """Readable names in what this machine publishes (manifest v5): on unless turned off."""
+        return self.config.get("share_names", True) is True
+
     def local_repositories(self) -> dict[str, Path]:
         """Local-only launch lookup; paths never enter a manifest or peer report."""
         return {record["repo_id"]: path for path, record in list(self._repos.items())}
@@ -188,7 +193,7 @@ class IncrementalObserver:
         return {
             "manifest": build_manifest(
                 fleet_id_for(self.config["fleet_secret"]), self.config["machine_id"],
-                self.config["label"], repositories),
+                self.config["label"], repositories, carries_names=self.shares_names),
             "names": names,
             "issues": sorted(f"{category} ({count} repositor{'y' if count == 1 else 'ies'})"
                              for category, count in counts.items()),
@@ -202,6 +207,10 @@ class IncrementalObserver:
         leak to a peer that happens to be reachable. The withheld half is returned so the local
         dashboard can say what it is not sharing.
         """
+        if not self.shares_names:
+            # Off means off on every route, the live tier included; this machine's own
+            # dashboard still names its repositories from `report`, which never leaves it.
+            report = {**report, "names": {}}
         selection = self.scopes["publish"]
         if selection["mode"] == "all":
             return report, set()

@@ -236,12 +236,15 @@ new status.
 
 ### What crosses the wire
 
-Published manifests (schema v4) identify repositories by `HMAC-SHA256(fleet secret,
+Published manifests (schema v5) identify repositories by `HMAC-SHA256(fleet secret,
 host/owner/name)` — or, for a repository with no usable remote, an HMAC of its root commit, so
-the only copy of something is still on the map. No display names, URLs, paths, filenames, diffs, commit messages, commit SHAs,
-or source content — a record is salted digests and small integers. Readable names come from an
-unsynchronized local catalog. The live tier shares readable names *within your own private
-tailnet* only. Details and honest limits:
+the only copy of something is still on the map. **By default each record also names the
+repository, its checked-out branch and its current commit**, so every machine can show — and
+route you to — what the others hold, even a machine not seen in a week. One setting
+(`--withhold-names`, or "no" at setup) turns that off, and then a record is salted digests and
+small integers only. Never published, either way: local paths, URLs, filenames, diffs, commit
+messages or source content. A synced folder's provider can read whatever the manifest carries;
+setup says so beside the question. Details and honest limits:
 [`.agents/knowledge/manifest-privacy.md`](.agents/knowledge/manifest-privacy.md).
 
 Two rules that make the advice trustworthy:
