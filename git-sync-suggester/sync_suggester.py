@@ -53,7 +53,7 @@ from watcher import DEFAULT_HEARTBEAT_SECONDS, DEFAULT_INTERVAL_SECONDS, run_wat
 from Basic._console import enable_unicode_output  # noqa: E402
 from Basic._paths import sync_home  # noqa: E402
 from Elaborate._archive_registry import registered_roots  # noqa: E402
-from shared.version import VERSION, check_for_update, version_line  # noqa: E402
+from version import VERSION, check_for_update, version_line  # noqa: E402
 from Basic._providers._registry import provider_for_host, registered_hosts  # noqa: E402
 PREVIEW_MACHINE_ID = "local-preview"
 

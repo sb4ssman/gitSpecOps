@@ -153,7 +153,8 @@ The archive engine behind the manager is split into single-purpose modules in th
 - `Special/_archive_plan.py` (the judgment: fast-forward eligibility, drift buckets, publish
   classification; its tests are `tests/special/test_archive_plan.py`)
 - the git operations themselves are `Basic/pull.py` (ff-only), `Basic/push.py` (never forced),
-  `Basic/clone.py` (never over an existing folder) and `Basic/fetch.py`
+  `Basic/clone.py` (never over an existing folder), `Basic/fetch.py` and `Basic/reset_keep.py`
+  (moves a branch, never overwrites an edit, never `--hard`)
 - the cross-git provider seam is `Basic/_providers/` (phase 2, 2026-09-21)
 
 The optional bootstrap helper is:
@@ -204,7 +205,9 @@ The registry imports its built-in providers the first time it is asked, so no ca
 `run_gh` sets `GH_PROMPT_DISABLED=1`, so `gh` fails instead of asking, the same way
 `GIT_TERMINAL_PROMPT=0` stops git from asking.
 
-`shared/` now holds only `version.py` (moves to App in phase 4). Scripts reach all of these with the small repo-root `sys.path`
+`shared/` is gone (2026-10-20): the version number is written once, in `pyproject.toml`, and
+`git-sync-suggester/core/version.py` reads it (its only users are Sync Suggester's modules; its
+final home is settled in phase 3c). Scripts reach all of these with the small repo-root `sys.path`
 bootstrap they already carry. On Linux the `.sh` launchers need the executable bit (mode 755) —
 keep it.
 

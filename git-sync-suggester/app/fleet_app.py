@@ -26,7 +26,7 @@ if str(TOOL_DIR) not in sys.path:
     sys.path.insert(0, str(TOOL_DIR))
 from _paths import bootstrap  # noqa: E402
 
-bootstrap()  # core/, fleet/, app/ and the repo root (for shared/)
+bootstrap()  # core/, fleet/, app/ and the repo root (for the layers)
 
 from Basic._console import enable_unicode_output  # noqa: E402
 from Basic._providers.github import GhError, run_gh  # noqa: E402

@@ -4,11 +4,32 @@ Living todo / scratch pad. Add items freely; **prune regularly**. When something
 into [`WORK-LOG.md`](WORK-LOG.md) (appended at the bottom, `YYYY-MM-DD HH:MM`) and delete it here.
 Dates are always absolute.
 
-_Last tended: 2026-10-19 19:45 (handoff section on top; 17:20, 16:15 and 13:45 below it)_
+_Last tended: 2026-10-20 (handoff section on top; the 2026-10-19 sections below it are history)_
 
 ## Open
 
-### 2026-10-19 19:45 — HANDOFF: the Security design is unsettled; the user's directions
+### 2026-10-20 — HANDOFF: the Security rebuild is designed and agreed; phase 1 begun
+
+**Read [`knowledge/security-design.md`](knowledge/security-design.md) before touching any security
+code.** It supersedes the 2026-10-19 19:45 section below (the design question it raised is
+settled). Decided with the user:
+
+- **Placement A:** no Security layer; `Special/security/` (components + one-repo commands),
+  `Elaborate/security/clean_history.py`, general rewrite machinery in plain `Special/`.
+- **Rebuild, not move:** `Security/_rewrite.py` and `Security/rewrite_history.py` are retired at
+  the cut-over. No tag, no `_archive/`, no compatibility -- git history keeps the old code.
+- **Typed `REWRITE`** for the rewrite, never skippable by `--yes`; the review stop is typed too.
+- **`Basic/reset_keep.py` built** (2026-10-20); `follow_rewrite` will always present move now /
+  later / by hand, never move unasked.
+- **No machine is enrolled anywhere** -- nothing needs the old code kept working.
+- **`shared/` deleted by the user**; the version is read from `pyproject.toml` by
+  `git-sync-suggester/core/version.py`.
+
+**Next:** phase 1 remainder -- `Basic/commit.py`, the `_facts` additions, `Basic/_objects.py`.
+**Open:** the watch list's name; deleting three 2026-10-19 plan folders in the per-user
+`security/` folder (they hold real values; awaiting the user's word).
+
+### 2026-10-19 19:45 — (superseded 2026-10-20 by security-design.md) the Security design was unsettled
 
 **Stop and read this before touching `Security/`.** The session ended with the user rightly
 frustrated: the agent proposed three different shapes for the Security code in a row, and the
@@ -640,7 +661,7 @@ work log.
   if-a-secret-is-found procedure:
   [knowledge/repo-privacy-and-history.md](knowledge/repo-privacy-and-history.md).
 
-- [ ] **First release is not cut.** `shared/version.py` says 0.2.0 and the update check works,
+- [ ] **First release is not cut.** `pyproject.toml` says 0.2.0 and the update check works,
   but there are **no tags and no GitHub release**, so `version --check` correctly reports
   "unknown" for everyone. Tag `v0.2.0`, publish a release, then confirm the check flips to
   "current". Until that exists, the update path is untested against reality. The new read-only

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from advice import describe_repository, repository_flags
 from aggregate import age_seconds, build_rows, machine_views
-from shared.version import VERSION  # the one place a version number is written down
+from version import VERSION  # read from pyproject.toml, where it is written down once
 
 CONTRACT_NAME = "gitspecops.fleet.display"
 CONTRACT_VERSION = 1

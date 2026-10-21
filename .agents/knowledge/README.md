@@ -22,6 +22,10 @@ decision and its rationale, a non-obvious constraint, an investigation result.
   salt is worth a different amount per transport.
 - [`repo-privacy-and-history.md`](repo-privacy-and-history.md) — the blob-by-blob history audit:
   personal data, no secrets.
+- [`security-design.md`](security-design.md) — **2026-10-20, the Security rebuild.** Why the
+  first `Security/` had the wrong shape, the design that replaces it (material, checks, remedies;
+  security inside the layers), `clean_history` and its stops, the watch list, what GitHub does
+  better, and the phased plan.
 - [`shared-layer.md`](shared-layer.md) — *superseded by the layer stack; kept for history.* The `shared/` cross-operation primitive layer: admission
   rule, module list, import mechanics, Linux notes.
 - [`test-suite-audit.md`](test-suite-audit.md) — **2026-10-19, first read of what the tests

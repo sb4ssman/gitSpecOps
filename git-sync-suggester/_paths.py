@@ -27,7 +27,7 @@ CODE_DIRS = ("core", "fleet", "app")
 
 
 def bootstrap() -> None:
-    """Idempotent. Adds the repo root (for ``shared/``) and this tool's code folders."""
+    """Idempotent. Adds the repo root (for the layers) and this tool's code folders."""
     for path in (REPO_ROOT, *(TOOL_DIR / name for name in CODE_DIRS)):
         text = str(path)
         if text not in sys.path:

@@ -31,7 +31,7 @@ Two causes stacked:
 ## Fix (done 2026-08-31)
 
 - **Do not install the project into `.venv`.** It is not an importable package — every tool is a
-  flat stdlib-only script that puts its own dir (and the repo root, for `shared/`) on `sys.path`
+  flat stdlib-only script that puts its own dir (and the repo root, for the layers) on `sys.path`
   at runtime. `.venv` exists only to give the launchers a clean, predictable interpreter.
   - `pyproject.toml`: added `[tool.uv]` `package = false`; dropped `[build-system]` /
     `[tool.setuptools]`. Left a comment explaining why.

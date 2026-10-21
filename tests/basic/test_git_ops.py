@@ -20,6 +20,7 @@ from Basic.clone import clone  # noqa: E402
 from Basic.fetch import fetch  # noqa: E402
 from Basic.pull import ALREADY_CURRENT, UPDATED, fast_forward  # noqa: E402
 from Basic.push import push  # noqa: E402
+from Basic.reset_keep import ALREADY_THERE, MOVED, reset_keep  # noqa: E402
 
 FAILS: list[str] = []
 
@@ -87,6 +88,29 @@ with tempfile.TemporaryDirectory(prefix="basic-git-") as tmp:
     check("the remote kept the other machine's commit",
           "add c.txt" in git(bare, "log", "--oneline", "main"))
 
+    # reset_keep: `mine` holds local.txt; origin/main holds c.txt instead.
+    git(mine, "fetch", "-q", "origin")
+    upstream = git(mine, "rev-parse", "origin/main")
+    (mine / "a.txt").write_text("edited", encoding="utf-8")   # a.txt is the same in both
+    check("reset_keep moves the branch",
+          reset_keep(mine, "origin/main") == MOVED and git(mine, "rev-parse", "HEAD") == upstream)
+    check("reset_keep keeps an edit to a file the move does not touch",
+          (mine / "a.txt").read_text(encoding="utf-8") == "edited")
+    check("reset_keep onto where it already is reports so",
+          reset_keep(mine, "origin/main") == ALREADY_THERE)
+    git(mine, "checkout", "-q", "a.txt")
+    (mine / "c.txt").write_text("my edit", encoding="utf-8")   # c.txt differs from `head`
+    refused = reset_keep(mine, head)
+    check("reset_keep refuses when the move would overwrite an edit",
+          refused.startswith("failed:") and git(mine, "rev-parse", "HEAD") == upstream
+          and (mine / "c.txt").read_text(encoding="utf-8") == "my edit")
+    check("reset_keep refuses an unknown target",
+          reset_keep(mine, "no-such-ref").startswith("failed:"))
+    git(mine, "checkout", "-q", "c.txt")
+    git(mine, "checkout", "-q", "--detach")
+    check("reset_keep refuses a detached HEAD",
+          reset_keep(mine, head).startswith("failed:") and git(mine, "rev-parse", "HEAD") == upstream)
+
 # git translates its messages; the pull result must come from HEAD, not from English wording.
 # This Windows git build ships no translations, so the translated output is played by a fake.
 from Basic import pull as pull_module  # noqa: E402
@@ -110,6 +134,9 @@ for moved, label in ((False, "already current"), (True, "updated")):
 
 push_code = (ROOT / "Basic" / "push.py").read_text(encoding="utf-8").split('"""', 2)[2]
 check("Basic/push.py code has no force option", "force" not in push_code.lower())
+reset_code = (ROOT / "Basic" / "reset_keep.py").read_text(encoding="utf-8").split('"""', 2)[2]
+check("Basic/reset_keep.py code has no other reset mode",
+      not any(mode in reset_code for mode in ("--hard", "--mixed", "--soft", "--merge")))
 
 if FAILS:
     print(f"\n{len(FAILS)} FAILED")

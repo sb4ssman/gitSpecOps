@@ -8,7 +8,7 @@ It may not import:
 - a later layer (App is optional; nothing may come to depend on it, and so on down);
 - a sibling *command* in its own layer (a file without an underscore) -- shared behavior
   belongs in that layer's plumbing, or the two commands are secretly one;
-- anything outside the stack: the legacy tool folders, `shared/`, or third-party packages
+- anything outside the stack: the legacy tool folders, or third-party packages
   (the runtime is stdlib-only).
 
 `_os/` may import only the stdlib and itself. Relative imports are not used anywhere.
@@ -71,7 +71,7 @@ for layer in ORDER:
                 if top in STDLIB:
                     continue
                 if top not in RANK:
-                    failures.append(f"{where} — outside the stack (tool folder, shared/, or a "
+                    failures.append(f"{where} — outside the stack (tool folder, or a "
                                     "third-party package)")
                     continue
                 if layer == "_os" and top != "_os":

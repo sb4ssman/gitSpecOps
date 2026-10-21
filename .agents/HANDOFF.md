@@ -1,10 +1,17 @@
-# Handoff — updated 2026-10-19
+# Handoff — updated 2026-10-20
 
 For the next session, human or LLM. Read [`README.md`](README.md) (the project brief) first. It
 opens with **What this is for**, and that section outranks every rule below it. Then this, then
 [`WORKING-NOTES.md`](WORKING-NOTES.md).
 
-## Start here (2026-10-19 19:45): read the HANDOFF section at the top of WORKING-NOTES.md
+## Start here (2026-10-20): the Security rebuild
+
+The Security structure is **settled** -- read
+[`knowledge/security-design.md`](knowledge/security-design.md) and the HANDOFF section at the top
+of `WORKING-NOTES.md`. The old `Security/` code is retired at the plan's cut-over; phase 1
+(Basic) is under way. `shared/` is gone.
+
+## Earlier (2026-10-19 19:45)
 
 Since the 13:46 note below: this repository's history rewrite is done; the ten Sb4ssport-Alpha
 repositories were rewritten, published and caught up on this machine; other machines still

@@ -14,6 +14,7 @@ import importlib.util
 from pathlib import Path
 import subprocess
 import sys
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSETS = ("fleet_dashboard.html", "fleet_standard.css", "fleet_client.js",
@@ -37,20 +38,15 @@ def _pyinstaller_available() -> bool:
 def release_checks(root: Path = ROOT) -> list[tuple[str, bool, str]]:
     """Return `(gate, pass, explanation)` rows without altering repository or release state."""
     root = Path(root).resolve()
-    version_path = root / "shared" / "version.py"
     spec_path = root / "git-sync-suggester" / "packaging" / "GitSpecOpsSync.spec"
     ui = root / "git-sync-suggester" / "ui"
     rows = []
-    version = ""
     try:
-        source = version_path.read_text(encoding="utf-8")
-        module = ast.parse(source)
-        version = next((node.value.value for node in module.body if isinstance(node, ast.Assign)
-                        for target in node.targets if isinstance(target, ast.Name)
-                        and target.id == "VERSION" and isinstance(node.value, ast.Constant)), "")
+        version = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))[
+            "project"].get("version", "")
         rows.append(("version", bool(version), f"version {version or 'not declared'}"))
-    except (OSError, SyntaxError):
-        rows.append(("version", False, "shared/version.py is unreadable"))
+    except (OSError, ValueError, KeyError):
+        rows.append(("version", False, "pyproject.toml is unreadable"))
     try:
         spec = spec_path.read_text(encoding="utf-8")
         ast.parse(spec)

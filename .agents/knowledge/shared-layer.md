@@ -8,7 +8,9 @@
 > useful; the identity self-test became `tests/basic/test_identity.py`. What remains in `shared/`
 > leaves in phases 2 and 4. Phase 2 (2026-09-21) moved `providers.py` to
 > `Basic/_providers/_registry.py` and folded `gh_cli.py` into `Basic/_providers/github.py`; only
-> `version.py` remains. The record below is kept for its reasoning and history.
+> `version.py` remained until 2026-10-20, when `shared/` was deleted: the number now lives only in
+> `pyproject.toml`, read by `git-sync-suggester/core/version.py`. The record below is kept for its
+> reasoning and history.
 
 _Decision recorded 2026-08-31._
 

@@ -27,7 +27,7 @@ import sys
 import threading
 import webbrowser
 
-from shared.version import check_for_update, version_line
+from version import check_for_update, version_line
 
 CONTRACT_NAME = "gitspecops.fleet.display"
 CONTRACT_VERSION = 1

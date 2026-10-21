@@ -25,7 +25,7 @@ AREAS = {
 
 
 def setup(*areas: str) -> Path:
-    """Put the repo root (for `shared/`) plus each requested area on `sys.path`. Returns ROOT."""
+    """Put the repo root (for the layers) plus each requested area on `sys.path`. Returns ROOT."""
     wanted = [ROOT]
     for area in areas:
         if area not in AREAS:

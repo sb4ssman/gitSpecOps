@@ -1,5 +1,7 @@
 """Version contract: one source of truth, and an update check that cannot mislead or fail.
 
+The number is written once, in pyproject.toml; `core/version.py` reads it.
+
 The update check is the foundation for "am I current?", so its failure behaviour matters more
 than its success behaviour: an unreachable network, a missing gh, or a repository with no
 releases yet must all report **unknown**, never "up to date". Claiming current without having
@@ -16,7 +18,7 @@ from _bootstrap import ROOT, setup  # noqa: E402
 
 setup("sync")
 
-import shared.version as version  # noqa: E402
+import version  # noqa: E402
 from fleet_display import build_display  # noqa: E402
 
 
@@ -25,14 +27,19 @@ def check(condition, message):
         raise AssertionError(message)
 
 
-def test_version_is_declared_once():
-    """pyproject and the display contract must not be able to drift from shared/version.py."""
+def test_version_comes_from_pyproject():
+    """The running code, the display contract and pyproject.toml agree by construction."""
     declared = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     check(declared["project"]["version"] == version.VERSION,
-          f"pyproject {declared['project']['version']} != shared.version {version.VERSION}")
+          f"pyproject {declared['project']['version']} != version.VERSION {version.VERSION}")
     product = build_display([], "fleet-id")["product"]
     check(product["version"] == version.VERSION,
-          f"display contract {product['version']} != shared.version {version.VERSION}")
+          f"display contract {product['version']} != version.VERSION {version.VERSION}")
+
+
+def test_unreadable_pyproject_is_unknown_not_a_crash():
+    check(version.read_version(ROOT / "no-such-pyproject.toml") == version.UNKNOWN,
+          "a missing pyproject.toml must read as unknown")
 
 
 def test_ordering():

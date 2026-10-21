@@ -72,7 +72,8 @@ gitSpecOps/
 │   ├── git_client.py           open a checkout in a desktop Git client
 │   ├── setup_fleet.py          guided first run
 │   ├── tray.py                 command; per-OS work in _os/*/tray.py
-│   └── version.py              compare and report; the release query is the provider's
+│   └── (version)               2026-10-20: not App -- the display contract (Elaborate) reads
+│                               the number, so it cannot live above it; settled in phase 3c
 ├── Basic/                      one git or host operation, wrapped with care
 │   ├── _providers/
 │   │   ├── _registry.py        the Protocol, register, provider_for
@@ -90,6 +91,7 @@ gitSpecOps/
 │   ├── fetch.py
 │   ├── pull.py                 fast-forward only
 │   ├── push.py                 never --force
+│   ├── reset_keep.py           moves a branch; never overwrites an edit, never --hard
 │   └── status.py
 ├── Elaborate/                  wider scale: across machines, across time
 │   ├── _fleet/                 advice, aggregate, config, display, events, manifest,
@@ -304,3 +306,19 @@ and the fleet (Elaborate) or the App may call it — for example a fleet-wide au
   `apply` (git filter-repo in that clone only, after a typed confirmation), `verify`. Its
   `EFFECT` is `local`. **The forced push that publishes a rewrite is never performed by
   gitSpecOps**: the tool prints it, the person runs it.
+
+## Revisions, 2026-10-20: security inside the layers; `shared/` gone
+
+Decided by the user:
+
+- **There will be no Security layer.** Security lives inside each layer it occupies:
+  components and single-repository commands in `Special/security/`, the top-level
+  `clean_history` in `Elaborate/security/`, and the general history-rewriting machinery in
+  plain `Special/`. The 2026-10-19 rank (`Special -> Security -> Elaborate`) stays in the import
+  test only until the old `Security/` folder is deleted at the cut-over. Full design and plan:
+  [`security-design.md`](security-design.md).
+- **`Basic/reset_keep.py`** joins the Basic operations: moves the checked-out branch with
+  `git reset --keep`, never overwrites an edit, has no other reset mode.
+- **`shared/` is deleted.** The version number is written once, in `pyproject.toml`, and read by
+  `git-sync-suggester/core/version.py`. `App/version.py` in the tree above was wrong: the
+  display contract (Elaborate) needs the number, and Elaborate cannot import App.

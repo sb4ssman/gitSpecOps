@@ -1507,3 +1507,25 @@ which the security, hygiene and import-direction tests then re-ran green).
 - **The Security structure was discussed and not settled.** The agent proposed three shapes in
   a row, the last against the architecture (security plumbing in `Basic/`). The user's
   directions are recorded in WORKING-NOTES ("HANDOFF", 19:45). No code changed after 17:20.
+
+## 2026-10-20 18:12 - user (Claude Opus 5.5) - Security rebuild designed; reset_keep; shared/ gone
+
+- **The Security structure is settled** after a discussion with the user:
+  [`knowledge/security-design.md`](knowledge/security-design.md). The first `Security/` had the
+  wrong shape: it was ranked as a layer, bypassed Basic for its own commits and pushes (under
+  `EFFECT = "local"`), asked y/N, and put six verbs in `rewrite_history.py` over an 806-line
+  `_rewrite.py` whose rule semantics were written four times (the source of both 2026-10-19
+  rewrite bugs). Decided: placement A (no Security layer; `Special/security/`,
+  `Elaborate/security/clean_history`, general rewrite machinery in plain `Special/`); rebuild
+  rather than move, with the old two files deleted at the cut-over (no tag, no `_archive/`);
+  typed `REWRITE` never skippable; typed review stop; `follow_rewrite` presents move now /
+  later / by hand. Phased plan in the design document.
+- **`Basic/reset_keep.py`** (phase 1 begun): `git reset --keep` on the checked-out branch;
+  refuses a detached HEAD, an unknown target, and any move that would overwrite an edit; no
+  other reset mode exists in its code (pinned). Six cases in `tests/basic/test_git_ops.py`.
+- **`shared/` deleted by the user.** The version number is now written once, in
+  `pyproject.toml`, and read by `git-sync-suggester/core/version.py` (with the update check);
+  the PyInstaller recipe bundles `pyproject.toml`; the release gate reads it too; the drift test
+  became a single-source test plus "unreadable is unknown, not a crash". The planned
+  `App/version.py` was wrong: the display contract (Elaborate) needs the number.
+- Full suite 48/48 on Windows.

@@ -262,7 +262,6 @@ _os/                   per-OS pieces, the same files for Windows, Linux and macO
 Elaborate/             archive_manage: registry, launchers, schedule
 Special/               archive_update, archive_sync, and duplicate_org/ (org duplication)
 git-sync-suggester/    the optional fleet tool (see below)
-shared/                the version number (moving into App/ as the migration proceeds)
 tests/                 offline, synthetic; no network, no real repositories
 .agents/               project brief, working notes, work log, durable knowledge
 ```
