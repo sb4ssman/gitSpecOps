@@ -15,10 +15,18 @@ many machines -- see every out-of-sync repository everywhere (and what exists re
 fix it from that view, on trusted auth (`gh`, git, Tailscale, a synced folder). The order:
 
 1. **Manifest v5 -- DONE 2026-10-21** (names, branch, head by default; `share_names`).
-2. **Linux tray (KDE Plasma, StatusNotifierItem) and the macOS menu bar.** Then the first real
-   run of the fleet: the user wants v5 and the KDE tray in place before running it.
+2. **Linux tray (KDE Plasma, StatusNotifierItem) and the macOS menu bar** -- in **Qt via
+   PySide6** (decided 2026-10-22; App only). First a small trial (tray + window over the display
+   contract) here and on the Debian 13 KDE box, which the user pulls and runs from the repo (no
+   release needed yet; run `tests/run_all.py` there first -- never yet run on Linux). Then the
+   first real run of the fleet.
 3. **Dashboard buttons:** the basic actions plus **fetch group, fetch all, fast-forward pull
    group, fast-forward pull all** -- each the same command as the terminal's, plan -> confirm.
+   **With them: remote requests** (rule amended 2026-10-22): "B, commit these and push" from A,
+   B's exact plan approved by a person at A, B re-checks and acts; over the peer protocol, not
+   SSH. Avenues for B's uncommitted work: B reports now; B sends a snapshot (content leaving B
+   -- confirm with the user when built); B commits and pushes; if B cannot push, B hands A a
+   git bundle of the exact commit and A pushes it.
 4. **Phase 3c:** part out Sync Suggester -- its high-level `sync_suggester` operation in its
    place, its components in theirs (layers).
 5. **Remote everything, on demand:** gather remote metadata (provider) for comparison and
@@ -30,6 +38,14 @@ fix it from that view, on trusted auth (`gh`, git, Tailscale, a synced folder). 
 about to go public; the old `Security/` tools keep working until then. The watch list's levels
 (never / watch), per-repository acceptance, and push-time prevention -- same trigger. Phase 1's
 Basic operations stay and serve the fleet (commit, reset_keep, identity facts).
+
+**The old Security tools are in active use** (2026-10-22: another public repository cleaned with
+them). The user's rulings and requests from that run are in `knowledge/security-design.md` ("The
+owner's rulings"): the login is safe everywhere; the real email and the home-folder name are
+leaks; other local paths are quiet; leak-describing text near a commit id is a leak; a
+`safe.txt` list and `--safe`; `scan_tree` must drop the owner as `scan_history` does. Open: fix
+the old scanners now, or leave it to the rebuild; and whether the "local paths are quiet"
+ruling relaxes this repository's own no-absolute-paths rule.
 
 **Flake seen once (2026-10-21):** `tests/fleet/test_git_client.py` timed out (3 s socket read
 on its loopback test server) during a full-suite run; it passed alone five times and the next

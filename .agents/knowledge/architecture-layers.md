@@ -218,6 +218,11 @@ the change**, not which process runs it:
 - **Foreground entry points** — the terminal, a tray menu item, a dashboard button — run the
   *same command* with the same plan → show → confirm. A button is not a back door and not a
   second policy.
+- **Remotely attended requests** (amended 2026-10-22 with the user) are foreground too: the
+  plan is produced by the machine that will act, shown and approved by a person at the machine
+  that asks, and bound to that plan; the acting machine re-checks its state and acts or
+  refuses. This is how "B, commit this and push" works from A. Forced, reset, rebase, merge and
+  delete are not verbs of the protocol at all.
 
 A test collects every declaration by scanning the layer folders and asserts:
 
@@ -324,3 +329,20 @@ Decided by the user:
 - **`shared/` is deleted.** The version number is written once, in `pyproject.toml`, and read by
   `git-sync-suggester/core/version.py`. `App/version.py` in the tree above was wrong: the
   display contract (Elaborate) needs the number, and Elaborate cannot import App.
+
+## Revisions, 2026-10-22: the App is Qt; remote requests
+
+Decided by the user:
+
+- **The App uses Qt through PySide6** (the official Qt for Python, LGPLv3: free to use and to
+  ship as a dependency). One codebase gives a native tray on Windows and KDE Plasma (KDE is Qt;
+  StatusNotifierItem on Wayland), the macOS menu bar (no Swift needed), and a real application
+  window that can replace the web dashboard as the main view. It is the App's dependency only:
+  every operation below `App/` stays standard-library Python. The Qt window is one more skin
+  over the versioned display contract; the web dashboard may stay for viewing from another
+  device or retire later. A small trial (tray + window over the contract) runs here and on the
+  Debian 13 KDE box before the tray work proper; the hand-written Win32 tray is then retired.
+- **Remote requests between the user's own machines** -- see "Remotely attended requests"
+  above. Over the fleet's peer protocol on the tailnet, not SSH: SSH would hand gitSpecOps a
+  whole shell (with per-OS quoting) where a few fixed verbs are enough, and turning SSH on is a
+  system and credential change gitSpecOps must not make for the user.

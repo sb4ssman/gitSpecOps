@@ -39,6 +39,15 @@ committing or pushing from the app, are what the product is for):
    another machine's mailbox runs unattended only if such a consent covers it; otherwise it
    waits on this machine as a suggestion. Commit, merge, rebase, reset, rename, delete, origin
    rewrites and anything forced are never covered by any consent.
+   *Amended 2026-10-22 with the user:* **a person may command another of their machines.** The
+   network and the machines are the user's own and already trusted, so "B, commit these files
+   and push" is legitimate when it is *attended from the other keyboard*: B produces the exact
+   plan (files, diff summary, branch, the commit it would make), the requesting machine shows it
+   to a person -- alone or helped by an AI -- who approves it there with a typed word; the
+   request is bound to that plan, and B re-checks that its state still matches before acting,
+   or refuses. B needs no person and no AI of its own. The channel is the fleet's own peer
+   protocol over the tailnet (Tailscale identity + fleet key), with a fixed set of verbs, never
+   a shell. Forced pushes, reset, rebase, merge and delete stay out of reach from anywhere.
 3. **Everything else is a command the user invoked**, from the terminal, a tray item or a
    dashboard button alike — the same command, the same plan → show → confirm:
    detect → plan → approve → execute → review. Fast-forward-only pulls, non-force pushes, nothing

@@ -1584,3 +1584,22 @@ which the security, hygiene and import-direction tests then re-ran green).
   now carry names, so validation refused them for that) -- it now tests the published record.
 - Full suite 49/49 on Windows; one run before it lost `test_git_client` to a 3 s loopback
   timeout (passed alone 5x; noted as a watch item).
+
+## 2026-10-22 10:00 - user (Claude Opus 5.5) - decisions: remote commands, Qt, the owner's leak rulings
+
+No code changed; decisions recorded where they govern.
+
+- **The effect rule is amended** (brief, "What this is for", rule 2; architecture "Remotely
+  attended requests"): a person may command another of their machines. B produces the exact
+  plan, a person at A (alone or AI-assisted) approves it with a typed word, the request is bound
+  to the plan, B re-checks and acts or refuses. B needs no person or AI. Over the fleet's peer
+  protocol with fixed verbs, not SSH (a whole shell, per-OS quoting, and a credential change
+  gitSpecOps must not make). Forced / reset / rebase / merge / delete are not verbs at all.
+- **The App is Qt via PySide6** (LGPLv3), App only; operations stay standard-library Python. A
+  trial (tray + window over the display contract) here and on the Debian 13 KDE box first.
+- **The owner's leak rulings** (from cleaning another public repository with the old tools):
+  login safe everywhere, real email and home-folder name are leaks, other local paths quiet,
+  leak-describing text near a commit id is a leak (this repository checked: none). A safe list
+  and `--safe` requested; `scan_tree` and `scan_history` disagree on the owner's login (257 vs
+  0 findings in one repository). Recorded in `knowledge/security-design.md`; they replace the
+  never / watch levels proposal.

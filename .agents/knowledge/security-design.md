@@ -191,9 +191,38 @@ from a temporary worktree of a pre-cut-over commit -- verification, not compatib
    `Special/security`; `Security` leaves the import order; this document, the architecture
    document, the brief and the handoff updated.
 
+## The owner's rulings: what counts as a leak (2026-10-22)
+
+Given by the user after cleaning another public repository with the old tools. They answer the
+parked "never / watch" question more simply than levels did: each finding is a **leak**, a
+**quiet** note, or **safe** -- and these are the defaults the rebuild implements.
+
+- **Safe -- never a finding:** the GitHub login, alone or as `<login>@<HOSTNAME>`. It is the
+  public handle: mod headers, `@github` URLs, commit names.
+- **Leak:** the real email address. Old commits already carry it and that cannot be undone;
+  nothing new may add it. Flag it in files and in commit identities.
+- **Leak:** the Windows home-folder name (the `Users\<name>` segment of a home path) -- close
+  enough to the email to identify him.
+- **Quiet:** other local paths (a library drive's `Github\...` folders) -- report quietly or
+  ignore. This repository's own brief still forbids absolute local paths in its tracked files;
+  whether the ruling relaxes that is an open question to the user.
+- **Leak -- a new kind of check:** text that *describes an open leak*: a support-ticket number,
+  "commit X is still served", instructions to go and look at a SHA. It holds no personal value,
+  so a value scanner passes it; on 2026-10-22 an agent pushed exactly that to a public
+  repository. Rule: in a public repository, flag security-state wording (leak, scrub, purge,
+  still served, support ticket) near a commit id. Checked the same day: this repository holds
+  none -- only general guidance.
+
+**A safe list**, requested the same day: `<config_home>/security/safe.txt` beside the
+never-publish list, one value per line, never a finding in any scanner; `--safe VALUE` for one
+run. And **one answer from every scanner**: today `scan_tree` flags the owner's login (257 times
+in one repository, all mod headers) while `scan_history` drops the repository owner and flags it
+0 times. In the rebuild this is one rule in `_me`, applied by every check.
+
 ## Open
 
-- The watch list's name (`watch_list` is the working name).
+- The watch list: superseded by the rulings above -- the never-publish list holds leaks, the
+  safe list holds safe values, built-in kinds carry the ruled defaults.
 - Syncing the watch list (later, after a machine is enrolled).
 - Three plan folders from 2026-10-19 13:01-13:07 remain in the per-user `security/` folder,
   holding real values; they predate the output folder and nothing uses them. Delete on the
