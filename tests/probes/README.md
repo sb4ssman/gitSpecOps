@@ -15,3 +15,4 @@ knowledge records. Use invented fixture names and never copy real source content
 | Probe | Question | Prerequisite |
 |---|---|---|
 | [VS Code hot exit](vscode_hot_exit/README.md) | Does a dirty buffer reach backup storage before exit? | Installed VS Code |
+| [Qt shell](qt_shell/README.md) | Does Qt give a working tray / menu-bar icon and native window on this desktop? | PySide6 in `.venv` |

@@ -1619,3 +1619,20 @@ No code changed; decisions recorded where they govern.
 - The Security design now says the archive stays and only the live `Security/` is retired at the
   cut-over. The requested scanner fixes (safe list, `--safe`, owner parity) go into the rebuild;
   the archive is not edited.
+
+## 2026-10-23 10:19 - user (Claude Opus 5.5) - Qt trial: tray and native window over the display contract
+
+- `tests/probes/qt_shell/` (a probe: tracked, never run by the suite): a tray icon (green /
+  amber from `summary.attention`) with Open / Refresh / Quit, and a native window -- the fleet
+  table, one column per machine, tinted by each cell's tone, and the selected repository's
+  per-machine detail (v5 branch and commit). Reads the display contract and refuses an unknown
+  version; decides nothing. `--demo` (invented three-machine fleet, one stale) or `--root`
+  (a library observed read-only: no fetch, nothing published); `--screenshot`, `--seconds`.
+- **Windows 11: works** -- Qt platform `windows`, tray available, native dark theme; checked by
+  screenshot on the demo and on a real library (22 repositories, read-only).
+- PySide6 6.12 (Essentials) is in the repo's `.venv` only: Windows Application Control here
+  blocks any newly created `python.exe`, so a throwaway venv (temp folder, `.agents/output/`)
+  could not run. Two empty failed venv folders remain for the user to delete (a guard hook
+  rightly blocks `rm -rf`).
+- Next: the user runs the probe on the Debian 13 KDE box; instructions and a results table in
+  its README.

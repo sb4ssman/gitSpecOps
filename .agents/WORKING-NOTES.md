@@ -19,7 +19,11 @@ fix it from that view, on trusted auth (`gh`, git, Tailscale, a synced folder). 
    PySide6** (decided 2026-10-22; App only). First a small trial (tray + window over the display
    contract) here and on the Debian 13 KDE box, which the user pulls and runs from the repo (no
    release needed yet; run `tests/run_all.py` there first -- never yet run on Linux). Then the
-   first real run of the fleet.
+   first real run of the fleet. **Trial built 2026-10-23:** `tests/probes/qt_shell/` -- tray +
+   native window over the display contract; works on Windows 11 (demo and a real library,
+   read-only). Next: the user runs it on the Debian 13 KDE box (instructions in its README).
+   Note: Windows Application Control here blocks any *newly created* `python.exe` (a fresh venv
+   in the temp folder or `.agents/output/` both failed), so PySide6 went into the repo's `.venv`.
 3. **Dashboard buttons:** the basic actions plus **fetch group, fetch all, fast-forward pull
    group, fast-forward pull all** -- each the same command as the terminal's, plan -> confirm.
    **With them: remote requests** (rule amended 2026-10-22): "B, commit these and push" from A,
