@@ -1603,3 +1603,19 @@ No code changed; decisions recorded where they govern.
   and `--safe` requested; `scan_tree` and `scan_history` disagree on the owner's login (257 vs
   0 findings in one repository). Recorded in `knowledge/security-design.md`; they replace the
   never / watch levels proposal.
+
+## 2026-10-23 10:15 - user (Claude Opus 5.5) - the working Security suite preserved in _archive/security_v1/
+
+- **Preserved at the user's request** -- asked twice; the agent had twice answered "git history
+  has it covered", which was wrong: a usable copy is what was asked for. `_archive/security_v1/`
+  holds the suite as it ran on 2026-10-19 and 2026-10-22, plus frozen copies of exactly the
+  `Basic/` and `_os/` files it imports (found from its imports, not guessed), so it keeps
+  working however the live layers change. Its own test passes from the archive
+  (`_archive/security_v1/tests/test_security.py`), and its commands load the archive's copies
+  (checked), not the live ones.
+- Changed in the copy, nothing else: `_repo.TOOL_ROOT` three folders up (reports still land in
+  this checkout's ignored `.agents/output/security/`); the commands it prints name the archive
+  folder; the test imports the archive first and drops one block that tested the live observer.
+- The Security design now says the archive stays and only the live `Security/` is retired at the
+  cut-over. The requested scanner fixes (safe list, `--safe`, owner parity) go into the rebuild;
+  the archive is not edited.

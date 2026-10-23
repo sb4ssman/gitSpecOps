@@ -43,9 +43,11 @@ Basic operations stay and serve the fleet (commit, reset_keep, identity facts).
 them). The user's rulings and requests from that run are in `knowledge/security-design.md` ("The
 owner's rulings"): the login is safe everywhere; the real email and the home-folder name are
 leaks; other local paths are quiet; leak-describing text near a commit id is a leak; a
-`safe.txt` list and `--safe`; `scan_tree` must drop the owner as `scan_history` does. Open: fix
-the old scanners now, or leave it to the rebuild; and whether the "local paths are quiet"
-ruling relaxes this repository's own no-absolute-paths rule.
+`safe.txt` list and `--safe`; `scan_tree` must drop the owner as `scan_history` does. Those go
+into the rebuild. **The working suite is preserved, frozen and runnable, in
+`_archive/security_v1/`** (user, 2026-10-23: "I want to preserve it") -- run it from there; do
+not edit it. Open: whether the "local paths are quiet" ruling relaxes this repository's own
+no-absolute-paths rule.
 
 **Flake seen once (2026-10-21):** `tests/fleet/test_git_client.py` timed out (3 s socket read
 on its loopback test server) during a full-suite run; it passed alone five times and the next
