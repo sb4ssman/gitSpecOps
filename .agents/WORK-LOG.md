@@ -1636,3 +1636,16 @@ No code changed; decisions recorded where they govern.
   rightly blocks `rm -rf`).
 - Next: the user runs the probe on the Debian 13 KDE box; instructions and a results table in
   its README.
+
+## 2026-10-26 07:13 - user (Claude Opus 5.5) - Security moved to _archive/Security/; handoff
+
+- **`Security/` moved, unmodified, to `_archive/Security/`** (2026-10-23), the user's explicit
+  instruction: preserve the existing manifestation, as a single folder. Before that the agent
+  made two wrong versions -- a copy with edits of its own, then a copy with `Basic/`, `_os/` and
+  tests added -- and the user had to stop it repeatedly. Lesson recorded in WORKING-NOTES ("How
+  to work with this user"): do exactly what is asked, nothing beyond it.
+- 12 files, byte-identical to the originals (checked by blob id).
+- Left for the user's decision, untouched: the hygiene test and `tests/security/test_security.py`
+  import `Security` and fail; the observer's message names `Security/rewrite_history.py`.
+  Suite 47/49 on Windows. Run in place, `_archive/Security/` cannot find `Basic`.
+- Full handoff: WORKING-NOTES, "2026-10-26 — HANDOFF".

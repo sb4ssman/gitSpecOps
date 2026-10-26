@@ -4,9 +4,60 @@ Living todo / scratch pad. Add items freely; **prune regularly**. When something
 into [`WORK-LOG.md`](WORK-LOG.md) (appended at the bottom, `YYYY-MM-DD HH:MM`) and delete it here.
 Dates are always absolute.
 
-_Last tended: 2026-10-20 (handoff section on top; the 2026-10-19 sections below it are history)_
+_Last tended: 2026-10-26 (handoff section on top)_
 
 ## Open
+
+### 2026-10-26 — HANDOFF: where things stand (read first)
+
+**The goal (user's words, condensed):** one git client built for repositories everywhere --
+many machines, many orgs. Glance at the tray, see every out-of-sync repository on every machine
+(and what exists remotely), fix it from that view, including telling another of your machines
+to commit and push. Equally usable from the terminal. Runs on logins already trusted: `gh`,
+git, Tailscale, a synced folder.
+
+**Decided (2026-10-20 .. 10-23):**
+
+- Layers Basic -> Special -> Elaborate -> App; `Basic/` is plain git only.
+- Security: parked after its phase 1; the rebuild design and the owner's leak rulings are in
+  `knowledge/security-design.md`. **The old suite was moved, unmodified, to
+  `_archive/Security/`** (2026-10-23, the user's explicit instruction: preserve the existing
+  manifestation as a single folder). Do not edit it. Do not add files to `_archive/`.
+- Manifest v5: names, branches and commits shared by default; one switch turns them off.
+- Remote commands: a person may command their own other machines -- the acting machine's exact
+  plan, approved at the asking machine; over the fleet's peer protocol, not SSH.
+- The App: Qt (PySide6), App only; everything underneath stays standard-library Python.
+- Order of work: v5 (done) -> tray on KDE and macOS -> dashboard buttons (fetch / ff-pull for a
+  group and for all) plus remote commands -> phase 3c (split Sync Suggester into the layers) ->
+  remote everything.
+
+**Done:** `Basic/reset_keep.py`, `Basic/commit.py`, `Basic/_objects.py`, `_run.stream`, ref and
+identity facts; `shared/` removed (version read from `pyproject.toml`); manifest v5; the Qt
+trial `tests/probes/qt_shell/` (works on Windows 11). PySide6 6.12 is in this machine's `.venv`.
+
+**Broken by the move, waiting on the user's word -- do not touch until told:**
+
+1. `tests/repo/test_repo_hygiene.py` imports its leak rules from `Security` and now fails. It is
+   this public repository's leak guard, so it should not stay broken.
+2. `tests/security/test_security.py` imports `Security` and fails.
+3. `git-sync-suggester/core/observer.py:278` tells the user to run
+   `Security/rewrite_history.py follow`, which no longer exists.
+
+Suite: 47/49 on Windows (those two). Also: `python _archive/Security/<command>.py` does not
+start as it stands -- from inside `_archive`, Python cannot find `Basic`.
+
+**Next:** (1) the user decides the three references; (2) on the Debian 13 KDE box: pull, run
+`tests/run_all.py` (never run on Linux), then the Qt probe per its README; (3) the Qt App (tray
++ window) on Windows, KDE, macOS; (4) dashboard actions + remote commands; (5) phase 3c;
+(6) remote everything.
+
+**How to work with this user (learned 2026-10-23):** do exactly what is asked, in the words
+asked, and nothing beyond it. A plain instruction is settled -- do not argue alternatives,
+re-interpret, add files, or "improve" what was asked to be preserved.
+
+**Leftover for the user to delete (a guard hook blocks `rm -rf`):** two empty failed venv
+folders (`.agents/output/qt-trial-env`, and one in the session's temp scratchpad) and moved-aside
+caches in that scratchpad.
 
 ### 2026-10-21 — HANDOFF: back to the product; the order of work (user's decision)
 
@@ -48,9 +99,8 @@ them). The user's rulings and requests from that run are in `knowledge/security-
 owner's rulings"): the login is safe everywhere; the real email and the home-folder name are
 leaks; other local paths are quiet; leak-describing text near a commit id is a leak; a
 `safe.txt` list and `--safe`; `scan_tree` must drop the owner as `scan_history` does. Those go
-into the rebuild. **The working suite is preserved, frozen and runnable, in
-`_archive/security_v1/`** (user, 2026-10-23: "I want to preserve it") -- run it from there; do
-not edit it. Open: whether the "local paths are quiet" ruling relaxes this repository's own
+into the rebuild. **The working suite is preserved in `_archive/Security/`** (user,
+2026-10-23): an exact, unmodified copy of the `Security/` folder. Never edit it. Open: whether the "local paths are quiet" ruling relaxes this repository's own
 no-absolute-paths rule.
 
 **Flake seen once (2026-10-21):** `tests/fleet/test_git_client.py` timed out (3 s socket read

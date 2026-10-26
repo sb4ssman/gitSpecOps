@@ -4,12 +4,9 @@
 which cleaned this repository and ten others successfully but had the wrong shape. Nothing here
 is built yet beyond phase 1 (Basic, done 2026-10-20). The plan to get here is at the end.
 
-**The working v1 suite is preserved** (user's decision, 2026-10-23): a frozen, self-contained,
-runnable copy in [`_archive/security_v1/`](../../_archive/security_v1/README.md), with its own
-copies of the `Basic/` and `_os/` files it imports and its own passing test. It has cleaned three
-sets of public repositories with AI assistance, and it stays usable whatever the rebuild does.
-Do not edit it or import it from live code. The *live* `Security/` folder is still retired at the
-cut-over; no shims connect the two.
+**The working v1 suite is preserved** (user's decision, 2026-10-23): `_archive/Security/` is
+an exact, unmodified copy of the `Security/` folder (12 files, byte-identical, checked). Never
+edit it. The *live* `Security/` folder is still retired at the cut-over; the archive stays.
 
 ## Why the old shape was wrong
 
@@ -190,7 +187,7 @@ from a temporary worktree of a pre-cut-over commit -- verification, not compatib
 5. **`Elaborate/security/clean_history`** -- rehearsed end to end on a disposable copy of a real
    repository, stopping before the forced push.
 6. **Cut-over, one commit** -- delete the live `Security/` (including `_rewrite.py` and
-   `rewrite_history.py`) and `tests/security/test_security.py` -- never `_archive/security_v1/`; the hygiene test imports
+   `rewrite_history.py`) and `tests/security/test_security.py` -- never `_archive/Security/`; the hygiene test imports
    `Special/security`; `Security` leaves the import order; this document, the architecture
    document, the brief and the handoff updated.
 
