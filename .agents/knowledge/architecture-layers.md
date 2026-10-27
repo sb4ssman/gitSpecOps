@@ -7,6 +7,10 @@
 
 ## The model
 
+The [product contract](product-contract.md) adds the 2026-10-26 requirements for independent
+component use, setup/enrollment, output, integrated security and consistent presentation.
+It leaves this layer stack intact; the physical migration below remains unfinished.
+
 `git` is the raw material, and authentication is assumed: the user's own `git` and `gh` are
 already set up, and nothing here stores, configures or asks for a credential. Everything is built
 downward from there, becoming more elaborate as it builds on the basic operations.
@@ -24,14 +28,106 @@ Clarifications that took several passes to get right, recorded so they are not r
   command touches. The definition is the operation count, not the scope.
 - **Special is not "many repos."** A loop running `pull` fifty times is not a Special operation.
   What makes `archive_update` special is the logic of the repetition. That judgment is the layer.
-- **Elaborate reaches across machines *and across time*.** `archive_manage` belongs here because it
-  keeps a registry and runs operations **on a schedule**. That is also why scheduled runs may never
-  emit `--reconcile` or `--rename-folders`: an Elaborate operation can fire while you are asleep.
+- **Elaborate reaches across machines and across time.** Revised 2026-10-27: plain local archive
+  management belongs in Special/archive_manager.py, including selecting archives and invoking
+  update or sync once per selected archive. Registry persistence alone does not make it Elaborate.
+  Scheduling and fleet coordination remain Elaborate and call that same manager. Scheduled runs
+  must not acquire reconciliation/rename/publication authority merely because code moved.
 - **App is optional, and it is mostly the tray.** Every operation runs from the terminal on its
   own, forever. The App adds presence, not capability, and nothing may come to depend on it. The
   best thing it does is **suggest sync**.
 
 ## The rules
+
+### 2026-10-27 ruling: operations visible, plumbing in private folders
+
+Keep public operation scripts directly in their layer and hide supporting implementation in
+cohesive private folders. Name an operation as an action: `update_archive.py`, `duplicate_org.py`.
+A role name such as `updater.py` describes its implementation. Prefix the private folder once
+(for example `_archive/`); every file inside need not repeat the underscore or folder name.
+Apply that principle across layers, with exact grouping reviewed before moves. This supersedes
+older trees that mix public operations and private helper files at the layer root, and the
+intervening suggestion to hide public commands inside capability folders. Basic/Special/
+Elaborate/App responsibilities and dependency direction remain unchanged.
+
+The user also chose the role-oriented public entry point `Special/archive_manager.py` for local
+archive management. Operation names must describe their actual job; the verb-first preference
+does not prohibit an explicitly chosen manager name.
+
+The user specifically chose `Special/update_archive.py` and a layer-root
+`Special/duplicate_org.py`. A complete current Special entry-point mapping follows; additional
+verb-first names below are proposals to review, not executed or implicitly approved renames.
+
+| Current entry point | Proposed destination | Decision |
+|---|---|---|
+| Special/archive_update.py | Special/update_archive.py | Chosen by the user |
+| Special/duplicate_org/duplicate_org.py | Special/duplicate_org.py | Placement chosen by the user |
+| Special/archive_sync.py | Special/sync_archive.py | Naming proposal |
+| Special/inventory_export.py | Special/export_inventory.py | Naming proposal |
+| Special/inventory_restore.py | Special/restore_inventory.py | Naming proposal |
+| Special/security/scan_tree.py | Special/scan_tree.py | Layer-root placement follows the rule; review the complete map |
+| Special/security/scan_history.py | Special/scan_history.py | Layer-root placement follows the rule; review the complete map |
+| Elaborate/archive_manage.py (local management portion) | Special/archive_manager.py | Chosen by the user; scheduling remains Elaborate |
+
+### 2026-10-27 archive responsibility split
+
+Special/archive_manager.py is the real synchronous operation entry point. CLI/menu/GUI pass a
+request to its callable function; it selects/configures archives, invokes the explicitly
+selected update or sync operation once per archive and returns structured results. It does
+not need the fleet or a resident process. Keep private manager/updater/sync/plan/registry
+helpers in Special/_archive/. Both direct operations and the manager use those helpers; the
+manager need not import sibling public command modules. Preserve configured per-archive mode
+and explicit invocation choices, show the effective operation, and retain each operation's
+review/approval boundaries. Choosing sync does not implicitly authorize unrelated repair or
+publication classes.
+
+| Current archive_manage responsibility | Destination responsibility |
+|---|---|
+| Folder selection, pointed discovery, archive recognition/validation | Special local manager and private helpers |
+| Register/list/forget archives, preferences and installation receipts | Special local manager/registry helpers; external user data remains in place |
+| Update or sync selected/all archives and collect per-archive results | Special local manager, invoking the selected operation once per archive |
+| Per-archive launcher creation, when explicitly requested | Local setup action over the same manager and existing OS launcher seam |
+| Scheduled refresh registration/status/removal and scheduled wrapper | Elaborate scheduling, invoking the same Special manager |
+| Cross-machine observation, sync suggestions, peer transport and coordinated actions | Elaborate fleet operations; App presents them |
+
+An archive is a selected collection containing at least one actual Git checkout, not merely a
+directory with an arbitrary file named .git. Recognition must support valid .git directory/file
+forms; operation eligibility (dirty state, origin policy, etc.) is checked separately. A known
+repository that cannot currently update does not stop being part of the archive. Default or
+pointed discovery and explicitly requested system discovery produce candidates for selection;
+discovery never enrolls collections or overrides excluded paths. Specify nesting/depth during
+the mapping: the current implementation checks direct children and requires an eligible origin.
+
+Visibility/ownership is not the technical distinction between updater and sync. The updater's
+common use is refreshing public/reference collections, but it also works on private repositories.
+Existing archive_sync can clone public namespaces not owned by the user as well as reconcile
+owned collections. Personal cross-machine synchronization is an Elaborate workflow, distinct
+from that archive-reconciliation code. `sync_self.py` is a naming idea, not an agreed rename or
+an instruction to turn suggestions into automatic push/pull. Preserve all existing archive-sync
+capabilities until their explicit destination/entry-point mapping is reviewed.
+
+Moving the manager requires moving its registry plumbing below Elaborate, updating imports,
+launchers/tests/docs and preserving saved identifiers/data paths. Do not introduce a forbidden
+Special -> Elaborate import or silently rename persisted settings component identifiers. This
+is the chosen responsibility split; no source extraction or data relocation has happened yet.
+
+Implementation grouping proposal: `_archive/` holds updater/sync/plan helpers;
+`_org_duplicator/` holds batch/local/remote/tracking/worker helpers; `_inventory/` holds inventory
+logic; `_security/` holds scanner/material/check/report helpers; `_settings/` holds schema,
+resolution, migration and storage. Existing code is still at its current paths. This is not
+a request for one folder per tiny function or one merged module per entire capability.
+
+The public operation exposes an importable function and a CLI adapter. CLI/menu and GUI invoke
+that same function; it delegates to private helpers, which use Basic primitives. For example,
+the archive updater selects eligible repositories and repeatedly calls Basic's fast-forward
+operation; argument parsing/presentation stay at the entry boundary. The private updater is
+not a second independently configured tool.
+
+Before moving code, map imports, tests, documentation, generated launchers, installed entry
+points and all paths derived from `__file__`. In particular, the duplicator's resume state is
+currently beside its helper module: moving it must not silently select a new empty runs folder.
+Keep functional changes and runtime-data relocation separate from source organization.
+The frozen `_archive/Security/` remains untouched. No source move has been made for this ruling.
 
 - **A file without an underscore is a command. A file or folder with one is plumbing.** `ls` on
   any layer lists exactly what it can do.

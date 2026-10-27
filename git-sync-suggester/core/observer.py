@@ -274,8 +274,8 @@ def observe_paths(paths: list[Path], secret: str | None = None,
         if facts.get("ahead") and facts.get("behind") and shares_history(path) is False:
             # Not ordinary divergence: the upstream's history was rewritten after this clone
             # was made (every commit differs). A pull refuses; merging would bring it back.
-            issues.append("upstream history was rewritten; move this clone with "
-                          f"Security/rewrite_history.py follow: {path}")
+            issues.append("upstream history was rewritten; review this clone before "
+                          f"moving it (do not pull or merge): {path}")
         repo_id, kind, has_remote, host, owner, name = _identity(path, facts, secret)
         staged, unstaged, untracked = counts
         stash_text = git_stdout(path, ["rev-list", "--walk-reflogs", "--count", "refs/stash"])

@@ -4,11 +4,178 @@ Living todo / scratch pad. Add items freely; **prune regularly**. When something
 into [`WORK-LOG.md`](WORK-LOG.md) (appended at the bottom, `YYYY-MM-DD HH:MM`) and delete it here.
 Dates are always absolute.
 
-_Last tended: 2026-10-26 (handoff section on top)_
+_Last tended: 2026-10-27 (architecture ruling, current product contract and executable work)_
 
 ## Open
 
-### 2026-10-26 — HANDOFF: where things stand (read first)
+### 2026-10-27 — Review the complete organization map before source moves
+
+- Apply the new ruling in knowledge/architecture-layers.md: public operations directly in
+  their layer, action names, private plumbing grouped in folders. The user chose
+  Special/update_archive.py and bringing duplicate_org.py directly under Special. Review the
+  remaining entry-point names and helper grouping before executing a rename sweep.
+- Produce the full source/destination/caller map, including all current Special entry points,
+  the legacy fleet/app tree, tests, launchers, packaging and documentation. Preserve agreed
+  roles/dependencies, direct script use and callable APIs. Group settings first as a bounded
+  candidate; do not combine source moves with policy changes or actual settings migration.
+- Check every __file__-derived data/resource path. The duplicator uses helper-relative runs/;
+  moving helpers must not abandon resume records or silently switch storage. Runtime-data
+  relocation and legacy entry-point compatibility require explicit handling.
+- Design the endorsed CLI/menu front door and a static command catalog tied to real handlers,
+  effects, prerequisites and structured results. Keep GUI/CLI on the same callable functions;
+  no execution during help/discovery, no unattended prompt and no duplicate authorization logic.
+  GSO/gitSO/gso naming remains open. No dispatcher or source move has been implemented.
+- Build command documentation from source: essential top-of-file module docstrings for every
+  script/helper, useful docstrings/type hints on important functions, and shared parser/effect
+  metadata for help/menu/generated docs. Audit current headers against actual names/behavior
+  before trusting generation. Keep the catalog as handler/parser references, not copied prose.
+  Help/documentation extraction must not execute tools or read private configuration. Add
+  discoverability/doc parity checks when the catalog and extraction path are implemented.
+- Review archive front-door clarity while mapping: archive_update refreshes existing checkouts;
+  archive_sync additionally offers upstream discovery/cloning and separately selected apply
+  classes. Current defaults differ (updater acts unless scan-only; sync plans unless selected).
+  Elaborate/archive_manage.py --install currently combines folder registration with launcher
+  creation. Propose an explicit archive add/list/remove setup/CLI flow and decide that coupling
+  before changing it; a one-off --root remains usable without registering anything.
+- **Archive manager extraction chosen by the user (supersedes its all-Elaborate placement).**
+  Put plain local selection/registration/list/forget and refresh orchestration in
+  Special/archive_manager.py, with private manager/updater/plan/registry helpers in _archive/.
+  It invokes update OR sync once per selected archive, with the selected mode visible in its
+  request/results, and returns structured results to CLI/GUI. Preserve per-archive modes and
+  explicit invocation choices; share private engine helpers with both direct commands rather
+  than bypassing their scope or approval boundaries.
+  Move registry plumbing down with it; keep scheduler installation/status/removal, scheduled
+  wrapper and fleet/sync-suggester coordination in Elaborate, invoking the same manager.
+  Review import/test/launcher/doc and persisted-identifier compatibility before extraction;
+  keep actual user data at its current location. No source extraction has happened yet.
+- Separate archive recognition from update eligibility. The user's criterion is a chosen
+  collection with actual Git checkouts; support .git files as well as directories. Pointed or
+  system discovery yields candidates and respects hard exclusions; never auto-enroll. Decide
+  nesting/depth explicitly because today's manager checks eligible direct children only.
+- Resolve sync naming in the complete map: public reference updating is a common use, not a
+  restriction that forbids private repositories. Existing archive_sync's upstream discovery/
+  cloning/reconciliation also applies to public collections. Personal cross-machine sync belongs
+  to Elaborate. sync_self.py remains a suggestion; do not rename or discard existing behavior
+  based only on visibility/ownership, or automatically push/pull because a command is called sync.
+
+### 2026-10-26 — Bring the product together: ordered executable work
+
+Canonical decisions: [knowledge/product-contract.md](knowledge/product-contract.md). The goal
+is cross-machine repository visibility and action, assembled into one app while every Special
+operation stays useful independently. This order supersedes earlier handoff priorities below;
+it does not authorize a mass refactor. Finish and verify one bounded change at a time.
+
+1. **Integrate the common settings foundation.** Use
+   [knowledge/settings-schema.md](knowledge/settings-schema.md) and `Special/_settings.py`.
+   Wire guided setup to the v2 preview/writer with explicit review, conflict choices and quiet
+   legacy writers. Keep private candidates separate from agent-facing summaries. Current mapping
+   preserves machine/transport definitions, separate CLI/app selections and behavior, archive
+   preferences vs retained receipts and protected values; unknown/older formats require review.
+   Add record adapters and coordinate readers/savers before actual cutover, so writing a common
+   file cannot leave two independently editable authorities. Preserve originals and never
+   silently change action consent or enable features. Explicit relocation/locator handling is
+   still needed. Then integrate one standalone operation and shared logging. The real default
+   profile's read-only masked preview had no conflicts for its archive/policy inputs; no user
+   file was written. No automatic migration or actual user-file edit is authorized.
+   Agent notes may point at the location but are not runtime configuration. Acceptance: an unenrolled Archive Updater
+   works with Git alone; configured preferences are remembered, editable and overridden per run;
+   missing optional capabilities do not masquerade as failures or trigger silent setup.
+   **Finish line 1:** one standalone operation uses that home and repeatable setup, with
+   explicit output and configured local logging; the source checkout carries no runtime data.
+   Reconcile the older CLI's single transport with the app's multiple transports deliberately.
+   Add one logging configuration seam over stdlib logging: component names, routing, rotation,
+   concurrent-writer behavior, disclosure control and visible required-log failures.
+   **Source updater, same finish line:** reuse `Basic/pull.fast_forward` through a reviewed
+   command callable from setup/CLI/app. Define clean/tracking/fork checks and safe app/peer
+   stop/restart, then prove ff-only success, refusal and preserved user data in disposable
+   fixtures. Existing setup does not implement updating and version checks are report-only.
+   Shell wrappers are entry points to the same contract. Frozen bundles require release updates.
+2. **Setup/enrollment uses that resolver.** Capture selected roots, machine identity, local
+   bindings, output/log preferences, authentication availability and selected state/transport
+   options. Private state repo is optional; verify privacy/access when selected. Git/gh/SSH/
+   Tailscale requirements apply only to chosen capabilities. Acceptance: repeatable enrollment,
+   visible unavailable/stale states, no stored credentials, preserved settings on code updates
+   and no mandatory fleet/app setup for an individual operation. Define notes integration with
+   the user before implementation; no new service or transport is selected by this task.
+   Add hard path/repository exclusions distinct from protected-value lists and namespace
+   observe/publish/capture baskets; enforce before inspection. Whole-machine discovery is an
+   explicit inventory operation with bounded scope and visible gaps, never automatic enrollment.
+   Define the private state-repo layout/ownership and aggregate API budget, batching, payload
+   limits, caching, heartbeat costs, backoff and conflict behavior before claiming large fleets.
+   Shared settings replication is optional later work; local configuration must stand alone.
+   **Guided lifecycle front door (user's direction):** expose guided setup, selection of setup
+   items, update of gitSpecOps ONLY and uninstall/selective component unenrollment. Explain the
+   matrix, prerequisites, destinations and effects; support cancellation and explicit headless
+   actions. Reuse existing private state-repo CREATE/USE guidance, with authenticated account,
+   selected name and verified private access; keep it optional. App/CLI call the same operations.
+   Unenrollment stops selected observation/publication/schedules/startup entries, removes only
+   receipt-owned installation artifacts and preserves user repositories/settings/logs/recovery
+   by default. Real repository/data deletion is a separate reviewed action. First bootstrap
+   selection/help safety is implemented; full wizard, updater and unenrollment are not yet built.
+3. **Apply output policy one operation at a time.** Start with active security scan commands:
+   stdout by default, configured stdout/file/both, explicit per-run override, no destination
+   fallback. Support deliberately selected private directories outside Git and ignored,
+   untracked destinations inside Git. Define filename/create/overwrite behavior before changing
+   the writer. Acceptance: unusable output reports failure; tests prove no unexpected writes,
+   correct preference precedence, exact destination and independent disclosure per channel.
+   Then reconcile `archive_sync` auto-reports, `inventory_export` implicit saving, duplicator
+   source-adjacent logs/resume state and manager/tray logging. Preserve required operational
+   state. Archive Updater's current opt-in report files are already the starting example.
+4. **Unify security policy and evidence.** Compare recovery `core/secret_scan.py`, active scans,
+   hygiene and frozen rules; select external-engine integration deliberately. Resolve safe/block
+   conflicts, the misleading archived report-fallback assertion, incomplete/binary coverage and
+   the uncaptured Windows symlink error. Acceptance: explained differences, known positive and
+   negative cases, exact local reveal without implicit log/fleet disclosure, shared callable
+   policy and a clear distinction between never-publish settings and generated reports.
+5. **Connect advice and action gates.** Add independently visible security facts to sync advice,
+   CLI and app. Before supported commit/push actions, inspect exact proposed contents/identity/
+   message or outgoing history and recheck freshness on the executing machine. Acceptance:
+   prohibited introduction is blocked, removal can proceed, incomplete checking is visible and
+   remote approval cannot authorize changed contents. Hooks/host protection remain explicit
+   options; do not claim to control Git invocations outside this product.
+   **Finish line 2:** prove useful scans/action checks with invented cases and the approved
+   disposable scan/rewrite/rescan; don't require the completed fleet/app to establish security.
+6. **Complete repair proof and presentation.** Reuse preserved v1 capabilities through the
+   layered design; prove scan/rewrite/rescan and retained-content preservation in disposable
+   repositories before real history operations. Align help, errors, severity, output schemas,
+   progress and review/confirmation across tools and app using existing presentation seams.
+   Acceptance: component and app results agree; native OS evidence is recorded; no migration,
+   source-state proof, host protection or full-suite result is claimed without execution.
+   **Finish line 3:** two-machine fresh/stale sync suggestions through a selected transport,
+   shown by the same CLI/headless operation/app contract; then native OS install/update/remove
+   and tray evidence. The matrix explains increasing participation and optional capability
+   tradeoffs; every lower operation remains independently useful.
+
+### 2026-10-26 — Security rebuild: existing work and remaining boundaries
+
+- The user authorized one reviewed checkpoint commit and normal push on 2026-10-27 after scanning and necessary disclosure cleanup. This is not standing permission for later commits or pushes. The 2026-10-26 product-contract direction authorizes bounded setup/output/security/presentation plumbing work in the order above. The refitter, real history mutation, guard changes and unrelated repairs remain stopped.
+- `Special/security/` now contains the active read-only scanner. The archive is frozen. The existing hygiene/legacy-test migration and observer edits still need separate review; do not silently treat them as cut-over approval.
+- Next decision: compare established secret scanners, their configuration/allow-list support and the existing history-filtering engine against the actual requirements before extending custom detection or building more rewrite code. Prefer configuration and small adapters where they suffice. The active custom scanner is preliminary supplemental evidence; it is not a replacement for provider-secret coverage. This recommendation is under review, not an approved code change or tool installation.
+- Resolve the guard/tool invocation boundary with the user before executing a rewrite rehearsal. Even rewriter help and the attempted alias-configuration read were blocked; no exceptions or alternate launcher have been used. Do not change guard settings.
+- **Preserved v1 already has finishing behavior.** `_archive/Security/rewrite_history.py`
+  and `_rewrite.py` implement plan, mirror apply/verify, push instructions, clone follow,
+  cross-plan commit-ID relinking and finish. Existing tests exercise follow/relink/finish;
+  the actual rewrite regression is gated. These were read, not executed in this review.
+  Do not describe them as absent or invent a second finishing workflow without comparison.
+- **Active rebuild remains incomplete.** Inventory v1 components and regressions for reuse,
+  then reconcile the agreed layers, current policy and executable entry points. Preserve
+  `_archive/Security/` unmodified. Its moved import/tool-root assumptions, stale-input
+  protection, duplicated rule semantics and proof boundaries need specific review. The
+  archived finish performs commit and ordinary push by default, despite an inconsistent
+  printed instruction; do not run it under the current no-commit/no-push direction. Typed
+  review/publish boundaries and remote-tip proof belong in the reviewed active workflow.
+- Prove known positive/negative cases and retained-content expectations in disposable
+  repositories, then rehearse a real approved scope in a disposable copy. Target-specific
+  scopes belong in their own `.agents/`; keep sensitive findings out of tracked files.
+  This project is an independently useful tool and is being evaluated for a coordinated
+  publication mission; completing every planned refactor is not an automatic prerequisite
+  for every target's scoped publication. No history rewrite has happened in this pass.
+- Check current external-engine maintenance and execution behavior before choosing one. Primary references: https://github.com/gitleaks/gitleaks (custom rules, allow lists, hooks/CI, explicit archive/decode options; currently announces security-patch-only maintenance), https://github.com/trufflesecurity/trufflehog (secret detection/verification and local/CI scanning), https://github.com/newren/git-filter-repo (history filtering). Hosted enforcement/availability: https://docs.github.com/en/code-security/getting-started/github-security-features . Network verification, dependencies and installation need deliberate scope; no engine has been newly installed or run.
+- Review policy interoperability: persistent/per-run safe values work in the active scanners but not yet in the legacy hygiene guard. Explicit block/allow conflicts need a visible decision rather than a silent precedence surprise. The symlink fixture skip did not retain the exact OS error; capture that before claiming the Windows cause is known.
+- Keep full candidate values and repo-specific scan results in private ignored agent output. Binary coverage and a dedicated external secret scanner remain open; a completed offline scan is not security clearance. Cross-platform execution remains unverified.
+- The previously deferred full suite remains pending; only focused checks have run for this implementation.
+
+### Earlier product handoff — current work order above supersedes its priorities
 
 **The goal (user's words, condensed):** one git client built for repositories everywhere --
 many machines, many orgs. Glance at the tray, see every out-of-sync repository on every machine

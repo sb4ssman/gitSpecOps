@@ -24,10 +24,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import ROOT, setup  # noqa: E402
 
-setup()
+setup("archived-security")
 
-# The rules themselves live in Security/_patterns.py and the run-time identity in
-# Security/_seeds.py, shared with the Security commands, so "is this a leak?" has one answer.
+# Until the rebuild lands, use the preserved v1 rules and identity reader in
+# _archive/Security, without modifying or copying that archive.
 from Security._patterns import ALLOWED, PERSONAL, SECRETS  # noqa: E402,F401
 from Security._patterns import identity_patterns as _identity_patterns  # noqa: E402
 from Security._seeds import identity_seeds  # noqa: E402

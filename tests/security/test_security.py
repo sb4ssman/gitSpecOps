@@ -24,7 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import ROOT, setup  # noqa: E402
 
-setup()
+setup("archived-security")
 
 from Security import _rewrite, rewrite_history  # noqa: E402
 from Security._history import scan_history  # noqa: E402
@@ -219,12 +219,14 @@ with tempfile.TemporaryDirectory(prefix="security-") as temp:
         print("skip  the rewrite itself (set GITSPECOPS_RUN_REWRITE_TEST=1 with git-filter-repo "
               "installed to run it; it touches only a temporary folder)")
 
-# --- where output goes: inside gitSpecOps, but only somewhere git will never publish ---------
+# --- archived output safely falls back to the per-user folder ------------------------------
 from Security._repo import is_ignored, output_dir  # noqa: E402
+from Basic._paths import config_home  # noqa: E402
 
 where = output_dir(ROOT / "some-scanned-repo")
-check("reports land in this checkout's git-ignored output folder",
-      ROOT / ".agents" / "output" in where.parents and is_ignored(ROOT, where / "report.txt"),
+check("archived reports fall back outside the checkout, never to a publishable path",
+      where == config_home() / "security" / "some-scanned-repo"
+      and is_ignored(ROOT, where / "report.txt"),
       where)
 check("a tracked path is not mistaken for an ignored one", not is_ignored(ROOT, ROOT / "README.md"))
 
@@ -252,12 +254,17 @@ try:
 finally:
     scan_secrets.find_gitleaks = original_find
 
-# The commands are importable and answer --help by path from anywhere.
+# Preserved commands work from another folder when the live Basic layer is on
+# PYTHONPATH. The archive itself remains byte-for-byte unchanged.
 for name in ("scan_tree.py", "scan_history.py", "scan_secrets.py", "rewrite_history.py",
              "scan_folder.py"):
-    done = subprocess.run([sys.executable, str(ROOT / "Security" / name), "--help"],
-                          capture_output=True, text=True, cwd=tempfile.gettempdir(), timeout=60)
-    check(f"Security/{name} --help works from another folder", done.returncode == 0, done.stderr)
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(
+        filter(None, [str(ROOT), os.environ.get("PYTHONPATH", "")]))}
+    done = subprocess.run([sys.executable, str(ROOT / "_archive" / "Security" / name), "--help"],
+                          capture_output=True, text=True, cwd=tempfile.gettempdir(),
+                          env=env, timeout=60)
+    check(f"archived Security/{name} --help works from another folder",
+          done.returncode == 0, done.stderr)
 
 # --- second opinions: checksums, low-variety hex, a key header alone, fixture credentials -------
 from Security._patterns import SECRETS  # noqa: E402
@@ -575,8 +582,8 @@ with tempfile.TemporaryDirectory(prefix="security-follow-") as temp:
 
     observation = observe_paths([ahead])
     check("Sync Suggester names a rewritten upstream, without the path in the category",
-          any(issue.startswith("upstream history was rewritten; move this clone with "
-                               "Security/rewrite_history.py follow: ")
+          any(issue.startswith("upstream history was rewritten; review this clone before "
+                               "moving it (do not pull or merge): ")
               for issue in observation.issues), observation.issues)
 
 # --- finish: after the forced push, one command moves the checkout and relinks it -------------

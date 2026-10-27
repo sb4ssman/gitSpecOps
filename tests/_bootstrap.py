@@ -18,6 +18,9 @@ ROOT = Path(__file__).resolve().parent.parent
 SYNC_DIR = ROOT / "git-sync-suggester"
 
 AREAS = {
+    # Preserved v1 security code still imports its original Security namespace.
+    # Opt in only for its regression tests and the repository hygiene guard.
+    "archived-security": [ROOT / "_archive"],
     # Sync Suggester is itself split into folders; _paths.bootstrap() owns that list, so this
     # only needs the tool root where _paths.py lives.
     "sync": [SYNC_DIR],

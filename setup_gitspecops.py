@@ -1,10 +1,12 @@
-"""Optional one-time bootstrap for gitSpecOps.
+"""Optional guided setup for gitSpecOps's command-line tools.
 
 Run from this repository:
 
-    uv run python setup_gitspecops.py     (or: run_setup.bat / run_setup.ps1 / run_setup.sh)
+    python setup_gitspecops.py     (or: run_setup.bat / run_setup.ps1 / run_setup.sh)
 
-This does three things:
+With no arguments, choose the command-line bootstrap or an individual setup item.
+Non-interactive callers must name an action; --help never performs setup.
+The `bootstrap` action does three things:
 
   1. Writes the per-tool convenience launchers (.sh / .ps1 / .bat in the repository
      root). Launchers are GENERATED, not committed -- edit LAUNCHER_SPECS here, not
@@ -26,6 +28,7 @@ Auth is never touched here: users authenticate their own host CLI (`gh auth logi
 
 from __future__ import annotations
 
+import argparse
 import platform
 import shutil
 import subprocess
@@ -217,8 +220,8 @@ def write_launchers() -> None:
             print(f"  {'wrote' if changed else 'ok  '} {name}")
 
 
-def main(argv: list[str] | None = None) -> int:
-    _ = argv
+def bootstrap() -> int:
+    """Run the existing launcher/environment bootstrap after an explicit selection."""
     write_launchers()
     ok = build_environment()
     print()
@@ -234,6 +237,72 @@ def main(argv: list[str] | None = None) -> int:
     print("Setup complete. Run a tool via its launcher, e.g.:")
     print("  suggest-sync.bat --help" if WINDOWS else "  ./suggest-sync.sh --help")
     return 0 if ok else 1
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("action", nargs="?",
+                        choices=("bootstrap", "launchers", "environment", "check"),
+                        help="bootstrap everything below, or select launchers, environment or prerequisite check")
+    return parser
+
+
+def choose_action() -> str | None:
+    """Explain optional participation and select an implemented setup action."""
+    print("gitSpecOps setup\n"
+          "Individual tools work without fleet enrollment or the desktop app.\n"
+          "Source use needs Python 3.11+ and Git; GitHub operations also need authenticated gh.\n"
+          "This command-line bootstrap can create convenience launchers and a Python environment.")
+    while True:
+        print("\n1. Set up command-line launchers and Python environment\n"
+              "2. Choose a setup item\n"
+              "3. Check prerequisites without changing anything\n"
+              "0. Exit")
+        try:
+            answer = input("Choose [0]: ").strip() or "0"
+            if answer == "0":
+                return None
+            if answer == "1":
+                return "bootstrap"
+            if answer == "3":
+                return "check"
+            if answer == "2":
+                print("\n1. Generate convenience launchers\n"
+                      "2. Create or refresh the Python environment\n"
+                      "0. Back")
+                item = input("Choose [0]: ").strip() or "0"
+                if item == "0":
+                    continue
+                if item in ("1", "2"):
+                    return {"1": "launchers", "2": "environment"}[item]
+            print("Choose one of the listed items; nothing has been changed.")
+        except (EOFError, KeyboardInterrupt):
+            print("\nSetup cancelled; nothing has been changed.")
+            return None
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    action = args.action
+    if action is None:
+        if not sys.stdin.isatty():
+            parser.print_help(file=sys.stderr)
+            print("Name a setup action when there is no interactive terminal.", file=sys.stderr)
+            return 2
+        action = choose_action()
+        if action is None:
+            return 0
+    if action == "bootstrap":
+        return bootstrap()
+    if action == "launchers":
+        write_launchers()
+        return 0
+    if action == "environment":
+        return 0 if build_environment() else 1
+    report_prerequisites()
+    return 0
 
 
 if __name__ == "__main__":

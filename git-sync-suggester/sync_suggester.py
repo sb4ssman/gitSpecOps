@@ -281,10 +281,12 @@ def command_check(args: argparse.Namespace) -> int:
     specs, source = resolved.specs, resolved.source
     transport, machine_id, machine_label = (resolved.transport, resolved.machine_id,
                                             resolved.machine_label)
+    status_stream = sys.stderr if args.json else sys.stdout
 
     if args.fetch:
         print(f"Fetching remote refs for repositories in {len(specs)} root(s) — this is the "
-              "only network activity check performs, and it never touches your working tree.")
+              "only network activity check performs, and it never touches your working tree.",
+              file=status_stream)
 
     def progress(done, total, path):
         if args.fetch and (done == total or done % 25 == 0):
@@ -314,9 +316,10 @@ def command_check(args: argparse.Namespace) -> int:
     else:
         print(render_table(manifest, merged, branches))
 
-    print(f"\nObserved {len(observation.repositories)} repositor(ies) from {source}.")
+    print(f"\nObserved {len(observation.repositories)} repositor(ies) from {source}.",
+          file=status_stream)
     if published:
-        print(f"Manifest written: {published}")
+        print(f"Manifest written: {published}", file=status_stream)
     for issue in observation.issues:
         print(f"warning: {issue}", file=sys.stderr)
     return 0

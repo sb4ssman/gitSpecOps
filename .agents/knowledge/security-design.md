@@ -1,5 +1,12 @@
 # Security: the rebuild design
 
+**2026-10-26 integration direction:** [product-contract.md](product-contract.md) is the newer
+contract for remembered output settings, explicit destinations, local revelation and security
+alongside sync advice and commit/push actions. The active read-only scanner is a draft; the
+phase-one-only status below describes the earlier design checkpoint, not current completion.
+Keep this design's layer boundaries and frozen archive. Current executable tasks and remaining
+cutover/proof work are in [working notes](../WORKING-NOTES.md).
+
 **Status:** agreed with the user 2026-10-20. Replaces the `Security/` folder built on 2026-10-19,
 which cleaned this repository and ten others successfully but had the wrong shape. Nothing here
 is built yet beyond phase 1 (Basic, done 2026-10-20). The plan to get here is at the end.

@@ -64,6 +64,14 @@ goal for seventeen days — see the correction note in the Sync Suggester sectio
 
 ## Directives (how to work in this repo)
 
+### Canonical product contract
+
+Read [knowledge/product-contract.md](knowledge/product-contract.md) before work on setup,
+enrollment, output, security or presentation. It records the 2026-10-26 direction: one coherent
+app over independently useful operations, remembered per-machine context and explicit output
+policy. Its acceptance work is in WORKING-NOTES. It extends the existing layer/security designs;
+old handoffs and descriptions of current code do not override these newer decisions.
+
 ### Start every session by looking, not remembering
 
 1. **Read this file**, then [`HANDOFF.md`](HANDOFF.md) for where the project stands right

@@ -1,0 +1,258 @@
+# gitSpecOps: one application, useful individual operations
+
+Status: product direction agreed with the user, 2026-10-26. This is the canonical contract
+connecting the existing [layer architecture](architecture-layers.md),
+[security design](security-design.md) and executable work in [working notes](../WORKING-NOTES.md).
+It describes required behavior; it does not claim the unfinished pieces already work.
+
+## Purpose and composition
+
+The primary outcome is seeing which repositories are out of sync across the user's machines
+and putting them in order. The org duplicator came first, followed by archive updating and
+cross-machine observation. Security scanning and history repair serve those operations and
+remain useful operations themselves. They belong to one coherent product, not separate silos.
+
+Keep Basic -> Special -> Elaborate -> App and the existing import direction. Basic performs
+plain Git/host operations. Policy and composition live above it. The optional app assembles
+the same callable operations available to terminal users; it must not have a second engine.
+Each Special operation remains usable independently. No dependency on a shelf, agent shape,
+shared agent toolbox or fleet enrollment is imposed on the product.
+
+## Participation and interfaces
+
+The app invokes the same importable operations headlessly and renders their structured
+results/progress; CLI scripts are adapters over those operations. Do not build a second GUI
+engine or require parsing interactive output. Human and LLM use share the same explicit scope,
+plans, effects and result vocabulary. Ordinary pulls/pushes stay easy; rare operations have
+especially clear prerequisites, review, resumption and proof.
+
+The user endorsed a single CLI/main-menu front door as well as the GUI. It dispatches the
+same headless functions, with interactive selection only in an interactive terminal and
+explicit commands/structured output for automation. One static command catalog should supply
+discovery, help and menu metadata without executing operations. GSO/gitSO/gso are working name
+ideas, not an installed alias or settled executable name. The dispatcher does not become a
+second settings/policy engine. Direct operation scripts remain supported.
+
+Source documentation is required, not a separate hand-maintained description of each tool.
+Every script/module begins with essential purpose/usage documentation. Public commands cover
+prerequisites, inputs/options, output/state locations, effects/approval, examples and meaningful
+failure/exit behavior. Private modules document their internal role rather than invent a CLI.
+Important callable functions document inputs/results, preconditions, side effects and errors,
+with type hints where useful. Keep those descriptions true when behavior or paths change.
+
+CLI help, menu descriptions and generated documentation should derive from these module/function
+docstrings, real parser definitions and declared effect metadata. The command catalog maps names
+to real handlers/parsers; do not duplicate long descriptions in a second registry. Extraction
+must not execute operations, read private settings, initialize logging, authenticate or install
+anything merely to build help/docs. Check public command discoverability and metadata/doc parity
+as an interface contract. The documentation generator/header audit is not implemented yet.
+
+The [2026-10-27 architecture ruling](architecture-layers.md#2026-10-27-ruling-operations-visible-plumbing-in-private-folders)
+keeps action-named public scripts at layer roots and implementation in private folders. It
+revises the physical organization without changing the layers; exact migration stays reviewable.
+
+The user's local archive-management front door is Special/archive_manager.py: select/register
+collections, invoke the selected update or sync operation once per archive and return results through the
+same callable entry point used by CLI/GUI. Plain local management is Special; scheduled and
+cross-machine coordination remain Elaborate and call it. Registration recognizes valid Git
+collections separately from whether each checkout is currently eligible for an update. Public
+versus private ownership is not an operation selector. Personal fleet synchronization remains
+distinct from maintaining an archive's upstream repository set; the `sync_self.py` name is open.
+The manager is a pathway to both direct archive operations. Its request/results identify the
+effective operation; per-archive settings and explicit invocation choices preserve the same
+scope and approval requirements as direct use.
+
+| Participation | Capabilities added | Required context |
+|---|---|---|
+| Basic | Repository facts and individual Git operations | Explicit target, Python/Git for source use |
+| Special | Archive updating, duplication, inventory and security scans | Optional component preferences; selected operation's prerequisites |
+| Elaborate: configured machine | Managed archives, remembered scope and scheduled work | Local identity, paths, exclusions and accepted permissions |
+| Elaborate: durable fleet | Cross-machine status and suggestions when peers are offline | Chosen private state-repo or folder transport |
+| Elaborate: selected live/recovery features | Live peer state, approved remote actions, recovery capture | Chosen connectivity and separately accepted storage/access |
+| App | Tray/menu bar, dashboard and notifications over the same capabilities | Desktop installation and capability detection |
+
+This is increasing participation, not a compulsory ladder. A local-only app remains useful.
+Transport/recovery choices have distinct access, data-sharing and freshness tradeoffs, which
+setup must explain. A repository-local agent workspace remains self-sufficient. Do not infer
+extra authority from opening that workspace: access controls, permitted tools and deliberate
+data exposure enforce isolation. Sensitive policy can be consumed programmatically without
+returning its raw values to an LLM; local human revelation is a separate channel.
+
+## Setup, enrollment and remembered context
+
+- A person may casually update public archives using Git alone. Do not require a state repo,
+  GitHub CLI, SSH, Tailscale, notes integration or the app unless their selected operation needs it.
+- Component setup can save roots, output preferences and other relevant defaults independently.
+  Machine enrollment adds only the ecosystem capabilities the person selects. These are
+  capabilities to combine, not compulsory onboarding tiers.
+- Enrollment establishes machine identity, local path bindings, available runtimes/authentication,
+  selected transports and integrations. Show what is configured and what remains unavailable.
+  Git/gh/SSH authentication stays with the user's existing tools; do not store credentials here.
+  Checking or guiding setup does not authorize installing software or changing authentication.
+- An optional private state repo can carry selected shared configuration, status and coordination
+  records. Private storage is not permission to replicate raw findings or credentials. Distinguish
+  portable ecosystem preferences from machine-specific bindings and local sensitive records.
+- Tailscale and SSH are selected capabilities, not universal prerequisites. SSH availability
+  does not replace the agreed fleet peer protocol with arbitrary remote shell execution.
+- The user requested notes integration as an enrollment option. Its exact meaning, storage,
+  synchronization and supported integrations still need definition; do not invent a new service.
+- CLI options override saved preferences; saved preferences override documented defaults.
+  Specify the shared/component/machine preference merge and versioned schema before implementing
+  them. A configured user should not repeatedly supply the same paths or choices.
+- Setup is repeatable and preferences remain editable from CLI and app. Clones, forks, moved
+  checkouts and eventual installed builds keep code location separate from runtime data.
+  Existing same-account checkouts share the current user config unless explicitly separated;
+  do not silently create or migrate profiles. Code updates must preserve user settings.
+
+### Guided setup and lifecycle
+
+Setup is the guided front door, with an explanation of the participation matrix and these
+actions: guided setup, select a setup item, update gitSpecOps itself, and uninstall. Each
+component remains selectable independently. Explain prerequisites, paths, data sharing and
+changes before acting, offer cancellation and keep preferences editable afterward. CLI
+actions must also be explicit/non-interactive where requested, so an LLM can assist without
+driving prompts. Help and an unattended invocation without a selected action must not perform
+setup. The current bootstrap argument-dispatch/menu repair is only the first part of this UI.
+
+Enrollment includes guided optional creation or selection of a private gitSpecOps state repo:
+use existing gh authentication, show the account/name and purpose, obtain the explicit choice,
+verify privacy/access and configure only that selected repo. Reuse existing fleet setup's
+create/use flow through the common settings contract rather than create a competing wizard.
+Update targets only the gitSpecOps code checkout, never registered archives or user repositories.
+Uninstall supports individual component unenrollment as well as app removal. Show what will
+stop watching/publishing/running at login and remove only owned installation artifacts, with
+receipts and a reviewed plan. Preserve repositories, settings, logs and recovery data by default;
+deleting a state repo or user data requires a separate explicit choice. These full lifecycle
+actions remain implementation work; no install/update/removal is authorized merely by launch.
+
+### Local data and settings layout
+
+User data belongs in an obvious per-user directory outside the source checkout. The earlier
+phrase "user gitSpecOps root" meant that directory, never an org container or Git checkout.
+Keep local logs with that data by default. Setup may select a different location and support
+a later deliberate move; it must not leave competing active copies or silently migrate data.
+The existing `Basic._paths.config_home()` and `GITSPECOPS_HOME` already provide an external
+default/override; reconcile component-specific overrides without breaking existing setups.
+Untracked agent notes may describe the chosen location, but CLI and app need a programmatic
+locator independent of those notes. Decide any persisted GUI locator before implementing it.
+
+**Settled by the user, 2026-10-26:** use one local configuration document with component
+sections, including scope, output/logging and security preferences where appropriate. Its exact
+schema and migrations remain work. Separate a policy file only for a concrete access/lifecycle/import reason; the
+existing never-publish/safe files must remain readable until a reviewed migration. The previous
+two-main-documents/two-policy-files suggestion is superseded. Initially the
+private state repo can remain a status transport. Shared settings export/replication is a later
+capability with explicit revision, ownership, conflict and privilege rules, not a prerequisite
+for local settings. Do not synchronize the whole local data directory as configuration.
+
+The implemented [settings schemas/resolver](settings-schema.md) preserve common v1 and add typed
+v2 machine/transport/component records, a read-only migration preview and explicit validated
+writer. Common/component/explicit preferences retain provenance. Existing readers have not
+switched, no actual machine/fleet settings were migrated, and no capabilities were activated.
+That document records strict validation, privacy, revision checks and remaining cutover work.
+
+### Updating the source and installed app
+
+The user wants source checkouts updated through Git fast-forward-only, invocable from CLI,
+setup or app. Keep settings/logs/recovery data outside the checkout so updates do not compete
+with runtime writes. `Basic/pull.py` already supplies the plain Git operation; setup currently
+has no source-update action, and version checking only reports availability.
+
+The product updater must verify the selected checkout, clean state, attached/tracking branch
+and chosen remote before execution, preserving fork tracking choices. Refuse divergence or
+dirty state; never stash, reset, switch remotes or resolve conflicts automatically. Define how
+the app/peer stops and restarts so running code is not mixed across revisions. Platform shell
+wrappers may bootstrap the update, but share one operation/contract with setup and app rather
+than three implementations. A frozen desktop bundle needs its platform release-update path;
+pulling a source clone alone does not replace that bundle. No updater has been implemented.
+
+## Output and file writes
+
+- Without a saved output preference or explicit output option, inspection/report commands print
+  to stdout without creating report files. This does not change the Git effects of an updater
+  or other operation the person invoked.
+- A user may configure stdout, file output or both, including a directory in their account.
+  A saved choice is intentional behavior, not a fallback. A command can override the saved choice.
+- Machine-readable stdout contains only the promised record/stream, without banners, progress,
+  trailing summaries or prompts. Diagnostics and progress go to stderr. Interactive presentation
+  remains readable. Results have a documented schema and exit status.
+- A configured destination that is missing required setup, unwritable or otherwise invalid
+  produces an error. Never silently switch to another directory or output mode. Define directory
+  creation, filename generation, overwrite/append and partial-result behavior explicitly.
+- Full security reports may use an explicitly selected private directory outside Git. Inside
+  a repository they must remain untracked and ignored. A dot-folder or external path alone is
+  not proof of privacy. The current draft writer's Git-only restriction needs reconciliation.
+- Settings, fleet manifests/catalogs, recovery bundles, resumable operation records, approved
+  rewrite plans and requested installers/launchers are operational state, not optional reports.
+  Give each explicit ownership, location, lifecycle and visibility; do not remove required state
+  in the name of stdout-only output. Do not write runtime state beside installed source code.
+- User-controlled operational logging is distinct from a full report. The current tray tees
+  stdout/stderr into a log: explicit local disclosure must not automatically copy sensitive
+  values into logs, shared state or notifications.
+- Use Python's existing logging infrastructure with one configuration seam and named component
+  loggers. Entry points resolve settings and configure destinations/levels/rotation; lower
+  operations emit events without independently rediscovering settings. Support selected
+  multiple sinks, per-component routing and no-log overrides. Handle concurrent CLI/app writers.
+  A compact matching operational log is the proposed default, not automatic full stdout capture;
+  settle that default and failure behavior in the settings contract before rollout.
+- Unconfigured, unavailable, stale, failed and checked are different states. An unenrolled
+  standalone user has no missing-fleet error. Offline peer information may coexist with useful
+  local results, visibly stale/unavailable. Never represent failed checking as a clean result.
+
+## Security in the normal workflow
+
+- Separate protected-value policy from scope exclusions. Enrollment needs explicit roots plus
+  hard path/repository exclusions applied before inspection, and distinct observe/publish/
+  capture/action selections. Existing namespace baskets are not a universal no-inspection
+  boundary. Explicit whole-machine discovery should support selected drives, depth, mounts,
+  exclusions, cancellation and visible gaps; discovering a repository does not enroll it.
+- Present security findings alongside sync facts. Dirty/ahead/behind status must not hide a
+  security alert, and security alerts must not hide unfinished work. Include scope and freshness.
+- The supported commit action checks the exact proposed file contents, message and identity
+  before creating a commit. A push checks outgoing history, including a secret introduced and
+  removed before the tip. The executing machine rechecks approved remote actions against current
+  contents and policy. Cached dashboard results are not execution proof.
+- Prevent introducing prohibited values; distinguish removal/rotation from introduction so a
+  cleanup is not blocked merely because the old material contains the value. Define actionable
+  block/warn/quiet outcomes, reviewed exceptions and incomplete-scan behavior explicitly.
+- Reuse callable detection and policy across standalone scans, advice, action gates, recovery
+  capture and repository hygiene. Recovery already has a credential screen; the active scanner,
+  archived rules and hygiene guard are currently separate. Consolidation requires explained
+  behavior differences and tests, not a silent rule replacement.
+- Integrating checks in gitSpecOps covers its actions. Protection through other clients needs
+  explicitly configured Git hooks and/or host controls; do not claim system-wide enforcement.
+- Reuse established detection/filtering engines where appropriate; external-engine selection
+  remains open. Personal-publication policy and orchestration remain product responsibilities.
+  Detection does not rotate credentials or erase external copies of published history.
+- Preserve `_archive/Security/` unchanged. Reuse its reviewed behavior and regressions through
+  the agreed layered rebuild. History repair retains plan/review/approve/execute/verify stages,
+  explicit destructive/publishing boundaries and disposable scan/rewrite/rescan proof first.
+
+## Disclosure and consistent presentation
+
+The person must be able to see exactly what is at risk. Show location, reason and useful
+context, and support intentional local revelation in terminal and app without requiring a
+report file. Masking changes presentation, never the source or what the detector checks.
+Disclosure for local display, LLM-readable output, saved reports, logs and fleet notifications
+is controlled separately; a reveal choice must not leak into another channel implicitly.
+
+CLI, app and agent-facing records use the same results, status vocabulary, severity and action
+plans. Reuse the existing console and app presentation infrastructure; standardize help,
+progress, errors, output options and actionable explanations. Themes may change appearance,
+not semantics or capabilities. Keep product UX free of internal agent scaffolding details.
+
+## Delivery and evidence
+
+Three finish lines guide the work: (1) an independent operation uses predictable local data,
+output/logging and repeatable setup, with a source-update rehearsal preserving user state;
+(2) useful security scans and action checks have known positive/negative evidence, with a
+disposable scan/rewrite/rescan proving approved removal and retained content; (3) two machines
+produce accurate fresh/stale fleet suggestions through the chosen transport, exposed through
+the same CLI/app operations and then validated natively on each supported OS. These are
+acceptance outcomes, not permission to execute previously deferred or destructive commands.
+
+The ordered backlog and acceptance criteria live in working notes, not a parallel task list
+here. Finish one bounded component at a time with focused evidence, then connect it upward.
+Keep synthetic fixtures separate from real findings and validate on each claimed OS. Completing
+this design does not complete the implementation or authorize installation, history mutation,
+commits, pushes, guard changes or publication. Existing deferred verification remains deferred.

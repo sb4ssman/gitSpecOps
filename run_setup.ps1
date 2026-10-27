@@ -4,13 +4,13 @@ param(
 )
 
 # Run the optional bootstrap. It needs *some* Python to start: prefer `uv run`
-# (uv provides its own Python), else the `py` launcher, else `python`.
+# (using an available Python without project sync/downloads), else `py`, else `python`.
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Push-Location $repoRoot
 try {
     if (Get-Command uv -ErrorAction SilentlyContinue) {
-        uv run python setup_gitspecops.py @ForwardedArgs
+        uv run --no-project --no-python-downloads python setup_gitspecops.py @ForwardedArgs
     } elseif (Get-Command py -ErrorAction SilentlyContinue) {
         py setup_gitspecops.py @ForwardedArgs
     } elseif (Get-Command python -ErrorAction SilentlyContinue) {

@@ -242,6 +242,8 @@ def stream(argv: Sequence, *, timeout: float, cwd: Path | str | None = None,
             pass
         for helper in helpers:
             helper.join(timeout=5)
+        if not helpers[0].is_alive():
+            proc.stderr.close()
     if handle.stopped:
         return
     command = " ".join(argv)
