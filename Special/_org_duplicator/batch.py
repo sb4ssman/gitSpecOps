@@ -14,8 +14,9 @@ per-namespace resume files -> summary/manifest — and the same arrival layout:
 
     <parent>/<namespace>/<repo>
 
-Flow only: gh calls live in gh_remote, per-repo work in operations, resume state in
-tracking.
+Import flows from Special._org_duplicator.batch. Remote checks/probes, per-repo workers and
+resume state live in remote, operations and tracking, using shared Basic primitives.
+This module does not execute a flow on import.
 """
 
 import json
@@ -37,14 +38,14 @@ from Basic._providers.github import (
     org_access_error,
     resolve_repo_details,
 )
-from Special.duplicate_org._local_repos import scan_local_git_repos
-from Special.duplicate_org._operations import (
+from Special._org_duplicator.local_repos import scan_local_git_repos
+from Special._org_duplicator.operations import (
     download_single_repo,
     print_download_warnings,
     prompt_clone_format,
 )
-from Special.duplicate_org._remote import org_repos_with_details_safe
-from Special.duplicate_org._tracking import (
+from Special._org_duplicator.remote import org_repos_with_details_safe
+from Special._org_duplicator.tracking import (
     RUNS_DIR,
     initialize_tracking_files,
     load_completed_repos,

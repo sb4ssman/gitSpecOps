@@ -56,18 +56,18 @@ does not prohibit an explicitly chosen manager name.
 
 The user specifically chose `Special/update_archive.py` and a layer-root
 `Special/duplicate_org.py`. A complete current Special entry-point mapping follows; additional
-verb-first names below are proposals to review, not executed or implicitly approved renames.
+verb-first names below remain proposals; the three selected public operations are now in place.
 
-| Current entry point | Proposed destination | Decision |
+| Previous/current entry point | Destination | Status |
 |---|---|---|
-| Special/archive_update.py | Special/update_archive.py | Chosen by the user |
-| Special/duplicate_org/duplicate_org.py | Special/duplicate_org.py | Placement chosen by the user |
+| Archive updater | Special/update_archive.py | Canonical entry point; no alias |
+| Special/duplicate_org/duplicate_org.py | Special/duplicate_org.py | Implemented; earlier script path is a compatibility wrapper |
 | Special/archive_sync.py | Special/sync_archive.py | Naming proposal |
 | Special/inventory_export.py | Special/export_inventory.py | Naming proposal |
 | Special/inventory_restore.py | Special/restore_inventory.py | Naming proposal |
 | Special/security/scan_tree.py | Special/scan_tree.py | Layer-root placement follows the rule; review the complete map |
 | Special/security/scan_history.py | Special/scan_history.py | Layer-root placement follows the rule; review the complete map |
-| Elaborate/archive_manage.py (local management portion) | Special/archive_manager.py | Chosen by the user; scheduling remains Elaborate |
+| Local archive management | Special/archive_manager.py | Shared headless operation; Elaborate handles scheduling only |
 
 ### 2026-10-27 archive responsibility split
 
@@ -109,13 +109,45 @@ capabilities until their explicit destination/entry-point mapping is reviewed.
 Moving the manager requires moving its registry plumbing below Elaborate, updating imports,
 launchers/tests/docs and preserving saved identifiers/data paths. Do not introduce a forbidden
 Special -> Elaborate import or silently rename persisted settings component identifiers. This
-is the chosen responsibility split; no source extraction or data relocation has happened yet.
+is the implemented source split; no actual user-data relocation has occurred. The current
+manager functions retain their exit-code interfaces and existing report/registration behavior.
+The standalone updater now has run_update/UpdateRequest/UpdateResult, backed by update_operation.py,
+update_cli.py and the shared Special/_runtime/ sinks. It consumes resolved settings without profile
+rediscovery and does not print. Other consumers and guided setup remain integration work.
+Manager update mode still uses the existing shared sync engine's --update
+path; changing that orchestration or its reporting defaults needs explicit functional work.
 
 Implementation grouping proposal: `_archive/` holds updater/sync/plan helpers;
 `_org_duplicator/` holds batch/local/remote/tracking/worker helpers; `_inventory/` holds inventory
 logic; `_security/` holds scanner/material/check/report helpers; `_settings/` holds schema,
-resolution, migration and storage. Existing code is still at its current paths. This is not
+resolution, migration and storage. Settings, archive planning and duplicator helpers are
+grouped as of 2026-10-27, with updater/sync/manager/registry and duplicator command implementations
+also behind the public facades. The remaining groups still await their bounded moves. This is not
 a request for one folder per tiny function or one merged module per entire capability.
+
+Completed settings source mapping (behavior preserved, user data unchanged):
+
+| Previous module | Current module |
+|---|---|
+| `Special/_settings.py` | `Special/_settings/__init__.py` (same resolver/schema import API) |
+| `Special/_settings_records.py` | `Special/_settings/records.py` |
+| `Special/_settings_migration.py` | `Special/_settings/migration.py` |
+| `Special/_settings_store.py` | `Special/_settings/store.py` |
+
+Completed archive/duplicator helper mapping (public command paths unchanged):
+
+| Previous module | Current module |
+|---|---|
+| `Special/_archive_plan.py` | `Special/_archive/plan.py` |
+| `Special/duplicate_org/_batch.py` | `Special/_org_duplicator/batch.py` |
+| `Special/duplicate_org/_local_repos.py` | `Special/_org_duplicator/local_repos.py` |
+| `Special/duplicate_org/_operations.py` | `Special/_org_duplicator/operations.py` |
+| `Special/duplicate_org/_remote.py` | `Special/_org_duplicator/remote.py` |
+| `Special/duplicate_org/_tracking.py` | `Special/_org_duplicator/tracking.py` |
+
+The duplicator retains its existing ignored `Special/duplicate_org/runs/` location. Tracking
+anchors that path explicitly from the Special layer; moving helpers or the later command
+facade must not select a new empty run directory. Actual user-data relocation remains separate.
 
 The public operation exposes an importable function and a CLI adapter. CLI/menu and GUI invoke
 that same function; it delegates to private helpers, which use Basic primitives. For example,
@@ -125,9 +157,13 @@ not a second independently configured tool.
 
 Before moving code, map imports, tests, documentation, generated launchers, installed entry
 points and all paths derived from `__file__`. In particular, the duplicator's resume state is
-currently beside its helper module: moving it must not silently select a new empty runs folder.
+retained at its original location: moving more code must not select a new empty runs folder.
 Keep functional changes and runtime-data relocation separate from source organization.
-The frozen `_archive/Security/` remains untouched. No source move has been made for this ruling.
+The frozen `_archive/Security/` remains untouched. Settings, the archive planner and duplicator
+helpers have moved under this ruling, and the three selected public operations/local-manager
+source split are implemented. Older script paths remain thin compatibility wrappers so installed
+launchers are not silently broken. Setup targets the new public paths; it was not run on real
+user launchers. Presentation diagrams and the remaining operation families still need review.
 
 - **A file without an underscore is a command. A file or folder with one is plumbing.** `ls` on
   any layer lists exactly what it can do.
@@ -198,10 +234,9 @@ gitSpecOps/
 │   ├── recovery/               one operation, with details
 │   │   ├── acknowledge.py  policy.py  preview.py  restore.py  retire.py
 │   │   └── _capture  _patch_parse  _retirement  _runtime  _secret_scan  _snapshot_store …
-│   ├── _archive_registry.py    registry file I/O, in the per-user state folder
 │   ├── _editors.py
 │   ├── alias.py
-│   ├── archive_manage.py       registry, launchers, schedule
+│   ├── archive_manage.py       scheduling only; calls the Special manager
 │   ├── audit.py
 │   ├── baskets.py
 │   ├── catchup.py
@@ -214,12 +249,13 @@ gitSpecOps/
 │   ├── preflight.py
 │   └── safe_to_wipe.py
 ├── Special/                    a Basic operation repeated, with judgment
-│   ├── duplicate_org/          one operation, with details
-│   │   ├── duplicate_org.py
-│   │   └── _batch  _local_repos  _operations  _tracking
-│   ├── _archive_plan.py
+│   ├── _archive/               updater, sync, manager, plan, registry
+│   ├── _org_duplicator/        command, batch, local_repos, operations, remote, tracking
+│   ├── _settings/              resolution, records, migration, store
+│   ├── archive_manager.py      local archive management
+│   ├── duplicate_org.py
 │   ├── archive_sync.py         keeps --publish as its own apply class
-│   └── archive_update.py
+│   └── update_archive.py
 ├── AGENTS.md  CLAUDE.md  LICENSE  README.md  pyproject.toml
 └── run_setup.bat .ps1 .sh      setup_gitspecops.py
 ```
@@ -351,7 +387,7 @@ Decided by the user while reviewing the folder map, before phase 1 began:
   `archive_manager.py` splits into `archive_manage.py` + `_archive_registry.py` + `_os/*/schedule.py`;
   the version check's GitHub query moves into the provider; `atomic_write_bytes` into `_files.py`.
 - **`git_inspect.inspect_candidate` is archive policy, not a fact.** It decides fast-forward
-  eligibility against approved remotes, so in phase 3 it goes to `Special/_archive_plan.py`, not
+  eligibility against approved remotes, now grouped in `Special/_archive/plan.py`, not
   `Basic/_facts.py` as the first map said.
 
 

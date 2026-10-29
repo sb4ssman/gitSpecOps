@@ -15,6 +15,10 @@ Boundaries, in the spirit of DISPLAY-CONTRACT.md:
   the same read-only request `fleet rescan` already makes.
 - The dashboard document is fetched on a worker thread. In connect mode that call is real HTTP
   with a 20s timeout, and a blocked message loop is a frozen, unkillable tray icon.
+- Common app preferences control event/counter logging. Console output is never teed to disk
+  or copied into notifications. A legacy-only profile uses documented logging defaults in the
+  selected user-data home without converting enrollment; malformed common settings never fall
+  back. Log setup failures stop startup, and disabled logging performs no file writes.
 
 Implemented natively with ctypes because this project carries no runtime dependencies. Only
 Windows has a stdlib-reachable tray; elsewhere `supported()` is False and the caller keeps the
@@ -462,17 +466,15 @@ def error_snapshot(url, label, exc) -> _Snapshot:
 # --------------------------------------------------------------------------- entry point
 
 
-class _LogTee:
-    """Copies console output into fleet.log and remembers the last error line.
+class _ConsoleChannel:
+    """Forward intentional console output, never persist it or copy it into notifications.
 
-    At login the tray runs under pythonw, which has no console at all. Without this, the one
-    message explaining why the app could not start went nowhere, and the icon simply vanished.
+    Under pythonw there is no original console. The tray retains only a generic error flag;
+    operational logging is a separate event/counter channel with no diagnostic text.
     """
 
-    def __init__(self, path, original):
-        self.original = original
-        self.handle = open(path, "a", encoding="utf-8", buffering=1)
-        self.last_error = ""
+    def __init__(self, original):
+        self.original, self.last_error, self._prefix = original, "", ""
 
     def write(self, text):
         if self.original is not None:
@@ -480,52 +482,73 @@ class _LogTee:
                 self.original.write(text)
             except (OSError, ValueError):
                 pass
-        self.handle.write(text)
-        for line in text.splitlines():
-            if line.startswith("error:"):
-                self.last_error = line[len("error:"):].strip()
+        for character in text:
+            if character in "\r\n":
+                self._prefix = ""
+            elif len(self._prefix) < 6:
+                self._prefix += character
+                if self._prefix.casefold() == "error:":
+                    self.last_error = "The app reported an error; inspect the foreground operation."
         return len(text)
 
     def flush(self):
-        for stream in (self.original, self.handle):
+        for stream in (self.original,):
             if stream is not None:
                 try:
                     stream.flush()
                 except (OSError, ValueError):
                     pass
 
-    def close(self):
-        self.handle.close()
+def _tray_logging_settings(argv, expected_settings=None):
+    """Resolve common app logging; legacy profiles have no old logging preferences to import.
+
+    Known common settings are strict. A legacy-only profile retains its enrollment unchanged;
+    logging gets documented defaults in the selected user-data home, never fleet state/source.
+    """
+    from fleet_app import build_parser
+    from Special._settings import SettingsError, resolve_document
+    from Special._settings.fleet import fleet_home, load_fleet_settings
+    from Special._runtime.files import RuntimeIOError, excluded
+
+    args = build_parser().parse_args(argv)
+    home = fleet_home(args.settings_home)
+    if expected_settings is not None:
+        expected_settings.verify()
+        if home.resolve() != expected_settings.home.resolve():
+            raise SettingsError("selected common profile changed")
+    snapshot = expected_settings if expected_settings is not None else load_fleet_settings(home)
+    document = snapshot.document if snapshot is not None else {"schema_version": 2}
+    settings = resolve_document(document, "app", home=home, configured=snapshot is not None,
+                                home_source="common" if snapshot is not None else "legacy-runtime-default")
+    if settings.values["logging"]["enabled"] and excluded(settings.values["logging"]["directory"], settings.values["scope"]["exclude_paths"]):
+        raise RuntimeIOError("excluded_destination")
+    return settings, snapshot
 
 
-def _config_dir_from(argv):
-    from pathlib import Path
-
-    if "--config-dir" in argv:
-        index = argv.index("--config-dir")
-        if index + 1 < len(argv):
-            return Path(argv[index + 1]).expanduser()
-    from Basic._paths import sync_home
-
-    return sync_home()
-
-
-def run_tray(argv, poll_seconds: float = POLL_SECONDS) -> int:
-    """Run the fleet app under a tray icon. Returns the app's exit code."""
+def run_tray(argv, poll_seconds: float = POLL_SECONDS, *, expected_settings=None) -> int:
+    """Run with resolved counts-only logging; no stdout tee or persistent hook/config change."""
     if not supported():
         raise TrayUnavailable(
             f"no stdlib system tray on {sys.platform}; run 'fleet run' and use start-at-login")
-    from fleet_app import main as fleet_main
-
-    log_path = _config_dir_from(argv) / "fleet.log"
+    from Special._runtime.logger import configure_logging
+    settings, snapshot = _tray_logging_settings(argv, expected_settings)
+    operational = configure_logging(settings, "app_tray")
     original_streams = (sys.stdout, sys.stderr)
-    output = errors = None
     try:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        output, errors = _LogTee(log_path, sys.stdout), _LogTee(log_path, sys.stderr)
+        if snapshot is not None:
+            snapshot.verify()
+        operational.event("tray_starting")
+        output, errors = _ConsoleChannel(sys.stdout), _ConsoleChannel(sys.stderr)
         sys.stdout, sys.stderr = output, errors
-    except OSError:
-        output = errors = None  # no log is better than no tray
+        return _run_tray(argv, poll_seconds, operational, errors)
+    finally:
+        sys.stdout, sys.stderr = original_streams
+        operational.close()
+
+
+def _run_tray(argv, poll_seconds, operational, errors):
+    """Native lifecycle; caller always restores streams and closes its logger, even on failure."""
+    from fleet_app import main as fleet_main
 
     stopping = threading.Event()
     tray = WindowsTray(stopping)
@@ -535,6 +558,7 @@ def run_tray(argv, poll_seconds: float = POLL_SECONDS) -> int:
     result = {"code": 0}
 
     def on_ready(info):
+        operational.event("peer_ready")
         context.update(info)
         with tray.lock:
             tray.snapshot.url = info["url"]
@@ -550,8 +574,13 @@ def run_tray(argv, poll_seconds: float = POLL_SECONDS) -> int:
             result["code"] = fleet_main(argv, stopping=stopping, on_ready=on_ready)
         except Exception as exc:  # noqa: BLE001 - the icon must survive to say why
             result["code"] = 1
-            print(f"error: {exc}", file=sys.stderr, flush=True)
+            print("error: fleet app stopped; inspect local configuration.", file=sys.stderr, flush=True)
         finally:
+            try:
+                operational.event("peer_stopped", exit_code=max(0, int(result["code"])))
+            except (OSError, ValueError):
+                result["code"] = 2
+                errors.last_error = "Required operational logging failed."
             if not stopping.is_set():
                 # The app stopped without being asked to. Keep a red icon up saying why until
                 # the user chooses Quit: an icon that silently vanishes explains nothing.
@@ -562,7 +591,7 @@ def run_tray(argv, poll_seconds: float = POLL_SECONDS) -> int:
                 with tray.lock:
                     tray.snapshot = failed
                 tray.post_refresh()
-                tray.notify("gitSpecOps is not running", f"{reason}. Log: {log_path}"[:250])
+                tray.notify("gitSpecOps is not running", reason[:250])
                 stopping.wait()
             stopping.set()
             user32.PostMessageW(tray.hwnd, WM_DESTROY, 0, 0)
@@ -599,10 +628,6 @@ def run_tray(argv, poll_seconds: float = POLL_SECONDS) -> int:
         tray.remove()
         for thread in threads:
             thread.join(timeout=10)
-        if output is not None:
-            sys.stdout, sys.stderr = original_streams
-            output.close()
-            errors.close()
     return result["code"]
 
 
@@ -615,6 +640,9 @@ def main(argv=None) -> int:
         return run_tray(argv or ["run"])
     except TrayUnavailable as exc:
         print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except (OSError, ValueError):
+        print("error: tray logging or startup could not initialize; no alternate log used.", file=sys.stderr)
         return 2
 
 

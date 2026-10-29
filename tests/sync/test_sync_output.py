@@ -51,7 +51,9 @@ class CheckOutputTests(unittest.TestCase):
 
     def test_local_json_is_one_parseable_manifest(self):
         stdout, stderr, observer, save, transport = self.invoke("--json")
-        manifest = json.loads(stdout)
+        result = json.loads(stdout)
+        manifest = result["manifest"]
+        self.assertEqual(result["local_security"], [])
         self.assertEqual(manifest["machine_id"], "machine-a")
         self.assertEqual(manifest["repositories"], [])
         self.assertIn("Observed 0 repositor(ies)", stderr)
@@ -62,7 +64,9 @@ class CheckOutputTests(unittest.TestCase):
 
     def test_json_stays_parseable_when_fetching_and_publishing(self):
         stdout, stderr, observer, save, transport = self.invoke("--json", "--fetch", enrolled=True)
-        manifest = json.loads(stdout)
+        result = json.loads(stdout)
+        manifest = result["manifest"]
+        self.assertNotIn("local_security", manifest)
         self.assertIn("Fetching remote refs", stderr)
         self.assertIn("1/1 observed", stderr)
         self.assertIn("Manifest written: chosen-state/machine-a.json", stderr)

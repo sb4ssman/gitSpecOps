@@ -15,8 +15,10 @@ Run directly (exit 0 = pass, 1 = fail):
 
 import io
 import sys
+import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import ROOT, setup  # noqa: E402
@@ -24,8 +26,8 @@ from _bootstrap import ROOT, setup  # noqa: E402
 setup()
 
 from Basic._console import format_size  # noqa: E402
-from Special.duplicate_org import _batch as batch  # noqa: E402
-from Special.duplicate_org.duplicate_org import parse_args  # noqa: E402
+from Special._org_duplicator import batch, tracking  # noqa: E402
+from Special.duplicate_org import parse_args  # noqa: E402
 
 FAILS = []
 
@@ -146,7 +148,7 @@ check("format_size(2048) still works", format_size(2048) == "2.0 MB")
 # Every retry loop in operations.py must therefore handle CommandTimeout first and re-raise.
 import ast  # noqa: E402
 
-OPERATIONS = ROOT / "Special" / "duplicate_org" / "_operations.py"
+OPERATIONS = ROOT / "Special" / "_org_duplicator" / "operations.py"
 tree = ast.parse(OPERATIONS.read_text(encoding="utf-8"))
 
 
@@ -173,6 +175,24 @@ for _node in ast.walk(tree):
               "CommandTimeout" in _caught[0])
 check("found every known retry loop in operations.py", len(_retry_loops) >= 4)
 
+# Source grouping must not abandon existing resume state or change per-mode filenames.
+check("resume storage retains its established location",
+      tracking.RUNS_DIR == ROOT / "Special" / "duplicate_org" / "runs")
+check("batch flows share the retained resume location", batch.RUNS_DIR == tracking.RUNS_DIR)
+with tempfile.TemporaryDirectory(prefix="duplicator-resume-") as temporary:
+    runs = Path(temporary) / "runs"
+    with patch.object(tracking, "RUNS_DIR", runs):
+        for mode, scope in (("download", None), ("download", "org-a"),
+                            ("upload", None), ("migrate", None)):
+            with redirect_stdout(io.StringIO()):
+                paths = tracking.initialize_tracking_files(mode, "org-a", "org-b", "fixture", scope)
+            paths["completed"].write_text("finished-repo\n", encoding="utf-8")
+            paths["success"].write_text("retained-log\n", encoding="utf-8")
+            with redirect_stdout(io.StringIO()):
+                resumed = tracking.initialize_tracking_files(mode, "org-a", "org-b", "fixture", scope)
+            check(f"{mode}/{scope or 'single'} resume preserves completed work and logs",
+                  resumed == paths and tracking.load_completed_repos(resumed["completed"]) == {"finished-repo"}
+                  and resumed["success"].read_text(encoding="utf-8") == "retained-log\n")
 
 if FAILS:
     print(f"\n{len(FAILS)} FAILED")

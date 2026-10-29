@@ -6,6 +6,7 @@ The per-repository workers for each mode: download (clone to disk, retried, para
 upload (create the dest repo if needed, push every non-PR ref), and migrate (mirror-clone
 from source, create dest, push, clean up). Each returns a {'status': 'success'|'failed', ...}
 dict and records progress to the tracking files; failures are caught and reported, never fatal.
+Import workers from Special._org_duplicator.operations; importing never starts a Git operation.
 """
 
 import os
@@ -16,8 +17,8 @@ from Basic._confirm import prompt_input
 from Basic._console import PRINT_LOCK, format_size
 from Basic._providers.github import create_repo, ensure_repo
 from Basic._run import CommandTimeout, run_checked
-from Special.duplicate_org._local_repos import safe_cleanup_directory
-from Special.duplicate_org._tracking import log_message
+from Special._org_duplicator.local_repos import safe_cleanup_directory
+from Special._org_duplicator.tracking import log_message
 
 RETRY_ATTEMPTS = 3
 

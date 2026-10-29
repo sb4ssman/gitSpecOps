@@ -18,10 +18,15 @@ v3 defaults are "all" for observe and publish, so migrating changes no behavior.
 
 v5 adds a separately confirmed recovery location and local-only repository policies. Recovery
 never inherits the status transport: snapshots contain source content and filenames.
+
+The v5 runtime shape is also projected from common settings by Special._settings.fleet.
+save_saved/save_client_choice persist to that loaded authority; legacy-only profiles retain
+fleet-app.json. No common migration, enrollment or I/O occurs on import.
 """
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 
 import baskets
@@ -29,6 +34,9 @@ from manifest import is_fleet_secret
 from git_client import validate_choice
 from capture import CapturePolicy, CaptureRefused
 from snapshot_store import REPO_ID, StoreRefused, validate_location
+from Basic._files import atomic_write_bytes
+from Special._settings.fleet import (FleetConfig, fleet_directory, load_fleet_settings,
+                                    save_fleet_config)
 
 APP_CONFIG = "fleet-app.json"
 CONFIG_VERSION = 5
@@ -36,6 +44,32 @@ DEFAULT_LOCAL_PORT = 8760
 DEFAULT_TAILNET_PORT = 8765
 DEFAULT_FOLDER_SECONDS = 300
 DEFAULT_REPO_SECONDS = 1800
+
+
+def save_saved(directory: Path, config: dict, *, home=None, snapshot=None):
+    """Save explicit app choices to their loaded authority, never a stale legacy copy."""
+    validate(config)
+    common = load_fleet_settings(home)
+    if common is not None or isinstance(config, FleetConfig) or snapshot is not None:
+        return save_fleet_config(config, component="app", home=home, snapshot=snapshot)
+    path = fleet_directory(directory, home=home) / APP_CONFIG
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_bytes(path, (json.dumps(config, indent=2) + "\n").encode())
+    return path
+
+
+def save_client_choice(directory: Path, config: dict, choice):
+    """Persist only this UI choice; runtime-discovered identity must not become preferences."""
+    if isinstance(config, FleetConfig):
+        updated = FleetConfig(config.original, config.snapshot, "app")
+        home = config.snapshot.home
+    else:
+        updated, home = copy.deepcopy(config), None
+    updated["git_client"] = choice
+    save_saved(directory, updated, home=home)
+    if isinstance(config, FleetConfig):
+        config.snapshot, config.original = updated.snapshot, updated.original
+    config["git_client"] = choice
 
 
 def migrate(config: dict) -> dict:

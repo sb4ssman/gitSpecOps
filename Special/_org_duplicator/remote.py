@@ -5,6 +5,7 @@ gh_remote
 The org duplicator's side of talking to GitHub: prerequisite checks that print and stop, and
 the pooled LFS probe with progress. The `gh` calls themselves live in
 `Basic/_providers/github.py`; this module only decides how the duplicator reports them.
+Import from Special._org_duplicator.remote; checks/probes run only when explicitly called.
 """
 
 import sys

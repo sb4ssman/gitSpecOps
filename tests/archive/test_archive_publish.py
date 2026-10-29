@@ -9,6 +9,7 @@ can never ride along with the pull-direction verbs or a generated launcher.
 """
 
 import subprocess
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -18,11 +19,10 @@ from _bootstrap import ROOT, setup  # noqa: E402
 
 setup()
 
-from Special._archive_plan import PublishCandidate, build_publish_plan  # noqa: E402
-from Special.archive_sync import (  # noqa: E402
+from Special._archive.plan import PublishCandidate, build_publish_plan  # noqa: E402
+from Special._archive.sync import (  # noqa: E402
     apply_publish,
     collect_publish_candidates,
-    render_publish_plan,
 )
 
 failures = []
@@ -48,6 +48,9 @@ def commit(repo, name, text):
 
 with tempfile.TemporaryDirectory(prefix="publish-test-") as tmp:
     tmp = Path(tmp)
+    previous_environment = {key: os.environ.get(key) for key in
+                            ("GITSPECOPS_HOME", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM")}
+    os.environ.update(GITSPECOPS_HOME=str(tmp / "profile"), GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
     archive = tmp / "archive"
     archive.mkdir()
 
@@ -59,15 +62,15 @@ with tempfile.TemporaryDirectory(prefix="publish-test-") as tmp:
         seed = tmp / f"seed-{name}"
         subprocess.run(["git", "clone", "--quiet", str(bare), str(seed)], check=True,
                        capture_output=True)
-        git(seed, "config", "user.email", "t@example.test")
-        git(seed, "config", "user.name", "T")
+        git(seed, "config", "user.email", "123+orbit-user@users.noreply.github.com")
+        git(seed, "config", "user.name", "orbit-user")
         commit(seed, "base.txt", "base\n")
         git(seed, "push", "--quiet", "origin", "main")
         clone = archive / name
         subprocess.run(["git", "clone", "--quiet", str(bare), str(clone)], check=True,
                        capture_output=True)
-        git(clone, "config", "user.email", "t@example.test")
-        git(clone, "config", "user.name", "T")
+        git(clone, "config", "user.email", "123+orbit-user@users.noreply.github.com")
+        git(clone, "config", "user.name", "orbit-user")
         return bare, seed, clone
 
     ahead_bare, ahead_seed, ahead_repo = new_pair("ahead-repo")
@@ -140,34 +143,41 @@ with tempfile.TemporaryDirectory(prefix="publish-test-") as tmp:
     check(not any(i.repo == "ahead-repo" for i in again_issues),
           f"re-running publish reported a problem for an up-to-date repo: {again_issues}")
 
-    # --- rendering does not crash on any bucket -------------------------------------
-    render_publish_plan(archive, build_publish_plan([
-        PublishCandidate("a", "main", "origin/main", 1, 0),
-        PublishCandidate("b", "main", "origin/main", 1, 1),
-        PublishCandidate("c", "main", "origin/main", 0, 2),
-        PublishCandidate("d", None, None, None, None),
-        PublishCandidate("e", "main", "origin/main", 2, 0, dirty=True),
-    ]))
-
 # --- publish must never be bundled or scheduled -------------------------------------
-manager_source = (ROOT / "Elaborate" / "archive_manage.py").read_text(encoding="utf-8")
-check("--publish" not in manager_source.split('"""', 2)[2],
-      "archive_manage.py code references --publish; generated launchers and scheduled tasks must "
-      "never push")
+for manager_file in (ROOT / "Elaborate" / "archive_manage.py",
+                     ROOT / "Special" / "_archive" / "manager.py"):
+    manager_source = manager_file.read_text(encoding="utf-8")
+    check("--publish" not in manager_source.split('"""', 2)[2],
+          "manager/scheduling code references --publish; generated launchers and scheduled tasks "
+          "must never push")
 
-sync_source = (ROOT / "Special" / "archive_sync.py").read_text(encoding="utf-8")
-check("is its own apply class and cannot be combined" in sync_source,
-      "the guard refusing --publish alongside the pull-direction verbs is missing")
+sync_source = (ROOT / "Special" / "_archive" / "sync.py").read_text(encoding="utf-8")
+from Special._archive.sync_cli import main as sync_main
+from contextlib import redirect_stderr
+import io
+with redirect_stderr(io.StringIO()):
+    try:
+        sync_main(["--publish", "--sync"])
+    except SystemExit as exc:
+        check(exc.code == 2, "publish and sync must be rejected before settings or actions")
+    else:
+        check(False, "publish and sync were accepted together")
 push_body = sync_source.split("def _publish_one")[1].split("def apply_publish")[0]
 check('"--force"' not in push_body and "'--force'" not in push_body,
       "the push path passes --force as a git argument")
-check("push(path)" in push_body and "from Basic.push import push" in sync_source,
-      "publish no longer pushes through Basic/push.py")
+check("publish_checked(" in push_body,
+      "archive publication no longer invokes the policy-aware operation")
 basic_push = (ROOT / "Basic" / "push.py").read_text(encoding="utf-8")
 basic_push_code = basic_push.split('"""', 2)[2]  # the docstring names what is forbidden
 check('run_git(repo, ["push"]' in basic_push_code, "Basic/push.py is no longer a bare `git push`")
 for forbidden in ("--force", "--force-with-lease", "--mirror", "+refs"):
     check(forbidden not in basic_push_code, f"Basic/push.py code mentions {forbidden}")
+
+for key, value in previous_environment.items():
+    if value is None:
+        os.environ.pop(key, None)
+    else:
+        os.environ[key] = value
 
 if failures:
     print("ARCHIVE-PUBLISH-TESTS FAILED:")

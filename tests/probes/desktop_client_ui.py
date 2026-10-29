@@ -2,9 +2,12 @@
 
 Run explicitly, then visit the printed loopback URL. No desktop app is launched and no real
 configuration is changed. Ctrl-C stops the server. All fixtures are temporary.
+The security button reads a real synthetic working file under temporary policy; outgoing
+history is explicitly unchecked in this unborn fixture. No finding is shared with a peer.
 """
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -20,14 +23,21 @@ from local_dashboard import make_local_server
 from local_view import display_from_manifests
 from manifest import build_manifest, fleet_id_for
 from ui_assets import load_ui_assets
+from Special.security._advice import inspect_registered
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix="gitspecops-desktop-ui-") as temp:
+    with tempfile.TemporaryDirectory(prefix="gitspecops-desktop-ui-") as temp, \
+            patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_OPTIONAL_LOCKS": "0"}):
         root = Path(temp)
         repository = root / "example-work"
         repository.mkdir()
         subprocess.run(["git", "init", str(repository)], capture_output=True, check=True)
+        (repository / "demo.txt").write_text("demo-private-marker", encoding="utf-8")
+        home = root / "profile"
+        home.mkdir()
+        (home / "settings.json").write_text(json.dumps({"schema_version": 2,
+            "defaults": {"security": {"never_publish": ["demo-private-marker"]}}}), encoding="utf-8")
         executable = root / "GitHubDesktop.exe"
         executable.touch()
         choice = {"id": "github-desktop", "executable": str(executable)}
@@ -51,9 +61,14 @@ def main():
         def document():
             return display_from_manifests([manifest], fleet_id=fleet, names=names,
                 now=datetime.now(timezone.utc), settings={"git_client": desktop.settings(),
-                "local_repo_ids": [rid]})
+                "local_repo_ids": [rid], "security_available": True})
 
-        server = make_local_server(("127.0.0.1", 0), document, load_ui_assets(), desktop.handle)
+        def security_action(action, payload):
+            if action != "security-preview":
+                raise ValueError("unsupported synthetic action")
+            return inspect_registered(payload, lambda requested: [repository] if requested == rid else [], settings_home=home)
+
+        server = make_local_server(("127.0.0.1", 0), document, load_ui_assets(), desktop.handle, security_action)
         print(f"Synthetic dashboard: http://127.0.0.1:{server.server_port}/", flush=True)
         try:
             server.serve_forever()

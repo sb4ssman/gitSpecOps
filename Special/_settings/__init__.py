@@ -4,6 +4,9 @@ One settings.json under Basic._paths.config_home(), optionally selected by the c
 Precedence: defaults, saved common settings, saved component settings, explicit overrides.
 Protected values and excluded paths accumulate; an override cannot silently remove them.
 Raw values are for trusted operations. Use ResolvedSettings.summary() for agent-facing output.
+
+Import resolve_settings and validate_document from Special._settings. The sibling records,
+migration and store modules contain typed validation, migration previews and explicit writes.
 """
 from __future__ import annotations
 
@@ -14,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from Basic._paths import config_home
-from Special import _settings_records
+from Special._settings import records
 
 SCHEMA_VERSION = 2
 SETTINGS_NAME = "settings.json"
@@ -24,9 +27,11 @@ DEFAULTS = {
     "output": {"mode": "stdout", "format": "text", "directory": "reports"},
     "logging": {"enabled": True, "directory": "logs", "level": "INFO",
                 "max_bytes": 10 * 1024 * 1024, "backup_count": 3},
-    "security": {"never_publish": [], "safe_values": []},
+    "security": {"never_publish": [], "safe_values": [], "local_never_publish": [],
+                 "local_safe_values": [], "engines": []},
 }
-_ACCUMULATED = {"scope.exclude_paths", "security.never_publish"}
+_ACCUMULATED = {"scope.exclude_paths", "security.never_publish", "security.local_never_publish"}
+SECURITY_ENGINES = ("gitleaks", "betterleaks", "trufflehog")
 
 
 class SettingsError(ValueError):
@@ -55,6 +60,9 @@ def _part(value):
             where = f"{section}.{key}"
             if section in ("scope", "security"):
                 _strings(item, where)
+                if where == "security.engines" and (len(item) != len(set(item)) or
+                                                      not set(item) <= set(SECURITY_ENGINES)):
+                    raise SettingsError("security.engines must select distinct supported engines or an empty list")
                 if section == "scope" and any("\0" in path for path in item):
                     raise SettingsError(f"{where} contains an invalid path")
             elif key == "directory":
@@ -89,8 +97,11 @@ def _merge(values, updates, sources, source):
 
 
 def _policy_conflicts(values):
-    blocked = {value.casefold() for value in values["security"]["never_publish"]}
-    if blocked.intersection(value.casefold() for value in values["security"]["safe_values"]):
+    security = values["security"]
+    blocked = {value.casefold() for key in ("never_publish", "local_never_publish")
+               for value in security.get(key, ())}
+    if blocked.intersection(value.casefold() for key in ("safe_values", "local_safe_values")
+                            for value in security.get(key, ())):
         raise SettingsError("security never-publish and safe-value settings conflict")
 
 
@@ -116,8 +127,8 @@ def validate_document(document):
         _part({key: value for key, value in part.items() if key != "options"})
     if version == 2:
         try:
-            _settings_records.document(document)
-        except _settings_records.RecordError as exc:
+            records.document(document)
+        except records.RecordError as exc:
             raise SettingsError(str(exc)) from None
     # Reject a bad saved component even when the current operation selects another one.
     for part in ({}, *components.values()):
@@ -165,25 +176,25 @@ class ResolvedSettings:
                            "format": self.values["output"]["format"]},
                 "logging": {key: value for key, value in self.values["logging"].items()
                             if key != "directory"},
-                "security": {key: len(value) for key, value in self.values["security"].items()},
+                "security": {key: list(value) if key == "engines" else len(value)
+                             for key, value in self.values["security"].items()},
                 "enrollment": {"machine_configured": bool(self.values.get("machine")),
                                "defined_transports": sorted(self.values.get("transports", {})),
                                "component_option_fields": sorted(self.values.get("options", {}))},
                 "sources": copy.deepcopy(self.sources)}
 
 
-def resolve_settings(component=None, *, home=None, overrides=None):
-    """Read and resolve settings, returning fresh values with per-field provenance.
+def select_home(home=None, *, component=None, allow_legacy_sync_home=False):
+    """Select the explicit/environment/platform home without I/O.
 
-    An absent file is normal first use. An existing invalid/unreadable file is an error.
-    Explicit home overrides GITSPECOPS_HOME, which overrides the established OS default.
-    Relative explicit home is caller-relative; paths inside settings are home-relative.
-    No path is created or checked for runtime usability here; the operation must check it.
+    The coordinated fleet adapter may allow the legacy state-directory override because it
+    handles that directory separately. Other callers still require an explicit migration choice.
     """
     if component is not None and component not in COMPONENTS:
         raise SettingsError("unsupported settings component")
     if home is None:
-        if component in (None, "sync", "app") and "GITSPECOPS_SYNC_HOME" in os.environ:
+        if (not allow_legacy_sync_home and component in (None, "sync", "app")
+                and "GITSPECOPS_SYNC_HOME" in os.environ):
             raise SettingsError("legacy sync home requires migration or an explicit settings home")
         override = os.environ.get("GITSPECOPS_HOME")
         if override is not None and not override.strip():
@@ -197,25 +208,25 @@ def resolve_settings(component=None, *, home=None, overrides=None):
             raise SettingsError("explicit settings home must not be empty")
         selected_home, home_source = home, "explicit"
     selected_home = _absolute(selected_home, Path.cwd())
-    path = selected_home / SETTINGS_NAME
-    try:
-        text = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        if path.is_symlink():
-            raise SettingsError("settings file is an unreadable link") from None
-        legacy = ("sync-suggester/config.json", "sync-suggester/fleet-app.json",
-                  "gitspecops_managed_archives.json", "security/never_publish.txt", "security/safe.txt")
-        if any((selected_home / name).exists() for name in legacy):
-            raise SettingsError("legacy settings exist; explicit settings migration is required") from None
-        document, configured = {"schema_version": SCHEMA_VERSION}, False
-    except (OSError, UnicodeError):
-        raise SettingsError("settings file could not be read") from None
-    else:
-        configured = True
-        try:
-            document = json.loads(text, object_pairs_hook=_unique_object)
-        except (ValueError, RecursionError):
-            raise SettingsError("settings file is not valid unambiguous JSON") from None
+    return selected_home, home_source
+
+
+def legacy_locations(home, *, sync_directory=None):
+    """The known legacy settings inputs, shared by detection, previews and setup freshness."""
+    home = _absolute(home, Path.cwd())
+    sync = _absolute(sync_directory, Path.cwd()) if sync_directory is not None else home / "sync-suggester"
+    return {"cli": sync / "config.json", "app": sync / "fleet-app.json",
+            "archives": home / "gitspecops_managed_archives.json",
+            "never_publish": home / "security" / "never_publish.txt",
+            "safe_values": home / "security" / "safe.txt"}
+
+
+def resolve_document(document, component=None, *, home, overrides=None,
+                     home_source="explicit", configured=True):
+    """Resolve an in-memory candidate using the same validation/merge rules; no file reads."""
+    if component is not None and component not in COMPONENTS:
+        raise SettingsError("unsupported settings component")
+    selected_home = _absolute(home, Path.cwd())
     document = validate_document(document)
     overrides = {} if overrides is None else overrides
     _part(overrides)
@@ -241,3 +252,32 @@ def resolve_settings(component=None, *, home=None, overrides=None):
             sources[name] = ["settings"]
     return ResolvedSettings(selected_home, home_source, configured, component, values, sources,
                             schema_version=document["schema_version"])
+
+def resolve_settings(component=None, *, home=None, overrides=None):
+    """Read and resolve settings, returning fresh values with per-field provenance.
+
+    An absent file is normal first use. An existing invalid/unreadable file is an error.
+    Explicit home overrides GITSPECOPS_HOME, which overrides the established OS default.
+    Relative explicit home is caller-relative; paths inside settings are home-relative.
+    No path is created or checked for runtime usability here; the operation must check it.
+    """
+    selected_home, home_source = select_home(home, component=component)
+    path = selected_home / SETTINGS_NAME
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        if path.is_symlink():
+            raise SettingsError("settings file is an unreadable link") from None
+        if any(path.exists() for path in legacy_locations(selected_home).values()):
+            raise SettingsError("legacy settings exist; explicit settings migration is required") from None
+        document, configured = {"schema_version": SCHEMA_VERSION}, False
+    except (OSError, UnicodeError):
+        raise SettingsError("settings file could not be read") from None
+    else:
+        configured = True
+        try:
+            document = json.loads(text, object_pairs_hook=_unique_object)
+        except (ValueError, RecursionError):
+            raise SettingsError("settings file is not valid unambiguous JSON") from None
+    return resolve_document(document, component, home=selected_home, overrides=overrides,
+                            home_source=home_source, configured=configured)

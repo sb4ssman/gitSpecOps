@@ -21,7 +21,7 @@ from _bootstrap import setup  # noqa: E402
 setup()
 
 from Basic._run import Result  # noqa: E402
-from Special.duplicate_org import _operations as ops  # noqa: E402
+from Special._org_duplicator import operations as ops  # noqa: E402
 
 FAILS: list[str] = []
 
@@ -163,7 +163,7 @@ finally:
 # remove on Windows. Cleanup of this run's own clone must still succeed there.
 import subprocess  # noqa: E402
 
-from Special.duplicate_org._local_repos import safe_cleanup_directory  # noqa: E402
+from Special._org_duplicator.local_repos import safe_cleanup_directory  # noqa: E402
 
 with tempfile.TemporaryDirectory(prefix="dup-real-") as tmp:
     parent = Path(tmp)

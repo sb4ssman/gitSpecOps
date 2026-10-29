@@ -10,7 +10,6 @@ Where no stdlib tray exists (Linux, macOS) the app runs in the foreground exactl
 """
 from __future__ import annotations
 
-import json
 import sys
 import threading
 import time
@@ -22,8 +21,8 @@ from _paths import bootstrap  # noqa: E402
 
 bootstrap()
 
-from Basic._paths import sync_home  # noqa: E402
-from fleet_app import APP_CONFIG, main  # noqa: E402
+from fleet_app import APP_CONFIG, load_saved, main  # noqa: E402
+from Special._settings.fleet import fleet_directory, load_fleet_settings  # noqa: E402
 from fleet_config import DEFAULT_LOCAL_PORT  # noqa: E402
 
 
@@ -39,7 +38,7 @@ def dashboard_url(config: dict) -> str:
 def open_when_ready(config_path: Path) -> None:
     for _attempt in range(3600):
         try:
-            config = json.loads(config_path.read_text(encoding="utf-8"))
+            config = load_saved(config_path.parent)
             time.sleep(1)
             webbrowser.open(dashboard_url(config))
             return
@@ -53,13 +52,20 @@ def desktop_main(argv=None) -> int:
         # The bundle is also the CLI: `GitSpecOpsSync.exe doctor`, `... autostart enable`,
         # and the `tray` argv that the login entry registers all arrive here.
         return main(argv)
-    config_path = sync_home() / APP_CONFIG
-    if not config_path.exists():
+    try:
+        load_fleet_settings()  # invalid common configuration must not start first-run setup
+        config_path = fleet_directory() / APP_CONFIG
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    try:
+        load_saved(config_path.parent)
+    except ValueError:
         # First run is still terminal-driven; --configure-only hands the process back here so
         # the very first session also gets a tray rather than waiting for a restart.
         code = main(["setup", "--configure-only"])
-        if code or not config_path.exists():
-            return code or 1
+        if code:
+            return code
     threading.Thread(target=open_when_ready, args=(config_path,), daemon=True).start()
     return main(["tray"])
 

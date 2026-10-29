@@ -14,6 +14,7 @@ than a loop of pulls. No network, and the only git it runs is read-only fact gat
   when it is not a fast-forward -- which is the one property this relies on.
 
 `tests/special/test_archive_plan.py` pins the drift buckets and the publish classification.
+Import planning helpers from Special._archive.plan; public archive commands share this policy.
 """
 
 from __future__ import annotations
@@ -244,6 +245,7 @@ class PublishCandidate:
     ahead: int | None = None
     behind: int | None = None
     dirty: bool = False
+    push_snapshot: object | None = field(default=None, repr=False)
 
     @property
     def has_direction(self) -> bool:

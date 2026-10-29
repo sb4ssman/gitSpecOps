@@ -12,6 +12,9 @@ const node = (tag, text, className) => {
 const state = {data: null, selected: null, receivedAt: null, expansion: new GroupExpansion(savedCollapsedGroups())};
 const desktopMessages = new Map();
 const desktopPending = new Set();
+// Session memory only: no report, browser storage, notification or fleet publication.
+const securityResults = new Map();
+const securityPending = new Set();
 let desktopDraft = null;
 const controls = {
   query: byId('search'), status: byId('status-filter'), machine: byId('machine-filter'),
@@ -108,6 +111,36 @@ function showDetail(row) {
       }
     };
     panel.append(button, message);
+  }
+  if (row.security_action) {
+    const action = row.security_action;
+    const button = node('button', action.label);
+    button.type = 'button';
+    button.disabled = !action.available || securityPending.has(row.id) || !state.data.local_actions;
+    button.title = action.reason;
+    button.onclick = async () => {
+      securityPending.add(row.id); button.disabled = true;
+      try {
+        const result = await connection.desktopAction('security-preview', {repo_id: row.id},
+          state.data.local_actions.token, {structured: true});
+        securityResults.set(row.id, result);
+      } catch (error) { securityResults.set(row.id, {message: error.message}); }
+      finally {
+        securityPending.delete(row.id);
+        if (state.selected === row.id) showDetail(row);
+      }
+    };
+    panel.append(button, node('p', securityPending.has(row.id) ? 'Checking local security…' : action.reason, 'host-note'));
+    const result = securityResults.get(row.id);
+    if (result) {
+      panel.append(node('p', result.message, 'host-note'));
+      for (const entry of result.local_security || []) {
+        panel.append(node('p', `Checkout ${entry.checkout}: ${entry.security.check_status}; observed ${entry.security.observed_at}. Advisory snapshot; recheck before acting.`));
+        const details = node('details');
+        details.append(node('summary', 'Masked findings and coverage'), node('pre', JSON.stringify(entry.security, null, 2)));
+        panel.append(details);
+      }
+    }
   }
   for (const machine of state.data.machines) {
     const cell = row.cells[machine.id];

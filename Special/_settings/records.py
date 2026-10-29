@@ -1,4 +1,7 @@
-"""Pure v2 enrollment/component record validation; no auth, filesystem or app imports."""
+"""Pure v2 enrollment/component record validation; no auth, filesystem or app imports.
+
+Import from Special._settings.records; document() validates the typed enrollment sections.
+"""
 from __future__ import annotations
 
 import math

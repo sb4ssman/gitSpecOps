@@ -144,14 +144,32 @@ def classify_repository(repo: dict) -> tuple[str, str]:
     return "synced", "clean and synchronized"
 
 
+def security_notices(records):
+    """Local check status without suppressing sync facts or implying execution clearance."""
+    groups = {}
+    for entry in records:
+        groups.setdefault(entry["repo_id"], set()).add(entry["security"]["check_status"])
+    result = {}
+    for repo_id, statuses in groups.items():
+        if statuses - {"passed", "incomplete", "blocked", "review-required"}:
+            statuses.add("incomplete")
+        status = next((value for value in ("incomplete", "blocked", "review-required") if value in statuses), "passed")
+        result[repo_id] = ("security advisory passed; recheck on action" if status == "passed" else
+                           f"SECURITY {status}; review before commit/push")
+    return result
+
+
 def render_table(manifest: dict, catalog: dict[str, dict],
-                 branches: dict[str, str] | None = None) -> str:
+                 branches: dict[str, str] | None = None, *, security=None) -> str:
     branches = branches or {}
+    notices = security_notices(security or [])
     rows = []
     for repo in manifest["repositories"]:
         local = catalog.get(repo["repo_id"], {})
         name = local.get("alias") or local.get("display_name") or f"repo:{repo['repo_id'][:8]}"
         _state, action = classify_repository(repo)
+        if security is not None:
+            action = notices.get(repo["repo_id"], "security unchecked") + "; " + action
         state = describe_repository(repo)
         branch = repo.get("branch_id")
         # A branch this machine has seen resolves to its name; one only a peer has stays an

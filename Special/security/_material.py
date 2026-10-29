@@ -10,12 +10,16 @@ from Basic._run import CommandFailed, run_git, stream
 from Special.security._checks import inspect
 from Special.security._contents import image_metadata, is_archive, is_image, open_archive
 from Special.security._findings import Finding, Report, linked
+from Special.security._engines import EngineBatch
 
 MAX_FILE_BYTES = 32 * 1024 * 1024
 
 
 def _text(report, text, where, policy, object_id=""):
     report.findings.extend(inspect(text, where, policy, object_id))
+    runner = getattr(report, "_engine_runner", None)
+    if runner is not None:
+        runner.add(text, where, object_id)
 
 
 def _bytes(report, data, where, policy, object_id=""):
@@ -147,6 +151,24 @@ def _small_blobs(report, repo, versions):
             yield object_id, data
 
 
+def _history_limits(report, repo):
+    """Refuse lazy object reads and record ancestry gaps before inspecting history."""
+    promisor = run_git(repo, ["config", "--get-regexp", r"^remote\..*\.promisor$"])
+    if promisor.returncode not in (0, 1):
+        raise CommandFailed("cannot determine partial-clone status")
+    if any(line.split()[-1].lower() in {"true", "yes", "1", "on"} for line in promisor.stdout.splitlines()):
+        report.gap("history", "partial clone: scan refused to avoid automatic object downloads")
+        return False
+    if git_output(repo, ["rev-parse", "--is-shallow-repository"]).strip() == "true":
+        report.gap("history", "shallow repository: earlier history not available")
+    if git_output(repo, ["for-each-ref", "--format=%(refname)", "refs/replace/"]).strip():
+        report.gap("history", "replacement refs may hide original objects")
+    grafts = Path(git_output(repo, ["rev-parse", "--git-path", "info/grafts"]).strip())
+    if (grafts if grafts.is_absolute() else repo / grafts).exists():
+        report.gap("history", "legacy grafts may hide original ancestry")
+    return True
+
+
 def _history(report, repo, policy, refs):
     states = _ref_ids(repo)
     selected = list(states) if refs == ["--all"] else list(refs)
@@ -155,19 +177,8 @@ def _history(report, repo, policy, refs):
     report.refs = {ref: states[ref] for ref in selected}
     if not selected:
         raise ValueError("no commit refs to scan")
-    promisor = run_git(repo, ["config", "--get-regexp", r"^remote\..*\.promisor$"])
-    if promisor.returncode not in (0, 1):
-        raise CommandFailed("cannot determine partial-clone status")
-    if any(line.split()[-1].lower() in {"true", "yes", "1", "on"} for line in promisor.stdout.splitlines()):
-        report.gap("history", "partial clone: scan refused to avoid automatic object downloads")
+    if not _history_limits(report, repo):
         return
-    if git_output(repo, ["rev-parse", "--is-shallow-repository"]).strip() == "true":
-        report.gap("history", "shallow repository: earlier history not available")
-    if any(name.startswith("refs/replace/") for name in states):
-        report.gap("history", "replacement refs may hide original objects")
-    grafts = Path(git_output(repo, ["rev-parse", "--git-path", "info/grafts"]).strip())
-    if (grafts if grafts.is_absolute() else repo / grafts).exists():
-        report.gap("history", "legacy grafts may hide original ancestry")
     tips, direct = [], {}
     for ref, object_id in report.refs.items():
         _text(report, ref, ref + " [ref name]", policy, object_id)
@@ -194,7 +205,16 @@ def _history(report, repo, policy, refs):
             report.gap(ref, "unsupported ref target type")
         elif current not in tips:
             tips.append(current)
+    _history_versions(report, repo, policy, tips, direct)
+    after = _ref_ids(repo)
+    if (after != states if refs == ["--all"] else any(after.get(ref) != states[ref] for ref in selected)):
+        report.gap("refs", "references changed during scan; rerun required")
+
+
+def _history_versions(report, repo, policy, tips, direct=None):
+    """Inspect each changed blob/path, raw commit identity/message and new gitlink in a range."""
     versions = file_versions(repo, tips) if tips else {}
+    direct = direct or {}
     for blob, paths in direct.items():
         versions.setdefault(blob, set()).update(paths)
     for object_id, paths in versions.items():
@@ -218,23 +238,83 @@ def _history(report, repo, policy, refs):
         fields = part.strip().split()
         if part.strip().startswith(":") and len(fields) >= 5 and fields[1] == "160000":
             report.gap(parts[index + 1], "historical submodule payload not inspected")
-    after = _ref_ids(repo)
-    if (after != states if refs == ["--all"] else any(after.get(ref) != states[ref] for ref in selected)):
-        report.gap("refs", "references changed during scan; rerun required")
 
 
-def scan(repo: Path, policy, *, material="tree", refs=None):
+def _outgoing(report, repo, policy, refs):
+    """Exact immutable base..tip material, including introduce-then-remove and merges."""
+    if (len(refs) != 2 or any(not isinstance(ref, str) or
+                            re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", ref) is None for ref in refs)):
+        raise ValueError("outgoing scans require two full commit object ids")
+    base, tip = refs
+    report.refs = {"base": base, "tip": tip}
+    if not _history_limits(report, repo):
+        return
+    for object_id in refs:
+        if git_output(repo, ["cat-file", "-t", object_id]).strip() != "commit":
+            raise ValueError("outgoing endpoints must be commits")
+    ancestry = run_git(repo, ["merge-base", "--is-ancestor", base, tip])
+    if ancestry.returncode != 0:
+        report.gap("outgoing", "destination is not an available ancestor; push needs review")
+        return
+    _history_versions(report, repo, policy, [f"{base}..{tip}"])
+
+
+def _proposed(report, policy, proposal):
+    """Named proposed bytes plus message/identities; None content represents a deletion.
+
+    Files are streamed as (relative name, bytes-or-None, optional gap reason). The caller owns
+    safe path/index selection; no other working-tree or staged contents are read here.
+    """
+    for name, data, reason in proposal["files"]:
+        if reason:
+            report.gap(name, reason)
+            continue
+        if data is None:
+            continue
+        _text(report, name, name + " [path]", policy)
+        report.files += 1
+        _bytes(report, data, name, policy)
+    _text(report, proposal["message"], "proposed commit message", policy)
+    for role in ("author", "committer"):
+        identity = proposal["identities"].get(role)
+        if identity is None:
+            report.gap(role, "proposed identity could not be determined")
+        else:
+            _person(report, *identity, "proposed " + role, policy, "")
+
+
+def scan(repo: Path, policy, *, material="tree", refs=None, engines=None, executables=None,
+         reference_names=(), proposal=None):
+    """Scan selected material with built-in checks and explicitly selected optional engines.
+
+    None uses policy.engines; an empty list disables external engines for this invocation.
+    Missing/failed selected integrations are coverage gaps. No source files or settings change.
+    """
     repo = Path(repo).resolve()
     report = Report(str(repo), material, policy=policy.summary(), gaps=list(policy.gaps),
                     private_values=tuple(value for values in policy.identities.values() for value in values
                                          if not policy.allowed(value, 0, len(value))))
+    runner = EngineBatch(report, policy, policy.engines if engines is None else engines,
+                         executables=executables)
+    report._engine_runner = runner
     try:
+        for name in reference_names:
+            _text(report, name, "publication ref", policy)
         if material == "tree":
             _tree(report, repo, policy)
         elif material == "history":
             _history(report, repo, policy, list(refs or ["--all"]))
+        elif material == "outgoing":
+            _outgoing(report, repo, policy, list(refs or ()))
+        elif material == "proposed":
+            _proposed(report, policy, proposal)
         else:
             raise ValueError("unknown material selection")
     except (CommandFailed, OSError, ValueError) as exc:
         report.gap("scan", type(exc).__name__ + ": Git/material read failed")
+    finally:
+        try:
+            runner.finish()
+        finally:
+            del report._engine_runner
     return report

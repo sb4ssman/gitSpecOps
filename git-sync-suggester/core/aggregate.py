@@ -26,6 +26,7 @@ EXPIRED = "expired"
 # Higher wins when one row has several things to say.
 SEVERITY = {
     "collision": 90,
+    "security": 85,
     "operation": 80,
     "local_only": 75,
     "dirty": 70,

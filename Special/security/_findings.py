@@ -9,15 +9,23 @@ from pathlib import Path
 
 from Basic._objects import git_output
 
+STRONG_CREDENTIAL_CHECKS = frozenset({"GitHub token", "AWS access key", "Slack token",
+                                     "Google API key", "private key block"})
 
 @dataclass(frozen=True)
 class Finding:
     check: str
     classification: str
-    value: str
-    where: str
+    value: str = field(repr=False)
+    where: str = field(repr=False)
     object_id: str = ""
     line: int = 0
+
+    @property
+    def severity(self):
+        """One presentation/action classification; high confidence is not live validation."""
+        return ("high" if self.classification == "leak" or self.check in STRONG_CREDENTIAL_CHECKS else
+                "info" if self.classification == "quiet" else "review")
 
 
 def mask(value: str) -> str:
@@ -47,6 +55,8 @@ class Report:
     archives: int = 0
     checks: tuple = ("credential-shapes", "personal-shapes", "identity", "leak-description")
     private_values: tuple = field(default=(), repr=False)
+    engines: dict = field(default_factory=dict)
+    artifacts: list[dict] = field(default_factory=list, repr=False)
 
     @property
     def actionable(self):
@@ -56,14 +66,36 @@ class Report:
     def exit_code(self):
         return 2 if self.gaps else (1 if self.actionable else 0)
 
+    @property
+    def check_status(self):
+        """Shared check outcome, not permission to execute an action or publish a repository."""
+        if self.gaps:
+            return "incomplete"
+        if any(item.severity == "high" for item in self.actionable):
+            return "blocked"
+        return "review-required" if self.actionable else "passed"
+
     def gap(self, where: str, reason: str):
         entry = {"where": where, "reason": reason}
         if entry not in self.gaps:
             self.gaps.append(entry)
 
     def record(self, *, redacted=True):
+        """Actionable presentation record; ids are report-local, never hashes of secrets.
+
+        Trusted human/report callers may request full values. Choosing that channel does not
+        change logs, fleet state or this method's default. No source snippets are returned.
+        """
         result = asdict(self)
         private_values = result.pop("private_values")
+        for number, (item, finding) in enumerate(zip(result["findings"], self.findings), 1):
+            item.update(finding_id=f"finding-{number:06d}",
+                        severity=finding.severity,
+                        recommendation=("Inspect the referenced outgoing object/commit; a working-tree fix alone does not change outgoing history."
+                                        if self.material == "outgoing" and finding.classification != "quiet" else
+                                        "Remove the prohibited value from the proposed publication; review history separately."
+                                        if finding.classification == "leak" else
+                                        "Inspect the referenced location locally; classify the candidate before publishing."))
         if redacted:
             # Values also occur in filenames, ref names and the repository path.
             values = sorted({value for value in [*private_values, *(item.value for item in self.findings)] if value}, key=len, reverse=True)
@@ -78,27 +110,47 @@ class Report:
                     return {conceal(key): conceal(item) for key, item in value.items()}
                 return value
             result = conceal(result)
-        result.update(schema_version=1, coverage="incomplete" if self.gaps else "complete-for-selected-checks",
+        result.update(schema_version=2, check_status=self.check_status,
+                      coverage="incomplete" if self.gaps else "complete-for-selected-checks",
                       result="review-findings" if self.actionable else "no-actionable-findings",
                       scope_note=(("Indexed and non-ignored untracked working-tree files; staged-only bytes excluded. " if self.material == "tree" else
+                                   "Changed blob/path versions and commit messages/identities in the exact base..tip range. " if self.material == "outgoing" else
+                                   "Named proposed file bytes/paths, message and author/committer; other staged and baseline files excluded. " if self.material == "proposed" else
                                    "All selected local refs, including private refs, and HEAD; excludes reflogs/unreachable objects. ") +
                                   "No fetch, remote caches, forks, LFS payloads, image pixels or security clearance; offline candidate checks only."),
-                      external_secret_scanner="not-run")
+                      external_secret_scanner=("not-run" if not self.engines else
+                                               ("incomplete" if any(value != "checked" for value in self.engines.values())
+                                                else "checked-selected-engines")))
         return result
 
     def summary(self):
-        record = self.record()
-        lines = [f"{Path(record['repository']).name}: {self.material}; {self.files} file version(s), {self.commits} commit(s)",
-                 "Checks: " + ", ".join(self.checks) + "; external secret scanner: not run",
-                 "Policy: " + json.dumps(self.policy, sort_keys=True),
-                 f"{len(self.actionable)} finding(s) to review; {len(self.findings) - len(self.actionable)} quiet note(s); {len(self.gaps)} coverage gap(s)"]
-        for item in [item for item in record["findings"] if item["classification"] != "quiet"][:30]:
-            lines.append(f"  {item['classification']}: {item['check']} at {item['where']}: {item['value']}")
-        for entry in record["gaps"][:20]:
-            lines.append(f"  NOT INSPECTED: {entry['where']}: {entry['reason']}")
-        if len(self.actionable) > 30 or len(self.gaps) > 20:
-            lines.append("  More entries are in the full report.")
-        return "\n".join(lines)
+        return render_record(self.record())
+
+
+def render_record(record):
+    """Render an already masked scan record, including records returned by a hook worker."""
+    policy = record["policy"]
+    settings = policy.get("sources", {}).get("settings")
+    origin = ("legacy-explicit" if settings == "legacy-explicit" else
+              "saved" if isinstance(settings, dict) and settings.get("configured") else "built-in")
+    actionable = [item for item in record["findings"] if item["classification"] != "quiet"]
+    lines = [f"{Path(record['repository']).name}: {record['material']}; {record['files']} file version(s), {record['commits']} commit(s)",
+             "Checks: " + ", ".join(record["checks"]) + "; external engines: " +
+             (json.dumps(record["engines"], sort_keys=True) if record["engines"] else "none selected"),
+             f"Policy: {origin}; {policy.get('identity_values', 0)} identity/protected value(s), "
+             f"{policy.get('safe_values', 0)} allowance(s), {policy.get('public_handles', 0)} public handle(s)",
+             f"{len(actionable)} finding(s) to review; {len(record['findings']) - len(actionable)} quiet note(s); {len(record['gaps'])} coverage gap(s)"]
+    for item in actionable[:30]:
+        location = item["where"] + (f":{item['line']}" if item["line"] else "")
+        lines.append(f"  {item['finding_id']} [{item['severity']}] {item['classification']}: {item['check']} at {location}: {item['value']}")
+        lines.append("    " + item["recommendation"])
+    for entry in record["gaps"][:20]:
+        lines.append(f"  NOT INSPECTED: {entry['where']}: {entry['reason']}")
+    if len(actionable) > 30 or len(record["gaps"]) > 20:
+        lines.append("  Use --json for all masked entries; no report file is created by default.")
+    for artifact in record["artifacts"]:
+        lines.append(f"  Produced {artifact['kind']}: {artifact['path']} ({artifact['disclosure']})")
+    return "\n".join(lines)
 
 
 def write_report(destination: Path, report: Report):

@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""Read-only cross-machine Git status observer and advisor.
+"""Cross-machine Git observation, suggestions and explicitly selected fleet operations.
 
-Nothing in this tool pulls, pushes, commits, stashes, or otherwise touches an observed
-repository. It reads local Git facts inside explicitly registered roots, publishes a
-privacy-minimized status manifest for this machine into a folder the user's own sync
-client replicates, and reads the manifests other machines left there.
+    python git-sync-suggester/sync_suggester.py --help
+
+Observation reads local Git facts under configured roots and publishes selected status through
+the user's transports. Setup and explicit fleet commands have their own effects and consent;
+this module also delegates to the app/fleet command interface. Run --help for those choices.
+Importing does not authorize enrollment, watching, capture or repository changes.
+
+`check` also reads local working files and cached outgoing history with shared security policy.
+`check --json` returns {schema_version, manifest, local_security, artifacts}; only manifest is
+published. Findings are masked/local-only and do not suppress sync facts or authorize actions.
+Watch and stored-manifest views do not perform this security checking.
 """
 
 from __future__ import annotations
@@ -21,7 +28,7 @@ from _paths import REPO_ROOT, bootstrap  # this file sits at the tool root, so i
 
 bootstrap()  # must precede every sibling import: they live in core/, fleet/ and app/
 
-from advice import render_table  # noqa: E402
+from advice import render_table, security_notices  # noqa: E402
 from aggregate import (build_rows, load_manifests, machine_views, render_dashboard,
                        split_by_fleet)
 from convergence import (
@@ -52,7 +59,9 @@ from watcher import DEFAULT_HEARTBEAT_SECONDS, DEFAULT_INTERVAL_SECONDS, run_wat
 
 from Basic._console import enable_unicode_output  # noqa: E402
 from Basic._paths import sync_home  # noqa: E402
-from Elaborate._archive_registry import registered_roots  # noqa: E402
+from Special._archive.registry import registered_roots  # noqa: E402
+from Special._settings.fleet import fleet_directory, load_fleet_settings  # noqa: E402
+from Special._settings import SettingsError  # noqa: E402
 from version import VERSION, check_for_update, version_line  # noqa: E402
 from Basic._providers._registry import provider_for_host, registered_hosts  # noqa: E402
 PREVIEW_MACHINE_ID = "local-preview"
@@ -87,7 +96,7 @@ def open_transport(config: dict | None, args: argparse.Namespace | None = None):
 
 
 def _config_dir(args: argparse.Namespace) -> Path:
-    return Path(args.config_dir).expanduser() if args.config_dir else sync_home()
+    return fleet_directory(args.config_dir, home=getattr(args, "settings_home", None))
 
 
 def _not_ready(command: str) -> int:
@@ -110,12 +119,31 @@ def _root_specs(args: argparse.Namespace, config: dict | None) -> tuple[list[Roo
 
 
 def command_init(args: argparse.Namespace) -> int:
+    # Archive hints must be checked before optional remote creation or any config save.
+    try:
+        imported_archives = registered_roots(home=getattr(args, "settings_home", None)) if args.from_archives else []
+    except (ValueError, OSError):
+        print("error: archive settings could not be read safely; no initialization was performed", file=sys.stderr)
+        return 2
     config_dir = _config_dir(args)
     existing = None
     try:
-        existing = load_config(config_dir)
+        snapshot = load_fleet_settings(getattr(args, "settings_home", None))
+        existing = load_config(config_dir, home=getattr(args, "settings_home", None))
+        if snapshot is not None:
+            if snapshot.document["schema_version"] != 2:
+                raise ValueError("common fleet enrollment requires v2; no upgrade was performed")
+            snapshot.check_roots("sync", [*(args.root or []), *(args.recursive_root or []), *imported_archives])
+            snapshot.check_identity(args.machine_id, args.machine_label, args.fleet_secret)
+            definitions = {}
+            if args.state_dir:
+                definitions["folder"] = {"path": str(Path(args.state_dir).expanduser().absolute())}
+            if args.state_repo:
+                definitions["repo"] = {"name": args.state_repo}
+            snapshot.transport_changes("sync", definitions)
     except ValueError as exc:
-        print(f"warning: existing config is unusable, it will be replaced: {exc}", file=sys.stderr)
+        print(f"error: existing settings could not be used; no initialization was performed: {exc}", file=sys.stderr)
+        return 2
     if existing and not args.force:
         print(f"Configuration already exists: {config_dir}\n"
               "Re-run with --force to replace it, or edit the file directly.", file=sys.stderr)
@@ -125,14 +153,18 @@ def command_init(args: argparse.Namespace) -> int:
         print("error: --fleet-secret must be 64 hexadecimal characters (copy it from the "
               "machine that created the fleet)", file=sys.stderr)
         return 2
-    config = default_config(args.machine_id, args.fleet_secret)
+    machine = snapshot.document.get("machine") if snapshot is not None else None
+    config = default_config(args.machine_id or (machine["id"] if machine else None),
+                            args.fleet_secret or (machine["fleet_secret"] if machine else None))
+    if machine:
+        config["machine_label"] = machine["label"]
     if args.machine_label:
         config["machine_label"] = args.machine_label
     if args.state_dir and args.state_repo:
         print("error: choose either --state-dir or --state-repo, not both.", file=sys.stderr)
         return 2
     if args.state_dir:
-        config["state_dir"] = str(Path(args.state_dir).expanduser())
+        config["state_dir"] = str(Path(args.state_dir).expanduser().absolute()) if snapshot else str(Path(args.state_dir).expanduser())
     if args.state_repo:
         try:
             RepoTransport(args.state_repo)
@@ -174,6 +206,8 @@ def command_init(args: argparse.Namespace) -> int:
     seen: set[str] = set()
     def add_root(path: str, recursive: bool) -> None:
         resolved = str(Path(path).expanduser())
+        if snapshot is not None:
+            resolved = str(Path(resolved).absolute())
         if resolved in seen:
             return
         seen.add(resolved)
@@ -184,10 +218,9 @@ def command_init(args: argparse.Namespace) -> int:
     for path in args.recursive_root or []:
         add_root(path, True)
     if args.from_archives:
-        imported = registered_roots()
-        for path in imported:
+        for path in imported_archives:
             add_root(path, False)
-        print(f"Imported {len(imported)} root(s) from the archive registry.")
+        print(f"Imported {len(imported_archives)} root(s) from archive settings.")
     config["roots"] = roots
 
     try:
@@ -202,20 +235,30 @@ def command_init(args: argparse.Namespace) -> int:
         if not Path(root["path"]).is_dir():
             print(f"warning: root does not exist yet: {root['path']}", file=sys.stderr)
 
-    written = save_config(config_dir, config)
+    try:
+        written = save_config(config_dir, config, home=getattr(args, "settings_home", None), snapshot=snapshot)
+    except (ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     print(f"Configuration written: {written}")
-    shown = {**config, "fleet_secret": "(hidden — see below)"}
+    shown = {**config, "fleet_secret": "(hidden)"}
     print(json.dumps(shown, indent=2, sort_keys=True))
     print()
-    if args.fleet_secret:
+    if args.fleet_secret or machine:
         print(f"Joined fleet {fleet_id_for(config['fleet_secret'])}.")
     else:
-        print(f"Created fleet {fleet_id_for(config['fleet_secret'])}. To add another machine, "
-              "run init there with:")
-        print(f"\n    --fleet-secret {config['fleet_secret']}\n")
-        print("Carry that value yourself (password manager, typed by hand). Do NOT put it in the "
-              "state directory — the secret is what stops anyone who obtains that folder from "
-              "recovering which repositories you have.")
+        print(f"Created fleet {fleet_id_for(config['fleet_secret'])}. The key is hidden. "
+              "Use fleet-key --show only in the intended local display channel when joining another machine.")
+    return 0
+
+
+def command_fleet_key(args):
+    """Show key metadata by default; raw output requires an explicit local display choice."""
+    from Special._runtime.output import fleet_key_record
+    config = load_config(_config_dir(args), home=getattr(args, "settings_home", None))
+    if config is None:
+        raise SettingsError("no configured fleet key")
+    print(json.dumps(fleet_key_record(config["fleet_secret"], show=args.show), indent=2))
     return 0
 
 
@@ -244,11 +287,18 @@ def _resolve(args: argparse.Namespace) -> Resolution | int:
     """Flags beat saved configuration beats a preview default. Returns an exit code on error."""
     config_dir = _config_dir(args)
     try:
-        config = load_config(config_dir)
+        config = load_config(config_dir, home=getattr(args, "settings_home", None))
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     specs, source = _root_specs(args, config)
+    try:
+        snapshot = config.snapshot if hasattr(config, "snapshot") else load_fleet_settings(getattr(args, "settings_home", None))
+        if snapshot is not None:
+            snapshot.check_roots("sync", [spec.path for spec in specs])
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     if not specs:
         print("error: no roots to observe. Run 'init --root PATH' or pass --root.", file=sys.stderr)
         return 2
@@ -295,6 +345,11 @@ def command_check(args: argparse.Namespace) -> int:
     observation = observe_roots(specs, resolved.secret, fetch=args.fetch,
                                 fetch_workers=args.fetch_workers,
                                 fetch_timeout=args.fetch_timeout, progress=progress)
+    from Special.security._advice import inspect_paths, render_advice
+    security = inspect_paths(zip((repo["repo_id"] for repo in observation.repositories), observation.locations),
+                             settings_home=getattr(args, "settings_home", None),
+                             legacy_policy=getattr(args, "legacy_policy", False),
+                             expected_settings=getattr(config, "snapshot", None))
     manifest = build_manifest(resolved.fleet_id or "preview", machine_id, machine_label,
                               observation.repositories)
 
@@ -310,11 +365,14 @@ def command_check(args: argparse.Namespace) -> int:
             machine_id, manifest, compress=bool((config or {}).get("compress_manifests")))
 
     if args.json:
-        print(json.dumps(manifest, indent=2, sort_keys=True))
+        print(json.dumps({"schema_version": 1, "manifest": manifest, "local_security": security,
+                          "artifacts": []}, indent=2, sort_keys=True))
     elif transport is not None and not args.local_only:
-        print(_dashboard_text(transport, config, merged, own=manifest, show_all=args.all))
+        print(_dashboard_text(transport, config, merged, own=manifest, show_all=args.all, local_security=security))
     else:
-        print(render_table(manifest, merged, branches))
+        print(render_table(manifest, merged, branches, security=security))
+    if not args.json:
+        print("\n" + render_advice(security))
 
     print(f"\nObserved {len(observation.repositories)} repositor(ies) from {source}.",
           file=status_stream)
@@ -382,7 +440,7 @@ def command_watch(args: argparse.Namespace) -> int:
 
 
 def _dashboard_text(transport, config: dict | None, catalog: dict[str, dict],
-                    own: dict | None = None, show_all: bool = False) -> str:
+                    own: dict | None = None, show_all: bool = False, local_security=None) -> str:
     manifests, issues = load_manifests(transport)
     if own is not None:
         manifests = [m for m in manifests if m.get("machine_id") != own["machine_id"]] + [own]
@@ -394,7 +452,16 @@ def _dashboard_text(transport, config: dict | None, catalog: dict[str, dict],
     views = sorted(machine_views(manifests, now, stale_hours, expired_days),
                    key=lambda view: (own is None or view.machine_id != own["machine_id"],
                                      view.label.lower()))
-    text = render_dashboard(views, build_rows(views, catalog), now, show_all=show_all,
+    rows = build_rows(views, catalog)
+    if local_security is not None:
+        notices = security_notices(local_security)
+        for row in rows:
+            if row.repo_id in notices:
+                row.advice = notices[row.repo_id] + "; " + row.advice
+                if notices[row.repo_id].startswith("SECURITY") and row.severity < 85:
+                    row.severity_key = "security"
+        rows.sort(key=lambda row: (-row.severity, row.name.lower()))
+    text = render_dashboard(views, rows, now, show_all=show_all,
                             foreign=foreign, stale_hours=stale_hours,
                             expired_days=expired_days)
     for issue in issues:
@@ -405,7 +472,7 @@ def _dashboard_text(transport, config: dict | None, catalog: dict[str, dict],
 def command_dashboard(args: argparse.Namespace) -> int:
     config_dir = _config_dir(args)
     try:
-        config = load_config(config_dir)
+        config = load_config(config_dir, home=getattr(args, "settings_home", None))
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -456,7 +523,7 @@ def command_converge(args: argparse.Namespace) -> int:
     """
     config_dir = _config_dir(args)
     try:
-        config = load_config(config_dir)
+        config = load_config(config_dir, home=getattr(args, "settings_home", None))
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -516,7 +583,7 @@ def command_doctor(args: argparse.Namespace) -> int:
     config_dir = _config_dir(args)
     report: dict = {"config_dir": str(config_dir)}
     try:
-        config = load_config(config_dir)
+        config = load_config(config_dir, home=getattr(args, "settings_home", None))
         report["config"] = config
         report["config_error"] = None
     except ValueError as exc:
@@ -545,6 +612,7 @@ def build_parser() -> argparse.ArgumentParser:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config-dir", help="override the local state directory "
                                              f"(default: {sync_home()})")
+    parser.add_argument("--settings-home", type=Path, help="select common settings independently of local fleet state")
     parser.add_argument("--version", action="version", version=version_line())
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -601,8 +669,13 @@ def build_parser() -> argparse.ArgumentParser:
                        help=f"parallel fetches (default {DEFAULT_FETCH_WORKERS})")
     check.add_argument("--fetch-timeout", type=int, default=DEFAULT_FETCH_TIMEOUT_SECONDS,
                        help=f"seconds per fetch (default {DEFAULT_FETCH_TIMEOUT_SECONDS})")
-    check.add_argument("--json", action="store_true", help="print the privacy-minimized manifest")
+    check.add_argument("--legacy-policy", action="store_true", help="explicitly use legacy security lists; never bypass common settings")
+    check.add_argument("--json", action="store_true", help="local result with manifest and masked local_security; only manifest is shared")
     check.set_defaults(handler=command_check)
+
+    key = subparsers.add_parser("fleet-key", help="inspect configured key metadata; no logs or writes")
+    key.add_argument("--show", action="store_true", help="print the raw key here; any agent capturing this output will receive it")
+    key.set_defaults(handler=command_fleet_key)
 
     dashboard = subparsers.add_parser("dashboard", help="read peer manifests without observing")
     dashboard.add_argument("--state-dir", help="override the saved manifest folder")
@@ -675,6 +748,8 @@ def build_parser() -> argparse.ArgumentParser:
     def run_fleet(args):
         from fleet_app import main as fleet_main
         prefix = ["--config-dir", args.config_dir] if args.config_dir else []
+        if args.settings_home is not None:
+            prefix += ["--settings-home", str(args.settings_home)]
         return fleet_main(prefix + args.fleet_args)
     fleet.set_defaults(handler=run_fleet)
     return parser
@@ -693,7 +768,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.handler is command_alias and args.repo_id and not args.name and not args.list:
         print("error: alias needs both a repo id and a name (or use --list)", file=sys.stderr)
         return 2
-    return args.handler(args)
+    try:
+        return args.handler(args)
+    except (OSError, ValueError) as exc:
+        message = str(exc) if isinstance(exc, SettingsError) else "operation failed; no alternate settings profile was used"
+        print(f"error: {message}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

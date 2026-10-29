@@ -1,4 +1,8 @@
-"""Read-only legacy-to-common settings preview. Never writes or changes a running component."""
+"""Read-only legacy-to-common settings preview. Never writes or changes a running component.
+
+Import preview_migration from Special._settings.migration and pass an explicit user-data home.
+Use the returned safe summary for agents; the candidate document contains private settings.
+"""
 from __future__ import annotations
 
 import copy
@@ -7,9 +11,10 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from Special._settings import SCHEMA_VERSION, SETTINGS_NAME, SettingsError, _absolute, _unique_object, validate_document
-from Special import _settings_records as records
-from Special._settings_store import fingerprint, revision
+from Special._settings import (SCHEMA_VERSION, SETTINGS_NAME, SettingsError, _absolute,
+                               _unique_object, legacy_locations, validate_document)
+from Special._settings import records
+from Special._settings.store import fingerprint, revision
 
 CLI_FIELDS = {"schema_version", "fleet_secret", "machine_id", "machine_label", "state_dir", "state_repo",
               "roots", "stale_hours", "expired_days", "compress_manifests"}
@@ -82,11 +87,7 @@ def preview_migration(home, *, sync_directory=None):
     write and use preview.verify as the writer's check_sources callback.
     """
     home = _absolute(home, Path.cwd())
-    sync = _absolute(sync_directory, Path.cwd()) if sync_directory is not None else home / "sync-suggester"
-    paths = {"cli": sync / "config.json", "app": sync / "fleet-app.json",
-             "archives": home / "gitspecops_managed_archives.json",
-             "never_publish": home / "security" / "never_publish.txt",
-             "safe_values": home / "security" / "safe.txt", "target": home / SETTINGS_NAME}
+    paths = {**legacy_locations(home, sync_directory=sync_directory), "target": home / SETTINGS_NAME}
     snapshots, loaded, conflicts = {}, {}, []
     if sync_directory is None and "GITSPECOPS_SYNC_HOME" in os.environ:
         conflicts.append("legacy-sync-location-requires-explicit-choice")

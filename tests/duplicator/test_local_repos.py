@@ -14,7 +14,7 @@ from _bootstrap import setup  # noqa: E402
 setup()
 
 from Basic._console import enable_unicode_output  # noqa: E402
-from Special.duplicate_org._local_repos import (  # noqa: E402
+from Special._org_duplicator.local_repos import (  # noqa: E402
     duplicate_repo_names,
     safe_cleanup_directory,
     scan_local_git_repos,

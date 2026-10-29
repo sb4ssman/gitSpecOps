@@ -7,6 +7,25 @@ Each operation is the kind of script you would eventually write yourself, with t
 parts already thought through: it shows you a plan before it acts, it refuses anything ambiguous,
 and it never touches your credentials.
 
+The common source launcher is `python gitso.py`: use `commands` to list operations, `docs`
+to read source-derived usage, or a command such as `scan-tree --help`. With a terminal it also
+offers a menu. Existing direct scripts remain supported; the launcher calls their entry
+functions and preserves their individual behavior. It does not install a shell alias.
+
+Security scans use built-in checks without extra Python packages. Optional credential engines
+can be selected individually or together with repeatable `--engine gitleaks`, `--engine
+betterleaks` or `--engine trufflehog`; `--engine none` overrides saved selection. Selected
+unavailable/unsupported engines report incomplete checking. Findings are masked but include
+locations, line numbers, finding ids and review guidance. No engine is installed automatically;
+native engine/version validation remains development work.
+
+Archive Sync's explicit `--publish` action now checks the exact outgoing history before sending
+one planned commit/branch. Prohibited values, high-confidence credential patterns, unresolved
+findings and incomplete checks hold the push; `--yes` does not bypass security. An earlier
+commit can still block publication even if the latest files are clean. Select a security
+profile with `--settings-home`, or explicitly select legacy lists with `--legacy-policy`.
+Commit gates and other publication paths remain integration work; Basic stays policy-free.
+
 ---
 
 ## The special operations
@@ -17,7 +36,7 @@ and it never touches your credentials.
 repositories.*
 
 ```bash
-python3 Special/duplicate_org/duplicate_org.py
+python3 Special/duplicate_org.py
 ```
 
 Downloads every repo in an org, uploads a folder of local repos into one, or migrates org → org.
@@ -31,14 +50,48 @@ parallel workers.
 *Point it at a folder full of clones and keep every one of them current, safely.*
 
 ```bash
-python3 Special/archive_update.py --root /path/to/archive
+python3 Special/update_archive.py --root /path/to/archive
 ```
+
+Use `--scan-only --json --no-log` for a machine-readable inspection without report or log
+files on an unconfigured profile. Saved roots, exclusions and output/logging preferences are
+optional; explicit flags override them. Reports are off by default, while compact counts-only
+logs default to the selected user-data home. `--no-report` forces stdout and `--no-log` disables
+logging separately. Legacy settings require explicit migration; they are never silently adopted.
 
 **Fast-forward pulls only.** It never merges, rebases, resets, stashes, or deletes; a repository
 that is dirty, diverged, or on an unapproved remote is reported and skipped, not "fixed". The
 richer engine (`archive_sync.py`) additionally discovers an org's full repo set and can clone
 what is missing, repair stale origins after a rename, and rename folders to match upstream —
 each as a separate, explicitly approved class of change.
+
+Manage registered archives with current saved choices:
+
+```sh
+python3 Special/archive_manager.py --list
+python3 Special/archive_manager.py --refresh /path/to/archive --scan-only --json --no-report --no-log
+python3 Special/archive_manager.py --install /path/to/archive --mode update
+```
+
+Use `--settings-home /path/to/profile` to select a profile. Existing common v2 settings own
+archive choices; legacy-only profiles retain their registry without automatic migration.
+New archive launchers read saved choices when run. Reinstall without mode/remote-prefix flags
+to preserve those choices; older launchers need deliberate regeneration before migration.
+`--forget` removes common registration while retaining receipts and launchers for review.
+Refresh uses common `archive_manage` output/logging preferences. Reports default off; a saved
+preference or `--output-dir` enables one aggregate report. `--output-mode stdout|file|both`,
+`--json`/`--format`, `--no-report`, `--log`/`--no-log` and `--log-dir` override those choices.
+Invalid selected sinks stop the operation without choosing another location. Structured results
+list the actual report/log artifacts; file-only mode announces them on stderr. Update mode uses
+the Git-only updater; sync mode retains approved pull/clone discovery. Refresh never publishes,
+rewrites origins or renames folders. `--force-sync` changes only that invocation's mode.
+
+Programmatic callers can import `run_refresh` from `Special.archive_manager`; it returns a
+masked result with per-archive operations, outcomes and partial failures, without printing or
+capturing process output. Scan-only leaves receipts unchanged. Actual run receipts record
+status/time, while report locations come from the invocation's artifacts; status no longer
+guesses a report by searching archive folders. Registration/launcher creation and scheduling
+retain their separate workflows and remaining legacy logging.
 
 ### 3. Sync Suggester
 
@@ -50,6 +103,13 @@ order from wherever you are sitting.*
 python3 git-sync-suggester/sync_suggester.py check          # what needs attention, everywhere
 python3 git-sync-suggester/sync_suggester.py fleet catchup   # plan a group fast-forward
 ```
+
+An existing common profile owns CLI/app enrollment. Select it with `--settings-home` before
+the command (after `fleet` for app commands); `--config-dir` separately selects local fleet
+state and legacy inputs. CLI and app keep their own transport selections. Invalid common
+settings never fall back to old files, and saves preserve other components. Profiles with
+only legacy configuration still work in place. Common migration remains an explicit,
+unfinished workflow; nothing is migrated merely by running a command.
 
 Across machines it becomes the thing you actually want at 2am: "you left 17 uncommitted files on
 the laptop." Then it helps you fix it: group fast-forward everything after weeks away, publish
@@ -103,7 +163,7 @@ There is no install step. Clone it and run the scripts:
 ```bash
 git clone https://github.com/sb4ssman/gitSpecOps
 cd gitSpecOps
-python3 Elaborate/archive_manage.py --help
+python3 Special/archive_manager.py --help
 ```
 
 Optionally, `run_setup` builds a clean `.venv` and writes one convenience launcher per tool for
@@ -118,15 +178,119 @@ Launchers are **generated, never committed** — edit `setup_gitspecops.py`, not
 project is deliberately *not* installed into `.venv`; the tools are plain scripts and `.venv` is
 just a predictable interpreter.
 
+Updater preferences can be configured without installing launchers or enrolling a fleet:
+
+```bash
+python3 setup_gitspecops.py settings
+python3 setup_gitspecops.py settings-preview --root /path/to/archive --no-log --json
+python3 setup_gitspecops.py settings-save --root /path/to/archive --no-log --json --approve '<review-id>'
+```
+
+Guided setup reviews changes and requires typed `SAVE`. For assisted use, copy the preview ID
+and keep the same target/options when saving; changed files invalidate it. Paths are hidden
+unless `--show-paths` is selected. A custom `--settings-home` stays an explicit invocation/
+environment choice, without relocating other profiles. `settings-migration-preview` can inspect
+legacy mapping. For an archive/security-only profile, use the reviewed existing-settings setup:
+
+```sh
+python3 setup_gitspecops.py settings-existing
+python3 setup_gitspecops.py settings-existing-plan --json
+```
+
+The plan changes nothing. Guided saving requires separate confirmation that legacy writers are
+stopped and the launcher plan was reviewed, then typed `SAVE`. Assisted use has an explicit
+`settings-existing-save --approve '<review-id>' --legacy-writers-stopped --launcher-plan-reviewed`
+action. Original bytes are retained under the selected user-data home before shared settings
+are created. `settings-existing-status --switch-id '<review-id>'` inspects any interrupted switch;
+`settings-existing-resume` requires the two confirmations again and refuses newer data. Add
+`--settings-home /path/to/profile` when needed. Paths are hidden unless the plan's `--show-paths`
+is selected. Launcher repair/retirement stays a separate choice; this action does not run Git,
+refresh archives, change scheduling or enroll a fleet. Profiles with existing fleet configuration
+need a separately reviewed conversion.
+
 ---
+
+## Security scans
+
+Active scans use common security policy and print masked results without creating reports or logs:
+
+```sh
+python3 Special/security/scan_tree.py /path/to/repo --settings-home /path/to/profile --json
+python3 Special/security/scan_history.py /path/to/repo --settings-home /path/to/profile --json
+```
+
+Saved protected values remain in force when an additional `--never-publish` file is selected.
+`--safe-file` and `--safe` add allowances; conflicting protected/safe values produce an error.
+Excluded roots or subtrees are refused before inspection. `--out` explicitly requests a full
+private report using the current ignored-location rules.
+
+For an unmigrated profile, `--legacy-policy` explicitly reads its old text lists without
+changing them. It refuses an existing common settings file. Default scans never silently
+fall back to legacy policy. General settings conversion, policy editing UI and fleet/action integration remain
+unfinished; these scans do not enforce commits or pushes in other tools.
+
+### Checked named-file commits
+
+Preview the working-tree files, message and effective Git author/committer before committing:
+
+```sh
+python3 gitso.py commit /path/to/repo file.py docs/usage.md -m 'Describe the change' --json
+python3 gitso.py commit /path/to/repo file.py docs/usage.md -m 'Describe the change' --apply --approve '<plan-id>'
+```
+
+Use the same arguments and the preview's `plan_id`; changed inputs invalidate approval.
+`Special/commit_repo.py` is the equivalent direct entry point. Both accept `--settings-home`.
+Only the named files are committed, using their whole working-tree contents, preserving other
+staged work. This is not a commit of the entire index. Checks include Git-filtered staged bytes
+and the final native hook inputs. Findings needing review and incomplete checks hold the action.
+
+Existing traditional hooks retain their order through a temporary per-invocation relay; no
+hooks or Git settings are permanently installed. Requires Git 2.36 or later. Direct individual
+files/deletions on an attached branch are supported; directories, linked files, merge/rebase
+states and newer configured hook chains require compatibility work. Hook edits to approved
+contents/message require another preview. A refusal after staging leaves the selected files
+staged. If Git already created a commit and final verification fails, the result says `partial`
+and reports whether a commit was observed; inspect locally before retrying. Nothing is pushed
+or automatically undone. Native Git/hook error text stays out of normal text/JSON output.
+
+### Checked publication and sync advice
+
+```sh
+python3 gitso.py push /path/to/repo --json
+python3 gitso.py push /path/to/repo --apply --approve '<plan-id>'
+python3 gitso.py sync --settings-home /path/to/profile check --root /path/to/library --local-only --no-publish --no-catalog --json
+```
+
+`Special/push_repo.py` is the direct push route. Preview selects the local branch/tip/destination
+and policy without network access or outgoing security clearance. Apply requires the unchanged
+plan, fetches and checks actual outgoing history through the same gate as Archive Sync, then
+publishes that fixed branch snapshot. There is no force, extra-tag or security-bypass option.
+
+Sync `check` now checks local working files and cached outgoing history alongside Git status.
+Missing upstreams, stale scope, selected-engine failures and unsupported mappings are explicit;
+advice does not authorize an action. Its JSON is a local envelope with `schema_version`,
+`manifest`, `local_security` and `artifacts`, replacing the former bare-manifest stdout. Only
+`manifest` is sent to transports. Security findings stay local. Observation still succeeds with
+alerts so useful sync facts remain available; inspect each security `check_status`.
+
+The running local peer dashboard offers **Check local security** on observed local repositories.
+It invokes the same reader for every local copy and displays timestamped masked findings and
+coverage in session memory. It writes no report and shares no findings. Existing manifest-only
+dashboards and watch mode do not perform these checks; fleet status alone is not clearance.
+
+Fleet setup now hides generated keys. Use `gitso sync fleet-key` or `gitso app fleet-key` for
+metadata; `--show` deliberately prints the raw key here. An agent capturing that output sees it.
+The native Windows tray uses the shared event/counter logger at the selected app logging
+directory (`<user-data>/logs/app_tray.log` by default), respecting disabled logging and sink
+errors. Console output and shown keys are not copied into logs or notifications.
 
 ## Archive updating in more detail
 
-### `archive_update.py` vs `archive_sync.py`
+### `update_archive.py` vs `archive_sync.py`
 
 Both fast-forward clean repositories. The difference is remote discovery:
 
-- **`archive_update.py`** — `git` only, no network beyond the pull. It updates what is already
+- **`update_archive.py`** — `git` only, no network beyond the pull. It updates what is already
   on disk. Works with any Git host.
 - **`archive_sync.py`** — asks a provider (GitHub via `gh`) what *should* be there, so it can
   clone missing repositories, spot renames, and flag orphans.
@@ -139,25 +303,38 @@ Identity is by **stable provider id**, never by folder name or URL. GitHub node 
 repository and organization renames, so a deliberately renamed local folder is preserved while
 genuine upstream drift is surfaced for you to confirm.
 
-### `archive_manage.py` — the front door
+### `archive_manager.py` — the local front door
 
-Registers archives, installs per-archive launchers, refreshes everything, writes logs, and
-manages an optional Windows scheduled task. Its registry, log and refresh-all launcher live in
+Registers archives, installs per-archive launchers, refreshes saved update/sync modes and writes
+local logs. Scheduling remains in `Elaborate/archive_manage.py`. The registry, log and scheduled
+refresh-all launcher live in
 your per-user gitSpecOps folder (`%APPDATA%\gitspecops` on Windows, `~/.config/gitspecops`
 elsewhere; `GITSPECOPS_HOME` overrides), never in the checkout, so the scheduled task keeps
 working when the code moves.
 
 ```powershell
-python Elaborate\archive_manage.py --refresh-all --scan-only
+python Special\archive_manager.py --refresh-all --scan-only
 python Elaborate\archive_manage.py --install-monthly-task --task-day 1 --task-time 09:00
 python Elaborate\archive_manage.py --task-status
 ```
 
-Scheduled and launcher runs may only ever *update* or *sync*. `--reconcile` and
-`--rename-folders` are interactive-only, by construction — a background job must never rewrite
-an origin or rename a folder while you are asleep.
+Generated archive launchers only refresh saved update/sync choices. Origin and folder repairs
+require explicit archive-sync flags. Registration selects the saved mode, then offers a normal
+refresh; it does not repair repositories while registering them.
 
-### Publishing — the one command that writes to a remote
+`Special/update_archive.py` is the updater. `Special/archive_manager.py` owns registration and
+local refresh. `Elaborate/archive_manage.py` only creates refresh-all launchers or manages
+scheduling; it does not accept local management flags. Generated refresh-all launchers invoke
+the Special manager directly. Existing launchers are never rewritten automatically.
+
+Archive commands default to stdout, with optional counts-only local logging. Saved settings or
+`--output-mode`, `--output-dir`, `--json`, `--log` and `--no-log` select channels. Required
+destinations fail explicitly without fallback. Results list actual report/log artifacts;
+file-only commands present their destinations on stderr. Direct scripts and `gitso` use the
+same headless operations. Archive sync defaults to a preview; mutations require approval,
+including `--yes` when invoked without a terminal.
+
+### Publishing — explicit remote writes
 
 ```bash
 python3 Special/archive_sync.py --root /path/to/archive --publish --dry-run
@@ -262,8 +439,9 @@ Two rules that make the advice trustworthy:
 Basic/                 careful primitives: one subprocess wrapper, repo facts, discovery,
                        prompts, state paths, and the host providers (Basic/_providers/)
 _os/                   per-OS pieces, the same files for Windows, Linux and macOS
-Elaborate/             archive_manage: registry, launchers, schedule
-Special/               archive_update, archive_sync, and duplicate_org/ (org duplication)
+Elaborate/             archive_manage: scheduling and legacy command compatibility
+Special/               update_archive, archive_sync, archive_manager, duplicate_org;
+                       shared implementation in private helper folders
 git-sync-suggester/    the optional fleet tool (see below)
 tests/                 offline, synthetic; no network, no real repositories
 .agents/               project brief, working notes, work log, durable knowledge
@@ -314,7 +492,7 @@ that versioned contract rather than reclassifying Git facts.
 When unsure, look before you leap:
 
 ```bash
-python3 Elaborate/archive_manage.py --refresh-all --scan-only
+python3 Special/archive_manager.py --refresh-all --scan-only
 python3 Special/archive_sync.py --root /path --publish --dry-run
 ```
 

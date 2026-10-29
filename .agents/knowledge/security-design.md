@@ -1,5 +1,29 @@
 # Security: the rebuild design
 
+**2026-10-28 user ruling:** the updated product contract takes precedence over this historical
+design's deferred-policy and Gitleaks-only wording. Keep the stdlib core; Gitleaks, Betterleaks
+and TruffleHog are optional independent adapters, including an explicit none selection. Master
+policy plus additive machine-local policy must be portable at the selected owning scope.
+Default findings must be actionable without raw values; present produced artifacts explicitly.
+Direct scripts, `gitso` and GUI share manual scans and automatic supported-action checks.
+Do not treat a reveal flag as agent isolation or faster transport as permission to share content.
+This ruling does not authorize installation or actual user-history/settings changes.
+
+**2026-10-28 implementation evidence:** Special/security/_push.py now composes selected policy,
+the active outgoing-range reader and optional engines with Basic.fetch and a fixed-tip,
+single-branch Basic.push.push_snapshot. Archive Sync publish is the first publishing caller.
+Special/commit_repo.py and gitso commit now use the checked named-file operation in _commit/:
+read-only exact-plan preview, raw/staged/final-hook checks, preserved unrelated staging and
+traditional hooks via a temporary relay, and explicit partial state after uncertain execution.
+No persistent hooks/config are installed. As of 2026-10-29, Special/push_repo.py / gitso push
+provide the direct publication route through the same gate, with policy-bound local planning.
+Sync check and the explicit local dashboard security action share working-tree/cached-outgoing
+advice; results stay outside fleet manifests/reports. Continuous advice, recovery/hygiene,
+remote attended actions and full GUI commit/push remain unfinished.
+High-confidence classification and check_status are shared by reports and both gates.
+See product-contract.md for supported mappings, refusal states and concurrency limits;
+working notes/log contain the disposable tests rather than a claim of global enforcement.
+
 **2026-10-26 integration direction:** [product-contract.md](product-contract.md) is the newer
 contract for remembered output settings, explicit destinations, local revelation and security
 alongside sync advice and commit/push actions. The active read-only scanner is a draft; the

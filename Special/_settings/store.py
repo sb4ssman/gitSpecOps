@@ -1,4 +1,8 @@
-"""Explicit validated settings writes: atomic replacement and a cooperating-writer lock."""
+"""Explicit validated settings writes: atomic replacement and a cooperating-writer lock.
+
+Import write_settings from Special._settings.store. Supply the selected user-data home and,
+when replacing a file, its exact revision. This module never writes on import or resolution.
+"""
 from __future__ import annotations
 
 import hashlib
@@ -9,7 +13,7 @@ import stat
 from pathlib import Path
 
 from Basic._files import atomic_write_bytes
-from Special._settings import SETTINGS_NAME, SettingsError, _absolute, validate_document
+from Special._settings import SETTINGS_NAME, SettingsError, _absolute, _unique_object, validate_document
 
 
 def fingerprint(payload):
@@ -39,6 +43,32 @@ def _real_path(path):
             raise SettingsError("settings writes must not traverse links")
 
 
+def read_settings_document(home):
+    """Read one existing validated document and its exact byte revision for an explicit editor.
+
+    No defaults, legacy fallback, creation or migration. This primitive keeps the original
+    fields for writers; normal operations continue to use resolve_settings. Storage must be
+    unlinked and outside the source checkout, just as for writes. Errors omit supplied values.
+    """
+    if not isinstance(home, (str, os.PathLike)) or not str(home).strip():
+        raise SettingsError("explicit settings home must not be empty")
+    destination = _absolute(home, Path.cwd()) / SETTINGS_NAME
+    if Path(__file__).resolve().parents[2] in destination.parents:
+        raise SettingsError("settings home must be outside the source checkout")
+    try:
+        _real_path(destination)
+        payload = destination.read_bytes()
+    except FileNotFoundError:
+        raise SettingsError("an existing common settings document is required; migration is not automatic") from None
+    except OSError:
+        raise SettingsError("settings document could not be read") from None
+    try:
+        document = validate_document(json.loads(payload.decode("utf-8"), object_pairs_hook=_unique_object))
+    except (ValueError, UnicodeError, RecursionError):
+        raise SettingsError("settings document is not valid unambiguous configuration") from None
+    return document, fingerprint(payload)
+
+
 def write_settings(document, *, home, expected_revision=None, check_sources=None):
     """Validate and write on explicit invocation; never used implicitly by the resolver.
 
@@ -58,7 +88,7 @@ def write_settings(document, *, home, expected_revision=None, check_sources=None
     except (ValueError, TypeError):
         raise SettingsError("settings could not be encoded") from None
     destination = _absolute(home, Path.cwd()) / SETTINGS_NAME
-    if Path(__file__).resolve().parent.parent in destination.parents:
+    if Path(__file__).resolve().parents[2] in destination.parents:
         raise SettingsError("settings home must be outside the source checkout")
     lock = destination.with_name(".settings.lock")
     owned_lock = False

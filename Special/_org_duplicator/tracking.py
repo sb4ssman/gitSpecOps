@@ -6,6 +6,8 @@ Resume state for the duplicator. Each operation mode keeps its own set of run fi
 RUNS_DIR: completed-repo list, error log, success log, and a session marker. If a new run
 targets a different source/destination than the last, the stale per-mode files are cleared
 so resume can't mix two unrelated operations.
+Import from Special._org_duplicator.tracking. Run files retain their existing ignored location;
+moving this helper is not a runtime-data migration. Importing creates no run folder or files.
 """
 
 import os
@@ -14,8 +16,8 @@ from pathlib import Path
 
 from Basic._console import PRINT_LOCK
 
-#: Run and resume files. Gitignored; kept beside the operation so a resume finds them.
-RUNS_DIR = Path(__file__).resolve().parent / "runs"
+#: Preserve the established ignored run directory independently of the helper's new location.
+RUNS_DIR = Path(__file__).resolve().parents[1] / "duplicate_org" / "runs"
 
 
 def log_message(message, log_file):

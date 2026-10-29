@@ -158,16 +158,45 @@ This repo is intentionally small. Keep it that way.
 
 The entry-point tools are:
 
-- `Elaborate/archive_manage.py` (front door: registry, launchers, scheduling)
-- `Special/archive_update.py` (standalone, git-only, update-only)
-- `Special/duplicate_org/duplicate_org.py`
+- `Special/archive_manager.py` (local front door: registry, launchers, update/sync)
+- `Elaborate/archive_manage.py` (scheduling and existing-launcher compatibility)
+- `Special/update_archive.py` (standalone, git-only, update-only)
+- `Special/duplicate_org.py`
 - `git-sync-suggester/sync_suggester.py` (cross-machine status, and the group operations that act
   on it — observation never mutates, mutation is always an invoked command)
 
-The archive engine behind the manager is split into single-purpose modules in the same folder:
+The archive manager and direct commands share implementations in `Special/_archive/`:
+updater.py, sync.py, manager.py, plan.py and registry.py. The local manager does not import
+Elaborate or scheduling. The standalone updater now integrates common settings, headless
+structured results and counts-only logging through update_operation.py/update_cli.py and
+Special/_runtime/. The manager/registry now read archive choices from existing common v2
+profiles, with separate receipts; their output/logging and other consumers await adoption.
+
+Active tree/history scanners now use common security settings through the resolver. They accept
+--settings-home; --legacy-policy explicitly reads original text lists only without a common
+settings file. Common protected values accumulate and exact safe/block conflicts fail. The
+private Special/_settings/security.py editor reuses the shared revision-checked writer; no
+policy editor UI is enabled. Recovery/hygiene/action policy adoption remains open.
+
+Fleet CLI/app configuration readers and savers now use Special/_settings/fleet.py for existing
+common enrollment. --settings-home selects the profile; --config-dir selects fleet state and
+legacy inputs independently. CLI single-transport and app multiple-transport choices remain
+distinct. All app settings commands and the dashboard client choice save to their loaded
+authority; common saves require source revisions. Legacy-only profiles remain usable without
+automatic common migration. Existing launchers, global cutover ownership, common output/logging
+and native rollout still need deliberate follow-through; general fleet conversion remains unavailable.
+
+Setup now has settings-existing (guided) and settings-existing-plan/save/status/resume for a
+reviewed archive/policy-only switch. Exact approval, stopped-writer and separate launcher-review
+attestations precede any save. Original bytes are retained before receipts become common-only;
+interruption has a validated inspect/resume path. The launcher repair/retirement plan never
+executes itself. Broader profiles remain unsupported by this scoped action. No actual user
+profile or launcher was changed while implementing/testing it; see knowledge/settings-schema.md.
+
+The archive operations use:
 
 - `Special/archive_sync.py` (plan/apply: detect -> plan -> decide -> execute -> review)
-- `Special/_archive_plan.py` (the judgment: fast-forward eligibility, drift buckets, publish
+- `Special/_archive/plan.py` (the judgment: fast-forward eligibility, drift buckets, publish
   classification; its tests are `tests/special/test_archive_plan.py`)
 - the git operations themselves are `Basic/pull.py` (ff-only), `Basic/push.py` (never forced),
   `Basic/clone.py` (never over an existing folder), `Basic/fetch.py` and `Basic/reset_keep.py`
@@ -179,7 +208,18 @@ The optional bootstrap helper is:
 - `setup_gitspecops.py` (writes the generated launchers, then builds a bare `.venv` — `uv sync`,
   or the stdlib `venv` module as a fallback; the project itself is never installed into it)
 
-Inside each tool folder the modules are still sibling files (imported with a `try: from . / except: from` shim) until phase 3 moves them into the layers. There is no `src/` package, no `cli.py` and no console-script entry point, and there will not be.
+The setup menu also offers guided updater preferences and read-only migration preview.
+settings-preview/settings-save share Special/_settings/setup.py's reviewed plan/writer flow;
+only updater fields change after typed SAVE or exact preview-id approval. Summaries hide
+paths/policy/identity values by default; --show-paths explicitly reveals paths only. Legacy
+activation awaits remaining security/fleet adapters and reviewed launcher transition. Settings actions never bootstrap, write launchers,
+authenticate or run repository operations.
+
+Archive planning and duplicator helpers use explicit imports from private Special folders.
+The legacy fleet/app tree remains under `git-sync-suggester/` pending its reviewed migration.
+These are plain source scripts, without an installable `src/` package or console-script entry
+point. The agreed common CLI/menu is recorded in the product contract; its dispatcher is not
+implemented yet.
 
 ### `Basic/` and `_os/` — the bottom of the stack (phase 1, 2026-09-21)
 
@@ -244,13 +284,13 @@ keep it.
 
 Launchers are **generated by `setup_gitspecops.py` and not committed** — they are convenience
 shims; the `.py` entries are the real tools and can always be run directly
-(`python3 Special/archive_update.py --help`, or via `uv run python ...`).
+(`python3 Special/update_archive.py --help`, or via `uv run python ...`).
 One launcher per tool, written into the REPO ROOT (not the tool folder), and only for the
 running OS: `.sh` on Linux/macOS, `.ps1` + a `.bat` double-click shim on Windows:
 
-- `update-archive` → `Special/archive_update.py`
-- `manage-archives` → `Elaborate/archive_manage.py`
-- `duplicate-github-org` → `Special/duplicate_org/duplicate_org.py`
+- `update-archive` → `Special/update_archive.py`
+- `manage-archives` → `Special/archive_manager.py`
+- `duplicate-github-org` → `Special/duplicate_org.py`
 - `suggest-sync` → `git-sync-suggester/sync_suggester.py`
 
 They are gitignored. To change launcher behavior, edit `LAUNCHER_SPECS` / the templates in
@@ -258,26 +298,47 @@ They are gitignored. To change launcher behavior, edit `LAUNCHER_SPECS` / the te
 Windows logic, the `.bat` is a double-click shim, the `.sh` is the POSIX twin; every launcher
 prefers the repo's `.venv` and falls back to `uv run`. `run_setup.{bat,ps1,sh}` stay committed —
 they bootstrap setup itself. The per-archive `update_archive` launchers and the
-`refresh_managed_archives` launcher are generated at runtime by `Elaborate/archive_manage.py`
+`refresh_managed_archives` launcher are generated by the Special manager and Elaborate scheduler
 through `_os/*/launcher.py` (they bake in real paths) and follow the same prefer-`.venv` scheme.
 The refresh-all launcher lives in the per-user state folder, not the checkout: a scheduled task
 points at it, and that path must survive the code moving (2026-09-22).
 
 ## Archive Tools
 
-`Special/archive_update.py` is the low-level, git-only updater. It scans direct children of archive roots and only updates repos that:
+`Special/update_archive.py` is the low-level, git-only updater. It scans direct children of archive roots and only updates repos that:
 
 - are Git work trees rooted at that child folder
 - have an approved `origin` remote
 - have clean work tree and index state
 
+It now consumes common component settings. Saved roots/exclusions and output/logging preferences
+are overridden per invocation. When stdout is enabled, --json reserves it for the result;
+--no-report forces stdout and --no-log separately disables default local operational logging.
+The public run_update API is headless and returns schema-v1 results. The full contract, failure
+behavior and legacy-profile migration refusal are in [settings-schema.md](knowledge/settings-schema.md).
+
 It should use fast-forward pulls only. It must not merge, rebase, reset, delete repos, install dependencies, run project code, or recurse through arbitrary nested directories.
 
-`Special/archive_sync.py` is the richer engine used by the manager. It can also discover an org's full repo set through a provider and clone missing repos, reconcile stale origins, and rename folders to match upstream. Every operation is graceful (failures are collected, never fatal) and nothing ambiguous is auto-applied. Discovery is the only host-specific part: when no provider matches the host, or discovery fails, `archive_sync.py` must degrade to the same fast-forward-only behavior as `archive_update.py` (pull every clean repo; never invent clones, orphans, or renames). The `remote_authoritative` flag in `detect_plan`/`build_plan` is what enforces this; keep it honest.
+`Special/archive_sync.py` and the manager share headless `_archive/operation.py`.
+Update delegates to the updater; sync adds provider discovery and clones; explicit repair flags
+select origin/folder changes. Failed/nonexistent provider discovery never invents clones or
+orphans. Publication is a separate request and checks exact outgoing history before each push.
+Every presentation result is masked, with actual report/log artifacts; stdout is the default.
 
-`Elaborate/archive_manage.py` owns the archive registry and friendly workflow. It installs archive-local `update_archive` launchers (which call `Special/archive_sync.py` in the archive's configured `update` or `sync` mode), tracks managed archive folders, refreshes all managed archives **in-process** (it calls `archive_sync.main(argv)`; no child Python), writes its log, and manages the optional scheduled task through `_os/*/schedule.py` (Windows Task Scheduler; Linux and macOS report unsupported). Scheduled/launcher runs must never pass `--reconcile`, `--rename-folders` or `--publish`; `automated_sync_args()` is the one place those arguments are built, and `tests/elaborate/test_archive_manage.py` pins it.
+`Special/archive_manager.py` owns registration, status, forgetting and registered refresh.
+New per-archive launchers invoke its --refresh with a fixed selected home; current saved
+mode/allowances are resolved on each run. New refresh-all launchers also invoke this manager.
+`Elaborate/archive_manage.py` handles scheduling actions only. Registration has no direct
+pull/clone/repair pipeline; it may offer a normal refresh after registration. No generated
+archive launcher selects publication or repairs. See the shared runner contract in
+[settings-schema.md](knowledge/settings-schema.md).
 
-The registry is per-user runtime state, outside the checkout (`Elaborate/_archive_registry.py`):
+The registry is per-user runtime state, outside the checkout (`Special/_archive/registry.py`).
+Common v2 settings own choices when present; legacy-only profiles retain their registry.
+Common saves mark receipts as version 2 so missing settings cannot reactivate old copies.
+Locks/source revisions refuse stale saves; partial multi-file failures are explicit. Existing
+launchers need reviewed regeneration before real migration. Manager refresh and direct archive sync now use the common runtime; other security/fleet consumers
+and native/multimachine acceptance remain open.
 
 ```text
 <per-user config>/gitspecops/gitspecops_managed_archives.json   # GITSPECOPS_HOME overrides
@@ -287,7 +348,7 @@ The registry is per-user runtime state, outside the checkout (`Elaborate/_archiv
 
 ### The push direction ("publish") — shipped 2026-09-03, first slice
 
-`archive_sync.py --publish` is the only code in gitSpecOps that writes to a remote. It is
+`archive_sync.py --publish` and `push_repo.py` share the outgoing-history security gate. It is
 deliberately narrow, and the narrowness is the feature:
 
 - **Non-force push only.** `git push` with no `--force`, so git itself refuses anything that is
@@ -310,9 +371,9 @@ deliberately narrow, and the narrowness is the feature:
 - `--dry-run` previews; a typed `PUBLISH` confirms; pushes are paced (`--publish-pause`) so a
   bulk publish cannot become a CI storm.
 
-Still not built, from the original design notes: per-agent branches and `open_pr()` on the
-provider seam, auto-commit behind an explicit flag, protected-branch awareness, and secret/size
-pre-flight checks. Ship those only if the ahead-only slice proves insufficient.
+Checked publication now includes outgoing-history privacy/secret checking and masked findings.
+Per-agent branches, provider PR creation and protected-branch awareness remain separate future
+work. Publication never auto-commits. Explicit named-file commits use the checked commit operation.
 
 ### Original design notes for the push direction
 
@@ -344,26 +405,29 @@ whoever builds it, so the safety model is not broken:
 
 ## GitHub Org Duplicator
 
-`Special/duplicate_org/duplicate_org.py` is the interactive, confirmation-heavy orchestrator. It checks `git`, `gh`, authentication, and org access before moving repositories. **It is GitHub-specific by design** (org concept, `gh repo create`, LFS probing); multi-host support is a stated goal, tracked in `WORKING-NOTES.md`, and will enter through the shared provider seam — the archive tools are the multi-host frontier. The work is split into plumbing modules beside it in `Special/duplicate_org/`, imported by full path (`from Special.duplicate_org._batch import ...`):
+`Special/duplicate_org.py` is the interactive, confirmation-heavy orchestrator. It checks `git`, `gh`, authentication, and org access before moving repositories. **It is GitHub-specific by design** (org concept, `gh repo create`, LFS probing); multi-host support is a stated goal, tracked in `WORKING-NOTES.md`, and will enter through the shared provider seam — the archive tools are the multi-host frontier. Its plumbing is grouped in `Special/_org_duplicator/`, imported by full path (`from Special._org_duplicator.batch import ...`). Earlier script paths remain compatibility wrappers; setup uses the public Special entry points:
 
 - generic pieces live lower in the stack: prompts, `--answers`, the selection grammar and
   directory prompts in `Basic/_confirm.py`; the print lock and `format_size` in `Basic/_console.py`;
   subprocesses in `Basic/_run.py` (`gh_common.py` dissolved on 2026-09-22)
-- `_remote.py` - the duplicator's prerequisite checks (print and stop) and pooled LFS probe;
+- `remote.py` - the duplicator's prerequisite checks (print and stop) and pooled LFS probe;
   the `gh` calls themselves are in `Basic/_providers/github.py`
-- `_local_repos.py` - adapts shared repo discovery for direct/recursive upload scans + safe deletion
-- `_tracking.py` - resume state / run files, and the run log
-- `_operations.py` - the per-repo download/upload/migrate workers, plus the download-behavior text
-- `_batch.py` - modes 4 (batch) and 5 (single) flows, incl. their flag resolution
+- `local_repos.py` - adapts shared repo discovery for direct/recursive upload scans + safe deletion
+- `tracking.py` - resume state / run files, and the run log
+- `operations.py` - the per-repo download/upload/migrate workers, plus the download-behavior text
+- `batch.py` - modes 4 (batch) and 5 (single) flows, incl. their flag resolution
 
-Keep new GitHub/`gh` calls in `Basic/_providers/github.py` and new filesystem logic in `_local_repos.py`; the orchestrator should stay flow-only.
+Run/resume files remain in the existing ignored `Special/duplicate_org/runs/` directory.
+Moving helpers does not move, clear or recreate that state. Keep new GitHub/`gh` calls in
+`Basic/_providers/github.py` and new filesystem logic in `local_repos.py`; the orchestrator
+should stay flow-only.
 
 **Subprocess timing rules.** Every `gh` call goes through `Basic/_providers/github.run_gh` (120s
 default); every git call through `Basic/_run.run_checked` with `operations.GIT_OP_TIMEOUT_SECONDS` (3600s ceiling — a git op with no progress that
 long is hung, not slow — plus a forced `GIT_TERMINAL_PROMPT=0` so a missing credential fails fast
 instead of deadlocking a worker pool). Both raise `RuntimeError`/`GhError` on timeout; nothing
-blocks unbounded. Retries in `_operations.py` use jittered backoff (`_retry_backoff`). The LFS
-`.gitattributes` probe (`_remote._check_lfs_flags`) is pooled (8 workers, 20s each) — it is a
+blocks unbounded. Retries in `operations.py` use jittered backoff (`_retry_backoff`). The LFS
+`.gitattributes` probe (`remote._check_lfs_flags`) is pooled (8 workers, 20s each) — it is a
 warning-only signal and must never gate or stall a run.
 
 **Non-interactive layer (added 2026-08-31).** Run with no flags it is still the interactive menu.
@@ -740,10 +804,10 @@ git history.
 Individually, plus the compile and `--help` smoke checks:
 
 ```powershell
-uv run python -m py_compile setup_gitspecops.py Special\archive_update.py Special\archive_sync.py Elaborate\archive_manage.py Special\duplicate_org\duplicate_org.py
-uv run python Special\archive_update.py --help
+uv run python -m py_compile setup_gitspecops.py Special\update_archive.py Special\archive_sync.py Elaborate\archive_manage.py Special\duplicate_org.py
+uv run python Special\update_archive.py --help
 uv run python Elaborate\archive_manage.py --help
-uv run python Special\duplicate_org\duplicate_org.py --help
+uv run python Special\duplicate_org.py --help
 uv run python git-sync-suggester\sync_suggester.py --help
 uv run python tests\duplicator\test_selection.py
 uv run python tests\duplicator\test_local_repos.py

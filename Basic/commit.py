@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Callable
 
 _ROOT = str(Path(__file__).resolve().parents[1])
 if _ROOT not in sys.path:
@@ -34,26 +35,45 @@ COMMITTED = "committed"
 NOTHING_TO_COMMIT = "nothing to commit"
 
 
-def commit(repo: Path | str, paths: list[str], message: str) -> str:
+def commit(repo: Path | str, paths: list[str], message: str, *, env: dict | None = None,
+           before_commit: Callable[[], None] | None = None, hooks_path: Path | None = None,
+           verbatim: bool = False, timeout: float | None = None, literal_paths: bool = False) -> str:
     """Commit exactly `paths` with `message`. Returns "committed", "nothing to commit", or
-    "failed: ..."."""
+    "failed: ...".
+
+    Optional caller-owned plumbing: env pins invocation context, before_commit runs after
+    adding the named paths (exceptions abort), and hooks_path selects per-command hook relay
+    files without editing Git configuration. Hooks are never skipped. Verbatim message cleanup
+    and a longer commit timeout are available to snapshot-aware callers. No policy lives here.
+    """
     if not paths:
         return "failed: no paths named (this never commits everything)"
     if not message.strip():
         return "failed: empty commit message"
-    if run_git(repo, ["symbolic-ref", "-q", "HEAD"]).returncode != 0:
+    if run_git(repo, ["symbolic-ref", "-q", "HEAD"], env=env).returncode != 0:
         return "failed: detached HEAD: the commit would belong to no branch"
-    changed = run_git(repo, ["status", "--porcelain", "--untracked-files=all", "--", *paths])
+    # Per-path magic keeps hook subprocesses' own pathspec environment unchanged.
+    pathspecs = [f":(top,literal){path}" for path in paths] if literal_paths else paths
+    changed = run_git(repo, ["status", "--porcelain", "--untracked-files=all", "--", *pathspecs], env=env)
     if changed.returncode != 0:
         return f"failed: status: {changed.stderr.strip() or 'error'}"
     if not changed.stdout.strip():
         return NOTHING_TO_COMMIT
     # `add` makes a new file known (and records a deletion); `--only` then commits these paths
     # alone, whatever else the index holds.
-    added = run_git(repo, ["add", "--", *paths])
+    added = run_git(repo, ["add", "--", *pathspecs], env=env)
     if added.returncode != 0:
         return f"failed: add: {added.stderr.strip() or 'error'}"
-    made = run_git(repo, ["commit", "--quiet", "--only", "-m", message, "--", *paths])
+    if before_commit is not None:
+        before_commit()
+    arguments = []
+    if hooks_path is not None:
+        arguments += ["-c", f"core.hooksPath={hooks_path}"]
+    arguments += ["commit", "--quiet", "--only"]
+    if verbatim:
+        arguments.append("--cleanup=verbatim")
+    arguments += ["-m", message, "--", *pathspecs]
+    made = run_git(repo, arguments, env=env, timeout=timeout)
     if made.returncode != 0:
         detail = (made.stderr.strip() or made.stdout.strip() or "refused").splitlines()
         return f"failed: commit: {detail[-1] if detail else 'refused'}"

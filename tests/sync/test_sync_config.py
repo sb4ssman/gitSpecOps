@@ -32,7 +32,7 @@ from config import (  # noqa: E402
 )
 from Basic._files import atomic_write_bytes  # noqa: E402
 from Basic._paths import sync_home  # noqa: E402
-from Elaborate._archive_registry import registered_roots  # noqa: E402
+from Special._archive.registry import registered_roots  # noqa: E402
 from folder_transport import SAFE_MACHINE_ID  # noqa: E402
 
 failures = []

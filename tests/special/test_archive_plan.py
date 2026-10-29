@@ -14,7 +14,7 @@ from _bootstrap import setup  # noqa: E402
 
 setup()
 
-from Special._archive_plan import (  # noqa: E402
+from Special._archive.plan import (  # noqa: E402
     LocalRepo,
     PublishCandidate,
     RepoRef,

@@ -28,17 +28,17 @@ export class FleetConnection extends EventTarget {
       this.dispatchEvent(new CustomEvent('unavailable', {detail: {message: error.message}}));
     } finally { this.busy = false; this.dispatchEvent(new CustomEvent('idle')); }
   }
-  async desktopAction(action, payload, token) {
-    if (!['git-client', 'open-git-client', 'catchup-preview'].includes(action) || !token) {
+  async desktopAction(action, payload, token, {structured = false} = {}) {
+    if (!['git-client', 'open-git-client', 'catchup-preview', 'security-preview'].includes(action) || !token) {
       throw new Error('Desktop actions are unavailable in this dashboard.');
     }
     const response = await this.fetcher(`/v1/${action}`, {
       method: 'POST', headers: {'Content-Type': 'application/json', 'X-GitSpecOps-Token': token},
-      body: JSON.stringify(payload), signal: AbortSignal.timeout(15000),
+      body: JSON.stringify(payload), signal: AbortSignal.timeout(action === 'security-preview' ? 120000 : 15000),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'The desktop action failed.');
-    return result.message;
+    return structured ? result : result.message;
   }
   start() { this.stop(); this.refresh(); this.timer = setInterval(() => this.refresh(), this.interval); }
   stop() { if (this.timer !== null) clearInterval(this.timer); this.timer = null; }

@@ -142,6 +142,12 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
             "reason": (desktop.get("reason") or "Choose a desktop Git client in App & setup.")
                       if local else "This repository has no observed checkout on this machine.",
         }
+        row["security_action"] = {
+            "available": bool(local and settings.get("security_available")),
+            "label": "Check local security",
+            "reason": "Read-only working files and cached outgoing history; findings stay local."
+                      if local else "No locally observed checkout; peer security is not checked here.",
+        }
     basket_notices = []
     if withheld_ids:
         basket_notices.append({"id": "withheld", "tone": "warning",
@@ -185,6 +191,8 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
                     {"id": "stale", "label": "Stale reports"},
                     {"id": "missing", "label": "Not reported on a machine"}],
         "notices": [{"id": "cached-refs", "tone": "neutral", "text": remote_notice},
+                    {"id": "security-scope", "tone": "neutral",
+                     "text": "Fleet status is not security clearance. Check security on a local repository for masked advice; commit/push actions must recheck current material."},
                     {"id": "staleness", "tone": "warning",
                      "text": f"A machine that has not reported for {_duration(stale_seconds)} is "
                              "stale. Its last-known unfinished work stays visible."},

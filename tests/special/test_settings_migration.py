@@ -17,8 +17,8 @@ from _bootstrap import setup  # noqa: E402
 setup()
 
 from Special._settings import SettingsError, resolve_settings, validate_document  # noqa: E402
-from Special._settings_migration import preview_migration  # noqa: E402
-from Special._settings_store import revision, write_settings  # noqa: E402
+from Special._settings.migration import preview_migration  # noqa: E402
+from Special._settings.store import revision, write_settings  # noqa: E402
 
 
 class SettingsMigrationTests(unittest.TestCase):
@@ -193,6 +193,15 @@ class SettingsMigrationTests(unittest.TestCase):
         self.assertFalse(self.home.exists())
         with self.assertRaises(SettingsError):
             write_settings({"schema_version": 2}, home="")
+
+    def test_writer_rejects_storage_anywhere_in_source_checkout(self):
+        source = self.root / "source"
+        module_path = source / "Special" / "_settings" / "store.py"
+        with patch("Special._settings.store.__file__", str(module_path)):
+            for home in (source, source / "private", source / "Special" / "private"):
+                with self.subTest(home=home), self.assertRaisesRegex(SettingsError, "outside the source checkout"):
+                    write_settings({"schema_version": 2}, home=home)
+        self.assertFalse(source.exists())
 
     def test_writer_requires_exact_revision_before_replacement(self):
         document = {"schema_version": 2}

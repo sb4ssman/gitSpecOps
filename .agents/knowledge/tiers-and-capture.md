@@ -1,5 +1,14 @@
 # The three tiers, and what each one can actually preserve
 
+**2026-10-28 clarification:** durable private Git state, a selected private synced-folder/notes
+location and optional direct Tailscale peers are complementary conduits. Users can select one
+or combine them. Synced text status must stay concise/readable and derive from structured fleet
+state. Portable behavior/security policy is a supported shared artifact with explicit scope,
+ownership and revisions; local bindings stay local. Transport speed alone never authorizes
+recovery capture, publication of full findings or unsaved-buffer access. Existing older
+"no Obsidian"/provider-specific exclusions do not override the user's choice of a file conduit;
+no notes-provider SDK or application installation is required for that path.
+
 Recorded 2026-09-11 after the user corrected the model. The tiers are **complements**; the goal
 is to have all three. What has been under-stated until now is that they should not differ only
 in *latency* — they should differ in **what kind of work they can rescue**.

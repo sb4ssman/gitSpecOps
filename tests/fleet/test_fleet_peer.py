@@ -229,6 +229,31 @@ def test_idle_runtime_drains_pending_status_without_scanning():
         events.close.assert_called_once()
 
 
+def test_local_security_action_preserves_explicit_profile_without_changing_peer_report():
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        home = root / "selected-profile"
+        config = new_config("machine-a", "A", [root], SECRET)
+        observer = Mock()
+        observer.paths = ()
+        observer.inventory.return_value = 0
+        observer.excluded_from_observation = 0
+        report = {"manifest": manifest_for("machine-a", "2026-01-01T00:00:00+00:00"),
+                  "names": {}, "issues": []}
+        observer.report.return_value = report
+        observer.shared_report.return_value = (report, set())
+        with patch("fleet_peer.IncrementalObserver", return_value=observer), \
+             patch("fleet_peer.TransportPublisher"), patch("fleet_peer.PeerNetwork"), \
+             patch("local_dashboard.make_local_server") as server, patch("fleet_peer.threading.Thread"), \
+             patch("Special.security._advice.inspect_registered", return_value={"local_security": []}) as checking:
+            fleet_peer.run_peer(config, root, threading.Event(), once=True, log=lambda *_: None, settings_home=home)
+            handler = server.call_args.kwargs["fleet_action"]
+            handler("security-preview", {"repo_id": "known"})
+            check(checking.call_args.kwargs["settings_home"] == home, "local security must retain explicit profile")
+            check(checking.call_args.args[1] == observer.local_checkouts, "all local copies must be checked")
+        check("local_security" not in report, "the shared report must not acquire local findings")
+
+
 def main():
     tests = [value for name, value in sorted(globals().items()) if name.startswith("test_")]
     failures = []

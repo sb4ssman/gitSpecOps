@@ -80,7 +80,7 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
         def do_POST(self):
             action = self.path.removeprefix("/v1/")
             handlers = {"git-client": desktop_action, "open-git-client": desktop_action,
-                        "catchup-preview": fleet_action}
+                        "catchup-preview": fleet_action, "security-preview": fleet_action}
             if action not in handlers or handlers[action] is None:
                 self.send(405, {"error": "this endpoint accepts no actions"})
                 return

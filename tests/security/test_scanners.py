@@ -71,6 +71,36 @@ class Scanners(unittest.TestCase):
             self.assertTrue(any(item.value == "private-marker" and "[path]" in item.where for item in result.findings))
             self.assertFalse(any(item.value.startswith("orbit-user") for item in result.findings))
 
+    def test_optional_engines_receive_selected_tree_and_history_without_raw_output(self):
+        self.write("engine.txt", "ordinary\nengine-fixture-value\n")
+        self.write("private/ignored.txt", "not-admitted-to-engines")
+        self.save("engine fixture")
+        self.policy.engines = ("gitleaks", "betterleaks", "trufflehog")
+
+        def execute(engine, executable, data):
+            self.assertNotIn(b"not-admitted-to-engines", data)
+            return [("engine-fixture-value", "sample-rule")] if b"engine-fixture-value" in data else []
+
+        for material in ("tree", "history"):
+            with self.subTest(material=material), patch("Special.security._engines._execute", side_effect=execute), \
+                 patch("Special.security._engines.shutil.which", return_value=sys.executable):
+                report = scan(self.repo, self.policy, material=material)
+            self.assertFalse(report.gaps, report.gaps)
+            self.assertEqual(set(report.engines.values()), {"checked"})
+            self.assertEqual({item.check.split("/")[0] for item in report.findings}, set(self.policy.engines))
+            self.assertNotIn("engine-fixture-value", json.dumps(report.record()))
+            self.assertFalse(hasattr(report, "_engine_runner"))
+
+    def test_explicit_none_overrides_policy_and_missing_selected_engine_is_incomplete(self):
+        self.policy.engines = ("gitleaks",)
+        with patch("Special.security._engines._execute", side_effect=AssertionError("unexpected engine")):
+            report = scan(self.repo, self.policy, engines=())
+        self.assertFalse(report.engines)
+        with patch("Special.security._engines.shutil.which", return_value=None):
+            report = scan(self.repo, self.policy)
+        self.assertEqual(report.exit_code, 2)
+        self.assertEqual(report.engines, {"gitleaks": "incomplete"})
+
     def test_duplicate_blob_names_deleted_file_merge_and_detached_head(self):
         self.write("same.txt", "identical")
         self.write("private-marker.txt", "identical")
@@ -158,7 +188,7 @@ class Scanners(unittest.TestCase):
             self.assertTrue(any("count limit" in reason for _, reason in open_archive("bundle.zip", memory.getvalue()).skipped))
 
     def test_policy_sources_and_missing_or_unreadable_lists(self):
-        with patch("Special.security._me.config_home", return_value=self.root / "config"):
+        with patch.dict(os.environ, {"GITSPECOPS_HOME": str(self.root / "config")}):
             policy = load_policy(self.repo)
             self.assertEqual(policy.sources["safe-list"], "not-configured")
             self.assertIn("orbit-user", policy.logins)
@@ -292,6 +322,53 @@ class Scanners(unittest.TestCase):
         self.assertEqual(done.returncode, 1, done.stderr + done.stdout)
         self.assertNotIn("private-marker", done.stdout)
         self.assertEqual(json.loads(done.stdout)["coverage"], "complete-for-selected-checks")
+
+    def test_tree_and_history_cli_use_common_policy_instead_of_stale_text_copies(self):
+        self.write("sentinel.txt", "private-marker component-marker generic@example.test git@github.com\n")
+        self.save("add policy fixture")
+        home = self.root / "common-profile"
+        (home / "security").mkdir(parents=True)
+        (home / "security" / "safe.txt").write_text("private-marker\n", encoding="utf-8")
+        (home / "security" / "never_publish.txt").write_text("stale-only\n", encoding="utf-8")
+        document = {"schema_version": 2, "defaults": {"security": {
+            "never_publish": ["private-marker"], "safe_values": ["generic@example.test", "git@github.com"]}},
+            "components": {"security": {"security": {"never_publish": ["component-marker"]}}}}
+        settings = home / "settings.json"
+        settings.write_text(json.dumps(document), encoding="utf-8")
+        original = settings.read_bytes(), (self.repo / ".git/index").read_bytes(), self.git("rev-parse", "HEAD")
+        for material in ("tree", "history"):
+            done = subprocess.run([sys.executable, "-B", str(ROOT / f"Special/security/scan_{material}.py"),
+                str(self.repo), "--settings-home", str(home), "--json"],
+                cwd=self.root, capture_output=True, text=True)
+            self.assertEqual(done.returncode, 1, done.stderr)
+            record = json.loads(done.stdout)
+            self.assertEqual(record["coverage"], "complete-for-selected-checks")
+            self.assertEqual(record["policy"]["sources"]["never-publish"], {"saved_values": 2})
+            self.assertTrue(any(item["check"] == "never-publish" for item in record["findings"]))
+            for value in ("private-marker", "component-marker", "generic@example.test", "git@github.com", "stale-only"):
+                self.assertNotIn(value, done.stdout)
+        self.assertEqual((settings.read_bytes(), (self.repo / ".git/index").read_bytes(), self.git("rev-parse", "HEAD")), original)
+        self.assertFalse((home / "logs").exists())
+        self.assertFalse((home / "reports").exists())
+
+    def test_legacy_cli_selection_is_explicit_read_only_and_never_migrates(self):
+        self.write("new.txt", "private-marker\n")
+        home = self.root / "config"
+        (home / "security").mkdir(parents=True)
+        watch = home / "security" / "never_publish.txt"
+        watch.write_text("private-marker\n", encoding="utf-8")
+        (home / "security" / "safe.txt").write_text("", encoding="utf-8")
+        before = watch.read_bytes()
+        argv = [sys.executable, "-B", str(ROOT / "Special/security/scan_tree.py"), str(self.repo), "--json"]
+        refused = subprocess.run(argv, cwd=self.root, capture_output=True, text=True)
+        self.assertEqual(refused.returncode, 2)
+        self.assertEqual(json.loads(refused.stdout)["coverage"], "incomplete")
+        explicit = subprocess.run(argv + ["--legacy-policy"], cwd=self.root, capture_output=True, text=True)
+        self.assertEqual(explicit.returncode, 1, explicit.stderr)
+        self.assertEqual(json.loads(explicit.stdout)["policy"]["sources"]["settings"], "legacy-explicit")
+        self.assertNotIn("private-marker", explicit.stdout)
+        self.assertEqual(watch.read_bytes(), before)
+        self.assertFalse((home / "settings.json").exists())
 
 
 if __name__ == "__main__":

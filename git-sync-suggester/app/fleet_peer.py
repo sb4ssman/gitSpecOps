@@ -244,7 +244,7 @@ class PeerNetwork:
 
 
 def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
-             on_ready=None, event_source=None, once: bool = False, log=_log) -> int:
+             on_ready=None, event_source=None, once: bool = False, log=_log, settings_home=None) -> int:
     """Run this peer until `stopping` is set."""
     fleet_id = fleet_id_for(config["fleet_secret"])
     store = FleetStore(config_dir / "fleet.sqlite3", fleet_id)
@@ -262,16 +262,21 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
 
     def save_client(choice):
         # Only local UI choices reach here; executable paths never cross a transport.
-        updated = {**config, "git_client": choice}
-        atomic_write_bytes(config_dir / "fleet-app.json",
-                           (json.dumps(updated, indent=2) + "\n").encode())
-        config["git_client"] = choice
+        from fleet_config import save_client_choice
+
+        save_client_choice(config_dir, config, choice)
 
     desktop = DesktopIntegration(config.get("git_client"), observer.local_repositories, save_client)
     action_lock = threading.Lock()
 
     def dashboard_action(action, payload):
-        """The dashboard's first action is the same safe fetch/plan as the terminal command."""
+        """Local dashboard actions call the same headless operations as terminal routes."""
+        if action == "security-preview":
+            from Special.security._advice import inspect_registered
+            with action_lock:
+                snapshot = getattr(config, "snapshot", None)
+                home = getattr(snapshot, "home", settings_home)
+                return inspect_registered(payload, observer.local_checkouts, settings_home=home, expected_settings=snapshot)
         if action != "catchup-preview" or payload:
             raise ValueError("unsupported fleet dashboard action")
         from fleet_actions import plan_catchup, render_catchup
@@ -320,6 +325,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                       "root_count": len(config["roots"]),
                       "git_client": desktop.settings(),
                       "local_repo_ids": list(observer.local_repositories()),
+                      "security_available": True,
                       "new_repositories": len(pending_new),
                       "baskets": config["baskets"],
                       "recovery": config.get("recovery") or {"location": None, "confirmed": False,

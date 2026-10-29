@@ -6,6 +6,9 @@ Run from this repository:
 
 With no arguments, choose the command-line bootstrap or an individual setup item.
 Non-interactive callers must name an action; --help never performs setup.
+Use settings for guided updater preferences, settings-preview/settings-save for reviewed
+noninteractive changes, and settings-migration-preview for read-only legacy mapping/readiness.
+settings-existing-plan/save/status/resume implement the reviewed archive/policy-only switch.
 The `bootstrap` action does three things:
 
   1. Writes the per-tool convenience launchers (.sh / .ps1 / .bat in the repository
@@ -22,7 +25,7 @@ The `bootstrap` action does three things:
   3. Reports whether the runtime prerequisites (git, gh, uv) are available.
 
 Running this is OPTIONAL. Without it, run the tools directly, e.g.
-`python3 Special/archive_update.py --help`, or via `uv run python ...`.
+`python3 Special/update_archive.py --help`, or via `uv run python ...`.
 Auth is never touched here: users authenticate their own host CLI (`gh auth login`, ...).
 """
 
@@ -136,9 +139,9 @@ def report_prerequisites() -> None:
 
 LAUNCHER_SPECS = [
     # (tool_dir, entry_script, launcher_base, help_on_no_args)
-    ("Special", "archive_update.py", "update-archive", True),
-    ("Elaborate", "archive_manage.py", "manage-archives", False),
-    ("Special/duplicate_org", "duplicate_org.py", "duplicate-github-org", False),
+    ("Special", "update_archive.py", "update-archive", True),
+    ("Special", "archive_manager.py", "manage-archives", False),
+    ("Special", "duplicate_org.py", "duplicate-github-org", False),
     ("git-sync-suggester", "sync_suggester.py", "suggest-sync", True),
 ]
 
@@ -240,11 +243,14 @@ def bootstrap() -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from Special._settings.setup_cli import ACTIONS, add_arguments
+
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("action", nargs="?",
-                        choices=("bootstrap", "launchers", "environment", "check"),
-                        help="bootstrap everything below, or select launchers, environment or prerequisite check")
+                        choices=("bootstrap", "launchers", "environment", "check", *ACTIONS),
+                        help="bootstrap launchers/environment, check prerequisites, or select a settings action")
+    add_arguments(parser)
     return parser
 
 
@@ -258,6 +264,9 @@ def choose_action() -> str | None:
         print("\n1. Set up command-line launchers and Python environment\n"
               "2. Choose a setup item\n"
               "3. Check prerequisites without changing anything\n"
+              "4. Configure standalone updater preferences (guided)\n"
+              "5. Preview legacy settings migration (read-only)\n"
+              "6. Use existing archive/security settings (guided review)\n"
               "0. Exit")
         try:
             answer = input("Choose [0]: ").strip() or "0"
@@ -267,15 +276,26 @@ def choose_action() -> str | None:
                 return "bootstrap"
             if answer == "3":
                 return "check"
+            if answer == "4":
+                return "settings"
+            if answer == "5":
+                return "settings-migration-preview"
+            if answer == "6":
+                return "settings-existing"
             if answer == "2":
                 print("\n1. Generate convenience launchers\n"
                       "2. Create or refresh the Python environment\n"
+                      "3. Configure standalone updater preferences\n"
+                      "4. Preview legacy settings migration\n"
+                      "5. Use existing archive/security settings\n"
                       "0. Back")
                 item = input("Choose [0]: ").strip() or "0"
                 if item == "0":
                     continue
                 if item in ("1", "2"):
                     return {"1": "launchers", "2": "environment"}[item]
+                if item in ("3", "4", "5"):
+                    return {"3": "settings", "4": "settings-migration-preview", "5": "settings-existing"}[item]
             print("Choose one of the listed items; nothing has been changed.")
         except (EOFError, KeyboardInterrupt):
             print("\nSetup cancelled; nothing has been changed.")
@@ -287,6 +307,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     action = args.action
     if action is None:
+        if args.json or args.approve is not None:
+            parser.error("name an explicit settings action for JSON output or approval")
         if not sys.stdin.isatty():
             parser.print_help(file=sys.stderr)
             print("Name a setup action when there is no interactive terminal.", file=sys.stderr)
@@ -294,6 +316,40 @@ def main(argv: list[str] | None = None) -> int:
         action = choose_action()
         if action is None:
             return 0
+    from Special._settings.setup_cli import ACTIONS, EXISTING_ACTIONS, dispatch
+
+    preference_fields = ("root", "exclude_path", "output_mode", "saved_format", "output_dir",
+                         "log", "log_dir", "log_level", "log_max_bytes", "log_backups")
+    has_preferences = any(getattr(args, name) is not None for name in preference_fields) or args.clear_roots or args.clear_exclusions
+    has_settings_options = (has_preferences or args.settings_home is not None or args.legacy_sync_dir is not None
+                            or args.approve is not None or args.json or args.show_paths or args.switch_id is not None
+                            or args.legacy_writers_stopped or args.launcher_plan_reviewed)
+    if action not in ACTIONS and has_settings_options:
+        parser.error("settings options require a settings action")
+    if action in ACTIONS:
+        if args.approve is not None and action not in ("settings-save", "settings-existing-save"):
+            parser.error("--approve is only valid with an explicit settings save")
+        if action in EXISTING_ACTIONS:
+            if has_preferences or args.legacy_sync_dir is not None:
+                parser.error("existing-settings actions preserve archive/policy inputs; do not combine preference edits or fleet-directory options")
+            if action == "settings-existing-plan" and (args.switch_id or args.legacy_writers_stopped or args.launcher_plan_reviewed):
+                parser.error("the read-only plan does not accept switch execution options")
+            if action == "settings-existing-save" and args.switch_id:
+                parser.error("saving uses --approve; status/resume use --switch-id")
+            if action == "settings-existing-status" and (args.legacy_writers_stopped or args.launcher_plan_reviewed):
+                parser.error("read-only status does not accept execution acknowledgements")
+            if action in ("settings-existing-status", "settings-existing-resume") and args.show_paths:
+                parser.error("use the plan's --show-paths review before saving")
+            if action == "settings-existing" and (args.json or args.switch_id or args.legacy_writers_stopped or args.launcher_plan_reviewed):
+                parser.error("guided existing-settings setup obtains its approvals interactively; use plan/save for assisted use")
+        elif args.switch_id or args.legacy_writers_stopped or args.launcher_plan_reviewed:
+            parser.error("switch options require an existing-settings action")
+        if action == "settings" and args.json:
+            parser.error("use settings-preview/settings-save for noninteractive JSON")
+        if action == "settings-migration-preview" and has_preferences:
+            parser.error("migration preview does not change updater preferences")
+        args.action = action
+        return dispatch(args)
     if action == "bootstrap":
         return bootstrap()
     if action == "launchers":

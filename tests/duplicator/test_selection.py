@@ -20,7 +20,7 @@ from _bootstrap import setup  # noqa: E402
 setup()
 
 from Basic._confirm import parse_selection  # noqa: E402
-from Special.duplicate_org import _batch as batch  # noqa: E402
+from Special._org_duplicator import batch  # noqa: E402
 
 FAILS = []
 
@@ -72,7 +72,7 @@ if got_all != WANT:
     FAILS.append(f"choose_orgs: {got_all}")
 
 # ---- module wiring ----
-import Special.duplicate_org.duplicate_org as dup  # noqa: E402,F401
+from Special import duplicate_org as dup  # noqa: E402,F401
 
 for obj, name in ((batch, "run_batch_download"), (batch, "run_single_repo"),
                   (dup, "choose_repo_subset")):

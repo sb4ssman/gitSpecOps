@@ -1,22 +1,35 @@
-"""One explicit identity/watch/safe policy. Reads sources; never creates configuration."""
+"""Identity/watch/safe policy over common settings or an explicitly selected legacy profile.
+
+load_policy accepts a selected home or caller-resolved settings. Common blocks accumulate
+with explicit watch files; explicit safe values supplement saved allowances, with exact
+block/safe conflicts refused. Legacy text defaults require legacy_policy=True and cannot
+bypass an existing common profile. Reads discover local identity; they never save policy.
+Raw values stay in trusted code; summary()/repr do not disclose them.
+"""
 from __future__ import annotations
 
 import re
+import copy
+import os
 import socket
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from Basic._paths import config_home
 from Basic._run import run
+from Special._runtime.files import checked_path, excluded, linked, RuntimeIOError
+from Special._settings import (SETTINGS_NAME, SettingsError, ResolvedSettings, _part,
+                               _policy_conflicts, resolve_settings, select_home)
 
 
 @dataclass
 class Policy:
-    identities: dict[str, list[str]] = field(default_factory=dict)
-    safe: list[str] = field(default_factory=list)
-    logins: list[str] = field(default_factory=list)
+    identities: dict[str, list[str]] = field(default_factory=dict, repr=False)
+    safe: list[str] = field(default_factory=list, repr=False)
+    logins: list[str] = field(default_factory=list, repr=False)
     sources: dict = field(default_factory=dict)
     gaps: list[dict] = field(default_factory=list)
+    exclude_paths: tuple[Path, ...] = field(default=(), repr=False)
+    engines: tuple[str, ...] = ()
 
     def allowed(self, text, start, end):
         key = (tuple(self.safe), tuple(self.logins))
@@ -39,11 +52,116 @@ class Policy:
     def summary(self):
         return {"identity_values": sum(map(len, self.identities.values())),
                 "safe_values": len(self.safe), "public_handles": len(self.logins),
-                "sources": self.sources}
+                "engines": list(self.engines), "sources": self.sources}
 
 
-def load_policy(repo: Path, *, never_file=None, safe_file=None, safe=(), login=()):
-    policy = Policy(safe=list(safe), logins=list(login))
+def _scope(repo, exclusions):
+    """Check requested read scope before Git identity or material access, allowing source scans."""
+    path = Path(os.path.abspath(Path(repo).expanduser()))
+    try:
+        if any(linked(part) for part in (path, *path.parents)):
+            raise SettingsError("scan roots must not traverse filesystem links")
+        if excluded(path, exclusions, contains=True):
+            raise SettingsError("requested repository or a subtree is excluded; no scan was started")
+    except OSError:
+        raise SettingsError("scan scope could not be checked safely") from None
+
+
+def _values(policy, path, label, *, explicit):
+    """Read one chosen list without following links; inaccessible inputs become coverage gaps."""
+    try:
+        path = Path(os.path.abspath(Path(path).expanduser()))
+        if any(linked(part) for part in (path, *path.parents)):
+            raise OSError("linked input")
+        if excluded(path, policy.exclude_paths):
+            raise OSError("excluded input")
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        policy.sources[label] = "missing-explicit" if explicit else "not-configured"
+        if explicit:
+            policy.gaps.append({"where": label, "reason": "explicit policy file does not exist"})
+        return []
+    except (OSError, UnicodeError):
+        policy.sources[label] = "unreadable"
+        policy.gaps.append({"where": label, "reason": "policy file could not be read safely"})
+        return []
+    values = [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
+    policy.sources[label] = {"loaded_values": len(values)}
+    return values
+
+
+def load_policy(repo: Path, *, home=None, settings: ResolvedSettings | None = None,
+                legacy_policy=False, never_file=None, safe_file=None, safe=(), login=()):
+    """Load one effective policy; malformed common settings never yield legacy/default policy.
+
+    A fresh unconfigured profile uses resolver defaults without writing. Known legacy state
+    requires migration or explicit legacy_policy selection. Explicit files supplement common
+    lists; in legacy mode they select the corresponding text sources. Missing/unreadable
+    explicit files retain incomplete coverage. The caller-resolved seam reads no config files.
+    """
+    if settings is not None and (home is not None or legacy_policy):
+        raise SettingsError("select resolved settings or a profile mode, not both")
+    if not isinstance(legacy_policy, bool):
+        raise SettingsError("legacy policy selection must be explicit")
+    if settings is None:
+        selected, home_source = select_home(home, component="security")
+        try:
+            target = checked_path(selected / SETTINGS_NAME)
+        except (RuntimeIOError, OSError):
+            raise SettingsError("security settings require unlinked storage outside the checkout") from None
+        if legacy_policy:
+            try:
+                target.lstat()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                raise SettingsError("security settings could not be checked") from None
+            else:
+                raise SettingsError("legacy policy mode cannot bypass an existing common settings file")
+        else:
+            settings = replace(resolve_settings("security", home=selected), home_source=home_source)
+    elif not isinstance(settings, ResolvedSettings):
+        raise SettingsError("security policy needs caller-resolved settings")
+
+    if settings is not None:
+        values = copy.deepcopy(settings.values["security"])
+        exclusions = tuple(settings.values["scope"]["exclude_paths"])
+        _part({"security": values})
+        _policy_conflicts({"security": values})
+    else:
+        values, exclusions = {"never_publish": [], "safe_values": []}, ()
+    if isinstance(safe, str) or isinstance(login, str):
+        raise SettingsError("safe values and public handles must be lists, not scalar text")
+    try:
+        safe, login = list(safe), list(login)
+    except TypeError:
+        raise SettingsError("safe values and public handles must be lists") from None
+    _part({"security": {"safe_values": [*safe, *login]}})
+    _scope(repo, exclusions)
+    policy = Policy(safe=[*values["safe_values"], *values.get("local_safe_values", ()), *safe],
+                    logins=list(login), exclude_paths=exclusions,
+                    engines=tuple(values.get("engines", ())))
+    policy.identities["never-publish"] = list(dict.fromkeys(
+        [*values["never_publish"], *values.get("local_never_publish", ())]))
+    policy.sources["settings"] = "legacy-explicit" if legacy_policy else settings.summary()
+    defaults = selected / "security" if legacy_policy else None
+    for explicit, name, label in ((never_file, "never_publish.txt", "never-publish"),
+                                   (safe_file, "safe.txt", "safe-list")):
+        if explicit is None and not legacy_policy:
+            policy.sources[label] = ({"saved_values": len(values["safe_values" if label == "safe-list" else "never_publish"])}
+                                     if settings.configured else "not-configured")
+            continue
+        listed = _values(policy, Path(explicit) if explicit is not None else defaults / name,
+                         label, explicit=explicit is not None)
+        if label == "safe-list":
+            policy.safe.extend(listed)
+        else:
+            policy.identities["never-publish"].extend(listed)
+    if not legacy_policy:
+        combined = {"never_publish": policy.identities["never-publish"], "safe_values": policy.safe}
+        _part({"security": combined})
+        _policy_conflicts({"security": combined})
+
     for key, label in (("user.email", "configured email"), ("user.name", "configured name")):
         result = run(["git", "-C", str(repo), "config", "--get", key], timeout=30)
         if result.returncode == 0 and result.stdout.strip():
@@ -66,27 +184,9 @@ def load_policy(repo: Path, *, never_file=None, safe_file=None, safe=(), login=(
             policy.safe.append(name)
     policy.identities["machine name"] = [socket.gethostname()]
     policy.identities["home-folder name"] = [Path.home().name]
-    defaults = config_home() / "security"
-    for explicit, default, label in ((never_file, defaults / "never_publish.txt", "never-publish"),
-                                      (safe_file, defaults / "safe.txt", "safe-list")):
-        path = Path(explicit) if explicit is not None else default
-        try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-        except FileNotFoundError:
-            policy.sources[label] = "missing-explicit" if explicit is not None else "not-configured"
-            if explicit is not None:
-                policy.gaps.append({"where": label, "reason": "explicit policy file does not exist"})
-            continue
-        except (OSError, UnicodeError):
-            policy.sources[label] = "unreadable"
-            policy.gaps.append({"where": label, "reason": "policy file could not be read"})
-            continue
-        values = [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
-        policy.sources[label] = {"loaded_values": len(values)}
-        if label == "safe-list":
-            policy.safe.extend(values)
-        else:
-            policy.identities[label] = values
+    if not legacy_policy:
+        _policy_conflicts({"security": {"never_publish": policy.identities["never-publish"],
+                                        "safe_values": [*policy.safe, *policy.logins]}})
     policy.logins = sorted(set(policy.logins))
     policy.safe = sorted(set(policy.safe))
     policy.sources["tailnet"] = "not-requested"

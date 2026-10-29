@@ -45,6 +45,10 @@ class IncrementalObserver:
         """Local-only launch lookup; paths never enter a manifest or peer report."""
         return {record["repo_id"]: path for path, record in list(self._repos.items())}
 
+    def local_checkouts(self, repo_id) -> tuple[Path, ...]:
+        """All known local copies for an explicit local operation; never sent to a peer."""
+        return tuple(path for path, record in list(self._repos.items()) if record["repo_id"] == repo_id)
+
     def observes(self, catalog: dict) -> bool:
         return baskets.selects(self.scopes["observe"], baskets.namespace_of(catalog))
 

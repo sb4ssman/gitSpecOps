@@ -5,6 +5,7 @@ local_repos
 Local-disk side of the duplicator: discover git repositories (regular, linked worktree,
 and mirror) in a folder, and delete a clone only after proving it is safe to (inside the
 expected parent, actually a git repo, name as expected). Pure filesystem; no git, no network.
+Import from Special._org_duplicator.local_repos; calls operate on explicitly supplied paths.
 """
 
 import os

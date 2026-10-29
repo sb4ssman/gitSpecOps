@@ -30,11 +30,11 @@ bootstrap()  # core/, fleet/, app/ and the repo root (for the layers)
 
 from Basic._console import enable_unicode_output  # noqa: E402
 from Basic._providers.github import GhError, run_gh  # noqa: E402
-from Basic._paths import sync_home  # noqa: E402
+from Special._settings.fleet import (fleet_directory, fleet_home, load_fleet_settings)  # noqa: E402
 from config import default_machine_id  # noqa: E402
 from fleet_config import (APP_CONFIG, DEFAULT_FOLDER_SECONDS, DEFAULT_LOCAL_PORT,  # noqa: E402
                           DEFAULT_REPO_SECONDS, DEFAULT_TAILNET_PORT, describe, migrate,
-                          new_config, policy_record, recovery_policy, validate)
+                          new_config, policy_record, recovery_policy, save_saved, validate)
 from fleet_peer import run_peer  # noqa: E402
 from Basic._files import atomic_write_bytes  # noqa: E402
 from manifest import fleet_id_for, is_fleet_secret, new_fleet_secret  # noqa: E402
@@ -68,21 +68,29 @@ def app_lock(directory):
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
 
-def write_json(path: Path, value):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_bytes(path, (json.dumps(value, indent=2) + "\n").encode())
-
-
-def load_saved(directory: Path) -> dict:
+def load_saved(directory: Path, *, home=None) -> dict:
+    """Read the common app enrollment, otherwise the legacy-only app configuration."""
+    snapshot = load_fleet_settings(home)
+    if snapshot is not None:
+        config = snapshot.config("app")
+        if config is None:
+            raise ValueError("no app enrollment in common settings; run 'fleet setup'")
+        return validate(config)
+    directory = fleet_directory(directory, home=home)
     path = directory / APP_CONFIG
     if not path.exists():
         raise ValueError("no saved configuration; run 'fleet setup' first")
     saved = json.loads(path.read_text(encoding="utf-8"))
     config = validate(migrate(saved))
     if config != saved:
-        write_json(path, config)
+        save_saved(directory, config, home=home)
         print("Updated the saved configuration to the current format.", flush=True)
     return config
+
+
+def profile_arguments(directory, home=None):
+    """Keep both profile and local state selection in tray/setup/autostart handoffs."""
+    return ["--config-dir", str(directory), "--settings-home", str(fleet_home(home))]
 
 
 def offer_start_at_login(inner: list[str]) -> None:
@@ -133,11 +141,30 @@ def resolve_machine_identity(want_tailnet: bool) -> tuple[str, str]:
 
 
 def configure(args, directory: Path) -> dict:
+    home = getattr(args, "settings_home", None)
+    snapshot = load_fleet_settings(home)
+    if snapshot is not None:
+        if snapshot.config("app") is not None:
+            raise ValueError("app enrollment already exists; resume it or select a settings command")
+        snapshot.check_roots("app", args.root or [])
+        if snapshot.document["schema_version"] != 2:
+            raise ValueError("common fleet enrollment requires v2; no upgrade was performed")
+        snapshot.check_identity(label=args.label, secret=args.fleet_secret)
+        definitions = {}
+        if args.folder:
+            definitions["folder"] = {"path": str(Path(args.folder).expanduser().absolute()), "seconds": args.folder_seconds}
+        if args.repo:
+            definitions["repo"] = {"name": args.repo, "seconds": args.repo_seconds}
+        if not args.no_tailnet:
+            definitions["tailnet"] = {"port": args.tailnet_port, "allowed_login": None}
+        snapshot.transport_changes("app", definitions)
     path = directory / APP_CONFIG
-    if path.exists():
+    if snapshot is None and path.exists():
         raise ValueError(f"configuration exists at {path}; use 'run' to resume, or edit it")
     if not args.root:
         raise ValueError("select your repository library with --root PATH (repeatable)")
+    if any(not Path(root).expanduser().is_dir() for root in args.root):
+        raise ValueError("every configured repository root must exist")
     if not args.acknowledge_initial_scan:
         raise ValueError("setup performs one recursive inventory of every selected root. Review "
                          "the scope and pass --acknowledge-initial-scan, or use 'fleet setup'")
@@ -161,27 +188,30 @@ def configure(args, directory: Path) -> dict:
     if not args.no_tailnet:
         transports["tailnet"] = {"port": args.tailnet_port, "allowed_login": None}
 
-    machine_id, label = resolve_machine_identity("tailnet" in transports)
-    secret = args.fleet_secret or new_fleet_secret()
+    machine = snapshot.document.get("machine") if snapshot is not None else None
+    machine_id, label = ((machine["id"], machine["label"]) if machine else
+                         resolve_machine_identity("tailnet" in transports))
+    secret = args.fleet_secret or (machine["fleet_secret"] if machine else new_fleet_secret())
     if not is_fleet_secret(secret):
         raise ValueError("--fleet-secret must be 64 hexadecimal characters")
     config = new_config(machine_id, args.label or label, args.root, secret,
                         debounce_seconds=args.debounce_seconds, local_port=args.local_port,
                         transports=transports, share_names=not args.withhold_names)
     validate(config)
-    write_json(path, config)
+    path = save_saved(directory, config, home=home, snapshot=snapshot)
+    config = load_saved(directory, home=home)
     print(f"Saved: {path}\nTransports:\n{describe(config)}")
-    if not args.fleet_secret:
-        print(f"\nCreated fleet {fleet_id_for(secret)}. To add another machine, run setup there "
-              f"with:\n\n    --fleet-secret {secret}\n\nCarry that value yourself. The tailnet "
-              "session endpoint exists, but automatic key exchange is not wired into setup yet.")
+    if not args.fleet_secret and machine is None:
+        print(f"\nCreated fleet {fleet_id_for(secret)}. The key is hidden. "
+              "Use fleet-key --show only in the intended local display channel when joining another machine.")
     return config
 
 
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--config-dir", type=Path, default=sync_home())
+    parser.add_argument("--config-dir", type=Path, help="local fleet state and legacy input directory")
+    parser.add_argument("--settings-home", type=Path, help="common profile; defaults to the user-data home")
     commands = parser.add_subparsers(dest="command", required=True)
 
     setup = commands.add_parser("setup", help="guided first-run setup for this peer")
@@ -215,6 +245,8 @@ def build_parser():
     commands.add_parser("run", help="resume this peer; installs no service")
     commands.add_parser("tray", help="resume behind a tray icon (falls back to 'run')")
     commands.add_parser("doctor", help="show configuration and reachability; hides the secret")
+    key = commands.add_parser("fleet-key", help="inspect key metadata without logs/writes")
+    key.add_argument("--show", action="store_true", help="print the raw key here; any agent capturing this output will receive it")
     commands.add_parser("preflight", help="check setup prerequisites and optional tiers without changing anything")
     commands.add_parser("rescan", help="request one deliberate local inventory refresh")
     catchup = commands.add_parser("catchup",
@@ -377,7 +409,7 @@ def guided_tailnet_join_secret() -> str:
         return ""
 
 
-def setup_arguments(directory: Path, configure_only=False):
+def setup_arguments(directory: Path, configure_only=False, *, home=None):
     """Interactive first run. Offers every transport; requires none."""
     print("Fleet setup. Every machine is a peer: it watches its own repositories, publishes\n"
           "what it sees, and shows you a dashboard. Nothing here needs another machine to be\n"
@@ -388,7 +420,7 @@ def setup_arguments(directory: Path, configure_only=False):
         raise ValueError("Git is required before fleet setup can observe a repository library")
     if not readiness["dashboard"]:
         raise ValueError("the default dashboard port is unavailable; use non-interactive 'fleet peer' with --local-port")
-    arguments = ["--config-dir", str(directory), "peer"]
+    arguments = [*profile_arguments(directory, home), "peer"]
     root = input("Repository library folder (inventoried once, recursively): ").strip().strip('"')
     if not root:
         raise ValueError("a repository library folder is required")
@@ -433,7 +465,7 @@ def setup_arguments(directory: Path, configure_only=False):
 
 
 def command_transports(args, directory: Path) -> int:
-    config = load_saved(directory)
+    config = load_saved(directory, home=getattr(args, "settings_home", None))
     transports = dict(config.get("transports") or {})
     if args.folder and args.clear_folder:
         raise ValueError("choose --folder or --clear-folder")
@@ -450,14 +482,6 @@ def command_transports(args, directory: Path) -> int:
     elif args.folder_seconds and transports.get("folder"):
         transports["folder"]["seconds"] = args.folder_seconds
     if args.repo:
-        require_gh()
-        transport = RepoTransport(args.repo)
-        health = transport.doctor()
-        if not health.get("exists") and args.create_repo:
-            create_state_repo(args.repo)
-            health = transport.doctor()
-        if not health.get("exists") or not health.get("private") or not health.get("permissions"):
-            raise ValueError("--repo must be private and writable; add --create-repo to create it")
         transports["repo"] = {"name": args.repo,
                               "seconds": args.repo_seconds or DEFAULT_REPO_SECONDS}
     elif args.clear_repo:
@@ -473,7 +497,19 @@ def command_transports(args, directory: Path) -> int:
         transports["tailnet"]["port"] = args.tailnet_port
     config["transports"] = transports
     validate(config)
-    write_json(directory / APP_CONFIG, config)
+    if hasattr(config, "snapshot"):
+        config.snapshot.transport_changes("app", transports)
+        config.snapshot.verify()
+    if args.repo:
+        require_gh()
+        transport = RepoTransport(args.repo)
+        health = transport.doctor()
+        if not health.get("exists") and args.create_repo:
+            create_state_repo(args.repo)
+            health = transport.doctor()
+        if not health.get("exists") or not health.get("private") or not health.get("permissions"):
+            raise ValueError("--repo must be private and writable; add --create-repo to create it")
+    save_saved(directory, config, home=getattr(args, "settings_home", None))
     print(f"Transports now:\n{describe(config)}\nStart with 'fleet run'.")
     return 0
 
@@ -482,7 +518,7 @@ def command_baskets(args, directory: Path) -> int:
     """Print or change one scope. Capture remains off until recovery setup is confirmed."""
     import baskets
 
-    config = load_saved(directory)
+    config = load_saved(directory, home=getattr(args, "settings_home", None))
     scopes = config.get("baskets") or copy.deepcopy(baskets.DEFAULT_SCOPES)
     if not args.scope:
         print(f"Baskets on this machine:\n{baskets.describe(scopes)}\n\n"
@@ -497,7 +533,7 @@ def command_baskets(args, directory: Path) -> int:
     scopes = {**scopes, args.scope: selection}
     config["baskets"] = baskets.validate_scopes(scopes)
     validate(config)
-    write_json(directory / APP_CONFIG, config)
+    save_saved(directory, config, home=getattr(args, "settings_home", None))
     print(f"Baskets now:\n{baskets.describe(scopes)}")
     if args.scope == "observe":
         print("\nRun 'fleet rescan' (or restart the peer) to apply this to the inventory.")
@@ -513,7 +549,7 @@ def command_recovery(args, directory: Path) -> int:
     """Configure the content tier separately from names-free status transports."""
     from snapshot_store import SnapshotStore, StoreRefused, validate_location
 
-    config = load_saved(directory)
+    config = load_saved(directory, home=getattr(args, "settings_home", None))
     recovery = dict(config["recovery"])
     if args.action == "configure":
         if args.location is None:
@@ -531,7 +567,7 @@ def command_recovery(args, directory: Path) -> int:
         recovery["confirmed"] = True
         config["recovery"] = recovery
         validate(config)
-        write_json(directory / APP_CONFIG, config)
+        save_saved(directory, config, home=getattr(args, "settings_home", None))
         print("Recovery location saved. It is separate from status publication; configuring it "
               "does not capture any file.\n" + "\n".join(f"warning: {item}" for item in warnings))
         return 0
@@ -575,7 +611,7 @@ def command_recovery(args, directory: Path) -> int:
         recovery["policies"] = {**recovery["policies"], repo_id: policy_record(updated)}
         config["recovery"] = recovery
         validate(config)
-        write_json(directory / APP_CONFIG, config)
+        save_saved(directory, config, home=getattr(args, "settings_home", None))
         print("Saved local-only recovery policy:\n" + json.dumps(
             {"repo_id": repo_id, **policy_record(updated)}, indent=2))
         return 0
@@ -855,7 +891,7 @@ def run_autostart(args) -> int:
     import fleet_autostart
 
     enable_unicode_output()
-    inner = ["--config-dir", str(args.config_dir.expanduser()), "tray"]
+    inner = [*profile_arguments(args.config_dir, args.settings_home), "tray"]
     if args.systemd and sys.platform.startswith("linux"):
         if args.action == "enable":
             target = fleet_autostart.systemd_enable(
@@ -887,13 +923,12 @@ def _main(argv=None, stopping=None, on_ready=None):
     """
     enable_unicode_output()
     args = build_parser().parse_args(argv)
-    directory = args.config_dir.expanduser()
+    if args.command == "preflight":
+        return command_preflight()
+    directory = fleet_directory(args.config_dir, home=args.settings_home)
     try:
-        if args.command == "preflight":
-            return command_preflight()
         if args.command == "rescan":
-            if not (directory / APP_CONFIG).exists():
-                raise ValueError("no saved fleet configuration")
+            load_saved(directory, home=args.settings_home)
             atomic_write_bytes(directory / "fleet-rescan.request", b"inventory requested\n")
             print("Requested one local inventory refresh; the running peer will perform it.")
             return 0
@@ -906,7 +941,7 @@ def _main(argv=None, stopping=None, on_ready=None):
         if args.command == "git-client":
             from git_client import discover_clients, LABELS, validate_choice
 
-            config = load_saved(directory)
+            config = load_saved(directory, home=args.settings_home)
             if args.disable and (args.client or args.executable):
                 raise ValueError("choose --disable or a client")
             if args.executable and not args.client:
@@ -918,26 +953,30 @@ def _main(argv=None, stopping=None, on_ready=None):
                     raise ValueError("client not found; pass --executable with its installed location")
                 validate_choice(choice)
                 config["git_client"] = choice
-                write_json(directory / APP_CONFIG, config)
+                save_saved(directory, config, home=args.settings_home)
                 print(f"Selected {LABELS[args.client]}. Resume the peer to use its desktop shortcut.")
             elif args.disable:
                 config["git_client"] = None
-                write_json(directory / APP_CONFIG, config)
+                save_saved(directory, config, home=args.settings_home)
                 print("Desktop shortcut disabled.")
             else:
                 print(json.dumps({"selected": config.get("git_client"),
                                   "detected": discover_clients(config.get("git_client"))}, indent=2))
             return 0
         if args.command == "setup":
-            args = setup_arguments(directory, args.configure_only)
+            args = setup_arguments(directory, args.configure_only, home=args.settings_home)
         if args.command == "peer":
             config = configure(args, directory)
             if args.configure_only:
                 return 0
         else:
-            config = load_saved(directory)
+            config = load_saved(directory, home=args.settings_home)
         if args.command == "doctor":
             return command_doctor(config)
+        if args.command == "fleet-key":
+            from Special._runtime.output import fleet_key_record
+            print(json.dumps(fleet_key_record(config["fleet_secret"], show=args.show), indent=2))
+            return 0
         if args.command == "catchup":
             return command_catchup(args, config)
         if args.command == "safe-to-wipe":
@@ -953,7 +992,7 @@ def _main(argv=None, stopping=None, on_ready=None):
             stopping = threading.Event()
             for name in ("SIGINT", "SIGTERM"):
                 signal.signal(getattr(signal, name), lambda *_: stopping.set())
-        return run_peer(config, directory, stopping, on_ready=on_ready)
+        return run_peer(config, directory, stopping, on_ready=on_ready, settings_home=args.settings_home)
     except (OSError, ValueError, KeyError, GhError, EOFError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -973,6 +1012,14 @@ def main(argv=None, stopping=None, on_ready=None):
               file=sys.stderr)
         return 2
     args = build_parser().parse_args(argv)
+    if args.command == "preflight":
+        return _main(argv, stopping, on_ready)
+    try:
+        args.config_dir = fleet_directory(args.config_dir, home=args.settings_home)
+        settings_snapshot = load_fleet_settings(args.settings_home)  # invalid common settings fail before locks/effects
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     if args.command == "autostart":
         try:
             return run_autostart(args)
@@ -982,12 +1029,15 @@ def main(argv=None, stopping=None, on_ready=None):
     if args.command == "tray":
         from fleet_tray import TrayUnavailable, run_tray
 
-        inner = ["--config-dir", str(args.config_dir.expanduser()), "run"]
+        inner = [*profile_arguments(args.config_dir, args.settings_home), "run"]
         try:
-            return run_tray(inner)
+            return run_tray(inner, expected_settings=settings_snapshot)
         except TrayUnavailable as exc:
             print(f"note: {exc}; running in the foreground instead", flush=True)
             return main(inner, stopping, on_ready)
+        except (OSError, ValueError):
+            print("error: tray logging or startup could not initialize; no alternate log used.", file=sys.stderr)
+            return 2
     if args.command == "setup" and not args.configure_only:
         # Setup ends with the app running where you can see it -- a tray icon on Windows -- not
         # a terminal you have to keep open. The lock is released before the tray starts, because
@@ -1001,10 +1051,10 @@ def main(argv=None, stopping=None, on_ready=None):
             return 2
         if code:
             return code
-        inner = ["--config-dir", str(directory), "tray"]
+        inner = [*profile_arguments(directory, args.settings_home), "tray"]
         offer_start_at_login(inner)
         return main(inner, stopping, on_ready)
-    if args.command in ("doctor", "rescan", "preflight"):
+    if args.command in ("doctor", "rescan", "preflight", "fleet-key"):
         return _main(argv, stopping, on_ready)
     try:
         with app_lock(args.config_dir.expanduser()):
