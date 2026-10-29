@@ -156,11 +156,13 @@ class Scanners(unittest.TestCase):
         self.assertFalse(any("ignored.txt" in item.where for item in result.findings))
         self.assertTrue(any(item["where"] == "readme.txt" for item in result.gaps))
 
-    def test_safe_precedence_short_watch_values_and_alias_is_not_email(self):
+    def test_explicit_watch_precedes_safe_values_and_public_host_aliases(self):
         policy = Policy(identities={"never-publish": ["abc", "orbit-user@example.test", "MACHINE-A", "private-marker"]},
                         safe=["private-marker"], logins=["orbit-user"])
         findings = inspect("abc orbit-user@MACHINE-A orbit-user@example.test private-marker", "fixture", policy)
-        self.assertEqual({item.value for item in findings}, {"abc", "orbit-user@example.test"})
+        self.assertEqual({item.value for item in findings}, {"abc", "orbit-user@example.test", "MACHINE-A", "private-marker"})
+        alias_policy = Policy(identities={"machine name": ["MACHINE-A"]}, logins=["orbit-user"])
+        self.assertFalse(inspect("orbit-user@MACHINE-A", "fixture", alias_policy))
 
     def test_many_candidates_do_not_rescan_entire_file_for_each_safe_value(self):
         text = "person@public-domain.org\n" * 5000

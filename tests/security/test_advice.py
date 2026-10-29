@@ -110,7 +110,7 @@ class SecurityAdviceTests(unittest.TestCase):
         result = self.check()
         self.assertEqual(result["check_status"], "incomplete")
         self.assertEqual(result["outgoing"]["check_status"], "not-checked")
-        self.assertEqual(result["working_tree"]["check_status"], "blocked")
+        self.assertEqual(result["working_tree"]["check_status"], "blocked", result)
 
     def test_missing_selected_engine_is_incomplete(self):
         self.document["defaults"]["security"]["engines"] = ["gitleaks"]
@@ -139,7 +139,7 @@ class SecurityAdviceTests(unittest.TestCase):
         with patch.object(_advice, "scan", side_effect=changing):
             result = self.check()
         self.assertEqual(result["check_status"], "incomplete")
-        self.assertEqual(result["working_tree"]["check_status"], "blocked")
+        self.assertEqual(result["working_tree"]["check_status"], "blocked", result)
 
     def test_known_common_profile_loss_before_advice_never_uses_fresh_defaults(self):
         snapshot = load_fleet_settings(self.home)

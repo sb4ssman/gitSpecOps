@@ -25,7 +25,7 @@ from Basic.push import push_snapshot
 from Special._settings import SettingsError, select_home
 from Special.security._findings import Report
 from Special.security._material import _history_limits, scan
-from Special.security._me import load_policy
+from Special.security._me import load_policy, policy_revision
 
 _OID = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 
@@ -97,8 +97,7 @@ def _remote_tip(snapshot):
 
 
 def _same_policy(left, right):
-    return all(getattr(left, name) == getattr(right, name) for name in
-               ("identities", "safe", "logins", "engines", "exclude_paths", "gaps", "sources"))
+    return policy_revision(left) == policy_revision(right)
 
 
 @dataclass(frozen=True)

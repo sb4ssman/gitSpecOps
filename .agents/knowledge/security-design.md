@@ -9,6 +9,87 @@ Direct scripts, `gitso` and GUI share manual scans and automatic supported-actio
 Do not treat a reveal flag as agent isolation or faster transport as permission to share content.
 This ruling does not authorize installation or actual user-history/settings changes.
 
+**2026-10-29 disposable native repair proof:** general rewrite helpers are grouped under
+`Special/_history/`. Basic/_history_read performs bounded raw reads with content-address checks;
+native.py builds exact models without log/mailmap message normalization. plan.py explicitly
+saves private versioned choices bound to source refs and symbolic HEAD, with a random visible id
+and private alteration digest. Existing private JSON storage is reused; there is no fallback.
+operation.execute requires typed REWRITE plus the exact plan id, then creates a new independent
+mirror through Basic.clone(no_local=True). It never rewrites the source or publishes.
+
+rules.py supplies the same literal transform to fixed callbacks and proof. No raw input becomes
+Python code, regex replacement syntax, a rule-file comment or a delimiter. File-info handles
+kept object contents and renames; the commit callback separately handles deletions once.
+Exact identity pairs preserve other contributors. The child keeps fresh-clone checks, empty
+commits and merge topology; it disables automatic commit-message hash substitution. Those choices
+follow the [upstream manual](https://github.com/newren/git-filter-repo/blob/main/Documentation/git-filter-repo.txt).
+The public clean-history adapter owns attended typed approval; no force option is exposed. Private plan/native-run/proof artifacts
+stay in the explicitly selected new workspace; failed workspaces are retained without retries.
+
+The executor runs read-only integrity checks, compares every selected reachable commit, ordered
+parent, identity/date, ref/tag and retained historical tree path/mode/blob, then rechecks source
+refs/model. Fixed callbacks and content-address-verified independent source/result readers are
+now exercised natively, beyond the earlier pure model tests. Real disposable active scans show
+archive/GPS/binary removal across renamed former paths and no remaining actionable findings or
+gaps from the selected built-in checks. All seven commits/four refs, collaborator/timezone,
+messages and retained content remain; purged objects are absent from the resulting object store.
+A second native case verifies one-pass rename/deletion and real Git symlink mode/content with
+core.symlinks=false, without OS symlink privileges. No publication clearance is granted.
+
+Current native scope is attached branch/tag history with portable UTF-8 records, plus explicitly
+included remote-tracking refs and their exact symbolic aliases. Other private ref namespaces,
+non-commit targets, signed/unknown headers, gitlinks, shallow/promisor/alternate/grafted
+stores and custom repository/config redirects refuse rather than infer or discard. Counted
+safe.directory trust settings are preserved, not confused with redirects. Larger histories,
+other OSs, nested-tag execution, broader encoding/signature handling and full GUI/finishing
+composition remain acceptance work. The archived v1 tools stay frozen. This proof does not
+erase external copies or authorize changing actual repository history.
+
+**2026-10-29 public cleanup and remote-ref boundary:** Special/security/clean_history.py and
+gitso clean-history share _cleanup.run_cleanup. The plan command accepts a full private history
+report and explicit choice JSON: literal path removals, finding-id replacements, whole containing
+file/container removals and exact author/committer/tagger identity choices. It rereads the current
+material and verifies report refs and selected evidence; it never treats a finding as a purge
+instruction. No raw protected value is needed in the choice file. Source scan id, masked choices,
+scope counts and actual artifacts are returned, with raw evidence staying in private state.
+
+The saved schema-two plan binds policy revision, selected profile/mode, effective engines and
+source refs/symbolic aliases. Apply requires that same selected profile, exact plan id, a new
+workspace and attended typed REWRITE; no unattended/confirmation flag bypass. The callable
+operation is the GUI seam, but GUI controls are not built here. Missing/changed settings, stale
+refs/findings, exclusions and required report/log failures refuse rather than choose defaults
+or another destination. Policy is reloaded before/after native execution and after rescan.
+Common output/format/report and counts-only logging preferences are honored; help creates none.
+
+Explicit remote inclusion selects all current tracking refs, including commits reachable only
+there; no fetch is performed. filter-repo's --partial disables its implicit origin-to-heads
+conversion. The rewriter still processes every supported ref; none is silently excluded. Basic
+restores planned symbolic aliases after clone/export and checks their exact target identity,
+not merely the resolved commit. After full graph/content proof, Basic maintenance disconnects
+the private clone's origin configuration without deleting tracking refs, expires only that
+mirror's reflogs and prunes its old objects. Integrity/model checks run again. Source config,
+refs, working files and index remain untouched. This is not a partial-history publication.
+
+The cleanup rescans the proved mirror under the same policy/selected engines, writes a full
+private rescan and returns verified, review-required or incomplete distinctly. A selected
+unavailable engine or retained binary coverage gap cannot yield verified. Failed/interrupted
+runs present actual created private artifacts; no publication clearance is granted. Scoped
+example reviews remain repository/content bound and do not automatically transfer to a mirror.
+Following/relinking histories, renaming/removing refs and publication remain separate work.
+
+**2026-10-29 scoped review/report evidence:** the report writer supports explicit private
+storage outside Git; inside Git it requires an ignored, untracked target. `_private_files.py`
+owns exclusive creation, link/traversal checks, bounded strict JSON and partial-file cleanup.
+`review_finding.py` / gitso review-finding preview and explicitly save/revoke one content-bound
+example decision through `_review_operation.py` and `_reviews.py`. Decisions never add a
+global safe value. Full reasons/evidence and byte digests stay private; accepted findings remain
+visible in masked records. The common reader/checks apply these records to exact matching
+repository/location/content; policy revision includes decision/revocation changes for commit,
+push and advice rechecks. Strong/prohibited findings, external-engine findings and coverage
+gaps cannot be waived. Local records are operational state, not shared settings/fleet payloads.
+See product-contract.md and settings-schema.md for the current contract; GUI review, deliberate
+cross-machine transfer/relocation and native permissions remain separate acceptance work.
+
 **2026-10-28 implementation evidence:** Special/security/_push.py now composes selected policy,
 the active outgoing-range reader and optional engines with Basic.fetch and a fixed-tip,
 single-branch Basic.push.push_snapshot. Archive Sync publish is the first publishing caller.

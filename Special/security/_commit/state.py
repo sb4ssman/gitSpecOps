@@ -18,6 +18,7 @@ from Basic._run import run_git
 from Special._settings import SettingsError
 from Special.security._findings import linked
 from Special.security._material import MAX_FILE_BYTES
+from Special.security._me import policy_revision
 
 HOOKS = ("pre-commit", "prepare-commit-msg", "commit-msg", "post-commit")
 CONTEXT_ENV = "GITSO_COMMIT_CONTEXT"
@@ -136,12 +137,6 @@ def index_files(repo, selected, manifest):
             yield name, None, "selected blob could not be read completely"
         else:
             yield name, blobs[0][1], ""
-
-
-def policy_revision(policy):
-    return digest({name: getattr(policy, name) for name in
-                   ("identities", "safe", "logins", "engines", "gaps", "sources")} |
-                  {"exclusions": [str(path) for path in policy.exclude_paths]})
 
 
 def constraints(repo):

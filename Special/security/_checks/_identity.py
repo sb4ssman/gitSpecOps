@@ -12,6 +12,6 @@ def check(text, where, policy, object_id=""):
                 continue
             pattern = re.compile(rf"(?i)(?<![A-Za-z0-9]){re.escape(value)}(?![A-Za-z0-9])")
             for match in pattern.finditer(text):
-                if not policy.allowed(text, *match.span()):
+                if kind == "never-publish" or not policy.allowed(text, *match.span()):
                     yield Finding(kind, "leak", match[0], where, object_id,
                                   text.count("\n", 0, match.start()) + 1)

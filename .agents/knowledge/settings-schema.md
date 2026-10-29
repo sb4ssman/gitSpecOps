@@ -589,3 +589,59 @@ scheduling actions only; newly generated refresh-all launchers call the Special 
 Saved profiles, installed launchers and OS tasks are not rewritten by source cleanup. A launcher
 using a removed command route needs separate explicit regeneration before it can run.
 
+## Private security reports and example review state
+
+`--out` on active scan commands explicitly requests full private JSON disclosure. The target
+must not already exist or traverse links/parent components. External user-selected storage is
+allowed; inside any work tree it must be positively Git-ignored and untracked. Bare repositories
+are refused. New POSIX directories/files use modes 0700/0600; Windows retains directory ACL
+semantics. No permission changes or fallback. Incomplete new files are removed best-effort and
+never advertised. Both the saved report and normal masked result list actual report artifacts.
+
+Full schema-v2 reports contain a random scan_id and private finding content_id values. Masked
+records omit content_id; report-local finding ids remain display identifiers. Full report
+readers reject links, duplicate keys, invalid/nonfinite JSON, nonregular/oversize inputs and
+unsupported schema. Saved earlier reports remain readable as JSON but cannot supply a new
+review without current content bindings; regenerate a scan rather than guess missing evidence.
+
+`review-finding` previews accepting one uncertain built-in finding or revoking an active
+review. Preview writes nothing; --apply requires --approve with the current whole-plan id.
+Changed report/reason/profile/policy requires a new preview. Reasons are never echoed; full
+reasons, normalized repository binding, exact check/location/line/value/content and UTC time
+live only in private immutable records. Context kind and duplicate occurrence distinguish
+content/path/metadata and repeated identical candidates on one line. Commit/ref/tag metadata
+bind their Git object; path findings bind file bytes and archived findings bind full archive
+bytes. Acceptance never updates safe_values. Strong credential checks, prohibited values,
+unsupported external-engine findings and coverage gaps cannot be
+waived. Supported candidates include generic personal shapes, uncertain assignments/URLs,
+documented incident context, commit identity email and recognized image GPS metadata.
+
+Records live at `<selected-home>/security/reviews/<repository-scope>/review-ID.json`; revocation
+adds `review-ID.revoke.json`, retaining the original. The scope directory is an internal key,
+not a public repository identifier. New accepted evidence uses exclusive creation. Reads are
+bounded to 10000 records, 256 KiB per record and 32 MiB aggregate canonical data; corrupt,
+duplicate-active or unreadable records make checking incomplete. Excluded report inputs are
+not read; excluded review storage is neither read nor written. Without saved reviews there
+are no review-state writes. These are operational records, not a second settings document.
+
+The shared scanner applies exact matches to tree/index/history/proposed/outgoing material. Source
+byte changes invalidate a review even if decoding yields identical text. Unchanged reverted
+content can match again; another location/repository cannot inherit it. Accepted findings stay
+visible with random review ids/status, without private reasons or evidence digests. The shared
+policy revision binds decisions/revocations into commit/push/advice checks; a changed review
+cannot silently reuse an action approval. Immutable storage and optimistic rechecks are not a
+transaction against arbitrary concurrent external writers.
+
+This first record format binds local repository locations. Deliberate import/relocation,
+portable review transport, GUI review/revelation and native permission proof remain separate;
+records/full reports never enter portable-settings projections or fleet manifests implicitly.
+Records created under saved common settings require that settings authority to remain present;
+deleting it cannot reactivate accepted examples under fresh defaults.
+
+`scan-tree --staged` selects index material: only staged added/modified/type-changed file bytes,
+without reading working/untracked contents, invoking filters, changing the index or committing.
+Deleted versions are excluded; history scanning remains separate. Unmerged entries, submodules
+and changed index/selection snapshots yield coverage gaps. It uses the existing bounded blob
+reader and private-report/review path, allowing a line-ending/filter-produced staged version
+to be reviewed separately before a fresh checked-commit plan. Working bytes stay untouched.
+

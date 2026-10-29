@@ -53,6 +53,8 @@ COMMANDS = (
     Command("inventory-restore", "Special/inventory_restore.py", "Special.inventory_restore"),
     Command("scan-tree", "Special/security/scan_tree.py", "Special.security._cli", prefix=("tree",)),
     Command("scan-history", "Special/security/scan_history.py", "Special.security._cli", prefix=("history",)),
+    Command("review-finding", "Special/security/review_finding.py", "Special.security._review_cli"),
+    Command("clean-history", "Special/security/clean_history.py", "Special.security._cleanup_cli"),
     Command("commit", "Special/commit_repo.py", "Special.security._commit.cli"),
     Command("push", "Special/push_repo.py", "Special.security._push_cli"),
     Command("setup", "setup_gitspecops.py", "setup_gitspecops"),

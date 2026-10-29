@@ -72,10 +72,21 @@ app over independently useful operations, remembered per-machine context and exp
 policy. Its acceptance work is in WORKING-NOTES. It extends the existing layer/security designs;
 old handoffs and descriptions of current code do not override these newer decisions.
 
+The command catalog now includes `review-finding` and `clean-history` (16 routes). Active scanners support full
+private reports outside Git and exact-content example reviews. Preview writes nothing;
+explicit approval saves/revokes private operational records under the selected profile.
+Findings remain visible; strong/prohibited material and incomplete checks cannot be waived.
+See the product/security contracts and root README for usage and remaining acceptance.
+Cleanup uses explicit report finding IDs/paths, a private exact plan and an attended typed
+REWRITE into a new independent mirror. It preserves explicitly included remote-tracking refs
+and symbolic aliases, then proves/rescans the result. It never rewrites the source or publishes.
+Direct/CLI and callable paths share this operation; full GUI/finishing/native acceptance remains open.
+
 ### Start every session by looking, not remembering
 
-1. **Read this file**, then [`HANDOFF.md`](HANDOFF.md) for where the project stands right
-   now, then [`WORKING-NOTES.md`](WORKING-NOTES.md) for open items.
+1. **Read this file**, then [`WORKING-NOTES.md`](WORKING-NOTES.md) for current work and the
+   latest [`WORK-LOG.md`](WORK-LOG.md) entries for evidence. [`HANDOFF.md`](HANDOFF.md) is a
+   historical phase record; consult it for context rather than treating it as today's task list.
 2. **Map the tree with the tool**, do not reconstruct it from memory or a few `ls` calls:
 
    ```bash

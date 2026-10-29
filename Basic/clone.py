@@ -1,6 +1,6 @@
 """Clone one repository into a destination that does not exist yet.
 
-    python Basic/clone.py <url> <destination> [--mirror]
+    python Basic/clone.py <url> <destination> [--mirror] [--no-local]
 
 Never clones over anything: an existing destination is refused before git runs, so a clone can
 only ever add a folder. Credentials are the user's own (`gh auth setup-git`, an SSH agent);
@@ -25,13 +25,15 @@ CLONE_TIMEOUT_SECONDS = 300
 
 
 def clone(url: str, destination: Path | str, *, mirror: bool = False,
+          no_local: bool = False,
           timeout: float = CLONE_TIMEOUT_SECONDS) -> Result:
-    """`git clone [--mirror] <url> <destination>`. Refuses an existing destination. Never raises."""
+    """Clone to a new destination; no_local requests an independent transport copy, no hardlinks."""
     destination = Path(destination)
-    if destination.exists():
+    if destination.exists() or destination.is_symlink():
         return Result(["git", "clone", url, str(destination)], EXIT_CANNOT_START, "",
                       f"destination already exists: {destination}")
-    args = ["git", "clone", *(["--mirror"] if mirror else []), url, str(destination)]
+    args = ["git", "clone", *(["--mirror"] if mirror else []),
+            *(["--no-local"] if no_local else []), "--", url, str(destination)]
     return run(args, cwd=destination.parent if destination.parent.is_dir() else None,
                timeout=timeout)
 
@@ -42,8 +44,9 @@ def main(argv: list[str]) -> int:
     parser.add_argument("url")
     parser.add_argument("destination", type=Path)
     parser.add_argument("--mirror", action="store_true", help="bare mirror of every ref")
+    parser.add_argument("--no-local", action="store_true", help="independent transport copy without local hardlinks")
     args = parser.parse_args(argv)
-    result = clone(args.url, args.destination, mirror=args.mirror)
+    result = clone(args.url, args.destination, mirror=args.mirror, no_local=args.no_local)
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
     return result.returncode

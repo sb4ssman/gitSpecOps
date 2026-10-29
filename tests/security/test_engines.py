@@ -215,8 +215,9 @@ class PolicyAndPresentation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home, \
              patch.object(_cli, "load_policy", return_value=Policy(engines=("gitleaks",))), \
              patch.object(_cli, "scan", return_value=report) as scanner, \
-             patch.object(_cli, "write_report") as writer, redirect_stdout(output):
+             patch.object(_cli, "write_report", wraps=_cli.write_report) as writer, redirect_stdout(output):
             code = _cli.main("tree", [home, "--engine", "none", "--json", "--out", str(Path(home) / "private-marker.json")])
+            self.assertTrue((Path(home) / "private-marker.json").is_file())
         self.assertEqual(code, 0)
         self.assertEqual(scanner.call_args.kwargs["engines"], [])
         writer.assert_called_once()

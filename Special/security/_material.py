@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import os
 import re
+import hashlib
+from dataclasses import replace
 from pathlib import Path
 
 from Basic._objects import commits, file_versions, files_at, git_output, read_blobs
@@ -11,19 +13,23 @@ from Special.security._checks import inspect
 from Special.security._contents import image_metadata, is_archive, is_image, open_archive
 from Special.security._findings import Finding, Report, linked
 from Special.security._engines import EngineBatch
+from Special.security import _reviews
 
 MAX_FILE_BYTES = 32 * 1024 * 1024
 
 
-def _text(report, text, where, policy, object_id=""):
-    report.findings.extend(inspect(text, where, policy, object_id))
+def _text(report, text, where, policy, object_id="", *, content_id=None, context_kind="content"):
+    findings = inspect(text, where, policy, object_id)
+    report.findings.extend(replace(item, content_id=content_id if content_id is not None else item.content_id,
+                                   context_kind=context_kind) for item in findings)
     runner = getattr(report, "_engine_runner", None)
     if runner is not None:
         runner.add(text, where, object_id)
 
 
 def _bytes(report, data, where, policy, object_id=""):
-    _text(report, data.decode("utf-8", errors="replace"), where, policy, object_id)
+    _text(report, data.decode("utf-8", errors="replace"), where, policy, object_id,
+          content_id=hashlib.sha256(data).hexdigest())
     if data.startswith(b"version https://git-lfs.github.com/spec/v1"):
         report.gap(where, "Git LFS pointer only; payload not inspected")
     archive_name = where
@@ -38,10 +44,13 @@ def _bytes(report, data, where, policy, object_id=""):
             report.gap(where + ("!" + name if name else ""), reason)
         for name, content in opened.members:
             inner = where + "!" + name
-            _text(report, name, inner + " [member path]", policy, object_id)
-            _text(report, content.decode("utf-8", errors="replace"), inner, policy, object_id)
+            _text(report, name, inner + " [member path]", policy, object_id,
+                  content_id=hashlib.sha256(data).hexdigest(), context_kind="archive-path")
+            _text(report, content.decode("utf-8", errors="replace"), inner, policy, object_id,
+                  content_id=hashlib.sha256(data).hexdigest(), context_kind="archive-member")
             if is_image(name):
-                _image(report, content, inner, policy, object_id)
+                _image(report, content, inner, policy, object_id,
+                       context_id=hashlib.sha256(data).hexdigest(), context_kind="archive-metadata")
             elif b"\0" in content[:8000] and not is_archive(name):
                 report.gap(inner, "binary member: raw strings only")
     elif is_image(where):
@@ -50,7 +59,7 @@ def _bytes(report, data, where, policy, object_id=""):
         report.gap(where, "encoded/binary content: raw strings only")
 
 
-def _image(report, data, where, policy, object_id):
+def _image(report, data, where, policy, object_id, *, context_id=None, context_kind="metadata"):
     metadata = image_metadata(data)
     if metadata is None:
         report.gap(where, "image metadata format not recognized")
@@ -58,16 +67,20 @@ def _image(report, data, where, policy, object_id):
     for reason in metadata.skipped:
         report.gap(where, reason)
     for text in metadata.texts:
-        _text(report, text, where + " [metadata]", policy, object_id)
+        _text(report, text, where + " [metadata]", policy, object_id,
+              content_id=context_id or hashlib.sha256(data).hexdigest(), context_kind=context_kind)
     if metadata.gps:
-        report.findings.append(Finding("image GPS position", "review", "GPS present", where, object_id))
+        report.findings.append(Finding("image GPS position", "review", "GPS present", where, object_id,
+                                       content_id=context_id or hashlib.sha256(data).hexdigest(), context_kind=context_kind))
 
 
 def _person(report, name, email, where, policy, object_id):
-    _text(report, name + " <" + email + ">", where, policy, object_id)
+    _text(report, name + " <" + email + ">", where, policy, object_id, context_kind="identity")
     if email and not email.lower().endswith("@users.noreply.github.com") and email.lower() != "noreply@github.com":
         if not policy.allowed(email, 0, len(email)):
-            report.findings.append(Finding("commit identity email", "review", email, where, object_id))
+            report.findings.append(Finding("commit identity email", "review", email, where, object_id,
+                                           content_id=hashlib.sha256((name + " <" + email + ">").encode("utf-8")).hexdigest(),
+                                           context_kind="identity"))
 
 
 def _tree(report, repo, policy):
@@ -81,7 +94,9 @@ def _tree(report, repo, policy):
         if not name or name in seen:
             continue
         seen.add(name)
-        _text(report, name, name + " [path]", policy)
+        first_path_finding = len(report.findings)
+        _text(report, name, name + " [path]", policy, content_id="", context_kind="path")
+        last_path_finding = len(report.findings)
         if len(fields) != 3 or fields[2] != "0":
             report.gap(name, "unmerged/unreadable index entry")
             continue
@@ -106,6 +121,9 @@ def _tree(report, repo, policy):
             report.gap(name, "tracked file missing or unreadable")
             continue
         report.files += 1
+        path_content = hashlib.sha256(name.encode("utf-8") + b"\0" + data).hexdigest()
+        for index in range(first_path_finding, last_path_finding):
+            report.findings[index] = replace(report.findings[index], content_id=path_content)
         _bytes(report, data, name, policy)
 
 
@@ -181,13 +199,13 @@ def _history(report, repo, policy, refs):
         return
     tips, direct = [], {}
     for ref, object_id in report.refs.items():
-        _text(report, ref, ref + " [ref name]", policy, object_id)
+        _text(report, ref, ref + " [ref name]", policy, object_id, context_kind="ref")
         current, visited = object_id, set()
         kind = git_output(repo, ["cat-file", "-t", current]).strip()
         while kind == "tag" and current not in visited:
             visited.add(current)
             raw = git_output(repo, ["cat-file", "tag", current])
-            _text(report, raw, ref + " [tag object]", policy, current)
+            _text(report, raw, ref + " [tag object]", policy, current, context_kind="tag")
             match = re.search(r"^tagger (.*?) <([^>]*)>", raw, re.M)
             if match:
                 _person(report, match[1], match[2], ref + " [tagger]", policy, current)
@@ -217,17 +235,24 @@ def _history_versions(report, repo, policy, tips, direct=None):
     direct = direct or {}
     for blob, paths in direct.items():
         versions.setdefault(blob, set()).update(paths)
+    path_findings = {}
     for object_id, paths in versions.items():
         for name in sorted(paths):
-            _text(report, name, name + " [path]", policy, object_id)
+            first = len(report.findings)
+            _text(report, name, name + " [path]", policy, object_id, content_id="", context_kind="path")
+            path_findings[object_id, name] = (first, len(report.findings))
     for object_id, data in _small_blobs(report, repo, versions):
         paths = versions[object_id]
         for name in sorted(paths):
             report.files += 1
+            first, last = path_findings[object_id, name]
+            path_content = hashlib.sha256(name.encode("utf-8") + b"\0" + data).hexdigest()
+            for index in range(first, last):
+                report.findings[index] = replace(report.findings[index], content_id=path_content)
             _bytes(report, data, name, policy, object_id)
     for commit in commits(repo, tips) if tips else []:
         report.commits += 1
-        _text(report, commit.message, "commit message", policy, commit.id)
+        _text(report, commit.message, "commit message", policy, commit.id, context_kind="message")
         for role, person in (("author", commit.author), ("committer", commit.committer)):
             _person(report, person.name, person.email, role, policy, commit.id)
     # Includes submodules removed in later commits, not just those at the current tips.
@@ -238,6 +263,29 @@ def _history_versions(report, repo, policy, tips, direct=None):
         fields = part.strip().split()
         if part.strip().startswith(":") and len(fields) >= 5 and fields[1] == "160000":
             report.gap(parts[index + 1], "historical submodule payload not inspected")
+
+
+def _index(report, repo, policy):
+    """Read staged changed-file bytes only, without filters, working files or index writes."""
+    change_args = ["diff", "--cached", "--no-ext-diff", "--no-textconv", "--name-only", "--no-renames", "--diff-filter=ACMTU", "-z"]
+    changes = git_output(repo, change_args)
+    names = set(changes.split("\0")) - {""}
+    entries = git_output(repo, ["ls-files", "--stage", "-z"])
+    versions = {}
+    for entry in entries.split("\0"):
+        meta, _, name = entry.partition("\t")
+        if name not in names:
+            continue
+        fields = meta.split()
+        if len(fields) != 3 or fields[2] != "0":
+            report.gap(name, "unmerged/unreadable index entry")
+        elif fields[0] == "160000":
+            report.gap(name, "submodule contents not inspected")
+        else:
+            versions.setdefault(fields[1], set()).add(name)
+    _history_versions(report, repo, policy, [], direct=versions)
+    if entries != git_output(repo, ["ls-files", "--stage", "-z"]) or changes != git_output(repo, change_args):
+        report.gap("index", "staged scope changed during inspection; rerun")
 
 
 def _outgoing(report, repo, policy, refs):
@@ -271,10 +319,11 @@ def _proposed(report, policy, proposal):
             continue
         if data is None:
             continue
-        _text(report, name, name + " [path]", policy)
+        _text(report, name, name + " [path]", policy,
+              content_id=hashlib.sha256(name.encode("utf-8") + b"\0" + data).hexdigest(), context_kind="path")
         report.files += 1
         _bytes(report, data, name, policy)
-    _text(report, proposal["message"], "proposed commit message", policy)
+    _text(report, proposal["message"], "proposed commit message", policy, context_kind="message")
     for role in ("author", "committer"):
         identity = proposal["identities"].get(role)
         if identity is None:
@@ -299,9 +348,11 @@ def scan(repo: Path, policy, *, material="tree", refs=None, engines=None, execut
     report._engine_runner = runner
     try:
         for name in reference_names:
-            _text(report, name, "publication ref", policy)
+            _text(report, name, "publication ref", policy, context_kind="ref")
         if material == "tree":
             _tree(report, repo, policy)
+        elif material == "index":
+            _index(report, repo, policy)
         elif material == "history":
             _history(report, repo, policy, list(refs or ["--all"]))
         elif material == "outgoing":
@@ -317,4 +368,5 @@ def scan(repo: Path, policy, *, material="tree", refs=None, engines=None, execut
             runner.finish()
         finally:
             del report._engine_runner
+    _reviews.apply(report, policy)
     return report

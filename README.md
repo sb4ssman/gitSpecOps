@@ -3,6 +3,16 @@
 **git Special Operations** — careful, boring, stdlib-only tools for when you have far too many
 Git repositories and doing it by hand has stopped being reasonable.
 
+**Work-in-progress checkpoint:** settings, security and interface integration has changed
+substantially and is still under way. Direct/CLI components have focused Windows evidence;
+complete GUI parity, native Linux/macOS and real-fleet acceptance remain unfinished. This
+checkpoint preserves development progress and does not declare a finished release.
+
+**Work-in-progress checkpoint:** settings, security and interface integration has changed
+substantially and is still under way. Direct/CLI components have focused Windows evidence;
+complete GUI parity, native Linux/macOS and real-fleet acceptance remain unfinished. This
+checkpoint preserves development progress and does not declare a finished release.
+
 Each operation is the kind of script you would eventually write yourself, with the dangerous
 parts already thought through: it shows you a plan before it acts, it refuses anything ambiguous,
 and it never touches your credentials.
@@ -22,9 +32,55 @@ native engine/version validation remains development work.
 Archive Sync's explicit `--publish` action now checks the exact outgoing history before sending
 one planned commit/branch. Prohibited values, high-confidence credential patterns, unresolved
 findings and incomplete checks hold the push; `--yes` does not bypass security. An earlier
-commit can still block publication even if the latest files are clean. Select a security
-profile with `--settings-home`, or explicitly select legacy lists with `--legacy-policy`.
-Commit gates and other publication paths remain integration work; Basic stays policy-free.
+commit can still block publication even if the latest files are clean. The direct checked
+commit and push commands use the same checks. Select a profile with `--settings-home`;
+security scan/review/commit/push commands can explicitly read existing text policy using
+`--legacy-policy` without converting settings. Basic Git operations stay policy-free.
+
+Full reports are explicit: `--out` creates a new private JSON file at the selected destination.
+Outside Git, choose storage you control; inside Git the destination must be ignored and
+untracked. Existing files, links and invalid destinations are refused, without fallback.
+Normal stdout remains masked and lists the actual report artifact.
+
+For a documented example or test fixture, preview a review tied to that exact finding/content:
+
+```sh
+python gitso.py scan-tree /path/to/repo --settings-home /private/profile --out /private/reports/scan.json --json
+python gitso.py review-finding /private/reports/scan.json finding-000001 --settings-home /private/profile --reason "Reviewed example"
+```
+
+The review preview writes nothing. Rerun the same arguments with `--apply --approve REVIEW_PLAN_ID`
+using the returned plan id. The private decision records the reason; ordinary output does not
+repeat it. Rescan before taking an action. Changed bytes, location or repository require review
+again; unchanged accepted examples stay visible with a review id. Prohibited values, strong
+credentials, unsupported external-engine findings and coverage gaps cannot be waived.
+To revoke, replace the finding argument with `--revoke REVIEW_ID`, preview and approve that plan.
+Records stay local under the selected profile; they are not automatically shared with the fleet.
+
+If Git's line-ending conversion or a clean filter changes a reviewed working file when staged,
+the commit check can hold the different staged bytes. Use `scan-tree --staged --out FILE` to
+inspect/review those staged changes, then create a fresh commit preview. This scan never stages
+or commits anything and leaves the working files alone. It excludes deleted versions and
+unstaged/untracked bytes; use history scanning separately for old material.
+
+**Dangerous history maintenance:** `clean-history` plans explicit cleanup and rewrites only a
+new private mirror. It preserves the source checkout and never publishes. Start with a full
+private `scan-history --out` report, then select finding IDs and explicit paths in a choice
+document. `python gitso.py docs clean-history` gives the current JSON format directly from source.
+Raw protected values are read programmatically; an agent does not need them in its choice file.
+
+```sh
+python gitso.py clean-history plan /private/history.json --choices /private/choices.json --settings-home /private/profile --include-remote-refs --plan-out /private/plan.json --json
+python gitso.py clean-history apply /private/plan.json --settings-home /private/profile --workspace /private/new-run --approve PLAN_ID
+```
+
+Use the same selected profile/policy mode for both steps. Tracking refs require explicit
+inclusion; their names, remote-only commits and symbolic aliases are preserved without fetching.
+Apply requires an attended terminal and typed `REWRITE`; there is no `--yes` or confirmation flag.
+The exact plan, native diagnostics and full rescan remain private, with masked results and
+presented artifacts. Settings/report/log failures never select another location or profile.
+Remaining findings or coverage gaps hold the result for review. A verified mirror does not
+rotate credentials, erase other copies, authorize publication or update other clones.
 
 ---
 

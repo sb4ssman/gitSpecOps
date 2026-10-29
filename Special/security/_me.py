@@ -12,6 +12,8 @@ import re
 import copy
 import os
 import socket
+import hashlib
+import json
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -30,6 +32,8 @@ class Policy:
     gaps: list[dict] = field(default_factory=list)
     exclude_paths: tuple[Path, ...] = field(default=(), repr=False)
     engines: tuple[str, ...] = ()
+    reviewed_examples: dict = field(default_factory=dict, repr=False)
+    review_revision: str = field(default="", repr=False)
 
     def allowed(self, text, start, end):
         key = (tuple(self.safe), tuple(self.logins))
@@ -51,8 +55,18 @@ class Policy:
 
     def summary(self):
         return {"identity_values": sum(map(len, self.identities.values())),
+                "reviewed_examples": len(self.reviewed_examples),
                 "safe_values": len(self.safe), "public_handles": len(self.logins),
                 "engines": list(self.engines), "sources": self.sources}
+
+
+def policy_revision(policy):
+    """Private shared action-plan binding, including content-bound review changes."""
+    values = {name: getattr(policy, name) for name in
+              ("identities", "safe", "logins", "engines", "gaps", "sources", "review_revision", "reviewed_examples")}
+    values["exclusions"] = [str(path) for path in policy.exclude_paths]
+    return hashlib.sha256(json.dumps(values, sort_keys=True, ensure_ascii=True,
+                                     separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 def _scope(repo, exclusions):
@@ -189,6 +203,17 @@ def load_policy(repo: Path, *, home=None, settings: ResolvedSettings | None = No
                                         "safe_values": [*policy.safe, *policy.logins]}})
     policy.logins = sorted(set(policy.logins))
     policy.safe = sorted(set(policy.safe))
+    from Special.security import _reviews
+    try:
+        review_home = settings.home if settings is not None else selected
+        if excluded(_reviews.directory(review_home, repo), policy.exclude_paths, contains=True):
+            policy.review_revision = "excluded"
+        else:
+            policy.reviewed_examples, policy.review_revision = _reviews.load(review_home, repo,
+                                                                            configured=settings is not None and settings.configured)
+    except (OSError, ValueError):
+        policy.gaps.append({"where": "review records", "reason": "private example reviews could not be verified"})
+        policy.review_revision = "unreadable"
     policy.sources["tailnet"] = "not-requested"
     policy.sources["online-organizations"] = "not-requested"
     return policy

@@ -4,10 +4,11 @@ from __future__ import annotations
 import json
 import re
 import stat
+from uuid import uuid4
+from Special.security._reviews import CONTENT_ID, REVIEW_ID, REVIEWABLE
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from Basic._objects import git_output
 
 STRONG_CREDENTIAL_CHECKS = frozenset({"GitHub token", "AWS access key", "Slack token",
                                      "Google API key", "private key block"})
@@ -20,6 +21,16 @@ class Finding:
     where: str = field(repr=False)
     object_id: str = ""
     line: int = 0
+    content_id: str = field(default="", repr=False)
+    review_id: str = ""
+    context_kind: str = "content"
+    occurrence: int = 0
+
+    @property
+    def accepted_example(self):
+        return bool(isinstance(self.review_id, str) and REVIEW_ID.fullmatch(self.review_id) and
+                    self.check in REVIEWABLE and self.classification in ("candidate", "review") and
+                    isinstance(self.content_id, str) and CONTENT_ID.fullmatch(self.content_id) and self.severity != "high")
 
     @property
     def severity(self):
@@ -57,10 +68,11 @@ class Report:
     private_values: tuple = field(default=(), repr=False)
     engines: dict = field(default_factory=dict)
     artifacts: list[dict] = field(default_factory=list, repr=False)
+    scan_id: str = field(default_factory=lambda: "scan-" + uuid4().hex)
 
     @property
     def actionable(self):
-        return [item for item in self.findings if item.classification != "quiet"]
+        return [item for item in self.findings if item.classification != "quiet" and not item.accepted_example]
 
     @property
     def exit_code(self):
@@ -71,7 +83,7 @@ class Report:
         """Shared check outcome, not permission to execute an action or publish a repository."""
         if self.gaps:
             return "incomplete"
-        if any(item.severity == "high" for item in self.actionable):
+        if any(item.severity == "high" for item in self.findings):
             return "blocked"
         return "review-required" if self.actionable else "passed"
 
@@ -89,9 +101,15 @@ class Report:
         result = asdict(self)
         private_values = result.pop("private_values")
         for number, (item, finding) in enumerate(zip(result["findings"], self.findings), 1):
+            item["review_id"] = finding.review_id if finding.accepted_example else ""
+            if redacted:
+                item.pop("content_id")
             item.update(finding_id=f"finding-{number:06d}",
                         severity=finding.severity,
-                        recommendation=("Inspect the referenced outgoing object/commit; a working-tree fix alone does not change outgoing history."
+                        review_status="accepted-example" if finding.accepted_example else "unreviewed",
+                        recommendation=("Accepted example in this exact scanned content; changed content requires review again."
+                                        if finding.accepted_example else
+                                        "Inspect the referenced outgoing object/commit; a working-tree fix alone does not change outgoing history."
                                         if self.material == "outgoing" and finding.classification != "quiet" else
                                         "Remove the prohibited value from the proposed publication; review history separately."
                                         if finding.classification == "leak" else
@@ -114,6 +132,7 @@ class Report:
                       coverage="incomplete" if self.gaps else "complete-for-selected-checks",
                       result="review-findings" if self.actionable else "no-actionable-findings",
                       scope_note=(("Indexed and non-ignored untracked working-tree files; staged-only bytes excluded. " if self.material == "tree" else
+                                   "Staged added/modified/type-changed file bytes; working/untracked bytes and deleted versions excluded. " if self.material == "index" else
                                    "Changed blob/path versions and commit messages/identities in the exact base..tip range. " if self.material == "outgoing" else
                                    "Named proposed file bytes/paths, message and author/committer; other staged and baseline files excluded. " if self.material == "proposed" else
                                    "All selected local refs, including private refs, and HEAD; excludes reflogs/unreachable objects. ") +
@@ -133,19 +152,23 @@ def render_record(record):
     settings = policy.get("sources", {}).get("settings")
     origin = ("legacy-explicit" if settings == "legacy-explicit" else
               "saved" if isinstance(settings, dict) and settings.get("configured") else "built-in")
-    actionable = [item for item in record["findings"] if item["classification"] != "quiet"]
+    actionable = [item for item in record["findings"] if item["classification"] != "quiet" and not item.get("review_id")]
+    reviewed = [item for item in record["findings"] if item.get("review_id")]
+    quiet = sum(item["classification"] == "quiet" for item in record["findings"])
     lines = [f"{Path(record['repository']).name}: {record['material']}; {record['files']} file version(s), {record['commits']} commit(s)",
              "Checks: " + ", ".join(record["checks"]) + "; external engines: " +
              (json.dumps(record["engines"], sort_keys=True) if record["engines"] else "none selected"),
              f"Policy: {origin}; {policy.get('identity_values', 0)} identity/protected value(s), "
              f"{policy.get('safe_values', 0)} allowance(s), {policy.get('public_handles', 0)} public handle(s)",
-             f"{len(actionable)} finding(s) to review; {len(record['findings']) - len(actionable)} quiet note(s); {len(record['gaps'])} coverage gap(s)"]
+             f"{len(actionable)} finding(s) to review; {len(reviewed)} accepted example(s); {quiet} quiet note(s); {len(record['gaps'])} coverage gap(s)"]
     for item in actionable[:30]:
         location = item["where"] + (f":{item['line']}" if item["line"] else "")
         lines.append(f"  {item['finding_id']} [{item['severity']}] {item['classification']}: {item['check']} at {location}: {item['value']}")
         lines.append("    " + item["recommendation"])
     for entry in record["gaps"][:20]:
         lines.append(f"  NOT INSPECTED: {entry['where']}: {entry['reason']}")
+    for item in reviewed[:30]:
+        lines.append(f"  {item['finding_id']} accepted example: {item['check']} at {item['where']} ({item['review_id']})")
     if len(actionable) > 30 or len(record["gaps"]) > 20:
         lines.append("  Use --json for all masked entries; no report file is created by default.")
     for artifact in record["artifacts"]:
@@ -154,25 +177,13 @@ def render_record(record):
 
 
 def write_report(destination: Path, report: Report):
-    """Exclusive-create a full report only in a positively verified ignored Git location."""
-    destination = Path(destination).expanduser().absolute()
-    if ".." in destination.parts:
-        raise ValueError("report paths must not contain parent traversal")
-    for part in (destination, *destination.parents):
-        if linked(part):
-            raise ValueError("report paths must not traverse links")
-    ancestor = destination.parent
-    while not ancestor.exists():
-        ancestor = ancestor.parent
-    top = Path(git_output(ancestor, ["rev-parse", "--show-toplevel"]).strip()).resolve()
-    relative = destination.relative_to(top).as_posix()
-    if git_output(top, ["ls-files", "--cached", "--", relative]).strip():
-        raise ValueError("a private report destination must not be tracked")
-    from Basic._run import run_git
-    ignored = run_git(top, ["check-ignore", "-q", "--no-index", "--", relative])
-    if ignored.returncode != 0:
-        raise ValueError("report destination must be positively verified as Git-ignored")
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with destination.open("x", encoding="utf-8", newline="\n") as stream:
-        json.dump(report.record(redacted=False), stream, indent=2, ensure_ascii=True)
-        stream.write("\n")
+    """Explicit full disclosure to selected private storage; artifact recorded only on success."""
+    from Special.security._private_files import private_path, write_private_json
+
+    path = private_path(destination)
+    artifact = {"kind": "security report", "path": str(path), "disclosure": "full private values"}
+    payload = report.record(redacted=False)
+    payload["artifacts"].append(artifact)
+    write_private_json(path, payload)
+    report.artifacts.append(artifact)
+    return path

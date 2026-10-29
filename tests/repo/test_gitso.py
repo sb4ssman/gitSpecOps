@@ -30,7 +30,7 @@ class GitsoTests(unittest.TestCase):
                 self.assertEqual(gitso.main(arguments), 0)
             self.assertTrue(output.getvalue())
             if arguments == ["commands", "--json"]:
-                self.assertEqual(len(json.loads(output.getvalue())["commands"]), 14)
+                self.assertEqual(len(json.loads(output.getvalue())["commands"]), 16)
 
     def test_catalog_is_unique_and_descriptions_come_from_actual_source(self):
         self.assertEqual(len({command.name for command in gitso.COMMANDS}), len(gitso.COMMANDS))

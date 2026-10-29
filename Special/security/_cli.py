@@ -21,10 +21,12 @@ def main(material, argv=None):
                    "Inspect history reachable from every local ref and HEAD; no fetch, reflogs or unreachable objects.")
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("repo", type=Path)
+    if material == "tree":
+        parser.add_argument("--staged", action="store_true", help="Inspect staged changed-file bytes instead of working/untracked files; no staging or commit.")
     parser.add_argument("--settings-home", type=Path, help="selected user-data profile; no creation or migration")
     parser.add_argument("--legacy-policy", action="store_true",
                         help="explicitly read legacy text policy; refuses any existing common settings file")
-    parser.add_argument("--out", type=Path, help="exclusive-create a full private JSON report in a Git-ignored location")
+    parser.add_argument("--out", type=Path, help="exclusive-create a full private JSON report; inside Git it must be ignored/untracked")
     parser.add_argument("--json", action="store_true", help="masked JSON on stdout")
     parser.add_argument("--engine", action="append", choices=("none", *SECURITY_ENGINES),
                         help="optional engine; repeat to combine, or none to override saved engines; no installation")
@@ -35,6 +37,8 @@ def main(material, argv=None):
     if material == "history":
         parser.add_argument("--ref", action="append", help="existing full ref name or HEAD; repeatable (default: all local refs)")
     args = parser.parse_args(argv)
+    if material == "tree" and args.staged:
+        material = "index"
     if args.engine and "none" in args.engine and len(args.engine) != 1:
         parser.error("select none alone, or select engines without none")
     try:
@@ -47,8 +51,6 @@ def main(material, argv=None):
         report = scan(args.repo, policy, material=material, refs=getattr(args, "ref", None), **options)
         if args.out is not None:
             write_report(args.out, report)
-            report.artifacts.append({"kind": "security report", "path": str(args.out.expanduser().absolute()),
-                                     "disclosure": "full private values"})
     except (CommandFailed, OSError, ValueError) as exc:
         # Paths and subprocess stderr may contain the very values being protected.
         message = str(exc) if isinstance(exc, SettingsError) else "Scan or report failed; no clean result issued."

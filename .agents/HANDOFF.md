@@ -1,5 +1,12 @@
 # Handoff — updated 2026-10-20
 
+> Historical phase/decision record, retained for context. Current tasks and acceptance are in
+> [WORKING-NOTES.md](WORKING-NOTES.md); current product decisions are in
+> [knowledge/product-contract.md](knowledge/product-contract.md). Those override the older
+> status and instructions below. The active security implementation now includes direct/CLI
+> scan, review, checked actions and private-mirror cleanup; GUI/finishing/native acceptance
+> remains in progress. Do not resume an old rollout or rewrite from this historical handoff.
+
 For the next session, human or LLM. Read [`README.md`](README.md) (the project brief) first. It
 opens with **What this is for**, and that section outranks every rule below it. Then this, then
 [`WORKING-NOTES.md`](WORKING-NOTES.md).

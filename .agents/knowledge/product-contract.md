@@ -272,8 +272,8 @@ schemes as well as HTTP. Explicit output/log paths retain lexical spelling until
 instead of resolving away aliases first. Native symlink creation was unavailable in the
 Windows trial; that test is explicitly skipped, not a cross-platform proof.
 
-Direct archive-sync CLI report defaults, registration/launcher coupling and its raw lifecycle
-logs, scheduling logging, other consumers and full GUI/native acceptance remain unfinished.
+Registration/launcher coupling and registration/scheduling lifecycle logging, other consumers
+and full GUI/native acceptance remain unfinished.
 
 - Without a saved output preference or explicit output option, inspection/report commands print
   to stdout without creating report files. This does not change the Git effects of an updater
@@ -288,7 +288,10 @@ logs, scheduling logging, other consumers and full GUI/native acceptance remain 
   creation, filename generation, overwrite/append and partial-result behavior explicitly.
 - Full security reports may use an explicitly selected private directory outside Git. Inside
   a repository they must remain untracked and ignored. A dot-folder or external path alone is
-  not proof of privacy. The current draft writer's Git-only restriction needs reconciliation.
+  not proof of privacy. The writer now supports explicit external storage, refuses links,
+  traversal/bare repositories/tracked or unignored targets, and exclusively creates complete
+  reports with actual artifact records. New POSIX files/directories use owner-only modes;
+  Windows uses the selected directory's existing ACLs. No permission changes or fallback.
 - Settings, fleet manifests/catalogs, recovery bundles, resumable operation records, approved
   rewrite plans and requested installers/launchers are operational state, not optional reports.
   Give each explicit ownership, location, lifecycle and visibility; do not remove required state
@@ -322,6 +325,36 @@ introduced then removed a finding. Master/machine prohibited values and strong c
 patterns block; uncertain candidates require review; gaps/failures hold publication. Quiet
 notes alone do not block. Resolve policy at its owning scope and rerun; action approval such
 as --yes is not a security override.
+
+**Scoped example reviews (2026-10-29):** review-finding previews one candidate from an explicit
+full private report. The exact current plan id is required to save/revoke a decision under the
+selected profile; preview writes nothing. Built-in uncertain findings can be accepted as
+examples for one repository/check/location/line/value/occurrence and complete checked content.
+Context kinds distinguish content, paths and metadata; Git metadata also binds its object id.
+Path reviews bind their file bytes; archived findings bind the complete archive bytes. Binding
+digests and reasons remain private; finding ids stay report-local, while scan/review ids are
+random. Plan ids bind the whole proposed decision/report/profile/policy, not just a raw value.
+Accepted findings remain visible and do not enter global safe-values lists. Complete byte
+changes, including invalid-UTF-8 changes with identical decoded text, invalidate acceptance.
+Reverting to exact accepted content can reuse that decision. Prohibited identities, strong
+credentials, unsupported external-engine findings and coverage gaps cannot be waived.
+Explicit never-publish matches also take precedence over a larger enclosing safe value;
+global allowances cannot hide a prohibited substring.
+
+The common scanner annotates matching reviews for tree/index/history/proposed/outgoing material;
+commit/push/advice reuse that result. Decision and revocation changes participate in the
+shared policy revision, so old action approvals cannot silently reuse changed review state.
+Unreadable/corrupt/unbounded records are incomplete, never absent defaults. Excluded report
+inputs are refused before reading; excluded review storage is neither read nor written.
+Immutable private decisions/revocations contain UTC time and reasons, never ordinary logs or
+fleet state. This is local operational evidence; GUI review, deliberate cross-machine transfer
+and repository relocation/import remain separate acceptance work.
+
+An explicit scan-tree --staged reads changed-file index bytes without staging, filters or
+working-file writes. Its private report can supply a separate review when line-ending or clean
+filter conversion changes previously reviewed working bytes. Re-preview the checked commit
+after review; changed/unmerged index snapshots and coverage gaps still hold actions. Deletions
+and historical versions are not scanned by this staged view.
 
 The headless operation is Special/security/_push.py; the policy-free primitive is
 Basic.push.push_snapshot. It pins the commit id and branch, suppresses extra tags/mirror/
@@ -412,6 +445,17 @@ commit/push, common output/logging and native visual/multimachine acceptance rem
 - Preserve `_archive/Security/` unchanged. Reuse its reviewed behavior and regressions through
   the agreed layered rebuild. History repair retains plan/review/approve/execute/verify stages,
   explicit destructive/publishing boundaries and disposable scan/rewrite/rescan proof first.
+
+Current bounded repair implementation is `clean-history plan/apply`, shared by the direct
+script, gitso and callable operation. A full private report plus explicit finding-id/path/
+identity choices produces an exact private plan. Apply revalidates the same selected profile,
+policy, refs and plan id and requires attended typed REWRITE into a new independent mirror.
+Explicit tracking-ref inclusion preserves names, remote-only commits and symbolic aliases
+without fetching. The source repository is retained; no follow/relink/publication is implied.
+Common masked output/report and counts-only log preferences are honored, with no fallback;
+all actual private artifacts are presented. After native proof, rescan gaps or unresolved
+findings hold the result. No raw finding value is required in an agent's choice file. Full
+GUI controls, unsupported ref/object handling and native other-OS acceptance remain open.
 
 ## Disclosure and consistent presentation
 
