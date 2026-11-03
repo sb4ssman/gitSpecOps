@@ -8,6 +8,20 @@ _Last tended: 2026-11-02 (inventory export output batch)_
 
 ## Open
 
+### User direction, 2026-11-03: clean tree and visible operations before real use
+
+Before running on real repositories or installing on the user's machines:
+- **The folder must be clean.** Finish the agreed physical layout: the fleet/app tree still sits in
+  `git-sync-suggester/`, there is no `App/`, Elaborate holds one file, public security commands are not
+  at the layer root, a compatibility wrapper remains in `Special/duplicate_org/`, and setup scripts and
+  tests differ from the target tree. architecture-layers.md already says to migrate before enrolling,
+  because autostart writes absolute paths.
+- **Every Special operation must show what it does.** Before and during a run the user can see what it
+  is looking for and why, how it goes about it, what it reads, what it may change and where results
+  go. Source-derived, from the same headless operation for CLI and GUI. Help text alone does not meet this.
+- **Then install on the fleet.** "Install" is not implemented: setup only builds a venv and launchers.
+  What it means for this first fleet still needs agreeing.
+
 ### Remaining repair acceptance after the public cleanup workflow — 2026-10-29
 
 - Direct/CLI and callable cleanup now share plan/apply, finding-id choices, exact private plans,
