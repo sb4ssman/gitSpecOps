@@ -4,7 +4,7 @@ Living todo / scratch pad. Add items freely; **prune regularly**. When something
 into [`WORK-LOG.md`](WORK-LOG.md) (appended at the bottom, `YYYY-MM-DD HH:MM`) and delete it here.
 Dates are always absolute.
 
-_Last tended: 2026-10-29 (work-in-progress checkpoint; open-work consolidation)_
+_Last tended: 2026-11-02 (inventory export output batch)_
 
 ## Open
 
@@ -163,7 +163,7 @@ notes. No claim below means all historical secrets, all platforms or all user wo
 
 | ID | User decision / required outcome | Actual state and remaining acceptance |
 |---|---|---|
-| D1 | Inspection/report output goes to stdout by default unless explicit flags or saved preferences request a file or both. | **Partial.** Updater, direct archive sync, manager refresh and active scans support stdout-first routing. Direct sync no longer has implicit archive reports. Inventory export still chooses/writes a file; registration/scheduling logging and remaining consumers need adoption. |
+| D1 | Inspection/report output goes to stdout by default unless explicit flags or saved preferences request a file or both. | **Partial.** Updater, direct archive sync, manager refresh and active scans support stdout-first routing. Direct sync no longer has implicit archive reports. Inventory export now prints its record to stdout, with an explicit private --out and no source-adjacent default; its saved-preference/logging adoption, registration/scheduling logging and remaining consumers need work. |
 | D2 | File output destinations and no-fallback behavior must be intentional, predictable and testable. | **Implemented selected private report routing; broader acceptance partial.** Reports can use explicit external storage; inside Git they require untracked positive ignore. Exclusive writes, link/traversal/bare/overwrite refusal and partial cleanup have disposable proof. Native POSIX/Windows ACL and symlink acceptance still needs other hosts; remaining consumers need adoption. |
 | D3 | Automation gets clean machine-readable stdout; diagnostics/progress go to stderr; operations expose useful status/results and errors. | **Partial.** Archive commands use headless results with masked text/JSON and actual artifacts; direct scripts and gitso share these operations. Common cross-operation stream/status/schema acceptance beyond this family and full GUI presentation remain unfinished. |
 | D4 | Use Python logging through one shared configuration seam; allow local defaults, no-log, per-component routing and selected multiple destinations. | **Partial.** Updater, direct archive sync, managed refresh and native tray use Special/_runtime/logger.py. Archive results list actual report/log artifacts; scopes/policies are rechecked before actions. Registration/scheduling historical logging, other consumers and selected multiple sinks remain unfinished. |
@@ -278,7 +278,10 @@ finish security/fleet/native integration. Completed evidence lives in WORK-LOG, 
 - Finish guided setup/update/uninstall/selective unenrollment, profile relocation/locator and
   the app's common settings UI. Source updating targets this checkout only, with reviewed
   fast-forward behavior and restart/launcher handling; installed-app updates need their own proof.
-- Reconcile remaining output/state consumers: duplicator resume/logs, inventory exports,
+- Inventory saved preferences/logging are not adopted. resolve_settings refuses while unconverted
+  legacy files exist, which would stop this read-only command on such a profile, and live conversion
+  is paused. Decide how an observation-only command reads preferences before wiring it in.
+- Reconcile remaining output/state consumers: duplicator resume/logs,
   remaining manager/scheduling paths and private hook/message action reports. Required operational
   state is distinct from an optional report. Preserve explicit destinations and refuse fallback.
 - Finish security GUI controls, continuous advisory scheduling/invalidation, shared policy

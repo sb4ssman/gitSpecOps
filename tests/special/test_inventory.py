@@ -234,7 +234,9 @@ with tempfile.TemporaryDirectory(prefix="inventory-") as tmp:
     answers.write_text(f"{drive_a}\ny\n{drive_b}\nn\n{out_file}\n", encoding="utf-8")
     asked = run_cmd("inventory_export.py", "--answers", str(answers))
     check("export asks for folders (twice) and a save location, from scripted answers",
-          asked.returncode == 0 and out_file.is_file() and "2 label(s)" in asked.stdout)
+          asked.returncode == 0 and out_file.is_file() and "2 label(s)" in asked.stderr)
+    check("a guided export shows its prompts but keeps the record out of stdout",
+          "gitspecops.inventory" not in asked.stdout)
 
     dest_a, dest_b = tmp / "restored" / "a", tmp / "restored" / "b"
     answers.write_text(f"{out_file}\n{dest_a}\n{dest_b}\n", encoding="utf-8")
@@ -246,6 +248,43 @@ with tempfile.TemporaryDirectory(prefix="inventory-") as tmp:
                       "--no-prompt")
     check("one --dest with canonical layout plans a single tree", flagged.returncode == 0
           and "needs_review" not in flagged.stdout)
+
+    # --- where the record goes: stdout by default, a chosen file only when asked ----------------
+    source_default = script.parent / ".agents" / "output" / "library_inventory.json"
+    before = source_default.stat().st_mtime_ns if source_default.exists() else None
+    plain = run_cmd("inventory_export.py", "--root", str(drive_a), "--no-prompt")
+    check("without --out, stdout is exactly the JSON record", plain.returncode == 0
+          and len(validate_inventory(json.loads(plain.stdout))) == 1)
+    check("progress and the summary stay on stderr", "1 repositories" in plain.stderr
+          and "1 repositories" not in plain.stdout)
+    check("nothing is written beside the source by default",
+          (source_default.stat().st_mtime_ns if source_default.exists() else None) == before)
+
+    piped = tmp / "piped.json"
+    piped.write_text(plain.stdout, encoding="utf-8")
+    replay = run_cmd("inventory_restore.py", str(piped), "--dest", str(tmp / "piped-dest"), "--no-prompt")
+    check("captured stdout restores like a file", replay.returncode == 0 and "RESTORE PLAN" in replay.stdout)
+
+    chosen = tmp / "chosen" / "deep" / "inv.json"
+    wrote = run_cmd("inventory_export.py", "--root", str(drive_a), "--out", str(chosen), "--no-prompt")
+    check("--out creates the file and its folders", wrote.returncode == 0 and wrote.stdout == ""
+          and len(validate_inventory(json.loads(chosen.read_text(encoding="utf-8")))) == 1)
+
+    kept = chosen.read_bytes()
+    again = run_cmd("inventory_export.py", "--root", str(drive_a), "--out", str(chosen), "--no-prompt")
+    check("an existing --out is refused and left unchanged", again.returncode == 2
+          and "already exists" in again.stderr and chosen.read_bytes() == kept)
+    check("the refusal comes before the scan", str(drive_a / "alpha") not in again.stderr)
+
+    work_tree = tmp / "work-tree"
+    make_repo(work_tree)
+    (work_tree / ".gitignore").write_text("private/\n", encoding="utf-8")
+    exposed = work_tree / "inv.json"
+    refused = run_cmd("inventory_export.py", "--root", str(drive_a), "--out", str(exposed), "--no-prompt")
+    check("an unignored path inside a work tree is refused", refused.returncode == 2 and not exposed.exists())
+    hidden = work_tree / "private" / "inv.json"
+    allowed = run_cmd("inventory_export.py", "--root", str(drive_a), "--out", str(hidden), "--no-prompt")
+    check("an ignored path inside a work tree is allowed", allowed.returncode == 0 and hidden.is_file())
 
     for bad in ({}, {"schema": "gitspecops.inventory", "schema_version": 99, "repositories": []}):
         try:

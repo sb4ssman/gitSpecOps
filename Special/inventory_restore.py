@@ -40,8 +40,6 @@ from Special._inventory import LOOSE, plan_restore, validate_inventory  # noqa: 
 
 EFFECT = "local"
 
-DEFAULT_DIR = Path(_ROOT) / ".agents" / "output"
-
 
 def render(rows: list[dict], *, applied: bool) -> str:
     lines = ["RESTORE RESULT" if applied else "RESTORE PLAN"]
@@ -124,7 +122,7 @@ def main(argv: list[str]) -> int:
         if not ask:
             print("ERROR: give the inventory file (there is no terminal to ask).", file=sys.stderr)
             return 2
-        path = pick_open_file("Choose the repository inventory to restore", initial_dir=DEFAULT_DIR,
+        path = pick_open_file("Choose the repository inventory to restore",
                               filetypes=[("Inventory (JSON)", "*.json"), ("All files", "*.*")])
         if path is None:
             print("No inventory chosen; nothing was done.", file=sys.stderr)

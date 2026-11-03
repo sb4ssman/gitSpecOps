@@ -5,7 +5,7 @@ A folder map says what is *called* what. An inventory says where each repository
 what it *is* (host/owner/name, branch, head, last commit, readme, project metadata) and what a
 clone *cannot* bring back (uncommitted work, unpushed commits, stashes, no remote at all). It is
 the content-bearing opposite of the hashed fleet manifests: readable on purpose, carried by the
-user, and therefore never written into the repository (`.agents/output/` is the default).
+user, and therefore never written into a repository unless the path is ignored there.
 
 Two halves, both pure of policy a command should own:
 

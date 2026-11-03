@@ -10,16 +10,18 @@ Where the repositories are:
            together under the reserved label `loose`, each remembering where it was.
   Neither given, at a terminal: a folder dialog asks, and keeps asking "add another?" until done.
 
-Where the file goes: `--out FILE`, else a save dialog (or a terminal prompt where no dialog is
-possible). With no terminal at all (a script, a scheduled run) it writes the default file in the
-gitignored `.agents/output/`; `--no-prompt` forces that. The file names every repository, private
-ones included, so it must never be committed.
+Where the record goes: stdout, as one JSON document, with progress and the summary on stderr, so
+`inventory_export.py --root X > inventory.json` is a complete inventory. `--out FILE` writes it
+there instead. A run with no folders named, at a terminal, is the guided path: it also asks where
+to save. The record names every repository, private ones included, so it must never be committed:
+`--out` is checked before scanning and refuses an existing file, a link, and a tracked or
+unignored path inside a Git work tree. Nothing is written beside this source checkout by default.
 
-Paths inside the file are relative to their label, never a drive letter, so each label can land
+Paths inside the record are relative to their label, never a drive letter, so each label can land
 anywhere on restore. Per repository: every remote URL (credentials stripped), host/owner/name,
 branch, head, last commit, flags for what a clone cannot bring back, and whatever the repository
 says about itself (readme, project files, `.git/description`, URLs found in them) -- including
-repositories with no remote. Observation only: git reads, no network, one file written.
+repositories with no remote. Observation only: git reads, no network, at most the one chosen file.
 """
 from __future__ import annotations
 
@@ -34,13 +36,12 @@ if _ROOT not in sys.path:
 
 from Basic._confirm import prompt_yes_no, use_scripted_answers  # noqa: E402
 from Basic._console import enable_unicode_output  # noqa: E402
-from Basic._files import atomic_write_bytes  # noqa: E402
 from Basic._pick import can_ask, pick_directory, pick_save_file  # noqa: E402
 from Special._inventory import LOOSE, build_roots, collect_inventory  # noqa: E402
+from Special.security._private_files import private_path, write_private_json  # noqa: E402
 
 EFFECT = "none"
 
-DEFAULT_DIR = Path(_ROOT) / ".agents" / "output"
 DEFAULT_NAME = "library_inventory.json"
 
 
@@ -72,6 +73,12 @@ def ask_for_folders() -> list[str]:
     return chosen
 
 
+def check_destination(out: Path) -> None:
+    """Refuse a bad destination before the scan, not after it. The write repeats these checks."""
+    if private_path(out).exists():
+        raise ValueError(f"{out} already exists; an inventory never overwrites a file")
+
+
 def main(argv: list[str]) -> int:
     enable_unicode_output()
     parser = argparse.ArgumentParser(description="Record a library of repositories for cloning elsewhere (read-only).")
@@ -79,7 +86,8 @@ def main(argv: list[str]) -> int:
                         help="a folder containing repositories; repeat for several")
     parser.add_argument("--repo", action="append", default=[], metavar="PATH",
                         help="a single repository living on its own; repeat as needed")
-    parser.add_argument("--out", type=Path, default=None, help="where to write the inventory")
+    parser.add_argument("--out", type=Path, default=None,
+                        help="write the inventory to this new file instead of stdout")
     parser.add_argument("--max-depth", type=int, default=None, help="limit walk depth below each root")
     parser.add_argument("--hidden", action="store_true", help="also scan dotted directories")
     parser.add_argument("--no-prompt", action="store_true", help="never ask; use defaults or fail")
@@ -93,6 +101,7 @@ def main(argv: list[str]) -> int:
             return 2
     ask = can_ask() and not args.no_prompt
     root_specs, repo_specs = list(args.root), list(args.repo)
+    out = args.out
     if not root_specs and not repo_specs:
         if not ask:
             print("ERROR: give at least one --root or --repo (there is no terminal to ask).", file=sys.stderr)
@@ -101,7 +110,15 @@ def main(argv: list[str]) -> int:
         if not root_specs:
             print("No folder chosen; nothing was done.", file=sys.stderr)
             return 1
+        if out is None:
+            out = pick_save_file("Save the repository inventory as", initial_dir=Path.home(),
+                                 initial_name=DEFAULT_NAME, default_ext=".json")
+            if out is None:
+                print("No save location chosen; nothing was written.", file=sys.stderr)
+                return 1
     try:
+        if out is not None:
+            check_destination(out)
         roots = build_roots(root_specs)
         for _label, path in roots:
             if not path.is_dir():
@@ -110,24 +127,19 @@ def main(argv: list[str]) -> int:
             roots, loose=[Path(p) for p in repo_specs], max_depth=args.max_depth,
             include_hidden=args.hidden,
             progress=lambda label, path: print(f"  [{label}] {path}", file=sys.stderr))
-    except ValueError as exc:
+        if out is not None:
+            write_private_json(out, inventory)
+    except (OSError, ValueError, RuntimeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
-    out = args.out
     if out is None:
-        out = (pick_save_file("Save the repository inventory as", initial_dir=DEFAULT_DIR,
-                              initial_name=DEFAULT_NAME, default_ext=".json") if ask
-               else DEFAULT_DIR / DEFAULT_NAME)
-        if out is None:
-            print("No save location chosen; nothing was written.", file=sys.stderr)
-            return 1
-    out.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_bytes(out, (json.dumps(inventory, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
-    print(summarize(inventory))
+        print(json.dumps(inventory, indent=2, ensure_ascii=False))
+    print(summarize(inventory), file=sys.stderr)
     if any(r["label"] == LOOSE for r in inventory["roots"]):
-        print(f"  ('{LOOSE}' = repositories that live on their own; restore asks where to put them)")
-    print(f"Wrote {out}")
-    print("This file names every repository, private ones included. Do not commit it.")
+        print(f"  ('{LOOSE}' = repositories that live on their own; restore asks where to put them)", file=sys.stderr)
+    if out is not None:
+        print(f"Wrote {out}", file=sys.stderr)
+    print("This record names every repository, private ones included. Do not commit it.", file=sys.stderr)
     return 0
 
 
