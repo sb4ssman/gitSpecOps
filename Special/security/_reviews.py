@@ -1,7 +1,8 @@
 """Content-bound local example reviews, stored privately and applied by the common scanner.
 
 Only uncertain built-in candidates can be accepted. Prohibited identities, strong credentials,
-external-engine findings and coverage gaps cannot be waived here. Decisions bind one repo,
+external-engine findings and coverage gaps cannot be waived here. A binary file is not a gap:
+it is a "binary content" candidate whose acceptance binds its exact bytes. Decisions bind one repo,
 check, location, line, value and complete checked text; raw bindings/reasons never print.
 Immutable decision/revocation records live under the selected profile, not beside source.
 """
@@ -19,7 +20,8 @@ import stat
 from Special.security._private_files import _unlinked, private_path, read_private_json
 
 REVIEWABLE = frozenset({"email address", "tailnet address", "assigned credential", "URL credential",
-                       "leak-description near commit id", "commit identity email", "image GPS position"})
+                       "leak-description near commit id", "commit identity email", "image GPS position",
+                       "binary content"})
 REVIEW_ID = re.compile(r"review-[0-9a-f]{32}")
 CONTENT_ID = re.compile(r"[0-9a-f]{64}")
 CONTEXT_KINDS = frozenset({"content", "path", "archive-path", "archive-member", "metadata",

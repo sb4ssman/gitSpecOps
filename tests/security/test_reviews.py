@@ -126,6 +126,27 @@ class ReviewTests(unittest.TestCase):
         result = scan(other, load_policy(other, home=self.home))
         self.assertEqual(result.check_status, "review-required")
 
+    def test_binary_file_is_accepted_only_for_its_exact_bytes_and_place(self):
+        (self.repo / "contact.txt").unlink()
+        font = self.repo / "font.woff2"
+        font.write_bytes(b"wOF2\0\0fixture font bytes")
+        first = self.scan()
+        self.assertEqual(first.check_status, "review-required", first.record())
+        self.assertFalse(first.gaps)
+        self.accept(self.report(first, check="binary content"), reason="Open font, license beside it")
+        self.assertEqual(self.scan().check_status, "passed")
+        font.write_bytes(b"wOF2\0\0changed font bytes")
+        self.assertEqual(self.scan().check_status, "review-required")
+        font.write_bytes(b"wOF2\0\0fixture font bytes")
+        self.assertEqual(self.scan().check_status, "passed")
+        (self.repo / "copy.woff2").write_bytes(b"wOF2\0\0fixture font bytes")
+        self.assertEqual(len(self.scan().actionable), 1)
+
+    def test_service_noreply_addresses_are_not_personal(self):
+        (self.repo / "contact.txt").write_text(
+            "Co-Authored-By: Claude <noreply@anthropic.com>\nSent by noreply@github.com\n", encoding="utf-8")
+        self.assertEqual(self.scan().check_status, "passed")
+
     def test_exact_original_content_can_be_recognized_after_revert(self):
         self.accept()
         (self.repo / "contact.txt").write_text("changed\n" + self.body, encoding="utf-8")

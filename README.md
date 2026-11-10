@@ -53,7 +53,10 @@ The review preview writes nothing. Rerun the same arguments with `--apply --appr
 using the returned plan id. The private decision records the reason; ordinary output does not
 repeat it. Rescan before taking an action. Changed bytes, location or repository require review
 again; unchanged accepted examples stay visible with a review id. Prohibited values, strong
-credentials, unsupported external-engine findings and coverage gaps cannot be waived.
+credentials, unsupported external-engine findings and coverage gaps cannot be waived. A binary
+file (a font, an executable) is a "binary content" finding rather than a gap: its readable strings
+are checked, and a review accepts that exact file version at that place, so changed bytes need
+review again. PDFs and 7z/RAR archives remain coverage gaps.
 To revoke, replace the finding argument with `--revoke REVIEW_ID`, preview and approve that plan.
 Records stay local under the selected profile; they are not automatically shared with the fleet.
 

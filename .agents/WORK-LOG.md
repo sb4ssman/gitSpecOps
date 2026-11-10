@@ -2007,3 +2007,8 @@ No code changed; decisions recorded where they govern.
 
 ## 2026-11-10 12:29 - user (claude) - Relicensed: GPL-3.0-only plus a commercial license
 - The user's decision (2026-11-10): GPL-3.0 with a commercial license available from the author, so nobody can sell it as a closed product without the author. LICENSE now holds the GPL-3.0 text; NOTICE, pyproject.toml and the README say so, note that copies up to cacee74 stay Apache-2.0, and that contributions need agreement to both licenses. The hygiene test checks the GPL text. Every commit so far is the author's, so relicensing is the author's to do. Committed and pushed at the user's direction.
+
+## 2026-11-10 13:08 - user (claude) - Binary files reviewable by exact bytes; service noreply addresses not personal
+- A plain binary file (null bytes, not a PDF or 7z/RAR) is now a "binary content" finding instead of an unwaivable coverage gap. Its readable strings are still checked; a review accepts that exact content (SHA-256) at that place, and changed bytes or another place need review again. PDFs and 7z/RAR stay coverage gaps. This removes the hold that made any repo with a font or other binary unpushable.
+- `noreply@anthropic.com` (the Claude co-author trailer) joins `noreply@github.com` as a service sender the email check ignores; exact watched values still flag.
+- Tests: the push, commit and cleanup expectations moved from "incomplete" to "review-required" for binaries; new tests cover exact-bytes acceptance, a PDF staying a gap, and the service addresses. Full offline suite: 76/77 files pass; the failure is the pre-existing `fleet/test_core_path.py` (see notes). Committed and pushed at the user's direction.

@@ -55,8 +55,14 @@ def _bytes(report, data, where, policy, object_id=""):
                 report.gap(inner, "binary member: raw strings only")
     elif is_image(where):
         _image(report, data, where, policy, object_id)
-    elif b"\0" in data[:8000] or where.lower().endswith((".pdf", ".7z", ".rar")):
+    elif where.lower().endswith((".pdf", ".7z", ".rar")):
+        # Containers that can hold readable documents stay unread: a coverage gap.
         report.gap(where, "encoded/binary content: raw strings only")
+    elif b"\0" in data[:8000]:
+        # Raw strings were checked above; the bytes themselves need a person's look. A review
+        # accepts this exact content (its SHA-256) at this place only; changed bytes ask again.
+        report.findings.append(Finding("binary content", "review", f"binary, {len(data)} bytes", where,
+                                       object_id, content_id=hashlib.sha256(data).hexdigest()))
 
 
 def _image(report, data, where, policy, object_id, *, context_id=None, context_kind="metadata"):

@@ -189,10 +189,20 @@ class PushGateTests(unittest.TestCase):
         self.assertEqual(self.tip(self.bare), self.base)
         self.assertNotIn("private-marker", json.dumps(result.record()))
 
-    def test_binary_coverage_gap_holds_publication(self):
+    def test_unreviewed_binary_holds_publication_as_a_reviewable_finding(self):
         (self.repo / "binary.bin").write_bytes(b"\0encoded fixture")
         self.git(self.repo, "add", "--", "binary.bin")
         self.git(self.repo, "commit", "-qm", "binary fixture")
+        result = self.publish()
+        self.assertEqual(result.status, "review-required")
+        self.assertFalse(result.report.gaps)
+        self.assertIn("binary content", [item.check for item in result.report.findings])
+        self.assertEqual(self.tip(self.bare), self.base)
+
+    def test_pdf_remains_a_coverage_gap(self):
+        (self.repo / "paper.pdf").write_bytes(b"%PDF-1.7 fixture")
+        self.git(self.repo, "add", "--", "paper.pdf")
+        self.git(self.repo, "commit", "-qm", "pdf fixture")
         result = self.publish()
         self.assertEqual(result.status, "incomplete")
         self.assertTrue(result.report.gaps)

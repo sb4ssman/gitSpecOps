@@ -300,10 +300,10 @@ class CommitGateTests(unittest.TestCase):
         self.assertEqual(result.status, "incomplete")
         self.assertEqual((self.repo / ".git/index").read_bytes(), before)
 
-    def test_binary_gap_holds_preview_without_staging(self):
+    def test_unreviewed_binary_holds_preview_without_staging(self):
         self.write("a.txt", b"\0encoded bytes")
         result = self.check()
-        self.assertEqual(result.status, "incomplete")
+        self.assertEqual(result.status, "review-required")
         self.assertEqual(self.head(), self.base)
 
     def test_literal_paths_do_not_expand_to_other_files(self):
