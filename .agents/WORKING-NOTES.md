@@ -8,6 +8,21 @@ _Last tended: 2026-11-02 (inventory export output batch)_
 
 ## Open
 
+### First real pushes, 2026-11-10: push could not send any repo with a binary file or a trailer
+
+Pushing six real repositories (fonts, a site, notes) through `gitso.py push` with a fresh profile:
+- **Binary files hold every push forever.** A `.woff2` font (or any binary) is reported as a coverage
+  gap ("encoded/binary content: raw strings only"), and gaps cannot be waived, so a repository that
+  ships open-licensed fonts or a screenshot can never be pushed. Needs a reviewed way to accept a
+  binary by content hash (for example a known font with its license beside it), or a binary policy.
+- **The co-author trailer is a finding in every commit.** `noreply@anthropic.com` in a
+  `Co-Authored-By:` line is flagged as an email address in each commit message; a stock safe value
+  for well-known noreply addresses (and the user's own GitHub noreply) would stop the noise.
+- **Legacy settings block the default profile** ("explicit settings migration is required"); the
+  run used `--settings-home` with an empty profile, so the user's never-publish list was not applied.
+- Outcome: the agent read every finding (all benign: trailers, GitHub's `/users/` API path, a test
+  fixture, contact details in a private repo) and pushed with plain fast-forward `git push`.
+
 ### User direction, 2026-11-03: clean tree and visible operations before real use
 
 Before running on real repositories or installing on the user's machines:

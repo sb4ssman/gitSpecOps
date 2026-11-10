@@ -2001,3 +2001,6 @@ No code changed; decisions recorded where they govern.
 
 ## 2026-11-03 12:57 - user (claude) - Recorded clean-tree and visible-operations direction
 - Recorded the user direction in WORKING-NOTES: finish the agreed layout, make each Special operation show what it does, then define and perform installation. Inspected the tree and notes only. No source changed.
+
+## 2026-11-10 10:14 - user (claude) - First real pushes held; findings recorded
+- At the user's direction to push everything, `gitso.py push` planned and applied for six repositories with a fresh `--settings-home` profile (the default profile needs a settings migration, which was not done). Every apply held: binary fonts are unwaivable coverage gaps, and the Claude co-author trailer is an email finding in every commit. All findings were read and were benign; the repos were pushed with plain fast-forward `git push`. Open items added to WORKING-NOTES.
