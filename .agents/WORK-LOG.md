@@ -2004,3 +2004,6 @@ No code changed; decisions recorded where they govern.
 
 ## 2026-11-10 10:14 - user (claude) - First real pushes held; findings recorded
 - At the user's direction to push everything, `gitso.py push` planned and applied for six repositories with a fresh `--settings-home` profile (the default profile needs a settings migration, which was not done). Every apply held: binary fonts are unwaivable coverage gaps, and the Claude co-author trailer is an email finding in every commit. All findings were read and were benign; the repos were pushed with plain fast-forward `git push`. Open items added to WORKING-NOTES.
+
+## 2026-11-10 12:29 - user (claude) - Relicensed: GPL-3.0-only plus a commercial license
+- The user's decision (2026-11-10): GPL-3.0 with a commercial license available from the author, so nobody can sell it as a closed product without the author. LICENSE now holds the GPL-3.0 text; NOTICE, pyproject.toml and the README say so, note that copies up to cacee74 stay Apache-2.0, and that contributions need agreement to both licenses. The hygiene test checks the GPL text. Every commit so far is the author's, so relicensing is the author's to do. Committed and pushed at the user's direction.

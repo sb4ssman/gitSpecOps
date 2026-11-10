@@ -173,8 +173,10 @@ def test_license_is_present_and_declared(names):
     if "license" not in pyproject:
         raise AssertionError("pyproject.toml declares no license")
     text = (ROOT / "LICENSE").read_text(encoding="utf-8")
-    if "Apache License" not in text:
-        raise AssertionError("LICENSE does not contain the declared Apache License text")
+    if "GNU GENERAL PUBLIC LICENSE" not in text or "Version 3" not in text:
+        raise AssertionError("LICENSE does not contain the declared GPL-3.0 text")
+    if 'license = "GPL-3.0-only"' not in pyproject:
+        raise AssertionError("pyproject.toml does not declare GPL-3.0-only")
 
 
 def test_agent_workspace_stays_local(names):

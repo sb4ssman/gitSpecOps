@@ -582,4 +582,12 @@ Working on this repo, human or agent? Start with
 [`.agents/README.md`](.agents/README.md) — the primary project brief — and the living
 [`.agents/WORKING-NOTES.md`](.agents/WORKING-NOTES.md).
 
-Licensed under the Apache License 2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+Licensed under the GNU General Public License, version 3 only (GPL-3.0-only): use it, study it,
+change it and share it, and share anything you distribute that builds on it under the same terms.
+To build gitSpecOps into a product that is not GPL-3.0, ask for a commercial license by opening
+an issue on this repository. Versions up to commit `cacee74` were released under Apache
+2.0 and remain so. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+
+Contributions are welcome. Because gitSpecOps is also offered under a commercial license, a
+contribution can be accepted only with the contributor's agreement that it may be distributed
+under both.
