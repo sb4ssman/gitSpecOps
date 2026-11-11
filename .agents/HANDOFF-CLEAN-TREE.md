@@ -164,8 +164,8 @@ splits into `tests/special/`, `tests/elaborate/`, `tests/app/`.
   - The hygiene test keeps version 1's exact rules, moved beside it (`tests/repo/_hygiene_*`).
   - Plumbing files keep their own docstrings; commands carry the header template.
   - Loading never converts settings: `Elaborate/setup_fleet.py convert` is the explicit step.
-- Left in phase 9: delete `App/_win_tray_reference.py` (next commit; DCG blocks a forced
-  removal of an edited file); run the Qt tray and the web view by hand on a desktop and look
+- Done after the checkpoint: `App/_win_tray_reference.py` deleted (d6cc0c9).
+- Left in phase 9: run the Qt tray and the web view by hand on a desktop and look
   at the map; recovery's `secret_scan` onto the shared security rules; the hygiene test onto
   the shared rules; one configuration for status publishing and the fleet app (two exist).
 
