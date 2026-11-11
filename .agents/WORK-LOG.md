@@ -2020,3 +2020,23 @@ No code changed; decisions recorded where they govern.
 - New private setting `security.repository_exceptions`: a repository path mapped to saved never-publish values that repository may contain. The policy lifts them for that repository only; other repositories still block them, and explicit `--never-publish` files still apply. Validated shape (object of nonempty paths to nonempty string lists); summaries report a count, never values or paths. Two tests; the settings test file passes 26/26.
 - At the user's direction the user's profile now lifts five project names for the user's two personal-site repositories only. Rescans: the published site has no never-publish hits; the shelf's private map still passes with the names protected.
 - `tests/sync/test_sync_config.py` saved through the default settings home: before the migration that silently took the legacy path, after it the save refused. The test now uses a throwaway `GITSPECOPS_HOME`; the real profile was verified untouched (its only writes today are the migration and the exceptions). Passes again.
+
+## 2026-11-11 09:07 - user (Codex) - Reconcile completed work and current mission
+
+- Pruned the obsolete claim that the inspected profile had not been converted, using the November 10 migration log. Narrowed C13 and delivery tasks to remaining fleet/settings-loss acceptance and launcher rollout; removed the completed current-profile migration as an inventory-integration blocker.
+- Retained unresolved architecture, output, GUI, native-platform and launchers work. Preserved the earlier orientation-review additions. No product code, private profile, launcher or repository operation changed; no test result or broader completion is claimed by this documentation reconciliation.
+
+## 2026-11-11 09:11 - user (Codex) - Inspected migration seams and verified bounded checks
+
+- Read command dispatch, headless archive update/refresh integration, archive registration, checked publication, cleanup planning, peer/dashboard/tray paths, autostart and the Qt prototype. Recorded remaining work at the concrete source seams instead of treating folder moves as complete integration.
+- Fresh checks: import direction passes for 110 files in its current stack scope; all eight command-catalog tests pass; repository hygiene passes seven checks over 296 tracked files. This is not a full-suite, GUI, real-fleet or security-release acceptance run.
+- Only notes/logs changed. No source migration, profile write, live peer, installation, commit or push occurred.
+
+## 2026-11-11 11:30 - user (claude) - Architecture: Special versus Elaborate rule; Sync Suggester splits
+- Decided by the user: Special is this machine, once; Elaborate is other machines or over time. Local sync suggestion moves to Special; status publication, fleet suggestion and the peer stay Elaborate. Before install, every expected file exists with at least a header and `git-sync-suggester/` is emptied and removed. Recorded as a revision in `knowledge/architecture-layers.md`, with pointers from its status line and Sync Suggester section; WORKING-NOTES updated. No code moved.
+
+## 2026-11-11 11:41 - user (claude) - Architecture: both GUIs stay
+- Decided by the user: the Qt app (tray and window) is the usual setup; an optional web server runs headless for viewing from a phone or tablet over the tailnet, or as the main view with or without the tray; the tray opens either. All combinations are settings and must work. Recorded in the 2026-11-11 revision. Remote actions from another device not decided.
+
+## 2026-11-11 11:57 - user (claude) - Clean-tree plan agreed
+- Decided by the user: network map with switchable views (machines, library, library folder, org, repo; chosen perspective) and matching repos lined up; remote watch and act built, off by default; `_archive/` ported then deleted; Qt tray now, opening the web view; Windows tray deleted after extraction; header template approved; launchers may break until regenerated. Plan with file-by-file mapping and phases: `.agents/HANDOFF-CLEAN-TREE.md`. Architecture revision and WORKING-NOTES updated. No code moved yet.

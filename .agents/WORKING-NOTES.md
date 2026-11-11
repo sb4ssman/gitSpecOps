@@ -4,15 +4,65 @@ Living todo / scratch pad. Add items freely; **prune regularly**. When something
 into [`WORK-LOG.md`](WORK-LOG.md) (appended at the bottom, `YYYY-MM-DD HH:MM`) and delete it here.
 Dates are always absolute.
 
-_Last tended: 2026-11-02 (inventory export output batch)_
+_Last tended: 2026-11-11 (completed settings work reconciled; architecture review ongoing)_
 
 ## Open
+- **Top-down operation architecture (2026-11-11), decided so far:** Special is this machine,
+  once; Elaborate is other machines or over time. Local sync suggestion goes to Special;
+  status publication, fleet suggestion and the peer to Elaborate. Recorded as the 2026-11-11
+  revision in `knowledge/architecture-layers.md`. Both GUIs stay (Qt app usual; optional web
+  server, headless or always on; tray opens either), all set by the user. Remote watch and
+  act is built, off by default.
+- **Executing: [`HANDOFF-CLEAN-TREE.md`](HANDOFF-CLEAN-TREE.md)** (agreed with the user
+  2026-11-11): file-by-file mapping, Qt tray over the web view, network map views, remote
+  watch and act, port and delete `_archive/`, delete `git-sync-suggester/`. Phases and done
+  criteria are in the handoff.
+
+
+### Source review follow-through — 2026-11-11
+- Map the legacy fleet tree into the agreed layers by responsibility, including bare imports,
+  UI assets, packaging, tests, startup paths and persisted state. The current import test
+  checks 110 stack files but does not include `git-sync-suggester/`; passing it is not
+  proof of the whole product's dependency direction. Reconcile its obsolete Security rank
+  and stdlib-only App rule with the chosen optional Qt dependency when extending coverage.
+- Reconcile `app/fleet_app.py::load_saved`: its legacy branch calls `save_saved` after
+  `migrate` while loading. The current contract requires explicit saved-data conversion.
+  Review callers/tests and separate pure loading from deliberate migration before cutover.
+- Split archive registration from launcher creation: `_archive/manager.py::install_launchers`
+  writes a launcher before saving registration, and registration uses this path. Preserve
+  explicit partial outcomes and saved archive choices while making the capabilities independent.
+- Reconcile the tray failure test against useful, privacy-safe failure reporting. The obsolete
+  `_LogTee` test requires raw disk persistence; current worker failures use generic wording.
+  Keep actionable known-cause messages without restoring raw console logging.
+- Build on existing callable updater/refresh/cleanup/checked-push results when completing
+  visible operations. `gitso` currently dispatches CLI handlers; equivalent discovery is not
+  yet equivalent structured GUI execution. The dashboard currently exposes catch-up/security
+  previews; the Qt display-contract prototype is not a finished operations workbench.
+- Adopt shared-tool guidance from the standalone shape after the common access contract is
+  reconciled. Reuse an available configured shared checkout; do not repair the obsolete URL
+  by reinstating an automatic per-repo download. Keep tools optional for product operation.
+
+
+### Found 2026-11-11 during an orientation review: discuss with the user before changing anything
+- **The target tree contradicts its own later revisions.** The tree in
+  `knowledge/architecture-layers.md` still shows `App/skins/lcars` and `retro`, `App/dashboard.py`
+  and `_tests/`. The 2026-10-19 revisions keep only the `modern` skin for now and keep the dashboard
+  with Sync Suggester in `Elaborate/`; the 2026-10-22 revision makes the App Qt. Agents reading the
+  tree are misled. Fix the architecture and everything that goes with it, as a discussed decision.
+- **Broken mapper link.** `tools/README.md` fetches the folder mapper with `curl` from a repository
+  that has since moved and is no longer public, so it fails on a fresh machine. The brief's default
+  output file is one the current mapper refuses to replace. How agents get the mapper needs a decision.
+- **Stale claims in `README.md`.** "Its dispatcher is not implemented yet" (Repo Shape): `gitso.py`
+  exists. Check the rest of the brief against the tree in the same pass.
+- **The user's completion criteria are not in this repository.** Line up the user's goals as
+  ordered tasks here (proposal under discussion).
 
 ### First real pushes, 2026-11-10: what is left
 
 The binary and trailer holds are fixed (see the log). Still open:
 - **Archive launchers predate the shared settings.** Three exist, none scheduled; the migration
-  left them unchanged. Regenerate them (`prepare-repair`) before relying on them again.
+  left them unchanged. The clean-tree pass removes old-path wrappers, so they will stop working:
+  expected (user, 2026-11-11). Generate new ones with the finished tool when install is defined.
 - **A binary file now needs one review per exact version.** The first push of a repo with fonts asks
   for a review of each font; that is intended. Watch whether that is too much friction in real use.
 - **`tests/fleet/test_core_path.py` fails** at `fleet_tray._LogTee`: the test (2026-09-19) predates the
@@ -181,7 +231,7 @@ notes. No claim below means all historical secrets, all platforms or all user wo
 | C10 | Optional notes integration may accompany enrollment. | **Defined, integration open.** User means a private synced-folder/notes conduit and readable fleet text, complementary to durable private Git state and direct tailnet peers. Existing folder transport is useful; readable-note/shared-policy setup and lifecycle remain unfinished. No mandatory notes-provider SDK. |
 | C11 | Update gitSpecOps itself by fast-forwarding its selected source checkout, callable from CLI/setup/app; never update the user's archive as a side effect. | **Missing product updater.** `Basic/pull.py` supplies the primitive; version checks only report. Checkout/branch/remote/fork/dirty/divergence checks and app stop/restart are not composed into an updater. A frozen bundle also needs a distinct release-update path. |
 | C12 | App installation adapts to the OS; uninstall can remove owned components while preserving repositories and data by default. | **Partial packaging, missing complete lifecycle.** Optional PyInstaller recipe exists. General install/update/uninstall/selective unenrollment and native three-OS receipts/cleanup are not proved. Current packaging is not the separately approved retired historical packaging purge. |
-| C13 | Handle existing settings without competing authorities, silent loss or implicit changes to consent. | **Partial, live work paused.** `_settings/existing.py` has tested archive/policy-only plan/save/status/resume, original-byte retention and receipt ownership. Broader fleet conversion/settings-loss proof is incomplete. Real settings and launchers remain unchanged; conversion is not the next mission milestone. |
+| C13 | Handle existing settings without competing authorities, silent loss or implicit changes to consent. | **Partial.** Broader fleet conversion/settings-loss proof remains incomplete. Review remaining launcher replacement separately; preserve original data and receipts. Completed archive/policy migration is recorded in the November 10 log. |
 
 #### D. Output, logs and programmatic use
 
@@ -247,9 +297,6 @@ notes. No claim below means all historical secrets, all platforms or all user wo
   advice share the reader, with local-only findings. Continuous advice and complete GUI/remote
   actions remain unfinished. No full repository/history/shelf clearance follows from this
   disposable-repository action proof.
-- Common settings exist in code; the inspected real profile has not been converted. The
-  prepared conversion/launcher proposal is parked. Startup, registry, schedules, live
-  launchers and user settings were not changed in this audit.
 
 #### Distinguish user decisions from implementation choices and unresolved questions
 
@@ -296,15 +343,15 @@ finish security/fleet/native integration. Completed evidence lives in WORK-LOG, 
 - Finish independent archive add/list/remove, membership/discovery depth and nested-repository
   policy. Registration must not require scheduling. Preserve each archive's update/sync choice
   and allowed-origin prefixes; recognition is broader than update eligibility.
-- Keep actual existing-settings conversion and launcher/job rollout paused. Before any reopened
-  rollout, verify writers and ownership, preserve originals/receipts, review replacements and
-  prove settings-loss/interruption behavior. No live registration/startup/task repair is implied.
+- Remaining fleet conversion and launcher/job rollout require scoped direction. Verify writers
+  and ownership, preserve originals/receipts, review replacements and prove settings-loss/
+  interruption behavior. No live registration/startup/task repair is implied.
 - Finish guided setup/update/uninstall/selective unenrollment, profile relocation/locator and
   the app's common settings UI. Source updating targets this checkout only, with reviewed
   fast-forward behavior and restart/launcher handling; installed-app updates need their own proof.
-- Inventory saved preferences/logging are not adopted. resolve_settings refuses while unconverted
-  legacy files exist, which would stop this read-only command on such a profile, and live conversion
-  is paused. Decide how an observation-only command reads preferences before wiring it in.
+- Inventory saved preferences/logging are not adopted. Define behavior for an unconverted
+  legacy profile before wiring in the resolver; observation must not silently convert settings.
+  The earlier claim that the current profile migration blocks this work is superseded.
 - Reconcile remaining output/state consumers: duplicator resume/logs,
   remaining manager/scheduling paths and private hook/message action reports. Required operational
   state is distinct from an optional report. Preserve explicit destinations and refuse fallback.

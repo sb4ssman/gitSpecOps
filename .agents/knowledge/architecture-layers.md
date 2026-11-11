@@ -1,7 +1,9 @@
 # Architecture: the layer stack
 
 **Status:** target agreed 2026-09-20, revised 2026-09-21 (root `_os/`, flat `Basic/`, flat
-`App/tray.py`, `_providers/`; see "Revisions" at the end). Migration phase 1 landed 2026-09-21. How to get there is in
+`App/tray.py`, `_providers/`; see "Revisions" at the end). **Latest revision 2026-11-11:** Special
+is this machine, once; Elaborate is other machines or over time; Sync Suggester splits;
+`git-sync-suggester/` is emptied. The tree below predates it. Migration phase 1 landed 2026-09-21. How to get there is in
 [`../HANDOFF.md`](../HANDOFF.md). The picture is [`architecture-diagram.md`](architecture-diagram.md).
 [`../README.md`](../README.md) "Repo Shape" describes what is on disk *today* until the migration lands.
 
@@ -312,6 +314,8 @@ deciding what needs attention is policy and the App holds none.
 
 ## Sync Suggester: one job, run two ways
 
+*Superseded in part 2026-11-11: the local suggestion moves to Special; see the last revision.*
+
 `check` observes this machine's repositories, publishes its status, and shows the fleet: once.
 `peer` does the same job continuously. **One configuration and one observation code path serve
 both.** The earlier second runtime is dissolved rather than carried: `watch` (polling) is gone
@@ -478,3 +482,39 @@ Decided by the user:
   above. Over the fleet's peer protocol on the tailnet, not SSH: SSH would hand gitSpecOps a
   whole shell (with per-OS quoting) where a few fixed verbs are enough, and turning SSH on is a
   system and credential change gitSpecOps must not make for the user.
+
+## Revisions, 2026-11-11: this machine, or machines and time
+
+Decided by the user:
+
+- **The rule between Special and Elaborate.** Special is this machine, once. Elaborate is other
+  machines, or over time. It restates the model table (judgment versus reach) as the test every
+  operation is sorted by.
+- **Sync suggestion splits by that rule.** Suggesting sync for this machine's repositories
+  (observe, classify, recommend) is a Special operation that runs with no fleet. Publishing this
+  machine's status, combining other machines' reports into a fleet suggestion, and the
+  continuous peer are Elaborate. `check` as "observe, publish, show: once" is no longer one unit.
+- **Follows from the rule:** scanning many repositories on one machine (for example every public
+  repository) is Special and does not wait for fleet work.
+- **Clean tree before install.** Every file the target tree expects exists, at minimum with a
+  header saying what it is for. `git-sync-suggester/` is emptied and removed; whatever can be
+  built from its contents is built and complete. A file-by-file mapping is reviewed with the
+  user before anything moves.
+- **Both GUIs, set by the user.** The usual setup is the Qt app: tray plus window. A web server
+  is optional: run it headless to watch the fleet from a phone or tablet over the tailnet, or
+  use the web dashboard all the time, with or without the tray. The tray can open either the
+  Qt window or the web view. Every combination is a setting and all of them must work. Both
+  read the same display contract. The 2026-10-19 ruling that the dashboard stays with Sync Suggester in `Elaborate/`
+  is reopened; the file-by-file mapping places it.
+- **Presentation lives in `App/`:** the web server and skins in `App/web/`, the tray, the Qt
+  window. The display contract builder stays in `Elaborate/_fleet/` (deciding attention is
+  policy). The web side runs without Qt installed.
+- **First the Qt tray opens the web view;** the Qt window comes later. The hand-written
+  Windows tray is deleted after its useful parts are extracted.
+- **Remote watch and act from a phone or tablet is built,** off by default, tailnet only.
+- **The network map:** machines as nodes by report freshness, repos needing attention on each,
+  matching repos across machines lined up visually. Views switch between machines together,
+  the whole library, one library folder across machines, one org across machines and one
+  repo across machines; a chosen machine sets the perspective.
+- **`_archive/` (version 1) is ported where still needed, then deleted.** `tests/` keeps its
+  name. Execution plan: `../HANDOFF-CLEAN-TREE.md`.
