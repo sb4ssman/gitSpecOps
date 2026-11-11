@@ -24,8 +24,8 @@ setup()
 from Special._settings import SettingsError, resolve_document, resolve_settings
 from Special._settings import security as editor
 from Special._settings import store
-from Special.security import _me as subject
-from Special.security import _cli as command
+from Special._security import _me as subject
+from Special._security import _cli as command
 
 
 class PolicySettingsTests(unittest.TestCase):

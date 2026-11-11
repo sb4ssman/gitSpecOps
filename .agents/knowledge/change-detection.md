@@ -59,7 +59,7 @@ Amended 2026-09-05 for the persistent Fleet app: native filesystem notification 
 `fleet_events.py` with Linux inotify and Windows `ReadDirectoryChangesW`. It blocks in the kernel
 while idle, debounces change bursts, and `fleet_observer.py` refreshes only the deepest known
 checkout containing an event. One acknowledged inventory runs at startup; there is no timed full
-scan. `fleet rescan` handles new/removed repository inventory deliberately. A cached network
+scan. `Elaborate/peer.py rescan` handles new/removed repository inventory deliberately. A cached network
 heartbeat proves the process is online without reading repositories.
 
 Tier 1 Git hooks remain useful for ref-only changes in linked worktrees and Git operations whose

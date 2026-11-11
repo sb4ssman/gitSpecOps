@@ -37,10 +37,10 @@ It is **not comprehensive**, and the gaps sit exactly where the product makes it
 
 | # | Severity | Where | What happens |
 |---|---|---|---|
-| 1 | **critical** | `fleet safe-to-wipe` | Prints **SAFE, exit 0** when the machine holds the only copy of real work. Reproduced for each case alone: a repository with no remote; unpushed commits on a non-current branch; a stash; unpushed commits where the remote is not named `origin`. Causes: the observer drops repositories without a parseable `origin` and the command never reads `observer.issues`; ahead/behind is the current branch only; `git status` does not show stashes; repositories excluded by a basket or with unreadable status are also silently absent. |
+| 1 | **critical** | `Elaborate/check_safe_to_wipe.py` | Prints **SAFE, exit 0** when the machine holds the only copy of real work. Reproduced for each case alone: a repository with no remote; unpushed commits on a non-current branch; a stash; unpushed commits where the remote is not named `origin`. Causes: the observer drops repositories without a parseable `origin` and the command never reads `observer.issues`; ahead/behind is the current branch only; `git status` does not show stashes; repositories excluded by a basket or with unreadable status are also silently absent. |
 | 2 | **high** | `Special/duplicate_org/_local_repos.safe_cleanup_directory` | Treats any folder containing a `config` (file *or* folder) or `HEAD` as a git repository and `rmtree`s it. The batch download skips only folders `scan_local_git_repos` recognizes as repositories, so a plain project folder that shares a repository's name and has a `config/` subfolder is **not** skipped, then deleted. Reproduced: the scan reported no repository, cleanup returned True, folder and untracked file gone. |
 | 3 | high | Sync Suggester observer | Same root cause as #1, visible everywhere: no-remote repositories — the most at-risk work there is — never appear in the fleet view, only as an issue line. Unpushed work on other branches is invisible. See [`at-risk-work.md`](at-risk-work.md), which designed for this and is unbuilt. |
-| 4 | medium | `fleet audit` | Its "no origin" finding is dead code in the real command (fed only repositories that have one). |
+| 4 | medium | `Special/audit_repos.py` | Its "no origin" finding is dead code in the real command (fed only repositories that have one). |
 
 **Fixed 2026-10-19 (same day), each pinned by a test that fails on the old code:**
 

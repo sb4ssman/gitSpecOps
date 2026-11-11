@@ -25,7 +25,7 @@ from Special._runtime.logger import configure_logging
 from Special._runtime.output import ReportSink, conceal
 from Special._settings import ResolvedSettings, SettingsError, resolve_document
 from Special._settings.archives import _key
-from Special.security._me import load_policy
+from Special._security._me import load_policy
 
 
 ERRORS = {"settings": "Archive settings or selection are invalid; nothing was run.",

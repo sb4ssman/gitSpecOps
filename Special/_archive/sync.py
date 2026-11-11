@@ -45,7 +45,7 @@ from Basic._providers._registry import provider_for  # noqa: E402
 from Basic._run import CommandFailed, run_git  # noqa: E402
 from Basic.clone import clone  # noqa: E402
 from Basic.pull import fast_forward  # noqa: E402
-from Special.security._push import PushResult, PushSnapshot, publish_checked, read_push_snapshot  # noqa: E402
+from Special._security._push import PushResult, PushSnapshot, publish_checked, read_push_snapshot  # noqa: E402
 from Special._archive.plan import (  # noqa: E402
     DEFAULT_APPROVED_REMOTE_PREFIXES,
     LocalRepo,

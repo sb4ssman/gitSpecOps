@@ -1,5 +1,12 @@
 """Report one repository's facts as JSON. Read-only.
 
+Why:          every judgment above starts from one repository's plain facts.
+Reads:        one repository.
+May change:   nothing.
+Results:      JSON on stdout.
+Layer:        Basic: one Git or host operation.
+Status:       working
+
     python Basic/status.py <repo-path>
 """
 from __future__ import annotations

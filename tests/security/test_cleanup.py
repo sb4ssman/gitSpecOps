@@ -22,12 +22,12 @@ setup()
 import gitso
 from Special._history.operation import execute as native_execute
 from Special._history.plan import load
-from Special.security import _cleanup_cli
-from Special.security._cleanup import run_cleanup
-from Special.security._findings import write_report
-from Special.security._material import scan
-from Special.security._me import load_policy
-from Special.security._private_files import write_private_json
+from Special._security import _cleanup_cli
+from Special._security._cleanup import run_cleanup
+from Special._security._findings import write_report
+from Special._security._material import scan
+from Special._security._me import load_policy
+from Special._security._private_files import write_private_json
 
 
 class Fixture(unittest.TestCase):
@@ -136,7 +136,7 @@ class CleanupPlans(Fixture):
         planned = self.plan(plan_out=self.plan_path)
         self.assertEqual(planned.status, "planned")
         self.settings.unlink()
-        with patch("Special.security._cleanup.execute", side_effect=AssertionError("must not rewrite")):
+        with patch("Special._security._cleanup.execute", side_effect=AssertionError("must not rewrite")):
             result = run_cleanup("apply", self.plan_path, workspace=self.root / "output",
                                  approve=planned.plan_id, confirmation="REWRITE", home=self.home)
         self.assertEqual(result.status, "incomplete")
@@ -146,19 +146,19 @@ class CleanupPlans(Fixture):
     def test_excluded_inputs_are_not_read(self):
         self.document["defaults"]["scope"] = {"exclude_paths": [str(self.report)]}
         self.settings.write_text(json.dumps(self.document))
-        with patch("Special.security._cleanup.read_private_json", side_effect=AssertionError("must not read")):
+        with patch("Special._security._cleanup.read_private_json", side_effect=AssertionError("must not read")):
             self.assertEqual(self.plan().status, "incomplete")
 
     def test_excluded_saved_plan_is_not_read_and_profile_mismatch_is_not_fallback(self):
         planned = self.plan(plan_out=self.plan_path)
-        with patch("Special.security._cleanup.execute", side_effect=AssertionError("must not rewrite")):
+        with patch("Special._security._cleanup.execute", side_effect=AssertionError("must not rewrite")):
             result = run_cleanup("apply", self.plan_path, workspace=self.root / "output",
                                  approve=planned.plan_id, confirmation="REWRITE")
         self.assertIn("same settings home", result.message)
         self.assertFalse((self.root / "unused").exists())
         self.document["defaults"]["scope"] = {"exclude_paths": [str(self.plan_path)]}
         self.settings.write_text(json.dumps(self.document))
-        with patch("Special.security._cleanup.load", side_effect=AssertionError("must not read")):
+        with patch("Special._security._cleanup.load", side_effect=AssertionError("must not read")):
             result = run_cleanup("apply", self.plan_path, workspace=self.root / "output", home=self.home,
                                  approve=planned.plan_id, confirmation="REWRITE")
         self.assertEqual(result.status, "incomplete")
@@ -207,7 +207,7 @@ class CleanupPlans(Fixture):
 
     def test_unattended_apply_refuses_before_plan_read_or_prompt(self):
         with patch.object(sys.stdin, "isatty", return_value=False), redirect_stderr(io.StringIO()), \
-             patch("Special.security._cleanup_cli.run_cleanup", side_effect=AssertionError("must not run")), \
+             patch("Special._security._cleanup_cli.run_cleanup", side_effect=AssertionError("must not run")), \
              self.assertRaises(SystemExit) as error:
             _cleanup_cli.main(["apply", "private-plan.json", "--workspace", "new-output", "--approve", "plan-id"])
         self.assertEqual(error.exception.code, 2)
@@ -215,14 +215,14 @@ class CleanupPlans(Fixture):
     def test_declined_typed_approval_never_starts_the_operation(self):
         with patch.object(sys.stdin, "isatty", return_value=True), patch.object(sys.stdout, "isatty", return_value=True), \
              patch("builtins.input", return_value="yes"), redirect_stderr(io.StringIO()), \
-             patch("Special.security._cleanup_cli.run_cleanup", side_effect=AssertionError("must not run")):
+             patch("Special._security._cleanup_cli.run_cleanup", side_effect=AssertionError("must not run")):
             self.assertEqual(_cleanup_cli.main(["apply", "private-plan.json", "--workspace", "new-output", "--approve", "plan-id"]), 130)
 
     def test_requested_report_failure_stops_before_rewriting_without_fallback(self):
         from Special._runtime.files import RuntimeIOError
         planned = self.plan(plan_out=self.plan_path)
-        with patch("Special.security._cleanup.ReportSink", side_effect=RuntimeIOError("report_setup")), \
-             patch("Special.security._cleanup.execute", side_effect=AssertionError("must not rewrite")):
+        with patch("Special._security._cleanup.ReportSink", side_effect=RuntimeIOError("report_setup")), \
+             patch("Special._security._cleanup.execute", side_effect=AssertionError("must not rewrite")):
             result = run_cleanup("apply", self.plan_path, workspace=self.root / "output", home=self.home,
                                  approve=planned.plan_id, confirmation="REWRITE",
                                  overrides={"output": {"mode": "both", "directory": str(self.root / "reports")}})
@@ -237,7 +237,7 @@ class CleanupPlans(Fixture):
         def fail_event(*args, **kwargs):
             raise RuntimeIOError("logging_write")
         log = SimpleNamespace(handler=None, event=fail_event, close=lambda: closed.append(True))
-        with patch("Special.security._cleanup.configure_logging", return_value=log):
+        with patch("Special._security._cleanup.configure_logging", return_value=log):
             result = self.plan(plan_out=self.plan_path)
         self.assertEqual(result.status, "incomplete")
         self.assertEqual(closed, [True])
@@ -249,7 +249,7 @@ class CleanupPlans(Fixture):
             path = write_private_json(self.root / "partial.json", {"stage": "fixture"})
             kwargs["artifacts"].append(path)
             raise KeyboardInterrupt()
-        with patch("Special.security._cleanup.execute", side_effect=interrupted):
+        with patch("Special._security._cleanup.execute", side_effect=interrupted):
             result = run_cleanup("apply", self.plan_path, workspace=self.root / "output",
                                  approve=planned.plan_id, confirmation="REWRITE", home=self.home)
         self.assertEqual(result.exit_code, 130)
@@ -260,7 +260,7 @@ class CleanupPlans(Fixture):
 @unittest.skipUnless(os.environ.get("GITSPECOPS_RUN_HISTORY_REWRITE") == "1", "explicit native rewrite trial not selected")
 class NativeCleanup(Fixture):
     def test_selected_missing_engine_never_turns_rewritten_mirror_into_verified_result(self):
-        with patch("Special.security._engines.shutil.which", return_value=None):
+        with patch("Special._security._engines.shutil.which", return_value=None):
             planned = self.plan(plan_out=self.plan_path, engines=["gitleaks"])
             self.assertEqual(planned.status, "planned", planned.record())
             self.assertTrue(planned.check["gaps"])
@@ -322,7 +322,7 @@ class NativeCleanup(Fixture):
             outcome = native_execute(*args, **kwargs)
             self.settings.unlink()
             return outcome
-        with patch("Special.security._cleanup.execute", side_effect=lose_settings):
+        with patch("Special._security._cleanup.execute", side_effect=lose_settings):
             result = run_cleanup("apply", self.plan_path, workspace=self.root / "output",
                                  approve=planned.plan_id, confirmation="REWRITE", home=self.home)
         self.assertEqual(result.status, "incomplete", result.record())

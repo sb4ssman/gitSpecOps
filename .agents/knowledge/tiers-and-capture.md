@@ -49,7 +49,7 @@ Shape: separate staged and unstaged patches plus explicitly selected untracked f
 size-capped bundle per repository. It is **not encrypted**: each tier already relies on the
 authenticated system that carries it, while captured content is already plaintext on the source
 disk. It must be a **separate artifact from the manifest** — the manifest stays names-free.
-The [implementation contract](../../git-sync-suggester/docs/RECOVERY-DESIGN.md) specifies the
+The [implementation contract](../../_docs/RECOVERY-DESIGN.md) specifies the
 trust boundary, limits, exclusions, restore and retirement. Capture, storage, preview, restore,
 per-repository policy, exact retirement proof, event-driven capture and peer acknowledgement
 are built. It remains opt-in: configure the location and select a capture basket.
@@ -93,7 +93,7 @@ exists.
 
 **Fixed 2026-09-11.** Cloning into the library always fired filesystem events, but
 `affected_repositories` maps an event only to a *known* checkout, so those events were dropped
-and the repository stayed invisible until someone remembered `fleet rescan`.
+and the repository stayed invisible until someone remembered `Elaborate/peer.py rescan`.
 `detect_new_checkouts` now walks up from an unmatched event to the enclosing directory
 containing `.git`, and the peer logs it and shows it as a dashboard issue.
 
@@ -106,7 +106,7 @@ tool already knows.
 
 ## Baskets: choosing what a machine syncs
 
-**Built 2026-09-11** (`app/baskets.py`, config v4, `fleet baskets`) — at namespace granularity,
+**Built 2026-09-11** (`app/baskets.py`, config v4, `Elaborate/setup_fleet.py baskets`) — at namespace granularity,
 configured from the CLI rather than by editing JSON. Path globs and explicit per-repository
 lists are not implemented. Three scopes stay distinct or the feature becomes dangerous:
 

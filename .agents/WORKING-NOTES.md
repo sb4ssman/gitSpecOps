@@ -4,7 +4,7 @@ Living todo / scratch pad. Add items freely; **prune regularly**. When something
 into [`WORK-LOG.md`](WORK-LOG.md) (appended at the bottom, `YYYY-MM-DD HH:MM`) and delete it here.
 Dates are always absolute.
 
-_Last tended: 2026-11-11 (completed settings work reconciled; architecture review ongoing)_
+_Last tended: 2026-11-11 (clean-tree pass checkpoint: phases 1-8 done, phase 9 partly)_
 
 ## Open
 - **Top-down operation architecture (2026-11-11), decided so far:** Special is this machine,
@@ -14,26 +14,15 @@ _Last tended: 2026-11-11 (completed settings work reconciled; architecture revie
   server, headless or always on; tray opens either), all set by the user. Remote watch and
   act is built, off by default.
 - **Executing: [`HANDOFF-CLEAN-TREE.md`](HANDOFF-CLEAN-TREE.md)** (agreed with the user
-  2026-11-11): file-by-file mapping, Qt tray over the web view, network map views, remote
-  watch and act, port and delete `_archive/`, delete `git-sync-suggester/`. Phases and done
-  criteria are in the handoff.
+  2026-11-11). Done: the mapping, `git-sync-suggester/` and `_archive/` gone, Qt tray over
+  the web view, network map views, remote watch and act, every command headed. Left: see
+  "Progress" in the handoff.
 
 
 ### Source review follow-through — 2026-11-11
-- Map the legacy fleet tree into the agreed layers by responsibility, including bare imports,
-  UI assets, packaging, tests, startup paths and persisted state. The current import test
-  checks 110 stack files but does not include `git-sync-suggester/`; passing it is not
-  proof of the whole product's dependency direction. Reconcile its obsolete Security rank
-  and stdlib-only App rule with the chosen optional Qt dependency when extending coverage.
-- Reconcile `app/fleet_app.py::load_saved`: its legacy branch calls `save_saved` after
-  `migrate` while loading. The current contract requires explicit saved-data conversion.
-  Review callers/tests and separate pure loading from deliberate migration before cutover.
 - Split archive registration from launcher creation: `_archive/manager.py::install_launchers`
   writes a launcher before saving registration, and registration uses this path. Preserve
   explicit partial outcomes and saved archive choices while making the capabilities independent.
-- Reconcile the tray failure test against useful, privacy-safe failure reporting. The obsolete
-  `_LogTee` test requires raw disk persistence; current worker failures use generic wording.
-  Keep actionable known-cause messages without restoring raw console logging.
 - Build on existing callable updater/refresh/cleanup/checked-push results when completing
   visible operations. `gitso` currently dispatches CLI handlers; equivalent discovery is not
   yet equivalent structured GUI execution. The dashboard currently exposes catch-up/security
@@ -44,16 +33,9 @@ _Last tended: 2026-11-11 (completed settings work reconciled; architecture revie
 
 
 ### Found 2026-11-11 during an orientation review: discuss with the user before changing anything
-- **The target tree contradicts its own later revisions.** The tree in
-  `knowledge/architecture-layers.md` still shows `App/skins/lcars` and `retro`, `App/dashboard.py`
-  and `_tests/`. The 2026-10-19 revisions keep only the `modern` skin for now and keep the dashboard
-  with Sync Suggester in `Elaborate/`; the 2026-10-22 revision makes the App Qt. Agents reading the
-  tree are misled. Fix the architecture and everything that goes with it, as a discussed decision.
 - **Broken mapper link.** `tools/README.md` fetches the folder mapper with `curl` from a repository
   that has since moved and is no longer public, so it fails on a fresh machine. The brief's default
   output file is one the current mapper refuses to replace. How agents get the mapper needs a decision.
-- **Stale claims in `README.md`.** "Its dispatcher is not implemented yet" (Repo Shape): `gitso.py`
-  exists. Check the rest of the brief against the tree in the same pass.
 - **The user's completion criteria are not in this repository.** Line up the user's goals as
   ordered tasks here (proposal under discussion).
 
@@ -65,20 +47,15 @@ The binary and trailer holds are fixed (see the log). Still open:
   expected (user, 2026-11-11). Generate new ones with the finished tool when install is defined.
 - **A binary file now needs one review per exact version.** The first push of a repo with fonts asks
   for a review of each font; that is intended. Watch whether that is too much friction in real use.
-- **`tests/fleet/test_core_path.py` fails** at `fleet_tray._LogTee`: the test (2026-09-19) predates the
-  2026-10-29 tray refactor that removed that helper. Pre-existing; the other 76 test files pass.
 
 ### User direction, 2026-11-03: clean tree and visible operations before real use
 
 Before running on real repositories or installing on the user's machines:
-- **The folder must be clean.** Finish the agreed physical layout: the fleet/app tree still sits in
-  `git-sync-suggester/`, there is no `App/`, Elaborate holds one file, public security commands are not
-  at the layer root, a compatibility wrapper remains in `Special/duplicate_org/`, and setup scripts and
-  tests differ from the target tree. architecture-layers.md already says to migrate before enrolling,
-  because autostart writes absolute paths.
 - **Every Special operation must show what it does.** Before and during a run the user can see what it
   is looking for and why, how it goes about it, what it reads, what it may change and where results
   go. Source-derived, from the same headless operation for CLI and GUI. Help text alone does not meet this.
+  2026-11-11: the source half is done (every command carries the header template, which `gitso docs`
+  prints); showing it in the web view and tray before and during a run is not.
 - **Then install on the fleet.** "Install" is not implemented: setup only builds a venv and launchers.
   What it means for this first fleet still needs agreeing.
 
@@ -196,7 +173,7 @@ notes. No claim below means all historical secrets, all platforms or all user wo
 | A1 | The primary purpose is seeing out-of-sync repositories across the user's machines and helping put them in order. | **Partial.** Fleet observation, manifests, peer aggregation, advice and dashboard exist in `git-sync-suggester/`. Fresh mocked peer checks pass. A real two-machine acceptance journey is not proved. |
 | A2 | One coherent app at the top; each individual operation remains useful on its own. No shelf, shape, fleet or shared helper dependency for casual archive updating. | **Partial.** Direct scripts and plain Python/Git operation paths exist. Sixteen public `--help` commands work outside the checkout without creating a profile. Common settings/results/logging and app integration are not universal. |
 | A3 | Preserve Basic -> Special -> Elaborate -> App, with plumbing in private helper folders and operations visible at layer roots. | **Partial.** `_settings`, `_archive`, `_org_duplicator`, `_runtime` and security `_commit` group helpers. Archive aliases/CLI forwarding are removed; other families still need cleanup. Fleet/app largely remain in their earlier tree. The current 110-file layer check passes; this is not complete physical reorganization. |
-| A4 | Move `duplicate_org.py`, `update_archive.py` and local `archive_manager.py` into Special; scheduling and fleet coordination remain Elaborate. | **Implemented for the selected source split.** All three public scripts are in Special. `Elaborate/archive_manage.py` retains scheduling/compatibility. Functionality and defaults beyond that source move remain separately reviewable. |
+| A4 | Move `duplicate_org.py`, `update_archive.py` and local `archive_manager.py` into Special; scheduling and fleet coordination remain Elaborate. | **Implemented for the selected source split.** All three public scripts are in Special. `Elaborate/schedule_archives.py` retains scheduling/compatibility. Functionality and defaults beyond that source move remain separately reviewable. |
 | A5 | An action-named updater invokes reusable updater plumbing; avoid underscore/helper clutter among public commands. | **Partial.** `Special/update_archive.py` is the public adapter; `_archive/update_operation.py` owns its callable operation, with supporting helpers grouped privately. Other families still need consistent public/private mapping. Exact helper basenames are implementation choices, not user-mandated renames. |
 | A6 | One CLI/main menu exposes operations to terminal users and LLMs; direct scripts still work. | **Partial.** User selected `gitso`. Source launcher/catalog/menu and source-derived docs now dispatch sixteen operations; direct scripts remain. Installed wrappers, richer shared metadata/results and full GUI integration remain unfinished. |
 | A7 | CLI and GUI invoke the same headless functions, with structured results, explicit effects and no automation prompts. | **Partial.** The standalone updater has a headless request/result contract; duplicator batch/single modes and fleet functions exist. There is no universal result schema or GUI coverage for all Special operations. Some paths still assume interaction. |

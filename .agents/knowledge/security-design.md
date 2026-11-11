@@ -45,7 +45,7 @@ other OSs, nested-tag execution, broader encoding/signature handling and full GU
 composition remain acceptance work. The archived v1 tools stay frozen. This proof does not
 erase external copies or authorize changing actual repository history.
 
-**2026-10-29 public cleanup and remote-ref boundary:** Special/security/clean_history.py and
+**2026-10-29 public cleanup and remote-ref boundary:** Special/clean_history.py and
 gitso clean-history share _cleanup.run_cleanup. The plan command accepts a full private history
 report and explicit choice JSON: literal path removals, finding-id replacements, whole containing
 file/container removals and exact author/committer/tagger identity choices. It rereads the current
@@ -90,7 +90,7 @@ gaps cannot be waived. Local records are operational state, not shared settings/
 See product-contract.md and settings-schema.md for the current contract; GUI review, deliberate
 cross-machine transfer/relocation and native permissions remain separate acceptance work.
 
-**2026-10-28 implementation evidence:** Special/security/_push.py now composes selected policy,
+**2026-10-28 implementation evidence:** Special/_security/_push.py now composes selected policy,
 the active outgoing-range reader and optional engines with Basic.fetch and a fixed-tip,
 single-branch Basic.push.push_snapshot. Archive Sync publish is the first publishing caller.
 Special/commit_repo.py and gitso commit now use the checked named-file operation in _commit/:
@@ -293,7 +293,7 @@ from a temporary worktree of a pre-cut-over commit -- verification, not compatib
    a file name; an old address under a second name; a noreply claim; same-second commits; an
    archive member; a GPS photo; a removed path; "nothing else changed". The observer's message
    then names `follow_rewrite`.
-3. **Security components and scans** -- `Special/security/`, the watch list command, setup's
+3. **Security components and scans** -- `Special/_security/`, the watch list command, setup's
    security step. Findings must match the old scans, differences explained.
 4. **`plan_cleanup`** -- same identity maps and rules as the old planner on the same repositories.
 5. **`Elaborate/security/clean_history`** -- rehearsed end to end on a disposable copy of a real

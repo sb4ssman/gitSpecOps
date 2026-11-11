@@ -28,7 +28,7 @@ from Special._runtime.files import RuntimeIOError
 from Special._runtime.output import conceal
 from Special import archive_manager
 from Special import update_archive
-from Elaborate import archive_manage
+from Elaborate import schedule_archives as archive_manage
 import gitso
 
 

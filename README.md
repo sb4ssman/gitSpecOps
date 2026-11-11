@@ -120,7 +120,7 @@ logging separately. Legacy settings require explicit migration; they are never s
 
 **Fast-forward pulls only.** It never merges, rebases, resets, stashes, or deletes; a repository
 that is dirty, diverged, or on an unapproved remote is reported and skipped, not "fixed". The
-richer engine (`archive_sync.py`) additionally discovers an org's full repo set and can clone
+richer engine (`sync_archive.py`) additionally discovers an org's full repo set and can clone
 what is missing, repair stale origins after a rename, and rename folders to match upstream —
 each as a separate, explicitly approved class of change.
 
@@ -159,16 +159,17 @@ uncommitted work, unpushed commits, or a report too stale to trust — and then 
 order from wherever you are sitting.*
 
 ```bash
-python3 git-sync-suggester/sync_suggester.py check          # what needs attention, everywhere
-python3 git-sync-suggester/sync_suggester.py fleet catchup   # plan a group fast-forward
+python3 Special/suggest_sync.py            # this machine: what needs attention; nothing published
+python3 Elaborate/suggest_fleet_sync.py    # every machine, from their published status
+python3 Special/catch_up.py                # plan a safe fast-forward of this machine's checkouts
+python3 App/tray.py                        # the fleet peer behind a tray icon, with its web view
 ```
 
-An existing common profile owns CLI/app enrollment. Select it with `--settings-home` before
-the command (after `fleet` for app commands); `--config-dir` separately selects local fleet
-state and legacy inputs. CLI and app keep their own transport selections. Invalid common
-settings never fall back to old files, and saves preserve other components. Profiles with
-only legacy configuration still work in place. Common migration remains an explicit,
-unfinished workflow; nothing is migrated merely by running a command.
+Suggesting sync for one machine needs no fleet. An existing common profile owns enrollment;
+select it with `--settings-home`, and `--config-dir` separately selects local fleet state and
+legacy inputs. Invalid common settings never fall back to old files, and saves preserve other
+components. Profiles with only legacy configuration still work in place; loading never
+converts them, and `Elaborate/setup_fleet.py convert` is the one explicit conversion.
 
 Across machines it becomes the thing you actually want at 2am: "you left 17 uncommitted files on
 the laptop." Then it helps you fix it: group fast-forward everything after weeks away, publish
@@ -274,8 +275,8 @@ need a separately reviewed conversion.
 Active scans use common security policy and print masked results without creating reports or logs:
 
 ```sh
-python3 Special/security/scan_tree.py /path/to/repo --settings-home /path/to/profile --json
-python3 Special/security/scan_history.py /path/to/repo --settings-home /path/to/profile --json
+python3 Special/scan_tree.py /path/to/repo --settings-home /path/to/profile --json
+python3 Special/scan_history.py /path/to/repo --settings-home /path/to/profile --json
 ```
 
 Saved protected values remain in force when an additional `--never-publish` file is selected.
@@ -348,16 +349,16 @@ errors. Console output and shown keys are not copied into logs or notifications.
 
 ## Archive updating in more detail
 
-### `update_archive.py` vs `archive_sync.py`
+### `update_archive.py` vs `sync_archive.py`
 
 Both fast-forward clean repositories. The difference is remote discovery:
 
 - **`update_archive.py`** — `git` only, no network beyond the pull. It updates what is already
   on disk. Works with any Git host.
-- **`archive_sync.py`** — asks a provider (GitHub via `gh`) what *should* be there, so it can
+- **`sync_archive.py`** — asks a provider (GitHub via `gh`) what *should* be there, so it can
   clone missing repositories, spot renames, and flag orphans.
 
-If no provider matches the host, or discovery fails, `archive_sync.py` **degrades to update-only**
+If no provider matches the host, or discovery fails, `sync_archive.py` **degrades to update-only**
 — it pulls every clean repo and never invents a clone, an orphan, or a rename from a failed
 listing. That fallback is enforced by a flag (`remote_authoritative`) and pinned by tests.
 
@@ -368,7 +369,7 @@ genuine upstream drift is surfaced for you to confirm.
 ### `archive_manager.py` — the local front door
 
 Registers archives, installs per-archive launchers, refreshes saved update/sync modes and writes
-local logs. Scheduling remains in `Elaborate/archive_manage.py`. The registry, log and scheduled
+local logs. Scheduling remains in `Elaborate/schedule_archives.py`. The registry, log and scheduled
 refresh-all launcher live in
 your per-user gitSpecOps folder (`%APPDATA%\gitspecops` on Windows, `~/.config/gitspecops`
 elsewhere; `GITSPECOPS_HOME` overrides), never in the checkout, so the scheduled task keeps
@@ -376,8 +377,8 @@ working when the code moves.
 
 ```powershell
 python Special\archive_manager.py --refresh-all --scan-only
-python Elaborate\archive_manage.py --install-monthly-task --task-day 1 --task-time 09:00
-python Elaborate\archive_manage.py --task-status
+python Elaborate/schedule_archives.py --install-monthly-task --task-day 1 --task-time 09:00
+python Elaborate/schedule_archives.py --task-status
 ```
 
 Generated archive launchers only refresh saved update/sync choices. Origin and folder repairs
@@ -385,7 +386,7 @@ require explicit archive-sync flags. Registration selects the saved mode, then o
 refresh; it does not repair repositories while registering them.
 
 `Special/update_archive.py` is the updater. `Special/archive_manager.py` owns registration and
-local refresh. `Elaborate/archive_manage.py` only creates refresh-all launchers or manages
+local refresh. `Elaborate/schedule_archives.py` only creates refresh-all launchers or manages
 scheduling; it does not accept local management flags. Generated refresh-all launchers invoke
 the Special manager directly. Existing launchers are never rewritten automatically.
 
@@ -399,7 +400,7 @@ including `--yes` when invoked without a terminal.
 ### Publishing — explicit remote writes
 
 ```bash
-python3 Special/archive_sync.py --root /path/to/archive --publish --dry-run
+python3 Special/sync_archive.py --root /path/to/archive --publish --dry-run
 ```
 
 `--publish` pushes **without `--force`**, so Git itself refuses anything that is not a
@@ -433,13 +434,13 @@ than a choice you have to make:
 | **Live** | machines talking directly over Tailscale | Tailscale | near-real-time, readable peer names |
 
 ```bash
-python3 git-sync-suggester/sync_suggester.py init --state-repo owner/private-repo --root ~/code
-python3 git-sync-suggester/sync_suggester.py check            # observe, publish, advise
-python3 git-sync-suggester/sync_suggester.py dashboard        # text, every machine
-python3 git-sync-suggester/sync_suggester.py dashboard --serve  # the browser dashboard
+python3 Elaborate/publish_status.py init --state-repo owner/private-repo --root ~/code
+python3 Elaborate/publish_status.py check      # observe, publish, advise
+python3 Elaborate/suggest_fleet_sync.py        # text, every machine
+python3 App/serve_web.py --manifests-only      # the browser view of published status
 ```
 
-**The dashboard is local and needs nothing else to be running.** `dashboard --serve` binds to
+**The web view is local and needs nothing else to be running.** `App/serve_web.py` binds to
 loopback on this machine and renders whatever manifests it can read from whichever transports
 are configured. No Tailscale, no second machine awake, no server anywhere. A laptop that has
 been shut for a week still appears, with its last known state and an honest "this is three days
@@ -448,20 +449,22 @@ old" — because the freshness rules treat an old report as old, never as an all
 That is the point of publishing to more than one transport: a machine that is unreachable right
 now has usually still left a fingerprint somewhere you *can* read.
 
-**The peer runtime ships:** `fleet setup` configures an independent machine, and `fleet run`
-resumes it. Each peer observes through native filesystem events, serves its own loopback
-dashboard, publishes to its configured transports, and optionally pulls from tailnet peers.
-No central host is required. Existing host/client configurations migrate automatically.
-See [the fleet guide](git-sync-suggester/docs/FLEET.md) for setup and transport commands.
+**The peer runtime ships:** `Elaborate/setup_fleet.py` configures an independent machine;
+`Elaborate/peer.py` runs it headless; `App/tray.py` runs it behind a tray icon (Qt) with its web
+view, and `App/serve_web.py` serves the web view without a tray. `--remote` on either also
+serves the web view on the tailnet, to devices of your own Tailscale account only. Each peer
+observes through native filesystem events, publishes to its configured transports, and
+optionally pulls from tailnet peers. No central host is required.
+See [the fleet guide](_docs/FLEET.md) for setup and transport commands.
 
 ### Catch up safely
 
-When returning to a machine after time away, use the fleet command instead of pulling an
-unreviewed pile of checkouts by hand:
+When returning to a machine after time away, use catch-up instead of pulling an unreviewed
+pile of checkouts by hand:
 
 ```sh
-python git-sync-suggester/sync_suggester.py fleet catchup
-python git-sync-suggester/sync_suggester.py fleet catchup --apply --yes
+python Special/catch_up.py
+python Special/catch_up.py --apply --yes
 ```
 
 The first command always performs a fresh, non-interactive fetch for each locally observed
@@ -470,7 +473,7 @@ repeats that plan and fast-forwards only checkouts that are clean and behind-onl
 the mutation explicit for terminal and unattended use. Dirty, untracked, ahead, diverged,
 detached, no-upstream, unreadable, and failed-fetch checkouts are listed for a human and are
 never altered. Catch up neither commits nor pushes work. Stop the local peer before running it;
-the command's configuration lock enforces that boundary, then the next peer start publishes the
+the fleet's configuration lock enforces that boundary, then the next peer start publishes the
 new status.
 
 ### What crosses the wire
@@ -498,35 +501,29 @@ Two rules that make the advice trustworthy:
 ## Layout
 
 ```text
-Basic/                 careful primitives: one subprocess wrapper, repo facts, discovery,
-                       prompts, state paths, and the host providers (Basic/_providers/)
-_os/                   per-OS pieces, the same files for Windows, Linux and macOS
-Elaborate/             archive_manage: scheduling and legacy command compatibility
-Special/               update_archive, archive_sync, archive_manager, duplicate_org;
-                       shared implementation in private helper folders
-git-sync-suggester/    the optional fleet tool (see below)
-tests/                 offline, synthetic; no network, no real repositories
-.agents/               project brief, working notes, work log, durable knowledge
+Basic/        one Git or host operation, done carefully: the subprocess wrapper, repository
+              facts, discovery, prompts, state paths, host providers (_providers/), version
+Special/      this machine, once: suggest_sync, catch_up, audit_repos, materialize,
+              list_live_buffers, name_repo, update_archive, sync_archive, archive_manager,
+              duplicate_org, export_inventory, restore_inventory, scan_tree, scan_history,
+              review_finding, clean_history, follow_rewrite, commit_repo, push_repo
+Elaborate/    other machines, or over time: setup_fleet, peer, publish_status,
+              suggest_fleet_sync, converge, check_safe_to_wipe, recovery, doctor, preflight,
+              start_at_login, schedule_archives (follow_rewrite_fleet, request: placeholders)
+App/          presence and presentation: tray (Qt), serve_web, desktop, window (placeholder);
+              the web view in _web/ (server, tailnet listener, skins)
+_os/          per-OS pieces, the same files for Windows, Linux and macOS
+_docs/        FLEET, DISPLAY-CONTRACT, RECOVERY-DESIGN
+_build/       desktop packaging recipe and release check
+tests/        offline, synthetic; no network, no real repositories
+.agents/      project brief, working notes, work log, durable knowledge
 ```
 
-Sync Suggester is the largest, so its modules are grouped by role. They remain flat scripts —
-no package, no console-script entry point; `_paths.py` widens `sys.path` once, in whichever file
-is executed:
-
-```text
-git-sync-suggester/
-  sync_suggester.py   the CLI: check, dashboard, converge, watch, doctor, fleet
-  core/               observation, manifests, advice, config, transports
-  fleet/              live tier: protocol, SQLite store, observer, display contract
-  app/                process shells: fleet app, tray, desktop bundle, start-at-login
-  ui/                 browser assets, served by exact name; never imported
-  packaging/          PyInstaller recipe and build notes
-  docs/               FLEET.md, DISPLAY-CONTRACT.md
-```
-
-`core/` knows nothing about the live tier or the UI, and `fleet_display.py` is the only module
-permitted to turn fleet state into display semantics — every skin, the tray included, consumes
-that versioned contract rather than reclassifying Git facts.
+A file without an underscore is a command, runnable by its own path and listed by `gitso`;
+anything with one is plumbing. Everything below `App/` is standard-library Python; the tray
+and window use PySide6 (Qt), the App's one declared dependency. `Elaborate/_fleet/display.py`
+is the only module that turns fleet state into display semantics: every skin, the tray
+included, reads that versioned contract rather than reclassifying Git facts.
 
 ---
 
@@ -545,7 +542,7 @@ that versioned contract rather than reclassifying Git facts.
   already do — and no consent can cover a commit, merge, rebase, reset, rename, delete or force.
   A tray item or dashboard button runs the same command as the terminal, with the same plan and
   confirmation. Sync Suggester's mutating operations
-  (`fleet catchup --apply`, `fleet materialize --apply`, recovery restore) are named, confirmed,
+  (`Special/catch_up.py --apply`, `Special/materialize.py --apply`, recovery restore) are named, confirmed,
   refuse to run beside a live peer, and follow the same plan-then-approve ladder as the rest.
 - **Bounded everything.** Per-command timeouts, bounded discovery, bounded thread pools, forced
   non-interactive Git so nothing can hang on a hidden prompt.
@@ -555,7 +552,7 @@ When unsure, look before you leap:
 
 ```bash
 python3 Special/archive_manager.py --refresh-all --scan-only
-python3 Special/archive_sync.py --root /path --publish --dry-run
+python3 Special/sync_archive.py --root /path --publish --dry-run
 ```
 
 ---

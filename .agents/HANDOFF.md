@@ -163,7 +163,7 @@ Phase 1 is where to start. Do not begin a phase until the one before it is commi
   only that `.bat` and stale `.pyc`s). Read-only query on 2026-09-20: last run 2026-09-01, result
   2 (file not found); monthly, next 2026-10-01. **Done 2026-09-22:** the new launcher is
   `<per-user config>/gitspecops/refresh_managed_archives.bat`; the user replaces the task with
-  `Elaborate/archive_manage.py --install-monthly-task` and reinstalls the three archives'
+  `Elaborate/schedule_archives.py --install-monthly-task` and reinstalls the three archives'
   launchers (`--install <root>`). Delete `gitArchiveUpdater/` only after they confirm.
 - **No fleet autostart is registered and no machine is enrolled.** That is why the migration goes
   first: `autostart` writes an absolute resolved path into the registry Run key, the XDG

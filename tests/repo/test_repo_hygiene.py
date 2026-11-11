@@ -24,13 +24,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import ROOT, setup  # noqa: E402
 
-setup("archived-security")
+setup()
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-# Until the rebuild lands, use the preserved v1 rules and identity reader in
-# _archive/Security, without modifying or copying that archive.
-from Security._patterns import ALLOWED, PERSONAL, SECRETS  # noqa: E402,F401
-from Security._patterns import identity_patterns as _identity_patterns  # noqa: E402
-from Security._seeds import identity_seeds  # noqa: E402
+# This guard's own rules and identity reader (version 1's, kept exactly). Moving it onto the
+# shared Special/_security checks is an open item in the agent notes.
+from _hygiene_patterns import ALLOWED, PERSONAL, SECRETS  # noqa: E402,F401
+from _hygiene_patterns import identity_patterns as _identity_patterns  # noqa: E402
+from _hygiene_seeds import identity_seeds  # noqa: E402
 
 #: Names that are the project's own public identity: the owner of these public repositories,
 #: and the authorship files. Anywhere else, the owner's login is a disclosure (a private
@@ -40,7 +41,8 @@ AUTHORSHIP_FILES = {"NOTICE", "pyproject.toml", "LICENSE"}
 
 #: Files whose job is to describe these patterns. Excluding them is safe precisely because a
 #: real leak would also have to appear somewhere else to matter.
-SELF = {"tests/repo/test_repo_hygiene.py"}
+SELF = {"tests/repo/test_repo_hygiene.py", "tests/repo/_hygiene_patterns.py",
+        "tests/repo/_hygiene_seeds.py"}
 
 
 def tracked_files():

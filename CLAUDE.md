@@ -3,7 +3,7 @@
 **git Special Operations** — careful, cross-platform, stdlib-only tooling for people with far too
 many Git repositories, spread across many namespaces and several machines. Four operations today:
 an archive updater/manager (`Special/update_archive.py`, `Special/archive_manager.py`), an org
-duplicator (`Special/duplicate_org.py`), Sync Suggester and its fleet (`git-sync-suggester/`), and
+duplicator (`Special/duplicate_org.py`), Sync Suggester (`Special/suggest_sync.py`) and its fleet (`Elaborate/`, `App/`), and
 the app that brings them together.
 
 **Read [`.agents/README.md`](.agents/README.md) first — it is the primary project brief.** It

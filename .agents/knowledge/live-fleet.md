@@ -2,8 +2,9 @@
 
 ## Current guidance — 2026-09-11
 
-Every machine is an independent peer. `app/fleet_app.py` supplies `setup`, `peer`, `run`,
-`transports`, `doctor`, `rescan`, `tray`, and `autostart`. The v3 configuration preserves old
+Every machine is an independent peer. `Elaborate/_fleet/cli.py` supplies `setup`, `peer`, `run`,
+`transports`, `doctor`, `rescan` and `autostart` through the Elaborate commands; the tray is
+`App/tray.py` (2026-11-11). The v3 configuration preserves old
 fleet identities on migration. No machine is an authority; peers pull reports and reject POST.
 Each peer serves its own loopback dashboard from local state, its SQLite peer cache, and any
 configured transports. `gh` is needed only for GitHub; Tailscale is optional.
@@ -11,7 +12,7 @@ configured transports. `gh` is needed only for GitHub; Tailscale is optional.
 Native filesystem events follow one acknowledged inventory. There is no periodic Git scan.
 Tailnet discovery/pulls run every 30 seconds. Folder/GitHub transports carry the same names-free
 v3 status manifest. Recovery content is still planned, separately from that manifest.
-Use [FLEET.md](../../git-sync-suggester/docs/FLEET.md) for current commands and
+Use [FLEET.md](../../_docs/FLEET.md) for current commands and
 [tiers-and-capture.md](tiers-and-capture.md) for the agreed next work.
 
 ## Historical pilot record — superseded, not deployment instructions
@@ -28,7 +29,7 @@ prerequisite for the new fleet app, and remains user-owned. No gh tokens are rea
 
 ## Implemented boundary
 
-`sync_suggester.py fleet` delegates to flat `fleet_app.py`. `fleet setup` is the interactive
+The Elaborate commands route into `Elaborate/_fleet/cli.py`. `Elaborate/setup_fleet.py` is the interactive
 front door; host/connect configure and run; run resumes; doctor hides the fleet secret.
 The host runs in the foreground with an observer and private Tailscale HTTP listener. No
 OS service or scheduled task. It owns a local SQLite database through `fleet_store.py`;
@@ -61,7 +62,7 @@ No automatic cloud failover, source fetching, commit hooks, remote jobs or conte
 Setup requires explicit acknowledgement after naming every recursive inventory root. The first
 machine-a preview ran at five seconds and measured about 11.2% average CPU and 34 MiB RSS across 105
 repos. A temporary 30-second cadence was also rejected by the user. Configuration v2 removes the
-scan interval entirely, migrates the preview automatically, and adds the deliberate `fleet rescan`
+scan interval entirely, migrates the preview automatically, and adds the deliberate `Elaborate/peer.py rescan`
 request for newly added or removed repositories.
 
 ## Deployment state
@@ -69,7 +70,7 @@ request for newly added or removed repositories.
 Prime configuration is under the normal user config directory, in fleet-app.json, separate
 from legacy config.json. Host database: fleet.sqlite3. Latest observation: fleet-latest.json.
 Dashboard URL: http://<machine-a-tailscale-ip>:8765/ . Host started from the agent's foreground terminal;
-resume independently in VS Code with `python3 git-sync-suggester/sync_suggester.py fleet run`.
+resume independently in VS Code with `python3 Elaborate/peer.py`.
 Only machine-a is verified publishing (105 repos). Windows endpoints were pingable; observer
 installation awaits a matching development checkout and local command because SSH was
 unavailable. The prototype source-download endpoint was removed on the user's feedback; an
@@ -83,7 +84,7 @@ dashboard. `fleet_tray.py` (stdlib ctypes, Windows) and `fleet_autostart.py` (pe
 start-at-login) close that. The tray consumes the display contract and classifies nothing; it
 exposes no Git mutations. Start-at-login is per-user and never a service, so the app keeps the
 interactive user's gh login, Git ownership and Tailscale identity — the correctness trap
-recorded in the outside review. `fleet tray` degrades to a foreground run off Windows.
+recorded in the outside review. `App/tray.py` degrades to a foreground run off Windows.
 
 Building it surfaced that **Windows observation had never actually worked**: the native watcher
 filtered events against the absolute path, so any root beneath a name in the ignore list
@@ -104,4 +105,4 @@ never become competing authorities. Native tray, deployment packaging and enterp
 remain separate work. The display contract is now versioned and independent of the standard
 skin; see DISPLAY-CONTRACT.md. User instructions supersede older notes that no observer may run.
 
-See git-sync-suggester/docs/FLEET.md for the user guide and tests/test_fleet_app.py for boundaries.
+See _docs/FLEET.md for the user guide and tests/test_fleet_app.py for boundaries.

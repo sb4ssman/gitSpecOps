@@ -1,6 +1,6 @@
 """The layer stack's one-way import rule, read straight from the source.
 
-    _os  ->  Basic  ->  Special  ->  Security  ->  Elaborate  ->  App
+    _os  ->  Basic  ->  Special  ->  Elaborate  ->  App
 
 A file may import the stdlib, `_os`, its own layer's plumbing, and any layer before its own.
 It may not import:
@@ -8,8 +8,8 @@ It may not import:
 - a later layer (App is optional; nothing may come to depend on it, and so on down);
 - a sibling *command* in its own layer (a file without an underscore) -- shared behavior
   belongs in that layer's plumbing, or the two commands are secretly one;
-- anything outside the stack: the legacy tool folders, or third-party packages
-  (the runtime is stdlib-only).
+- anything outside the stack, or a third-party package. Everything below App is
+  stdlib-only; App alone may import PySide6 (Qt), its one declared dependency.
 
 `_os/` may import only the stdlib and itself. Relative imports are not used anywhere.
 Every import statement counts, including those inside functions: a lazy import is still a
@@ -26,7 +26,8 @@ from _bootstrap import ROOT, setup  # noqa: E402
 
 setup()
 
-ORDER = ["_os", "Basic", "Special", "Security", "Elaborate", "App"]
+ORDER = ["_os", "Basic", "Special", "Elaborate", "App"]
+APP_ONLY = {"PySide6"}
 RANK = {name: rank for rank, name in enumerate(ORDER)}
 STDLIB = set(sys.stdlib_module_names) | {"__future__"}
 failures: list[str] = []
@@ -68,7 +69,7 @@ for layer in ORDER:
             for module in imported_modules(node):
                 top, *rest = module.split(".")
                 where = f"{rel}:{node.lineno} imports {module}"
-                if top in STDLIB:
+                if top in STDLIB or (layer == "App" and top in APP_ONLY):
                     continue
                 if top not in RANK:
                     failures.append(f"{where} — outside the stack (tool folder, or a "

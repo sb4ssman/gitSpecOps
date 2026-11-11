@@ -17,13 +17,13 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import setup
 
-setup("sync")
-from git_client import DesktopIntegration
-from local_dashboard import make_local_server
-from local_view import display_from_manifests
-from manifest import build_manifest, fleet_id_for
-from ui_assets import load_ui_assets
-from Special.security._advice import inspect_registered
+setup()
+from Special._sync.git_client import DesktopIntegration
+from App._web.server import make_local_server
+from Elaborate._fleet.local_view import display_from_manifests
+from Special._sync.manifest import build_manifest, fleet_id_for
+from App._web._assets import load_ui_assets
+from Special._security._advice import inspect_registered
 
 
 def main():
@@ -55,7 +55,7 @@ def main():
             print("SIMULATED desktop launch for the synthetic checkout", flush=True)
             return Mock()
 
-        with patch("git_client.discover_clients", return_value={choice["id"]: choice}):
+        with patch("Special._sync.git_client.discover_clients", return_value={choice["id"]: choice}):
             desktop = DesktopIntegration(None, lambda: {rid: repository}, lambda _: None, simulate)
 
         def document():

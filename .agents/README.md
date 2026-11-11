@@ -170,10 +170,10 @@ This repo is intentionally small. Keep it that way.
 The entry-point tools are:
 
 - `Special/archive_manager.py` (local front door: registry, launchers, update/sync)
-- `Elaborate/archive_manage.py` (scheduling and existing-launcher compatibility)
+- `Elaborate/schedule_archives.py` (scheduling and existing-launcher compatibility)
 - `Special/update_archive.py` (standalone, git-only, update-only)
 - `Special/duplicate_org.py`
-- `git-sync-suggester/sync_suggester.py` (cross-machine status, and the group operations that act
+- `Elaborate/publish_status.py` (cross-machine status, and the group operations that act
   on it — observation never mutates, mutation is always an invoked command)
 
 The archive manager and direct commands share implementations in `Special/_archive/`:
@@ -206,7 +206,7 @@ profile or launcher was changed while implementing/testing it; see knowledge/set
 
 The archive operations use:
 
-- `Special/archive_sync.py` (plan/apply: detect -> plan -> decide -> execute -> review)
+- `Special/sync_archive.py` (plan/apply: detect -> plan -> decide -> execute -> review)
 - `Special/_archive/plan.py` (the judgment: fast-forward eligibility, drift buckets, publish
   classification; its tests are `tests/special/test_archive_plan.py`)
 - the git operations themselves are `Basic/pull.py` (ff-only), `Basic/push.py` (never forced),
@@ -227,10 +227,11 @@ activation awaits remaining security/fleet adapters and reviewed launcher transi
 authenticate or run repository operations.
 
 Archive planning and duplicator helpers use explicit imports from private Special folders.
-The legacy fleet/app tree remains under `git-sync-suggester/` pending its reviewed migration.
+The old `git-sync-suggester/` tree is resolved into the layers (2026-11-11); see the tree in
+`knowledge/architecture-layers.md`.
 These are plain source scripts, without an installable `src/` package or console-script entry
-point. The agreed common CLI/menu is recorded in the product contract; its dispatcher is not
-implemented yet.
+point. The common front door is `gitso.py`: it lists every command from its header and
+dispatches the one chosen.
 
 ### `Basic/` and `_os/` — the bottom of the stack (phase 1, 2026-09-21)
 
@@ -286,7 +287,7 @@ The registry imports its built-in providers the first time it is asked, so no ca
 `GIT_TERMINAL_PROMPT=0` stops git from asking.
 
 `shared/` is gone (2026-10-20): the version number is written once, in `pyproject.toml`, and
-`git-sync-suggester/core/version.py` reads it (its only users are Sync Suggester's modules; its
+`Basic/_version.py` reads it (its only users are Sync Suggester's modules; its
 final home is settled in phase 3c). Scripts reach all of these with the small repo-root `sys.path`
 bootstrap they already carry. On Linux the `.sh` launchers need the executable bit (mode 755) —
 keep it.
@@ -302,7 +303,7 @@ running OS: `.sh` on Linux/macOS, `.ps1` + a `.bat` double-click shim on Windows
 - `update-archive` → `Special/update_archive.py`
 - `manage-archives` → `Special/archive_manager.py`
 - `duplicate-github-org` → `Special/duplicate_org.py`
-- `suggest-sync` → `git-sync-suggester/sync_suggester.py`
+- `suggest-sync` → `Elaborate/publish_status.py`
 
 They are gitignored. To change launcher behavior, edit `LAUNCHER_SPECS` / the templates in
 `setup_gitspecops.py` and rerun setup — never edit a generated launcher. Each `.ps1` holds the
@@ -330,7 +331,7 @@ behavior and legacy-profile migration refusal are in [settings-schema.md](knowle
 
 It should use fast-forward pulls only. It must not merge, rebase, reset, delete repos, install dependencies, run project code, or recurse through arbitrary nested directories.
 
-`Special/archive_sync.py` and the manager share headless `_archive/operation.py`.
+`Special/sync_archive.py` and the manager share headless `_archive/operation.py`.
 Update delegates to the updater; sync adds provider discovery and clones; explicit repair flags
 select origin/folder changes. Failed/nonexistent provider discovery never invents clones or
 orphans. Publication is a separate request and checks exact outgoing history before each push.
@@ -339,7 +340,7 @@ Every presentation result is masked, with actual report/log artifacts; stdout is
 `Special/archive_manager.py` owns registration, status, forgetting and registered refresh.
 New per-archive launchers invoke its --refresh with a fixed selected home; current saved
 mode/allowances are resolved on each run. New refresh-all launchers also invoke this manager.
-`Elaborate/archive_manage.py` handles scheduling actions only. Registration has no direct
+`Elaborate/schedule_archives.py` handles scheduling actions only. Registration has no direct
 pull/clone/repair pipeline; it may offer a normal refresh after registration. No generated
 archive launcher selects publication or repairs. See the shared runner contract in
 [settings-schema.md](knowledge/settings-schema.md).
@@ -359,7 +360,7 @@ and native/multimachine acceptance remain open.
 
 ### The push direction ("publish") — shipped 2026-09-03, first slice
 
-`archive_sync.py --publish` and `push_repo.py` share the outgoing-history security gate. It is
+`sync_archive.py --publish` and `push_repo.py` share the outgoing-history security gate. It is
 deliberately narrow, and the narrowness is the feature:
 
 - **Non-force push only.** `git push` with no `--force`, so git itself refuses anything that is
@@ -472,8 +473,8 @@ Keep output and tracking files there. Do not move them back to the repo root.
 ## Sync Suggester
 
 **Current fleet model (2026-09-11):** every machine is an independent peer. There is no
-host authority and no client enrollment dependency. `fleet setup` guides first run;
-`fleet peer` configures directly, and `fleet run` resumes. Old v1/v2 configurations migrate
+host authority and no client enrollment dependency. `Elaborate/setup_fleet.py` guides first run;
+`Elaborate/setup_fleet.py peer` configures directly, and `Elaborate/peer.py` resumes. Old v1/v2 configurations migrate
 to v3 while preserving the fleet key. `host` and `connect` are retired commands.
 
 `app/fleet_peer.py` observes locally, publishes to configured folder/GitHub transports,
@@ -482,8 +483,8 @@ serves a loopback dashboard, and optionally pulls reports from tailnet peers eve
 `gh` is required only for the GitHub transport; Tailscale is optional and independent.
 One acknowledged inventory is followed by native filesystem events and targeted checks;
 there is no periodic repository scan. Newly detected checkouts are announced, then included
-only after `fleet rescan`. All transports currently carry status, not recovery content.
-See [the current user guide](../git-sync-suggester/docs/FLEET.md) and
+only after `Elaborate/peer.py rescan`. All transports currently carry status, not recovery content.
+See [the current user guide](../_docs/FLEET.md) and
 [the tier roadmap](knowledge/tiers-and-capture.md).
 
 The folders `core/`, `fleet/`, and `app/` group plain modules; `_paths.py` handles imports.
@@ -493,12 +494,12 @@ transport. Their polling and transport exclusivity rules do not describe the pee
 **Lifecycle shell (2026-09-11):** `fleet_tray.py` (native Windows tray via ctypes; no runtime
 dependency) and `fleet_autostart.py` (per-user start-at-login: registry Run key / XDG autostart /
 LaunchAgent, plus an explicit systemd `--user` option) make the app survive a closed terminal.
-`fleet tray` and `fleet autostart {status,enable,disable}` are the commands; `tray` degrades to a
+`App/tray.py` and `Elaborate/start_at_login.py {status,enable,disable}` are the commands; `tray` degrades to a
 foreground run where no tray exists, so one registered command works fleet-wide. Two rules:
 start-at-login is **per-user, never a service** (the app must run as the interactive user or the
 `gh` login, Git ownership and Tailscale identity all differ), and the tray is **a skin** — it
 reads `summary` from the display contract and refuses an unknown contract version rather than
-recomputing anything. `fleet_app._main` gained a `stopping`/`on_ready` seam for it, because
+recomputing anything. `Elaborate._fleet.cli._main` gained a `stopping`/`on_ready` seam for it, because
 `signal.signal` cannot run off the main thread and the Win32 message loop owns that thread.
 
 **Display boundary (2026-09-05):** `fleet_display.py` is the pure, versioned display-model
@@ -506,9 +507,10 @@ builder. It owns presentation semantics such as attention, tones, filter tags, n
 capability availability. `fleet_client.js` owns transport/compatibility; `fleet_view.js` owns
 generic selectors; `fleet_dashboard.html` + `fleet_standard.*` are only the standard skin.
 Future skins, including LCARS, must consume the same `gitspecops.fleet.display` contract and
-must not reimplement Git/freshness policy. See `git-sync-suggester/docs/DISPLAY-CONTRACT.md`.
+must not reimplement Git/freshness policy. See `_docs/DISPLAY-CONTRACT.md`.
 
-`sync_suggester.py` is the entry point. **This tool performs Git operations** — that is the
+`Special/suggest_sync.py` (this machine) and `Elaborate/suggest_fleet_sync.py` (the fleet) are
+the entry points; `App/tray.py` runs the peer with its web view. **This tool performs Git operations** — that is the
 product. It exists so that a user with many repositories, spread across many orgs and several
 machines, can see the whole picture from any one of them and then *act on it*: group fast-forward
 everything after three weeks away, publish ahead-only work, clone a missing set, rescue
@@ -527,7 +529,7 @@ uncommitted work stranded on a machine that is now switched off.
 observer, the manifest publisher, the watcher, the dashboard, the tray and the scheduled fetch
 read local Git facts, publish this machine's status manifest, and read what other machines left
 behind — none of them may change a repository as a side effect of observing, or of time passing.
-The mutating operations (`fleet catchup --apply`, `fleet materialize --apply`, recovery restore)
+The mutating operations (`Special/catch_up.py --apply`, `Special/materialize.py --apply`, recovery restore)
 are separate named commands that refuse to run beside a live peer and follow the same
 detect → plan → approve → execute → review ladder as the archive updater. The flat modules are:
 
@@ -567,7 +569,7 @@ namespaces in the capture basket — an unenrolled machine captures nothing:
   root-confined, **metadata only** — it never outputs or transmits buffer content.
 
 **Snapshots are not encrypted**, deliberately; the trust-boundary argument and the per-tier
-authority table are in `git-sync-suggester/docs/RECOVERY-DESIGN.md`. Do not reopen it without a
+authority table are in `_docs/RECOVERY-DESIGN.md`. Do not reopen it without a
 concrete threat the three tiers do not already cover, and do not add a dependency for it.
 
 ### Command surface
@@ -576,7 +578,9 @@ The legacy read-only commands `init`, `check`, `dashboard`, `converge`, `alias`,
 `doctor` all run. **`handoff` stays reserved on purpose** — moving unfinished work between machines
 is a mutation flow and gets its own design pass rather than hiding inside the watcher.
 
-The peer runtime's commands are under `fleet` (`app/fleet_app.py` parses them):
+The peer runtime's commands are separate files in `Elaborate/` (setup_fleet, peer, doctor,
+preflight, recovery, start_at_login, check_safe_to_wipe), routed into `Elaborate/_fleet/cli.py`;
+the tray is `App/tray.py`. The subcommand names below are those CLI's own:
 
 - `setup`, `peer`, `run`, `tray`, `autostart`, `rescan`, `baskets` — configuration and lifecycle
 - `preflight` - read-only: is Git / the optional GitHub and Tailscale tiers / the loopback port
@@ -815,11 +819,11 @@ git history.
 Individually, plus the compile and `--help` smoke checks:
 
 ```powershell
-uv run python -m py_compile setup_gitspecops.py Special\update_archive.py Special\archive_sync.py Elaborate\archive_manage.py Special\duplicate_org.py
+uv run python -m py_compile setup_gitspecops.py Special\update_archive.py Special\sync_archive.py Elaborate/schedule_archives.py Special\duplicate_org.py
 uv run python Special\update_archive.py --help
-uv run python Elaborate\archive_manage.py --help
+uv run python Elaborate/schedule_archives.py --help
 uv run python Special\duplicate_org.py --help
-uv run python git-sync-suggester\sync_suggester.py --help
+uv run python Elaborate/publish_status.py --help
 uv run python tests\duplicator\test_selection.py
 uv run python tests\duplicator\test_local_repos.py
 uv run python tests\duplicator\test_batch_args.py
@@ -844,9 +848,9 @@ the mutating commands (`catchup --apply`, `materialize --apply`, recovery restor
 roots; they have their own disposable-Git tests:
 
 ```powershell
-uv run python git-sync-suggester\sync_suggester.py --config-dir <scratch> init --machine-id test --root <path> --state-dir <scratch>\state
-uv run python git-sync-suggester\sync_suggester.py --config-dir <scratch> check
-uv run python git-sync-suggester\sync_suggester.py --config-dir <scratch> watch --interval 2 --heartbeat 0 --cycles 3
+uv run python Elaborate/publish_status.py --config-dir <scratch> init --machine-id test --root <path> --state-dir <scratch>\state
+uv run python Elaborate/publish_status.py --config-dir <scratch> check
+uv run python Elaborate/peer.py --config-dir <scratch> --interval 2 --heartbeat 0 --cycles 3
 ```
 
 Do not run live GitHub duplication, archive refreshes, or scheduled-task creation/removal as validation unless the user explicitly requests it.

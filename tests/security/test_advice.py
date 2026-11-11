@@ -20,17 +20,17 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import setup
-setup("sync")
+setup()
 
-from Special.security import _advice
+from Special._security import _advice
 from Special._settings.fleet import load_fleet_settings
-from fleet_observer import IncrementalObserver
-from observer import observe_paths
-from advice import render_table
-import sync_suggester as cli
-from local_dashboard import make_local_server
-from local_view import display_from_manifests
-from manifest import build_manifest, fleet_id_for
+from Special._sync.inventory import IncrementalObserver
+from Special._sync.observer import observe_paths
+from Special._sync.advice import render_table
+import Elaborate._fleet.sync_cli as cli
+from App._web.server import make_local_server
+from Elaborate._fleet.local_view import display_from_manifests
+from Special._sync.manifest import build_manifest, fleet_id_for
 
 
 class SecurityAdviceTests(unittest.TestCase):
@@ -115,7 +115,7 @@ class SecurityAdviceTests(unittest.TestCase):
     def test_missing_selected_engine_is_incomplete(self):
         self.document["defaults"]["security"]["engines"] = ["gitleaks"]
         self.save()
-        with patch("Special.security._engines.shutil.which", return_value=None):
+        with patch("Special._security._engines.shutil.which", return_value=None):
             self.assertEqual(self.check()["check_status"], "incomplete")
 
     def test_invalid_policy_prevents_material_reads(self):

@@ -1,5 +1,12 @@
 """Push one repository's current branch to its upstream. Never forced.
 
+Why:          publishing must never overwrite what is on the remote.
+Reads:        the current branch and its upstream.
+May change:   the remote branch, by fast-forward only; never forced.
+Results:      a JSON result on stdout.
+Layer:        Basic: one Git or host operation.
+Status:       working
+
     python Basic/push.py <repo>
 
 A push without `--force` is refused by git itself unless it is a fast-forward of the remote:

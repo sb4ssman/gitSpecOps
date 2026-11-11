@@ -22,8 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import setup
 setup()
 
-from Special.security._commit import operation, state
-from Special.security._commit.operation import commit_checked
+from Special._security._commit import operation, state
+from Special._security._commit.operation import commit_checked
 import gitso
 
 
@@ -295,7 +295,7 @@ class CommitGateTests(unittest.TestCase):
         self.document["defaults"]["security"]["engines"] = ["gitleaks"]
         self.save_settings()
         before = (self.repo / ".git/index").read_bytes()
-        with patch("Special.security._engines.shutil.which", return_value=None):
+        with patch("Special._security._engines.shutil.which", return_value=None):
             result = self.check()
         self.assertEqual(result.status, "incomplete")
         self.assertEqual((self.repo / ".git/index").read_bytes(), before)

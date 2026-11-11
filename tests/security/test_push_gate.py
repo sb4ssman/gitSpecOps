@@ -26,7 +26,7 @@ from Basic._run import CommandFailed, Result
 from Basic.push import push_snapshot
 from Special._archive.plan import build_publish_plan
 from Special._archive.sync import apply_publish, collect_publish_candidates
-from Special.security import _push
+from Special._security import _push
 import gitso
 
 
@@ -169,21 +169,21 @@ class PushGateTests(unittest.TestCase):
         self.commit("clean.txt", "ordinary")
         self.document["defaults"]["security"]["engines"] = ["gitleaks"]
         self.save_settings()
-        with patch("Special.security._engines.shutil.which", return_value=None):
+        with patch("Special._security._engines.shutil.which", return_value=None):
             result = self.publish()
         self.assertEqual(result.status, "incomplete")
         self.assertEqual(self.tip(self.bare), self.base)
         self.document["defaults"]["security"]["engines"] = []
         self.save_settings()
-        with patch("Special.security._engines._execute", side_effect=AssertionError("unexpected scanner")):
+        with patch("Special._security._engines._execute", side_effect=AssertionError("unexpected scanner")):
             self.assertEqual(self.publish().status, "pushed")
 
     def test_failed_selected_engine_is_incomplete_without_error_disclosure(self):
         self.commit("clean.txt", "ordinary")
         self.document["defaults"]["security"]["engines"] = ["gitleaks"]
         self.save_settings()
-        with patch("Special.security._engines.shutil.which", return_value=sys.executable), \
-             patch("Special.security._engines._execute", side_effect=CommandFailed("private-marker raw stderr")):
+        with patch("Special._security._engines.shutil.which", return_value=sys.executable), \
+             patch("Special._security._engines._execute", side_effect=CommandFailed("private-marker raw stderr")):
             result = self.publish()
         self.assertEqual(result.status, "incomplete")
         self.assertEqual(self.tip(self.bare), self.base)
@@ -227,7 +227,7 @@ class PushGateTests(unittest.TestCase):
         self.commit("clean.txt", "ordinary")
         self.git(self.repo, "config", "remote.origin.promisor", "true")
         with patch.object(_push, "fetch", return_value=Result([], 0)), \
-             patch("Special.security._material.read_blobs", side_effect=AssertionError("unexpected blob read")):
+             patch("Special._security._material.read_blobs", side_effect=AssertionError("unexpected blob read")):
             result = self.publish()
         self.assertEqual(result.status, "incomplete")
         self.assertEqual(self.tip(self.bare), self.base)
@@ -414,7 +414,7 @@ class PushGateTests(unittest.TestCase):
         self.commit("data.txt", "private-marker")
         output = io.StringIO()
         with redirect_stdout(output):
-            result = gitso.main(["archive-sync", "--root", str(self.archive), "--publish", "--yes",
+            result = gitso.main(["sync-archive", "--root", str(self.archive), "--publish", "--yes",
                                  "--no-report", "--approved-remote-prefix", str(self.root),
                                  "--settings-home", str(self.home)])
         self.assertEqual(result, 1)

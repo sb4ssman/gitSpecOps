@@ -1,5 +1,12 @@
 """Clone one repository into a destination that does not exist yet.
 
+Why:          a clone may only ever add a folder.
+Reads:        the remote URL; the user's own Git credentials.
+May change:   creates the destination folder; refuses one that exists.
+Results:      a JSON result on stdout.
+Layer:        Basic: one Git or host operation.
+Status:       working
+
     python Basic/clone.py <url> <destination> [--mirror] [--no-local]
 
 Never clones over anything: an existing destination is refused before git runs, so a clone can

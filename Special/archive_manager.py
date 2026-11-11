@@ -1,5 +1,12 @@
 """Register local archive folders and refresh them using their saved update or sync mode.
 
+Why:          archives you keep should refresh the way you chose for each, with one command.
+Reads:        registered archives and their saved update or sync mode.
+May change:   registrations; launchers when asked; the checkouts a refresh updates or clones.
+Results:      a masked result on stdout, or JSON; reports and logs as settings choose.
+Layer:        Special: this machine, once.
+Status:       working
+
     python Special/archive_manager.py --help
     python Special/archive_manager.py --install /path/to/archive --mode update
     python Special/archive_manager.py --list
@@ -9,7 +16,7 @@
 --install creates a launcher that resolves saved choices at run time. --forget removes the
 registration only; common-profile receipts and launchers remain for ownership review. Existing
 common settings own choices; legacy-only profiles retain their registry without migration.
-Use Elaborate/archive_manage.py for scheduling. Importing performs no operation.
+Use Elaborate/schedule_archives.py for scheduling. Importing performs no operation.
 
 Refresh calls run_refresh headlessly: saved update/sync mode per archive, one masked result,
 optional aggregate report, shared counts-only logging. --output-mode/--output-dir/--json and
@@ -54,6 +61,8 @@ from Special._archive.manager import (
     VALID_MODES,
     ARCHIVE_LAUNCHER,
 )
+
+EFFECT = "local"
 
 if __name__ == "__main__":
     raise SystemExit(main())

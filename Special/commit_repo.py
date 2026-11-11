@@ -1,5 +1,12 @@
 """Preview/check and explicitly commit named files using shared security policy.
 
+Why:          a commit should never carry a secret or a private value by accident.
+Reads:        the named files and the shared security policy.
+May change:   with --apply and the plan id: one commit of the named files.
+Results:      a masked plan and result on stdout, or --json.
+Layer:        Special: this machine, once.
+Status:       working
+
     python Special/commit_repo.py /path/to/repo file.txt -m "Describe the change" --json
     python Special/commit_repo.py /path/to/repo file.txt -m "Describe the change" --apply --approve PLAN_ID
 
@@ -13,7 +20,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from Special.security._commit.cli import main
+from Special._security._commit.cli import main
 
 EFFECT = "local"
 

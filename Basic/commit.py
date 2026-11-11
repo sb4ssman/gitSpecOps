@@ -1,5 +1,12 @@
 """Commit the named files of one repository, and nothing else.
 
+Why:          commits must contain exactly what was chosen, never everything that happens to be staged.
+Reads:        the named paths in the working tree.
+May change:   one new commit of exactly those paths; other staged work stays staged.
+Results:      a JSON result on stdout.
+Layer:        Basic: one Git or host operation.
+Status:       working
+
     python Basic/commit.py <repo> -m MESSAGE PATH [PATH ...]
 
 Only the paths given are committed -- added, changed or deleted -- even when other changes are

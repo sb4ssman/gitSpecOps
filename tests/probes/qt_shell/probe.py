@@ -18,15 +18,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "git-sync-suggester"))
 from _paths import bootstrap  # noqa: E402
 
 bootstrap()
 
-from fleet_display import CONTRACT_NAME, CONTRACT_VERSION  # noqa: E402
-from local_view import display_from_manifests  # noqa: E402
-from manifest import build_manifest, fleet_id_for, repository_id  # noqa: E402
-from observer import RootSpec, observe_roots  # noqa: E402
+from Elaborate._fleet.display import CONTRACT_NAME, CONTRACT_VERSION  # noqa: E402
+from Elaborate._fleet.local_view import display_from_manifests  # noqa: E402
+from Special._sync.manifest import build_manifest, fleet_id_for, repository_id  # noqa: E402
+from Special._sync.observer import RootSpec, observe_roots  # noqa: E402
 
 from PySide6.QtCore import Qt, QTimer  # noqa: E402
 from PySide6.QtGui import QAction, QBrush, QColor, QIcon, QPainter, QPixmap  # noqa: E402

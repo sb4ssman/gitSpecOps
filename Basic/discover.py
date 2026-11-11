@@ -1,5 +1,12 @@
 """Find Git repositories under a root. Read-only: a filesystem walk, no git, no network.
 
+Why:          every larger operation starts by knowing which repositories exist.
+Reads:        the folders under the root (no Git, no network).
+May change:   nothing.
+Results:      a list, or --json.
+Layer:        Basic: one Git or host operation.
+Status:       working
+
     python Basic/discover.py <root> [--json] [--max-depth N] [--hidden]
         [--cross-filesystems] [--no-skip]
 """

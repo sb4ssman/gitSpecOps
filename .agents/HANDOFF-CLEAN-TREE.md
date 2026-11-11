@@ -96,14 +96,14 @@ Commands show this text before and during a run (CLI, web view, tray): one sourc
 **App: presence and presentation**
 | From | To | Notes |
 |---|---|---|
-| `app/local_dashboard.py`, `fleet/ui_assets.py` | `App/web/server.py`, `App/web/_assets.py` | loopback by default |
-| `ui/fleet_client.js`, `fleet_view.js` | `App/web/skins/_common/` | |
-| `ui/fleet_dashboard.html`, `fleet_standard.css/.js` | `App/web/skins/standard/` | |
+| `app/local_dashboard.py`, `fleet/ui_assets.py` | `App/_web/server.py`, `App/_web/_assets.py` | loopback by default |
+| `ui/fleet_client.js`, `fleet_view.js` | `App/_web/skins/_common/` | |
+| `ui/fleet_dashboard.html`, `fleet_standard.css/.js` | `App/_web/skins/standard/` | |
 | `app/fleet_tray.py` (Win32) | `App/tray.py` (Qt) | extract menu items, status polling, start/stop, failure reasons; then delete |
 | `app/fleet_desktop.py` | `App/desktop.py` | packaged entry: tray, opens the chosen view |
 | `app/git_client.py`, `git-client` | `App/git_client.py` | |
 | (new) | `App/window.py` | placeholder: Qt window, later |
-| (new) | `App/web/remote.py` | serve on the tailnet: watch and act (below) |
+| (new) | `App/_web/remote.py` | serve on the tailnet: watch and act (below) |
 | `tests/probes/qt_shell/` | reference for `App/tray.py`; delete when superseded | |
 
 **Dissolved:** `sync_suggester.py` (split above), `watch`, `handoff`, `init` (into setup_fleet),
@@ -142,13 +142,32 @@ splits into `tests/special/`, `tests/elaborate/`, `tests/app/`.
 1. Baseline: run `tests/run_all.py`, record results.
 2. Special and Basic moves; Special commands working; tests moved.
 3. Elaborate moves; new `suggest_fleet_sync`, `publish_status`; peer runs from its new home.
-4. App web moves; dashboard serves from `App/web/`.
+4. App web moves; dashboard serves from `App/_web/`.
 5. Qt tray; Windows tray deleted.
 6. Network map views.
 7. Remote watch and act.
 8. Port `_archive/`; delete `_archive/` and `git-sync-suggester/`.
 9. Entry points, docs, headers everywhere, full verification (all tests, hygiene, every command
    from `gitso` and its own path, tray and web view run by hand on Windows).
+
+## Progress (2026-11-11 13:41, checkpoint commit)
+- Done: phases 1-8. `git-sync-suggester/` and `_archive/` are gone; every file is in its layer;
+  the import-direction test covers 177 files with no exclusion; 79/79 test files pass; every
+  command answers `--help` from its own path and is listed by `gitso` (34 commands).
+- Choices made while executing (the user may change any):
+  - `baskets.py` stayed whole in `Special/_sync/` (pure selection logic) instead of splitting.
+  - `git_client.py` sits in `Special/_sync/` (fleet config validates it; it starts only a
+    desktop program), not `App/`.
+  - The v1 status CLI stays one plumbing module (`Elaborate/_fleet/sync_cli.py`) behind three
+    commands (publish_status, suggest_fleet_sync, converge); `alias` became `Special/name_repo.py`.
+  - Local commands take the fleet's configuration lock (`Special/_sync/lock.py`), as before.
+  - The hygiene test keeps version 1's exact rules, moved beside it (`tests/repo/_hygiene_*`).
+  - Plumbing files keep their own docstrings; commands carry the header template.
+  - Loading never converts settings: `Elaborate/setup_fleet.py convert` is the explicit step.
+- Left in phase 9: delete `App/_win_tray_reference.py` (next commit; DCG blocks a forced
+  removal of an edited file); run the Qt tray and the web view by hand on a desktop and look
+  at the map; recovery's `secret_scan` onto the shared security rules; the hygiene test onto
+  the shared rules; one configuration for status publishing and the fleet app (two exist).
 
 ## Open after this (not part of it)
 Qt window; what "install" means for the fleet; regenerate archive launchers; native Linux and

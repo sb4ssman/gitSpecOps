@@ -21,8 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import setup
 setup()
 
-from Special.security import _cli, _private_files as storage
-from Special.security._findings import Finding, Report, write_report
+from Special._security import _cli, _private_files as storage
+from Special._security._findings import Finding, Report, write_report
 
 
 class PrivateReportTests(unittest.TestCase):

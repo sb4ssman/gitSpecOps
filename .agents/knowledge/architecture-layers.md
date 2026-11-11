@@ -3,7 +3,7 @@
 **Status:** target agreed 2026-09-20, revised 2026-09-21 (root `_os/`, flat `Basic/`, flat
 `App/tray.py`, `_providers/`; see "Revisions" at the end). **Latest revision 2026-11-11:** Special
 is this machine, once; Elaborate is other machines or over time; Sync Suggester splits;
-`git-sync-suggester/` is emptied. The tree below predates it. Migration phase 1 landed 2026-09-21. How to get there is in
+`git-sync-suggester/` is emptied and gone; the tree below is current. Migration phase 1 landed 2026-09-21. How to get there is in
 [`../HANDOFF.md`](../HANDOFF.md). The picture is [`architecture-diagram.md`](architecture-diagram.md).
 [`../README.md`](../README.md) "Repo Shape" describes what is on disk *today* until the migration lands.
 
@@ -64,11 +64,11 @@ verb-first names below remain proposals; the three selected public operations ar
 |---|---|---|
 | Archive updater | Special/update_archive.py | Canonical entry point; no alias |
 | Special/duplicate_org/duplicate_org.py | Special/duplicate_org.py | Implemented; earlier script path is a compatibility wrapper |
-| Special/archive_sync.py | Special/sync_archive.py | Naming proposal |
-| Special/inventory_export.py | Special/export_inventory.py | Naming proposal |
-| Special/inventory_restore.py | Special/restore_inventory.py | Naming proposal |
-| Special/security/scan_tree.py | Special/scan_tree.py | Layer-root placement follows the rule; review the complete map |
-| Special/security/scan_history.py | Special/scan_history.py | Layer-root placement follows the rule; review the complete map |
+| Special/sync_archive.py | Special/sync_archive.py | Naming proposal |
+| Special/export_inventory.py | Special/export_inventory.py | Naming proposal |
+| Special/restore_inventory.py | Special/restore_inventory.py | Naming proposal |
+| Special/scan_tree.py | Special/scan_tree.py | Layer-root placement follows the rule; review the complete map |
+| Special/scan_history.py | Special/scan_history.py | Layer-root placement follows the rule; review the complete map |
 | Local archive management | Special/archive_manager.py | Shared headless operation; Elaborate handles scheduling only |
 
 ### 2026-10-27 archive responsibility split
@@ -181,86 +181,50 @@ user launchers. Presentation diagrams and the remaining operation families still
 
 ## The shape on disk
 
+*Rewritten 2026-11-11 from the tree as it stands after the clean-tree pass. `git-sync-suggester/`
+and `_archive/` are gone. A file without an underscore is a command; the rest is plumbing.*
+
 ```
 gitSpecOps/
-├── .agents/                    brief, notes, work log, knowledge, diagrams
-├── _build/                     PyInstaller recipe, release gate, build notes
-├── _docs/                      FLEET, DISPLAY-CONTRACT, RECOVERY-DESIGN
-├── _os/                        beneath every layer: the per-OS components, stdlib only
-│   ├── current.py              the one place the OS is decided
-│   ├── _posix.py               what linux and macos genuinely share
-│   ├── windows/                autostart editors events git_clients launcher paths
-│   ├── linux/                    process schedule tray — the same files in all three,
-│   └── macos/                    "unsupported" where an OS has no mechanism yet
-├── _tests/                     _os/ App/ Basic/ Elaborate/ Special/ probes/ repo/  run_all.py
-├── App/                        optional, and mostly the tray
-│   ├── skins/
-│   │   ├── _assets.py          serves skin files by exact name
-│   │   ├── _common/            client + view JS every skin shares
-│   │   ├── lcars/              placeholder at first
-│   │   ├── modern/             today's dashboard
-│   │   └── retro/              placeholder at first
-│   ├── autostart.py            command; per-OS work in _os/*/autostart.py
-│   ├── dashboard.py            the loopback dashboard
-│   ├── desktop.py              packaged-app entry
-│   ├── git_client.py           open a checkout in a desktop Git client
-│   ├── setup_fleet.py          guided first run
-│   ├── tray.py                 command; per-OS work in _os/*/tray.py
-│   └── (version)               2026-10-20: not App -- the display contract (Elaborate) reads
-│                               the number, so it cannot live above it; settled in phase 3c
-├── Basic/                      one git or host operation, wrapped with care
-│   ├── _providers/
-│   │   ├── _registry.py        the Protocol, register, provider_for
-│   │   └── github.py           one module per host
-│   ├── _confirm.py             the approve step: prompts, --answers, typed confirmation
-│   ├── _console.py
-│   ├── _discovery.py
-│   ├── _facts.py
-│   ├── _files.py               atomic writes
-│   ├── _objects.py             reading a range of history: every path, commit, file version
-│   ├── _identity.py
-│   ├── _paths.py               per-user state folder
-│   ├── _run.py                 the one subprocess wrapper (git and host CLIs)
-│   ├── clone.py
-│   ├── commit.py               exactly the named paths; never -a, --amend, empty, --no-verify
-│   ├── discover.py             find repositories under a root
-│   ├── fetch.py
-│   ├── pull.py                 fast-forward only
-│   ├── push.py                 never --force
-│   ├── reset_keep.py           moves a branch; never overwrites an edit, never --hard
-│   └── status.py
-├── Elaborate/                  wider scale: across machines, across time
-│   ├── _fleet/                 advice, aggregate, config, display, events, manifest,
-│   │                           net, observer, store
-│   ├── _transport/             folder, repo
-│   ├── recovery/               one operation, with details
-│   │   ├── acknowledge.py  policy.py  preview.py  restore.py  retire.py
-│   │   └── _capture  _patch_parse  _retirement  _runtime  _secret_scan  _snapshot_store …
-│   ├── _editors.py
-│   ├── alias.py
-│   ├── archive_manage.py       scheduling only; calls the Special manager
-│   ├── audit.py
-│   ├── baskets.py
-│   ├── catchup.py
-│   ├── check.py                observe, publish, show: once
-│   ├── converge.py
-│   ├── doctor.py
-│   ├── live_buffers.py
-│   ├── materialize.py
-│   ├── peer.py                 observe, publish, show: continuously
-│   ├── preflight.py
-│   └── safe_to_wipe.py
-├── Special/                    a Basic operation repeated, with judgment
-│   ├── _archive/               updater, sync, manager, plan, registry
-│   ├── _org_duplicator/        command, batch, local_repos, operations, remote, tracking
-│   ├── _settings/              resolution, records, migration, store
-│   ├── archive_manager.py      local archive management
-│   ├── duplicate_org.py
-│   ├── archive_sync.py         keeps --publish as its own apply class
-│   └── update_archive.py
-├── AGENTS.md  CLAUDE.md  LICENSE  README.md  pyproject.toml
-└── run_setup.bat .ps1 .sh      setup_gitspecops.py
+├── .agents/          brief, notes, work log, knowledge, diagrams
+├── _build/           PyInstaller recipe (GitSpecOpsSync.spec), release_check.py, build notes
+├── _docs/            FLEET, DISPLAY-CONTRACT, RECOVERY-DESIGN
+├── _os/              beneath every layer: per-OS components, stdlib only (current.py decides)
+├── Basic/            one Git or host operation, done carefully
+│   ├── clone commit discover fetch pull push reset_keep status
+│   └── _confirm _console _discovery _facts _files _history_* _identity _objects _paths
+│       _pick _providers/ _run _version
+├── Special/          this machine, once
+│   ├── suggest_sync name_repo catch_up audit_repos materialize list_live_buffers
+│   ├── update_archive sync_archive archive_manager duplicate_org export_inventory
+│   │   restore_inventory
+│   ├── scan_tree scan_history review_finding clean_history follow_rewrite
+│   │   commit_repo push_repo
+│   └── _sync/ (observation, advice, manifest, local config and catalog, selection, lock,
+│       inventory, actions, git client, VS Code buffers, command adapters)
+│       _archive/ _history/ _inventory.py _org_duplicator/ _runtime/ _security/ _settings/
+├── Elaborate/        other machines, or over time
+│   ├── setup_fleet peer publish_status suggest_fleet_sync converge check_safe_to_wipe
+│   │   recovery doctor preflight start_at_login schedule_archives
+│   ├── follow_rewrite_fleet request          (placeholders: header and a refusal)
+│   └── _fleet/ (fleet CLI and status CLI, routing, config, peer runtime, display contract
+│       builder, aggregate, convergence, events, tailnet protocol, store, local view,
+│       change fingerprint, start-at-login)  _recovery/  _transport/ (folder, repo)
+├── App/              presence and presentation; PySide6 is its only dependency
+│   ├── tray serve_web desktop window          (window: placeholder)
+│   └── _launch  _tray/ (model, qt)  _web/ (server, remote, _assets, skins/standard,
+│       skins/_common)
+├── tests/            basic special elaborate app security archive duplicator os repo probes
+├── gitso.py          the front door: lists and dispatches every command
+└── setup_gitspecops.py  run_setup.*  pyproject.toml (optional extra: app = PySide6)
 ```
+
+The local-versus-fleet split of the old Sync Suggester: `Special/suggest_sync.py` observes,
+classifies and recommends for this machine and publishes nothing; `Elaborate/publish_status.py`
+publishes this machine's status; `Elaborate/suggest_fleet_sync.py` reads every machine's;
+`Elaborate/peer.py` keeps doing both over time. The peer never imports App: App hands it a
+`serve` function (`run_peer(serve=...)`), which is how the tray and `serve_web` attach the web
+view, and `--remote` adds the tailnet listener for the user's own devices.
 
 ## Providers: the one seam
 
@@ -455,7 +419,7 @@ and the fleet (Elaborate) or the App may call it — for example a fleet-wide au
 Decided by the user:
 
 - **There will be no Security layer.** Security lives inside each layer it occupies:
-  components and single-repository commands in `Special/security/`, the top-level
+  components and single-repository commands in `Special/_security/`, the top-level
   `clean_history` in `Elaborate/security/`, and the general history-rewriting machinery in
   plain `Special/`. The 2026-10-19 rank (`Special -> Security -> Elaborate`) stays in the import
   test only until the old `Security/` folder is deleted at the cut-over. Full design and plan:
@@ -463,7 +427,7 @@ Decided by the user:
 - **`Basic/reset_keep.py`** joins the Basic operations: moves the checked-out branch with
   `git reset --keep`, never overwrites an edit, has no other reset mode.
 - **`shared/` is deleted.** The version number is written once, in `pyproject.toml`, and read by
-  `git-sync-suggester/core/version.py`. `App/version.py` in the tree above was wrong: the
+  `Basic/_version.py`. `App/version.py` in the tree above was wrong: the
   display contract (Elaborate) needs the number, and Elaborate cannot import App.
 
 ## Revisions, 2026-10-22: the App is Qt; remote requests
@@ -506,7 +470,7 @@ Decided by the user:
   Qt window or the web view. Every combination is a setting and all of them must work. Both
   read the same display contract. The 2026-10-19 ruling that the dashboard stays with Sync Suggester in `Elaborate/`
   is reopened; the file-by-file mapping places it.
-- **Presentation lives in `App/`:** the web server and skins in `App/web/`, the tray, the Qt
+- **Presentation lives in `App/`:** the web server and skins in `App/_web/`, the tray, the Qt
   window. The display contract builder stays in `Elaborate/_fleet/` (deciding attention is
   policy). The web side runs without Qt installed.
 - **First the Qt tray opens the web view;** the Qt window comes later. The hand-written

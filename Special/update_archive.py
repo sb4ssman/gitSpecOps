@@ -1,5 +1,12 @@
 """Fast-forward eligible existing repositories in one or more local archives.
 
+Why:          reference collections fall behind; only safe fast-forwards should catch them up.
+Reads:        the archive's checkouts.
+May change:   without --scan-only: fast-forward of clean, eligible checkouts.
+Results:      a result on stdout, or --json; reports and logs as settings choose.
+Layer:        Special: this machine, once.
+Status:       working
+
     python Special/update_archive.py --help
     python Special/update_archive.py --root /path/to/archive --scan-only
 

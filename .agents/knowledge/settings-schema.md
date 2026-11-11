@@ -76,7 +76,7 @@ bundle interrupted before its manifest exists requires manual review; it is neve
 Launchers are a separate plan: each named artifact has leave/review/repair/retirement choices,
 format, role and the existing command to prepare a repair. Per-archive repair goes through
 `Special/archive_manager.py --install`; refresh-all through
-`Elaborate/archive_manage.py --write-refresh-all-script`, using the selected profile. Neither
+`Elaborate/schedule_archives.py --write-refresh-all-script`, using the selected profile. Neither
 command is executed by the switch. Retirement needs ownership/caller review and separate consent;
 archives and settings remain outside that artifact choice. Native launcher rollout, scheduling
 review, general fleet conversion and global enrolled-profile settings-loss ownership remain work.
@@ -422,7 +422,7 @@ global proof. Other security consumers and action-policy freshness also remain u
 
 ## Active security-policy settings (2026-10-27)
 
-`Special/security/_me.load_policy` uses the shared resolver for the selected security component.
+`Special/_security/_me.load_policy` uses the shared resolver for the selected security component.
 It accepts `home` or caller-resolved `settings`, not both. The resolved seam performs no settings
 lookup; the caller owns that snapshot. Default first use has in-memory defaults and no writes.
 Known legacy state without common settings produces the resolver's migration-required error.

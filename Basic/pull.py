@@ -1,5 +1,12 @@
 """Fast-forward one repository to its upstream. Never merges, never rebases.
 
+Why:          a fast-forward cannot lose work, so it is the one pull that needs no decision.
+Reads:        the repository and its upstream.
+May change:   the checked-out branch and its files, by fast-forward only.
+Results:      a JSON result on stdout.
+Layer:        Basic: one Git or host operation.
+Status:       working
+
     python Basic/pull.py <repo>
 
 `--ff-only` is the whole safety argument: a fast-forward cannot destroy data and never asks

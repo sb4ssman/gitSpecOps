@@ -144,7 +144,7 @@ with tempfile.TemporaryDirectory(prefix="publish-test-") as tmp:
           f"re-running publish reported a problem for an up-to-date repo: {again_issues}")
 
 # --- publish must never be bundled or scheduled -------------------------------------
-for manager_file in (ROOT / "Elaborate" / "archive_manage.py",
+for manager_file in (ROOT / "Elaborate" / "schedule_archives.py",
                      ROOT / "Special" / "_archive" / "manager.py"):
     manager_source = manager_file.read_text(encoding="utf-8")
     check("--publish" not in manager_source.split('"""', 2)[2],

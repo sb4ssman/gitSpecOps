@@ -1,0 +1,286 @@
+"""Pure, versioned display contract shared by every fleet presentation.
+
+No database, HTTP, filesystem, HTML, CSS or network calls belong here. Skins consume the
+same facts, attention tags, semantic tones, notices and capabilities; they do not classify
+Git state. See DISPLAY-CONTRACT.md. This is separate from the private report schema.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from Special._sync.advice import describe_repository, repository_flags
+from Elaborate._fleet.aggregate import age_seconds, build_rows, machine_views
+from Basic._version import VERSION  # read from pyproject.toml, where it is written down once
+
+CONTRACT_NAME = "gitspecops.fleet.display"
+CONTRACT_VERSION = 1
+PRODUCT_NAME = "gitSpecOps Sync-Suggester Fleet Management"
+
+
+def _duration(seconds: float) -> str:
+    seconds = int(seconds)
+    if seconds < 120:
+        return f"{seconds} seconds"
+    if seconds < 7200:
+        return f"{seconds // 60} minutes"
+    return f"{seconds // 3600} hours"
+
+
+def _cell(cell):
+    if not cell.present:
+        return {"present": False, "freshness": "absent", "state": "absent",
+                "description": "Not reported here", "tone": "muted", "tags": ["missing"],
+                "facts": None}
+    flags = repository_flags(cell.repo)
+    tags = []
+    if "dirty" in flags:
+        tags.append("dirty")
+    if "no_remote" in flags:
+        tags.append("local_only")
+    if flags & {"ahead", "diverged", "unpushed"}:
+        tags.append("ahead")
+    if cell.freshness != "current":
+        tags.append("stale")
+    description = describe_repository(cell.repo)
+    if cell.freshness != "current":
+        description = f"Last known: {description} ({cell.freshness})"
+    if flags & {"dirty", "operation", "diverged", "no_remote"}:
+        tone = "danger"
+    elif flags & {"ahead", "unpushed", "behind", "stashed"} or cell.freshness != "current":
+        tone = "warning"
+    elif "no_upstream" in flags:
+        tone = "neutral"
+    else:
+        tone = "success"
+    return {"present": True, "freshness": cell.freshness, "state": cell.effective_state,
+            "description": description, "tone": tone, "tags": tags,
+            "facts": {key: cell.repo.get(key) for key in (
+                "staged", "unstaged", "untracked", "stashes", "ahead", "behind",
+                "operation", "has_upstream", "upstream_observed_at", "has_remote", "unpushed",
+                "branch", "head",
+                "identity")}}
+
+
+def _remote_checked(row, now, fetch_seconds) -> bool:
+    """Every machine holding this repository fetched its remote within the fetch schedule."""
+    if not fetch_seconds:
+        return False
+    for cell in row.cells.values():
+        if not cell.present:
+            continue
+        age = age_seconds(cell.repo.get("upstream_observed_at"), now)
+        if age is None or age > 2 * fetch_seconds + 300:
+            return False
+    return True
+
+
+def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None):
+    """Return JSON-compatible display v1. All clock-dependent rules use the supplied now."""
+    now = now or datetime.now(timezone.utc)
+    settings = settings or {}
+    desktop = settings.get("git_client") or {}
+    local_ids = set(settings.get("local_repo_ids") or [])
+    scopes = settings.get("baskets") or {}
+    recovery = settings.get("recovery") or {}
+    withheld_ids = set(settings.get("withheld_repo_ids") or [])
+    unobserved = int(settings.get("unobserved_count") or 0)
+    transport_config = settings.get("transport_config") or {}
+    fetch_seconds = int(settings.get("fetch_seconds") or 0)
+    manifests = [r["manifest"] for r in reports]
+    views = sorted(machine_views(manifests, now, stale_seconds / 3600, 7),
+                   key=lambda v: (v.label.casefold(), v.machine_id))
+    names = {}
+    for report in reports:
+        names.update(report["names"])
+    catalog = {rid: {"display_name": f"{v['owner']}/{v['name']}"} for rid, v in names.items()}
+    rows, groups = [], {}
+    for row in build_rows(views, catalog):
+        identity = names[row.repo_id]
+        group_id = f"{identity['host']}/{identity['owner']}"
+        group = groups.setdefault(group_id, {"id": group_id, "label": identity["owner"],
+                                            "host": identity["host"], "count": 0, "attention": 0})
+        cells = {mid: _cell(cell) for mid, cell in row.cells.items()}
+        # Same severity policy as the CLI; missing/stale reports additionally deserve attention
+        # in this live view. A client must not infer this from a numeric threshold or color.
+        attention = row.severity >= 20 or any(
+            not cell.present or cell.freshness != "current" for cell in row.cells.values())
+        tags = set(tag for cell in cells.values() for tag in cell["tags"])
+        if attention:
+            tags.add("attention")
+        for cell in cells.values():
+            if attention:
+                # Row-level advice can involve multiple devices; filtering by machine still
+                # retains that advice, rather than implying that one clean cell is an all-clear.
+                cell["tags"] = sorted(set(cell["tags"]) | {"attention"})
+        group["count"] += 1
+        group["attention"] += int(attention)
+        advice = row.advice
+        if row.severity_key == "synced":
+            advice = ("✓ up to date with the remote" if _remote_checked(row, now, fetch_seconds)
+                      else "Clean against cached refs; remote unverified")
+        rows.append({"id": row.repo_id, "name": row.name, "identity": dict(identity),
+                     "namespace": identity["owner"], "group_id": group_id,
+                     "severity": row.severity, "needs_attention": attention,
+                     "tags": sorted(tags), "cells": cells, "advice": advice})
+    rows.sort(key=lambda r: (-r["severity"], r["name"].casefold(), r["id"]))
+    machines = [{"id": v.machine_id, "label": v.label,
+                 "age_seconds": age_seconds(v.observed_at, now), "freshness": v.freshness,
+                 "observed_at": v.observed_at, "repository_count": len(v.repositories),
+                 "tone": "success" if v.freshness == "current" else "warning"} for v in views]
+    for row in rows:
+        local = row["id"] in local_ids
+        # Withholding is stated per row. A repository this machine keeps to itself looks
+        # identical to one nobody has touched unless the dashboard says which it is.
+        row["publication"] = {
+            "published": not (local and row["id"] in withheld_ids),
+            "reason": "Withheld from every transport and peer by this machine's publish basket."
+                      if local and row["id"] in withheld_ids else "",
+        }
+        row["desktop_action"] = {
+            "available": bool(desktop.get("available") and local),
+            "label": f"Open in {desktop.get('label') or 'desktop Git client'}",
+            "reason": (desktop.get("reason") or "Choose a desktop Git client in App & setup.")
+                      if local else "This repository has no observed checkout on this machine.",
+        }
+        row["security_action"] = {
+            "available": bool(local and settings.get("security_available")),
+            "label": "Check local security",
+            "reason": "Read-only working files and cached outgoing history; findings stay local."
+                      if local else "No locally observed checkout; peer security is not checked here.",
+        }
+    # The network map's policy: which machines hold copies of the same repositories, and whether
+    # those copies are on the same commit. Skins draw it; they never work it out themselves.
+    links = []
+    ids = [machine["id"] for machine in machines]
+    for index, first in enumerate(ids):
+        for second in ids[index + 1:]:
+            shared = differ = attention = 0
+            for row in rows:
+                one, two = row["cells"].get(first), row["cells"].get(second)
+                if not (one and two and one["present"] and two["present"]):
+                    continue
+                shared += 1
+                heads = ((one["facts"] or {}).get("head"), (two["facts"] or {}).get("head"))
+                differ += int(all(heads) and heads[0] != heads[1])
+                attention += int(row["needs_attention"])
+            if shared:
+                links.append({"a": first, "b": second, "shared": shared, "differ": differ,
+                              "attention": attention})
+    for row in rows:
+        present = [cell for cell in row["cells"].values() if cell["present"]]
+        heads = [(cell["facts"] or {}).get("head") for cell in present]
+        # Unknown unless every copy shares its commit: a withheld head proves nothing.
+        row["copies"] = {"present": len(present),
+                         "heads_agree": None if not heads or None in heads else len(set(heads)) == 1}
+    basket_notices = []
+    if withheld_ids:
+        basket_notices.append({"id": "withheld", "tone": "warning",
+            "text": f"{len(withheld_ids)} repository(ies) on this machine are observed but not "
+                    "published: no other machine can see their state, however bad it is."})
+    if unobserved:
+        basket_notices.append({"id": "unobserved", "tone": "neutral",
+            "text": f"{unobserved} repository(ies) under your roots are excluded from observation "
+                    "by this machine's observe basket and are not checked at all."})
+    remote_notice = (
+        f"Remotes are fetched every {_duration(fetch_seconds)}, read-only: only remote-tracking "
+        "refs move, never your branches or files. Behind counts reflect the last fetch; a failed "
+        "fetch keeps the last known counts and is listed under issues."
+        if fetch_seconds else
+        "Scheduled fetching is off, so ahead/behind use cached Git refs. A clean report does not "
+        "prove that machines are on the same commit or current with the remote.")
+    folder, repo, tailnet = (transport_config.get("folder"), transport_config.get("repo"),
+                             transport_config.get("tailnet"))
+    return {
+        "contract": {"name": CONTRACT_NAME, "version": CONTRACT_VERSION},
+        "product": {"name": PRODUCT_NAME, "version": VERSION, "channel": "development"},
+        "generated_at": now.isoformat(), "fleet_id": fleet_id,
+        "summary": {"repositories": len(rows), "attention": sum(r["needs_attention"] for r in rows),
+                    "machines": len(machines),
+                    "current_machines": sum(m["freshness"] == "current" for m in machines),
+                    "stale_machines": sum(m["freshness"] != "current" for m in machines)},
+        "machines": machines, "groups": sorted(groups.values(), key=lambda g: g["id"].casefold()),
+        "rows": rows,
+        "map": {"links": links},
+        "desktop_client": {"configured": bool(desktop.get("configured")),
+                           "id": desktop.get("id", ""),
+                           "label": desktop.get("label", "Desktop Git client"),
+                           "choices": list(desktop.get("choices") or [])},
+        "issues": [{"machine_id": r["manifest"]["machine_id"],
+                    "machine": r["manifest"]["machine_label"], "items": list(r["issues"])}
+                   for r in reports if r["issues"]],
+        "filters": [{"id": "all", "label": "All repositories"},
+                    {"id": "attention", "label": "Needs attention"},
+                    {"id": "dirty", "label": "Uncommitted work"},
+                    {"id": "ahead", "label": "Unpushed commits"},
+                    {"id": "local_only", "label": "No remote (only copy)"},
+                    {"id": "stale", "label": "Stale reports"},
+                    {"id": "missing", "label": "Not reported on a machine"}],
+        "notices": [{"id": "cached-refs", "tone": "neutral", "text": remote_notice},
+                    {"id": "security-scope", "tone": "neutral",
+                     "text": "Fleet status is not security clearance. Check security on a local repository for masked advice; commit/push actions must recheck current material."},
+                    {"id": "staleness", "tone": "warning",
+                     "text": f"A machine that has not reported for {_duration(stale_seconds)} is "
+                             "stale. Its last-known unfinished work stays visible."},
+                    *basket_notices],
+        "baskets": {"configured": bool(scopes),
+                    "scopes": {scope: dict(scopes[scope]) for scope in scopes},
+                    "withheld": len(withheld_ids), "unobserved": unobserved},
+        "capabilities": {"observe": {"available": True, "reason": "Status observation is running."},
+                         "desktop_client": {"available": bool(desktop.get("available")),
+                             "reason": desktop.get("reason") or "No desktop Git client configured."},
+                         "repository_actions": {"available": True, "reason":
+                             "The local dashboard can run the terminal-equivalent catch-up preview. "
+                             "Applying fast-forward pulls remains 'fleet catchup --apply --yes'."},
+                         "baskets": {"available": bool(scopes), "reason":
+                             "Observe and publish baskets are configured with 'fleet baskets'; "
+                             "capture requires a separately confirmed recovery location."
+                             if scopes else "Basket selection is not configured on this machine."},
+                         "installation": {"available": False, "reason":
+                             "This is a development preview. A supported desktop installer is not available yet."},
+                         "self_update": {"available": False, "reason":
+                             "Updates are developer-managed. Automatic updates are not enabled."}},
+        "integrations": [
+            {"id": "tailscale", "label": "Tailscale live monitoring", "available": True,
+             "enabled": bool(tailnet),
+             "description": "Near-live reports between connected fleet machines.",
+             "detail": (f"Peers polled every 30 seconds on port {tailnet.get('port')}."
+                        if tailnet else "Tailscale is not configured on this machine.")},
+            {"id": "synced_folder", "label": "Synchronized folder", "available": True,
+             "enabled": bool(folder),
+             "description": "Status written into a folder your own sync client replicates.",
+             "detail": (f"Written on change and every {_duration(folder['seconds'])}."
+                        if folder else "No synchronized folder configured.")},
+            {"id": "github", "label": "Private GitHub state repository", "available": True,
+             "enabled": bool(repo),
+             "description": "Durable status through your existing gh login.",
+             "detail": (f"{repo['name']}: written on change and every {_duration(repo['seconds'])}."
+                        if repo else "No GitHub state repository configured.")},
+        ],
+        "features": [
+            {"id": "continuous_scan", "label": "Event-driven repository observation",
+             "available": True, "enabled": True,
+             "description": "Native filesystem events trigger a read-only check of the changed repository.",
+             "detail": (f"{settings.get('root_count', 'Unknown number of')} configured root(s); "
+                        f"checks after {settings.get('debounce_seconds', 'unknown')} seconds quiet.")},
+            {"id": "remote_fetch", "label": "Scheduled remote fetch",
+             "available": True, "enabled": bool(fetch_seconds),
+             "description": "Read-only git fetch, so behind counts are measured against the remote.",
+             "detail": (f"Every {_duration(fetch_seconds)}." if fetch_seconds
+                        else "Off. Behind counts use whatever was last fetched by hand.")},
+            {"id": "remote_actions", "label": "Fleet catch-up actions",
+             "available": True, "enabled": True,
+             "description": "Dashboard preview and terminal application share one safe policy.",
+             "detail": "Preview fresh-fetches; 'fleet catchup --apply --yes' fast-forwards only clean, behind-only local checkouts."},
+            {"id": "recovery_snapshots", "label": "Unfinished-work recovery snapshots",
+             "available": bool(recovery.get("location") and recovery.get("confirmed")),
+             "enabled": bool(recovery.get("location") and recovery.get("confirmed")
+                             and (settings.get("baskets") or {}).get("capture", {}).get("mode") != "none"),
+             "description": "Explicit local capture and verified cross-machine acknowledgement.",
+             "detail": ("Captures after filesystem quiet periods; another peer must verify a bundle "
+                        "before it is recoverable elsewhere."
+                        if (settings.get("baskets") or {}).get("capture", {}).get("mode") != "none"
+                        and recovery.get("location") and recovery.get("confirmed") else
+                        "Configured, but capture basket is off." if recovery.get("location") else
+                        "No separately confirmed recovery location is configured.")},
+        ],
+    }

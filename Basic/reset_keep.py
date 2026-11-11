@@ -1,5 +1,12 @@
 """Move one repository's checked-out branch to another commit, keeping uncommitted edits.
 
+Why:          following a rewritten history needs a branch move that never overwrites an edit.
+Reads:        the repository and the target commit.
+May change:   the checked-out branch and the files that differ; refuses over any uncommitted edit.
+Results:      a JSON result on stdout.
+Layer:        Basic: one Git or host operation.
+Status:       working
+
     python Basic/reset_keep.py <repo> <target>
 
 `git reset --keep` moves the branch and updates the files that differ between the two commits,

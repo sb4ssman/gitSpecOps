@@ -17,7 +17,7 @@ from Special._history.native import snapshot
 from Special._history.plan import Plan, save
 from Special._history.proof import compare
 from Special._history.rules import Rules
-from Special.security._private_files import private_path, write_private_json
+from Special._security._private_files import private_path, write_private_json
 
 ROOT = Path(__file__).resolve().parents[2]
 

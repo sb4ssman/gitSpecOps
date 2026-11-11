@@ -18,8 +18,13 @@ classifiers = [
     "Topic :: Software Development :: Version Control :: Git",
 ]
 
-# Intentionally no runtime dependencies: every tool is stdlib-only and run as a script.
+# No runtime dependencies below App/: every operation is stdlib-only and run as a script.
 dependencies = []
+
+[project.optional-dependencies]
+# The App's tray and window (Qt). Nothing below App/ may import it; the web view needs none.
+# Install with: uv sync --extra app
+app = ["PySide6-Essentials>=6.12"]
 
 # This project is NOT an importable package. The tools are flat scripts that put their own
 # directory (and the repo root, for the layers) on sys.path at runtime. `.venv` exists only to

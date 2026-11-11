@@ -16,13 +16,13 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import setup
-setup("sync")
+setup()
 
-import config as cli_config
-import fleet_app
-import fleet_config
-import fleet_desktop
-import sync_suggester
+import Special._sync.config as cli_config
+import Elaborate._fleet.cli as fleet_app
+import Elaborate._fleet.config as fleet_config
+import App.desktop as fleet_desktop
+import Elaborate._fleet.sync_cli as sync_suggester
 from Special._settings import SettingsError
 from Special._settings.fleet import (fleet_directory, fleet_home, load_fleet_settings,
                                     save_fleet_config)
@@ -211,7 +211,7 @@ class FleetSettingsTests(unittest.TestCase):
     def test_exclusion_rejected_before_git_and_run_override(self):
         self.doc["defaults"]["scope"] = {"exclude_paths": [str(self.root / "private")]}
         self.write()
-        with patch("sync_suggester.open_transport", side_effect=AssertionError("must not open transport")):
+        with patch("Elaborate._fleet.sync_cli.open_transport", side_effect=AssertionError("must not open transport")):
             args = sync_suggester.build_parser().parse_args(["--settings-home", str(self.home), "check"])
             with redirect_stderr(io.StringIO()):
                 self.assertEqual(sync_suggester._resolve(args), 2)
@@ -239,7 +239,7 @@ class FleetSettingsTests(unittest.TestCase):
     def test_cli_init_reuses_shared_identity(self):
         del self.doc["components"]["sync"]
         self.write()
-        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch("config.new_fleet_secret", side_effect=AssertionError):
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), patch("Special._sync.config.new_fleet_secret", side_effect=AssertionError):
             code = sync_suggester.main(["--settings-home", str(self.home), "--config-dir", str(self.state),
                                         "init", "--root", str(self.root)])
         self.assertEqual(code, 0)
@@ -249,7 +249,7 @@ class FleetSettingsTests(unittest.TestCase):
     def test_app_enrollment_uses_existing_identity(self):
         del self.doc["components"]["app"]
         self.write()
-        with patch("fleet_app.resolve_machine_identity", side_effect=AssertionError), patch("fleet_app.run_peer", side_effect=AssertionError):
+        with patch("Elaborate._fleet.cli.resolve_machine_identity", side_effect=AssertionError), patch("Elaborate._fleet.cli.run_peer", side_effect=AssertionError):
             self.assertEqual(self.app_command("peer", "--root", str(self.root), "--no-tailnet",
                                               "--acknowledge-initial-scan", "--configure-only"), 0)
         self.assertEqual(self.saved()["machine"], self.doc["machine"])
@@ -264,22 +264,24 @@ class FleetSettingsTests(unittest.TestCase):
 
     def test_preflight_remains_independent_of_invalid_configuration(self):
         self.path.write_text("{bad", encoding="utf-8")
-        with patch("fleet_app.load_fleet_settings", side_effect=AssertionError), patch("fleet_app.command_preflight", return_value=0):
+        with patch("Elaborate._fleet.cli.load_fleet_settings", side_effect=AssertionError), patch("Elaborate._fleet.cli.command_preflight", return_value=0):
             self.assertEqual(self.app_command("preflight"), 0)
 
     def test_app_run_and_tray_preserve_selected_profile(self):
-        with patch("fleet_app.run_peer", return_value=0) as run:
+        with patch("Elaborate._fleet.cli.run_peer", return_value=0) as run:
             self.assertEqual(self.app_command("run"), 0)
             self.assertEqual(run.call_args.args[0].snapshot.home, self.home)
             self.assertEqual(run.call_args.args[1], self.state)
-        with patch("fleet_tray.run_tray", return_value=0) as tray:
-            self.assertEqual(self.app_command("tray"), 0)
-            self.assertEqual(tray.call_args.args[0], fleet_app.profile_arguments(self.state, self.home) + ["run"])
+        from App._launch import profile_arguments
+        # The tray (App) hands the peer the same profile selection the fleet CLI keeps.
+        self.assertEqual(profile_arguments(self.state, self.home),
+                         fleet_app.profile_arguments(self.state, self.home))
 
     def test_desktop_common_enrollment_does_not_start_setup(self):
-        with patch("fleet_desktop.threading.Thread"), patch("fleet_desktop.main", return_value=0) as main:
+        with patch("App.desktop.tray", return_value=0) as tray, patch("App.desktop.main") as main:
             self.assertEqual(fleet_desktop.desktop_main([]), 0)
-            main.assert_called_once_with(["tray"])
+            tray.assert_called_once_with(["--open-on-start"])
+            main.assert_not_called()
 
     def test_dashboard_choice_does_not_persist_runtime_transport_identity(self):
         self.doc["transports"]["tailnet"] = {"port": 8765, "allowed_login": None}
@@ -302,12 +304,12 @@ class FleetSettingsTests(unittest.TestCase):
     def test_incompatible_setup_refuses_before_network(self):
         del self.doc["components"]["sync"]
         self.write()
-        with patch("sync_suggester.repo_exists", side_effect=AssertionError), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+        with patch("Elaborate._fleet.sync_cli.repo_exists", side_effect=AssertionError), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             self.assertEqual(sync_suggester.main(["--settings-home", str(self.home), "init", "--machine-id", "other-machine",
                                                   "--state-repo", "example/new-status", "--create-state-repo"]), 2)
         del self.doc["components"]["app"]
         self.write()
-        with patch("fleet_app.require_gh", side_effect=AssertionError):
+        with patch("Elaborate._fleet.cli.require_gh", side_effect=AssertionError):
             self.assertEqual(self.app_command("peer", "--root", str(self.root), "--label", "other label",
                                               "--repo", "example/new-status", "--create-repo",
                                               "--acknowledge-initial-scan", "--configure-only"), 2)
@@ -315,7 +317,7 @@ class FleetSettingsTests(unittest.TestCase):
     def test_shared_transport_edit_refuses_before_optional_repo_creation(self):
         self.doc["components"]["sync"]["options"]["transport_names"] = ["repo"]
         self.write()
-        with patch("fleet_app.require_gh", side_effect=AssertionError):
+        with patch("Elaborate._fleet.cli.require_gh", side_effect=AssertionError):
             self.assertEqual(self.app_command("transports", "--repo", "example/new-status", "--create-repo"), 2)
 
     def test_invalid_profile_errors_are_exit_codes_not_tracebacks(self):
@@ -327,7 +329,7 @@ class FleetSettingsTests(unittest.TestCase):
         self.doc["defaults"]["scope"] = {"exclude_paths": [str(self.root)]}
         self.write()
         args = sync_suggester.build_parser().parse_args(["--settings-home", str(self.home), "check", "--root", str(self.root)])
-        with patch("sync_suggester.open_transport", side_effect=AssertionError), redirect_stderr(io.StringIO()):
+        with patch("Elaborate._fleet.sync_cli.open_transport", side_effect=AssertionError), redirect_stderr(io.StringIO()):
             self.assertEqual(sync_suggester._resolve(args), 2)
 
     def test_cli_recursion_save_and_unrelated_settings_preserved(self):
@@ -360,9 +362,9 @@ class FleetSettingsTests(unittest.TestCase):
 
     def test_invalid_common_prevents_desktop_setup_and_app_lock(self):
         self.path.write_text("{bad", encoding="utf-8")
-        with patch("fleet_desktop.main", side_effect=AssertionError), redirect_stderr(io.StringIO()):
+        with patch("App.desktop.main", side_effect=AssertionError), redirect_stderr(io.StringIO()):
             self.assertEqual(fleet_desktop.desktop_main([]), 2)
-        with patch("fleet_app.app_lock", side_effect=AssertionError):
+        with patch("Elaborate._fleet.cli.app_lock", side_effect=AssertionError):
             self.assertEqual(self.app_command("run"), 2)
 
     def test_unknown_runtime_fields_cannot_be_silently_discarded(self):
@@ -427,7 +429,7 @@ class FleetSettingsTests(unittest.TestCase):
         self.doc = {"schema_version": 2}
         self.write()
         output = io.StringIO()
-        with patch("config.new_fleet_secret", return_value=self.key), redirect_stdout(output), redirect_stderr(io.StringIO()):
+        with patch("Special._sync.config.new_fleet_secret", return_value=self.key), redirect_stdout(output), redirect_stderr(io.StringIO()):
             code = sync_suggester.main(["--settings-home", str(self.home), "--config-dir", str(self.state),
                                         "init", "--machine-id", "machine-a", "--root", str(self.root)])
         self.assertEqual(code, 0, output.getvalue())
@@ -438,8 +440,8 @@ class FleetSettingsTests(unittest.TestCase):
         self.doc = {"schema_version": 2}
         self.write()
         output = io.StringIO()
-        with patch("fleet_app.new_fleet_secret", return_value=self.key), \
-             patch("fleet_app.resolve_machine_identity", return_value=("machine-a", "Machine A")), \
+        with patch("Elaborate._fleet.cli.new_fleet_secret", return_value=self.key), \
+             patch("Elaborate._fleet.cli.resolve_machine_identity", return_value=("machine-a", "Machine A")), \
              redirect_stdout(output), redirect_stderr(io.StringIO()):
             code = fleet_app.main(["--settings-home", str(self.home), "--config-dir", str(self.state),
                                    "peer", "--root", str(self.root), "--no-tailnet", "--acknowledge-initial-scan", "--configure-only"])

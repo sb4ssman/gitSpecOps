@@ -21,12 +21,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import ROOT, setup
 setup()
 
-from Special.security import _material, _push, _reviews
-from Special.security._commit.operation import commit_checked
-from Special.security._findings import write_report
-from Special.security._material import scan
-from Special.security._me import load_policy
-from Special.security._review_operation import review_finding
+from Special._security import _material, _push, _reviews
+from Special._security._commit.operation import commit_checked
+from Special._security._findings import write_report
+from Special._security._material import scan
+from Special._security._me import load_policy
+from Special._security._review_operation import review_finding
 import gitso
 
 
@@ -293,7 +293,7 @@ class ReviewTests(unittest.TestCase):
         source = self.report()
         self.document["defaults"]["scope"] = {"exclude_paths": [str(source[0])]}
         self.save_settings()
-        with patch("Special.security._review_operation.read_private_json", side_effect=AssertionError("excluded report read")):
+        with patch("Special._security._review_operation.read_private_json", side_effect=AssertionError("excluded report read")):
             result = review_finding(*source, "fixture", home=self.home)
         self.assertEqual(result.status, "refused", result.record())
 
@@ -310,7 +310,7 @@ class ReviewTests(unittest.TestCase):
     def test_review_destination_failure_returns_finite_error_without_fallback(self):
         source = self.report()
         plan = review_finding(*source, "fixture", home=self.home)
-        with patch("Special.security._review_operation.write_private_json", side_effect=OSError("private diagnostic " + self.value)):
+        with patch("Special._security._review_operation.write_private_json", side_effect=OSError("private diagnostic " + self.value)):
             result = review_finding(*source, "fixture", home=self.home, apply=True, approve=plan.plan_id)
         self.assertEqual(result.status, "incomplete")
         self.assertFalse(result.saved)
@@ -457,7 +457,7 @@ class ReviewTests(unittest.TestCase):
 
     def test_help_from_outside_checkout_never_reads_or_creates_settings(self):
         absent = self.root / "absent"
-        done = subprocess.run([sys.executable, "-B", str(ROOT / "Special/security/review_finding.py"),
+        done = subprocess.run([sys.executable, "-B", str(ROOT / "Special/review_finding.py"),
                                "--settings-home", str(absent), "--help"], cwd=self.root,
                               capture_output=True, text=True, timeout=30)
         self.assertEqual(done.returncode, 0, done.stderr)

@@ -24,7 +24,7 @@ Three consequences for the design:
 
 1. **Convergence is the product, not just observation.** Telling a machine "DESKTOP has twelve
    repositories you do not have" is only half an answer. The other half — cloning them — is
-   already built: `archive_sync.py` discovers an org's full repo set through the provider seam and
+   already built: `sync_archive.py` discovers an org's full repo set through the provider seam and
    clones what is missing. Sync Suggester should *detect* the gap and hand off to that engine
    rather than growing a second cloner. This is the seam that makes the fleet self-assembling.
 2. **Setup has to be trivial on machine two and three.** "Here is my GitHub folder" must be

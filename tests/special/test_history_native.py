@@ -32,8 +32,8 @@ from Special._history.native import snapshot
 from Special._history.operation import command, execute
 from Special._history.plan import load, prepare, save
 from Special._history.rules import IdentityRule, Rule, Rules
-from Special.security._material import scan
-from Special.security._me import Policy
+from Special._security._material import scan
+from Special._security._me import Policy
 
 
 class Scratch(unittest.TestCase):

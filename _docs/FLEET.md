@@ -1,0 +1,305 @@
+# Personal fleet: every machine is a peer
+
+Every peer observes its own repositories, serves a dashboard on loopback, and publishes status
+through its configured transports. It can also pull from other peers over Tailscale. There is
+no central host. Closing a peer stops that machine's observation; other peers keep working and
+retain its last published state. Stale unfinished work remains visible.
+
+## Local security advice
+
+`gitso sync check` includes current working-file and cached-outgoing security advice using
+common policy and selected optional engines. `--legacy-policy` explicitly selects old security
+lists and cannot bypass common settings. No fetch occurs unless `--fetch` was selected.
+Alerts and incomplete checking do not discard sync facts or authorize an action.
+
+`check --json` now returns a local result envelope: `schema_version`, `manifest`,
+`local_security`, `artifacts`. Consumers of the former bare-manifest output must read
+`result.manifest`. Only that manifest is published, with no findings, private paths or policy
+added. Each local checkout retains its own security result, even when identities match.
+
+The local peer dashboard offers **Check local security** on locally observed repositories.
+Its loopback-only action requires the current Origin/token and accepts a known repository id,
+never a browser-supplied path. The same headless operation checks all matching local copies.
+Masked records, timestamps and gaps are presented in session memory; they are not saved to
+browser storage, logged, published or served by the peer report. The check uses cached refs
+and remains advisory. Watch mode and manifest-only dashboards do not run these checks.
+
+## Fleet keys and operational logs
+
+Setup saves a newly generated fleet key locally and hides it in output. Inspect metadata with
+`gitso sync fleet-key` or `gitso app fleet-key`, selecting the same settings/state context as
+the configured component. Add `--show` only to deliberately print the raw key in that local
+channel for joining another machine. An agent capturing that output receives the key too.
+These commands save no report/log and change no settings. Keep keys out of shared status.
+
+The native Windows tray now uses common `app.logging` preferences and the shared event/counter
+logger, not a console tee. The default file is `<user-data>/logs/app_tray.log`; a configured
+logging directory overrides it. Disabled logging writes nothing; an unavailable required sink
+stops startup instead of silently choosing another file. Legacy-only enrollment remains intact
+and uses logging defaults in the selected user-data home; malformed common settings fail.
+Console diagnostics and deliberately shown keys never enter this log or notification text.
+Full foreground/app logging adoption and native lifecycle acceptance remain unfinished.
+
+## Set up a machine
+
+Run as your normal user with Python 3.11+ and Git. Use the repository's virtual environment
+when available. GitHub CLI with an existing login is required only for the GitHub transport;
+connected Tailscale is required only for direct peer access. The app never manages credentials.
+
+Before setup, inspect exactly which optional tiers are ready:
+
+```sh
+python Elaborate/preflight.py
+```
+
+This is read-only. It checks Git, the existing `gh` login, Tailscale connectivity, the loopback
+dashboard port, and common existing sync-folder locations. Missing Git is a blocker; the other
+tiers are simply reported as unavailable and can be added later.
+
+```sh
+python Elaborate/setup_fleet.py
+```
+
+Or configure directly, with no Tailscale:
+
+```sh
+python Elaborate/setup_fleet.py peer --root /path/to/library --acknowledge-initial-scan --no-tailnet
+```
+
+`--root` is repeatable. Setup names the library and requires `SCAN` before its initial recursive
+inventory. `--configure-only` saves setup without starting the runtime. Another machine uses
+the same fleet key, entered in setup or supplied through `--fleet-secret`; keep the key local
+and carry it privately. When Tailscale is connected, setup can instead offer an explicit,
+authenticated hand-off from a running peer. Starting another peer does not require any other
+machine to be online.
+Avoid overlapping roots or multiple checkouts with the same remote identity in this pilot.
+
+The dashboard is normally `http://127.0.0.1:8760/` on each machine. It combines local status,
+cached peer reports, and readable manifests from configured transports, newest per machine.
+`dashboard --serve` is also available for legacy `init`/`check` configurations, independently
+of the fleet runtime. Existing common settings own each component's enrollment. Without a
+common document, legacy commands use `config.json` and the peer app uses `fleet-app.json`.
+
+## Choose complementary transports
+
+Durable and live transports carry status. The separately confirmed medium folder also carries
+opt-in saved-work snapshots; it never shares them through the GitHub state repository.
+`Special/list_live_buffers.py` can explicitly inspect local VS Code backup metadata, but unsaved buffer
+content is never published by this release.
+
+- **Durable:** a private, writable GitHub state repository accessed through your `gh` login.
+  The app writes one v5 manifest per machine through the Contents API; it never clones that
+  state repository. By default the manifest names your repositories, branches and current
+  commits; `--withhold-names` (or "no" at setup) publishes salted ids only. Creating it requires an explicit setup choice or `--create-repo`.
+- **Medium:** an existing folder managed by your own sync client. No particular client is
+  required; gitSpecOps does not install or configure one.
+- **Live:** optional Tailscale peer discovery and pulls every 30 seconds. Peers expose GET-only
+  reports and an authenticated session endpoint. Nothing is pushed to another peer. The live
+  report includes readable repository identities within the authorized personal fleet.
+
+To add or remove transports, stop the local peer and run:
+
+```sh
+python Elaborate/setup_fleet.py transports --folder /path/to/synced-folder --folder-seconds 300 --repo example/private-fleet-state --create-repo --repo-seconds 1800
+python Elaborate/peer.py
+```
+
+`--clear-folder`, `--clear-repo`, and `--clear-tailnet` remove individual integrations;
+`--tailnet` enables direct peers. No transport is authoritative. Keep configuration, fleet
+keys, catalogs, and SQLite databases outside synchronized state folders.
+
+Guided setup offers durable status first. After you opt in, it uses the current `gh` login to
+suggest `owner/gitspecops-state`. Enter another accessible owner/name to override it.
+The walkthrough explains the app-managed `machines/` files and publication conditions.
+Type `CREATE owner/name` to request creation or `USE owner/name` to approve an existing private,
+writable repository. Enter skips that choice. Merely accepting a suggested name creates nothing.
+
+Publication sends initial status and then semantic changes at each transport's minimum interval
+(folder 300 seconds, GitHub 1800 seconds by default). Each transport keeps its latest pending
+status during cooldown and retries failures after the interval. Pending delivery runs without
+another filesystem event or Git scan. The queue is in memory; startup inventories again and
+publishes current status. Do not infer remote delivery from a successful local observation.
+No last-second upload is promised on shutdown or power loss.
+
+## Observe and resume
+
+```sh
+python Elaborate/peer.py
+python Elaborate/doctor.py
+python Elaborate/peer.py rescan
+```
+
+Startup performs one inventory. Linux inotify or Windows `ReadDirectoryChangesW` then triggers
+targeted Git status checks only for changed repositories. There is no periodic repository scan.
+New checkouts raise a notice; `Elaborate/peer.py rescan` explicitly refreshes membership. The current peer
+runtime does not implement the retired host/client timestamp-heartbeat protocol; a quiet
+report's observation time can age even while its process remains reachable.
+
+Common configuration lives in the selected user-data home's `settings.json`. Use
+`fleet --settings-home /path/to/profile ...` to select it. `fleet --config-dir /path/to/state ...`
+selects local state/legacy inputs independently: the database, latest report, locks and catalog
+remain there. The default state directory is that profile's `sync-suggester` child;
+`GITSPECOPS_SYNC_HOME` can override it without selecting another common profile. The app's
+multiple transports and the CLI's single transport remain separately selected. Shared machine
+identity cannot be changed by per-component setup, and a transport selected by both components
+needs a coordinated change. Clearing a selection retains its shared definition.
+
+Invalid common settings fail; a missing component enrollment never falls back to legacy files.
+Explicit edits use the shared revision-checked writer and preserve unrelated settings. No common
+migration runs on startup; activation remains unavailable pending a reviewed legacy transition.
+Without common settings, legacy-only profiles retain their existing files. An OS lock prevents
+concurrent peers using the same state directory. Old v1/v2/v3/v4 legacy app configurations
+convert to peer v5 on resume, preserving the fleet key and taking
+the default baskets (observe and publish everything, capture nothing). `host`,
+`connect`, and `replicas` are retired; use `setup`/`peer` and `transports`.
+
+## Catch up a machine safely
+
+```sh
+python Special/catch_up.py
+python Special/catch_up.py --apply --yes
+```
+
+`catchup` is terminal-first: it performs a fresh, non-interactive `git fetch origin` for every
+locally observed checkout, then reports exactly what it found. The default is a plan only and
+does not alter a branch, index, or working file. `--apply --yes` applies only the plan entries
+that are both clean and behind-only, using `git pull --ff-only`, and rechecks success against
+the freshly fetched remote.
+
+Every other state is a human decision: dirty/untracked work, ahead-only commits, divergence,
+detached HEAD, no upstream, unreadable status, and a failed fetch are all reported and skipped.
+Catch up never commits, pushes, stashes, resets, merges, rebases, prunes, or recurses into
+submodules. It runs only while the peer is stopped; the per-configuration lock refuses a
+concurrent run. Resume the peer afterward to publish the changed local status.
+
+## Audit a large local working set
+
+```sh
+python Special/audit_repos.py
+python Special/audit_repos.py --json
+```
+
+This report finds missing origins or upstreams, plain-HTTP origins, detached heads, commits on
+no remote (any branch or tag), stashes, behind state, and tracked changes across every
+repository under the configured roots — found by its own walk, so a repository the live view
+cannot name (no origin) is still audited, and bare repositories are listed. It changes no remote,
+branch, index, or working file. Fleet-wide materialization and branch cleanup remain separate
+future operations; this audit deliberately does not invent repairs for ambiguous repositories.
+
+To seed a new library from this machine's approved working set:
+
+```sh
+python Special/materialize.py --destination /new/library
+python Special/materialize.py --destination /new/library --apply --yes
+```
+
+The first command maps recognizable origins to `host/owner/repository` folders and reports
+collisions or local-only checkouts. The second clones only destinations that were absent when
+rechecked; it never replaces or updates an existing checkout. This is a local working-set
+materializer, not a promise that names-free status manifests alone can discover an institution's
+entire organization inventory.
+
+## Inspect VS Code's existing unsaved buffers
+
+```sh
+python Special/list_live_buffers.py
+```
+
+This is an explicit local inspection, not a watcher. On Windows it reads the existing VS Code
+backup directory; on another platform or profile, pass `--backup-root PATH`. It reports only
+metadata for backups whose URI maps beneath a configured repository root and whose buffer differs
+from the saved file. It neither prints nor stores buffer content, and it sends nothing to another
+machine. Publishing opt-in live buffers is a separate privacy and transport decision.
+
+## Baskets: what this machine takes part in
+
+```sh
+python Elaborate/setup_fleet.py baskets
+python Elaborate/setup_fleet.py baskets --scope observe --mode except --namespace github.com/some-owner
+python Elaborate/setup_fleet.py baskets --scope publish --mode only --namespace github.com/some-owner
+```
+
+Roots are the filesystem boundary; baskets narrow what happens inside it, per scope:
+
+| Scope | Effect |
+|---|---|
+| `observe` | whether this machine inspects the repository at all |
+| `publish` | whether its status is written where other machines can read it |
+| `capture` | whether its uncommitted content may be snapshotted to a separately confirmed recovery folder |
+
+The scopes are independent and never imply one another. Widening `observe` does not widen
+`publish`, and nothing widens `capture` implicitly. A non-empty capture basket is refused until
+an existing, separately confirmed recovery folder is present.
+
+Selection is by namespace (`host/owner`), with modes `all`, `none`, `only` and `except`.
+Matching happens locally, on this machine's own repository names: a withheld repository sends
+nothing at all -- no record, no id, no name -- so no peer can see, apply, or infer another
+machine's baskets.
+
+Narrowing is never silent. A withheld repository stays on this machine's own dashboard, marked
+*not published*, and the dashboard states how many repositories are withheld or unobserved.
+`observe` changes apply at the next `Elaborate/peer.py rescan` or restart; `publish` changes apply at the
+next observation.
+
+## Recover saved work and audit replacement safety
+
+```sh
+python Elaborate/recovery.py configure --location /private/sync-folder --confirm-private-location
+python Elaborate/setup_fleet.py baskets --scope capture --mode only --namespace github.com/some-owner
+python Elaborate/recovery.py status
+python Elaborate/check_safe_to_wipe.py
+```
+
+The recovery folder is deliberately separate from the status folder and must already exist.
+The peer captures selected repositories after filesystem quiet periods. A second peer that can
+read the same folder verifies each checksum and writes an acknowledgement; only then does the
+source call it *recoverable elsewhere*. `recovery preview` reads a named bundle without writing;
+`recovery restore --yes` creates a disposable checkout, never overlays an existing working tree.
+`recovery retire --yes` freshly fetches `origin` and removes a local bundle only when the fetched
+upstream's tree exactly matches the bundle's staged, unstaged, and carried-file content.
+
+`safe-to-wipe` walks the configured roots itself — hidden folders included, and each root
+itself — so it does not depend on what the live view observes. It fetches every remote of every
+repository but never changes a working tree. A repository blocks the verdict if it has no
+remote, cannot be fetched, holds a commit on any local branch, tag or HEAD that no remote has,
+holds a stash, is mid-merge/rebase, or is bare. A dirty checkout passes only when its exact
+current snapshot has been checksum-verified by another peer. The verdict names what it does not
+check: ignored files such as `.env`, files outside repositories, other filesystems mounted
+under a root, and remote branches deleted since the last fetch.
+
+## Tray and start-at-login
+
+```sh
+python App/tray.py
+python Elaborate/start_at_login.py status
+python Elaborate/start_at_login.py enable
+python Elaborate/start_at_login.py disable
+```
+
+The Windows tray reads the local display contract, opens the dashboard, requests a rescan,
+controls per-user start-at-login, and can run the same read-only catch-up preview as the
+dashboard on a worker thread. It offers no Git mutations. Off Windows, `tray` falls
+back to a foreground run. Linux also supports `Elaborate/start_at_login.py --systemd enable` as a user
+unit. Run as the interactive user so Git ownership, credentials, and sync-folder access match.
+Use a durable installation location before enabling startup for a packaged build.
+See [BUILD-DESKTOP.md](../packaging/BUILD-DESKTOP.md).
+
+## Boundaries
+
+The peer observes staged, unstaged, untracked, stashed, operation, and cached ahead/behind
+facts. Its scheduled fetch is read-only toward branches and files. The explicit, stopped-peer
+`Special/catch_up.py --apply --yes` command may fast-forward clean, behind-only checkouts after a
+fresh fetch; it never clones, commits, stashes, pushes, transfers unfinished files, or makes an
+ambiguous Git decision.
+Namespace groups in the dashboard are a display grouping, not a basket; baskets are configured
+with `Elaborate/setup_fleet.py baskets` and shown in App & setup. The dashboard can run the same fresh-fetch
+catch-up preview as the terminal; applying a pull remains the explicit stopped-peer terminal
+command. Cached refs do not prove exact equality between machines.
+
+Tailscale authorization allows the configured login's untagged devices. This is a personal
+fleet, not enterprise roles or isolation between OS users sharing a device. The loopback
+dashboard is local to the machine, not an authentication boundary between its OS users.
+
+All skins consume `gitspecops.fleet.display`; they must not reclassify Git facts. See
+[DISPLAY-CONTRACT.md](DISPLAY-CONTRACT.md). Validate with `python tests/run_all.py` using a
+supported interpreter on the claimed platform; synthetic tests do not prove actual deployment.

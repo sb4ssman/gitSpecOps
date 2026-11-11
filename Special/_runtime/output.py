@@ -13,8 +13,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from Special._runtime.files import prepare_directory, RuntimeIOError
-from Special.security._checks._secrets import check as credential_candidates
-from Special.security._me import Policy
+from Special._security._checks._secrets import check as credential_candidates
+from Special._security._me import Policy
 
 
 def fleet_key_record(secret, *, show=False):

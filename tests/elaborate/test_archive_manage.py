@@ -45,7 +45,7 @@ with tempfile.TemporaryDirectory(prefix="archive-manage-") as tmp:
 
     from Special import archive_manager as manage  # noqa: E402  (after GITSPECOPS_HOME is set)
     from Special._archive import manager as engine  # noqa: E402
-    from Elaborate import archive_manage as scheduled  # noqa: E402
+    from Elaborate import schedule_archives as scheduled  # noqa: E402
     from Special._archive.registry import load_registry, registered_roots, registry_path  # noqa: E402
 
     check("scheduling exposes no duplicate local-management API",
@@ -182,7 +182,7 @@ with tempfile.TemporaryDirectory(prefix="archive-manage-") as tmp:
         check("monthly task uses the retained refresh launcher",
               install.call_args.args == ("fixture-task", tmp / "refresh", 1, "09:00"))
 
-code_only = (ROOT / "Elaborate" / "archive_manage.py").read_text(encoding="utf-8").split('"""', 2)[2]
+code_only = (ROOT / "Elaborate" / "schedule_archives.py").read_text(encoding="utf-8").split('"""', 2)[2]
 check("archive_manage code never names --publish", "--publish" not in code_only)
 local_code = (ROOT / "Special" / "_archive" / "manager.py").read_text(encoding="utf-8")
 check("local manager imports neither Elaborate nor the scheduler",

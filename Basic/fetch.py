@@ -1,5 +1,12 @@
 """Fetch a repository's remote. Moves remote-tracking refs only.
 
+Why:          "behind" must mean behind the remote now, not at the last fetch.
+Reads:        the remote.
+May change:   remote-tracking refs only; never a branch or a file.
+Results:      a JSON result on stdout.
+Layer:        Basic: one Git or host operation.
+Status:       working
+
     python Basic/fetch.py <repo> [--remote origin] [--dry-run]
 
 With no refspec, `git fetch` updates `refs/remotes/*` and never a local branch or the working

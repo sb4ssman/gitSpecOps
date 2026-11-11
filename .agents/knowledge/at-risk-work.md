@@ -7,7 +7,7 @@ A user with many repositories across many machines accumulates work that is one 
 gone, and nothing surfaces it — the repository looks perfectly healthy locally.
 
 This is the natural next group operation because the fleet already gathers every fact it needs.
-It is read-only and belongs with `fleet audit`.
+It is read-only and belongs with `Special/audit_repos.py`.
 
 ## The risk classes, in severity order
 
@@ -55,7 +55,7 @@ schema, already at v4 — a naming collision worth avoiding in the implementatio
 ## Command shape
 
 ```sh
-python git-sync-suggester/sync_suggester.py fleet at-risk
+python Elaborate/publish_status.py fleet at-risk
 ```
 
 Read-only; no flags required. Same non-mutating guarantees as `audit`. It reports, per risk class,

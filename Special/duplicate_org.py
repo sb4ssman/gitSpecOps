@@ -1,5 +1,12 @@
 """Copy GitHub repositories with explicit mode, scope and confirmation.
 
+Why:          copying a whole GitHub organization by hand is slow and easy to get wrong.
+Reads:        the chosen GitHub namespaces (through gh) and local folders.
+May change:   local clones; in upload or migration modes, GitHub repositories, after confirmation.
+Results:      progress and results on stdout; resume state in its runs folder.
+Layer:        Special: this machine, once.
+Status:       working
+
     python Special/duplicate_org.py --help
     python Special/duplicate_org.py
     python Special/duplicate_org.py --batch --namespaces all --dest /path/to/library
@@ -27,6 +34,8 @@ from Special._org_duplicator.command import (
     cli_main,
     EFFECT,
 )
+
+EFFECT = "remote"
 
 if __name__ == "__main__":
     cli_main()

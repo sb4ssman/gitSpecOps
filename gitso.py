@@ -32,7 +32,6 @@ class Command:
     module: str
     handler: str = "main"
     prefix: tuple = ()
-    legacy: bool = False
 
     def documentation(self):
         """Read Python source without importing tools, settings, logging or host clients."""
@@ -44,33 +43,50 @@ class Command:
 
 
 COMMANDS = (
+    # Basic: one Git or host operation.
     Command("discover", "Basic/discover.py", "Basic.discover"),
+    # Special: this machine, once.
+    Command("suggest-sync", "Special/suggest_sync.py", "Special._sync.commands", "suggest_sync_main"),
+    Command("name-repo", "Special/name_repo.py", "Special._sync.commands", "name_repo_main"),
+    Command("catch-up", "Special/catch_up.py", "Special._sync.commands", "catch_up_main"),
+    Command("audit-repos", "Special/audit_repos.py", "Special._sync.commands", "audit_repos_main"),
+    Command("materialize", "Special/materialize.py", "Special._sync.commands", "materialize_main"),
+    Command("list-live-buffers", "Special/list_live_buffers.py", "Special._sync.commands",
+            "list_live_buffers_main"),
     Command("duplicate-org", "Special/duplicate_org.py", "Special._org_duplicator.command", "cli_main"),
     Command("update-archive", "Special/update_archive.py", "Special._archive.update_cli"),
     Command("archive-manager", "Special/archive_manager.py", "Special._archive.manager"),
-    Command("archive-sync", "Special/archive_sync.py", "Special._archive.sync_cli"),
-    Command("inventory-export", "Special/inventory_export.py", "Special.inventory_export"),
-    Command("inventory-restore", "Special/inventory_restore.py", "Special.inventory_restore"),
-    Command("scan-tree", "Special/security/scan_tree.py", "Special.security._cli", prefix=("tree",)),
-    Command("scan-history", "Special/security/scan_history.py", "Special.security._cli", prefix=("history",)),
-    Command("review-finding", "Special/security/review_finding.py", "Special.security._review_cli"),
-    Command("clean-history", "Special/security/clean_history.py", "Special.security._cleanup_cli"),
-    Command("commit", "Special/commit_repo.py", "Special.security._commit.cli"),
-    Command("push", "Special/push_repo.py", "Special.security._push_cli"),
+    Command("sync-archive", "Special/sync_archive.py", "Special._archive.sync_cli"),
+    Command("export-inventory", "Special/export_inventory.py", "Special.export_inventory"),
+    Command("restore-inventory", "Special/restore_inventory.py", "Special.restore_inventory"),
+    Command("scan-tree", "Special/scan_tree.py", "Special._security._cli", prefix=("tree",)),
+    Command("scan-history", "Special/scan_history.py", "Special._security._cli", prefix=("history",)),
+    Command("review-finding", "Special/review_finding.py", "Special._security._review_cli"),
+    Command("clean-history", "Special/clean_history.py", "Special._security._cleanup_cli"),
+    Command("follow-rewrite", "Special/follow_rewrite.py", "Special.follow_rewrite"),
+    Command("commit", "Special/commit_repo.py", "Special._security._commit.cli"),
+    Command("push", "Special/push_repo.py", "Special._security._push_cli"),
+    # Elaborate: other machines, or over time.
+    Command("setup-fleet", "Elaborate/setup_fleet.py", "Elaborate.setup_fleet"),
+    Command("peer", "Elaborate/peer.py", "Elaborate.peer"),
+    Command("publish-status", "Elaborate/publish_status.py", "Elaborate.publish_status"),
+    Command("suggest-fleet-sync", "Elaborate/suggest_fleet_sync.py", "Elaborate.suggest_fleet_sync"),
+    Command("converge", "Elaborate/converge.py", "Elaborate.converge"),
+    Command("check-safe-to-wipe", "Elaborate/check_safe_to_wipe.py", "Elaborate.check_safe_to_wipe"),
+    Command("recovery", "Elaborate/recovery.py", "Elaborate.recovery"),
+    Command("doctor", "Elaborate/doctor.py", "Elaborate.doctor"),
+    Command("preflight", "Elaborate/preflight.py", "Elaborate.preflight"),
+    Command("start-at-login", "Elaborate/start_at_login.py", "Elaborate.start_at_login"),
+    Command("schedule-archives", "Elaborate/schedule_archives.py", "Elaborate.schedule_archives"),
+    # App: presence and presentation.
+    Command("tray", "App/tray.py", "App.tray"),
+    Command("serve-web", "App/serve_web.py", "App.serve_web"),
     Command("setup", "setup_gitspecops.py", "setup_gitspecops"),
-    Command("sync", "git-sync-suggester/sync_suggester.py", "sync_suggester", legacy=True),
-    Command("app", "git-sync-suggester/app/fleet_app.py", "fleet_app", legacy=True),
 )
 
 
 def dispatch(command: Command, argv):
     """Invoke one chosen existing CLI adapter; never rewrite scope, argv or authorization."""
-    if command.legacy:
-        # Existing fleet bootstrap still owns its core/app layout until the reviewed move.
-        legacy_root = str(ROOT / "git-sync-suggester")
-        if legacy_root not in sys.path:
-            sys.path.insert(0, legacy_root)
-        importlib.import_module("_paths").bootstrap()
     module = importlib.import_module(command.module)
     result = getattr(module, command.handler)(*command.prefix, list(argv))
     return 0 if result is None else result

@@ -356,7 +356,7 @@ filter conversion changes previously reviewed working bytes. Re-preview the chec
 after review; changed/unmerged index snapshots and coverage gaps still hold actions. Deletions
 and historical versions are not scanned by this staged view.
 
-The headless operation is Special/security/_push.py; the policy-free primitive is
+The headless operation is Special/_security/_push.py; the policy-free primitive is
 Basic.push.push_snapshot. It pins the commit id and branch, suppresses extra tags/mirror/
 submodule pushes for that invocation, and preserves normal non-force Git checks and hooks.
 Source, target and effective policy are rechecked before execution. A removed settings file
@@ -401,7 +401,7 @@ profile and effective policy without contacting a remote or claiming outgoing ch
 needs the exact current id; policy is also compared at entry into the publication gate, before
 fetch. Actual base..tip checking and fixed-snapshot publication remain the shared action.
 
-Special/security/_advice.py provides local working-tree plus cached-outgoing advice, with
+Special/_security/_advice.py provides local working-tree plus cached-outgoing advice, with
 explicit timestamps, incomplete states and no action clearance. Sync `check` runs it for each
 observed checkout without additional network access or saved reports/logs. Its JSON is now a
 versioned local envelope (schema_version, manifest, local_security, artifacts), not the former

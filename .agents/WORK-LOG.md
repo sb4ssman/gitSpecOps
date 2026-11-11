@@ -2040,3 +2040,27 @@ No code changed; decisions recorded where they govern.
 
 ## 2026-11-11 11:57 - user (claude) - Clean-tree plan agreed
 - Decided by the user: network map with switchable views (machines, library, library folder, org, repo; chosen perspective) and matching repos lined up; remote watch and act built, off by default; `_archive/` ported then deleted; Qt tray now, opening the web view; Windows tray deleted after extraction; header template approved; launchers may break until regenerated. Plan with file-by-file mapping and phases: `.agents/HANDOFF-CLEAN-TREE.md`. Architecture revision and WORKING-NOTES updated. No code moved yet.
+
+## 2026-11-11 13:41 - user (claude) - Clean-tree pass: git-sync-suggester resolved into the layers
+- Moved every module of `git-sync-suggester/` to its layer (Special: this machine, once;
+  Elaborate: machines or time; App: presence) with history kept, and rewrote imports and test
+  patch targets. Split the old `check` into `Special/suggest_sync.py` (local, publishes nothing)
+  and `Elaborate/publish_status.py`; the fleet view is `Elaborate/suggest_fleet_sync.py`. Moved
+  catch-up, audit, materialize and live buffers to Special with a read-only selection loader and
+  the fleet's lock. The peer no longer imports App: App hands it `serve`.
+- New: Qt tray (`App/tray.py`, PySide6, declared as the optional `app` extra) opening the web
+  view; fixed failure reasons, no raw text kept; `App/serve_web.py` (web view without a tray, or
+  published status only); `App/_web/remote.py` (tailnet listener for the user's own devices:
+  identity, Host, Origin and token checks, preview actions only, off unless asked); the network
+  map tab (machines, libraries, one organization, one repository, chosen perspective) with its
+  policy in `Elaborate/_fleet/display.py` (`map.links`, `row.copies`, additive, contract v1).
+- Ported follow/relink from version 1 into `Special/follow_rewrite.py`; removed `_archive/`;
+  its regression checks now run against the port. Removed the polling `watch` (2026-10-19
+  ruling) keeping its change fingerprint; loading settings never converts them (`convert`).
+- Renames by the action-name rule: sync_archive, export_inventory, restore_inventory,
+  schedule_archives; security commands at the layer root, plumbing in `Special/_security/`.
+- A migration slip caught by the settings tests: the patch-string rewrite turned "config.json"
+  and "manifest.json" into module paths in nine places; restored and searched for others.
+- Checks: 79/79 test files, import direction over 177 files with no exclusion, hygiene, every
+  command's --help, a disposable end-to-end run of the web view. Old archive launchers will not
+  run until regenerated (expected).

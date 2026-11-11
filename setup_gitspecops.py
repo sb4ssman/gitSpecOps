@@ -142,7 +142,8 @@ LAUNCHER_SPECS = [
     ("Special", "update_archive.py", "update-archive", True),
     ("Special", "archive_manager.py", "manage-archives", False),
     ("Special", "duplicate_org.py", "duplicate-github-org", False),
-    ("git-sync-suggester", "sync_suggester.py", "suggest-sync", True),
+    ("Special", "suggest_sync.py", "suggest-sync", True),
+    ("App", "tray.py", "gitspecops-tray", False),
 ]
 
 SH_TEMPLATE = """#!/usr/bin/env sh

@@ -19,11 +19,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import ROOT, setup
 
 setup()
-from Special.security._checks import inspect
-from Special.security._contents import MEMBER_LIMIT_BYTES, image_metadata, open_archive
-from Special.security._findings import Report, write_report
-from Special.security._material import scan
-from Special.security._me import Policy, load_policy
+from Special._security._checks import inspect
+from Special._security._contents import MEMBER_LIMIT_BYTES, image_metadata, open_archive
+from Special._security._findings import Report, write_report
+from Special._security._material import scan
+from Special._security._me import Policy, load_policy
 
 
 class Scanners(unittest.TestCase):
@@ -82,8 +82,8 @@ class Scanners(unittest.TestCase):
             return [("engine-fixture-value", "sample-rule")] if b"engine-fixture-value" in data else []
 
         for material in ("tree", "history"):
-            with self.subTest(material=material), patch("Special.security._engines._execute", side_effect=execute), \
-                 patch("Special.security._engines.shutil.which", return_value=sys.executable):
+            with self.subTest(material=material), patch("Special._security._engines._execute", side_effect=execute), \
+                 patch("Special._security._engines.shutil.which", return_value=sys.executable):
                 report = scan(self.repo, self.policy, material=material)
             self.assertFalse(report.gaps, report.gaps)
             self.assertEqual(set(report.engines.values()), {"checked"})
@@ -93,10 +93,10 @@ class Scanners(unittest.TestCase):
 
     def test_explicit_none_overrides_policy_and_missing_selected_engine_is_incomplete(self):
         self.policy.engines = ("gitleaks",)
-        with patch("Special.security._engines._execute", side_effect=AssertionError("unexpected engine")):
+        with patch("Special._security._engines._execute", side_effect=AssertionError("unexpected engine")):
             report = scan(self.repo, self.policy, engines=())
         self.assertFalse(report.engines)
-        with patch("Special.security._engines.shutil.which", return_value=None):
+        with patch("Special._security._engines.shutil.which", return_value=None):
             report = scan(self.repo, self.policy)
         self.assertEqual(report.exit_code, 2)
         self.assertEqual(report.engines, {"gitleaks": "incomplete"})
@@ -186,7 +186,7 @@ class Scanners(unittest.TestCase):
             archive.writestr("data.txt", b"data")
         opened = open_archive("bundle.zip", memory.getvalue())
         self.assertIn(("private-marker/", b""), opened.members)
-        with patch("Special.security._contents.ENTRY_LIMIT", 1):
+        with patch("Special._security._contents.ENTRY_LIMIT", 1):
             self.assertTrue(any("count limit" in reason for _, reason in open_archive("bundle.zip", memory.getvalue()).skipped))
 
     def test_policy_sources_and_missing_or_unreadable_lists(self):
@@ -245,9 +245,9 @@ class Scanners(unittest.TestCase):
         self.assertEqual(before, after)
 
     def test_ref_changes_report_incomplete(self):
-        from Special.security._material import _ref_ids
+        from Special._security._material import _ref_ids
         original = _ref_ids(self.repo)
-        with patch("Special.security._material._ref_ids", side_effect=[original, {**original, "new-ref": "new-tip"}]):
+        with patch("Special._security._material._ref_ids", side_effect=[original, {**original, "new-ref": "new-tip"}]):
             result = scan(self.repo, self.policy, material="history")
         self.assertEqual(result.exit_code, 2)
         self.assertTrue(any(item["where"] == "refs" for item in result.gaps))
@@ -255,7 +255,7 @@ class Scanners(unittest.TestCase):
     def test_large_blob_is_rejected_before_loading(self):
         self.write("large.txt", "x" * 101)
         self.save("large fixture")
-        with patch("Special.security._material.MAX_FILE_BYTES", 100):
+        with patch("Special._security._material.MAX_FILE_BYTES", 100):
             result = scan(self.repo, self.policy, material="history")
         self.assertTrue(any(item["where"] == "large.txt" and "limit" in item["reason"] for item in result.gaps))
 
@@ -307,7 +307,7 @@ class Scanners(unittest.TestCase):
 
     def test_read_failure_never_issues_clean_result(self):
         from Basic._run import CommandFailed
-        with patch("Special.security._material.file_versions", side_effect=CommandFailed("fixture failure")):
+        with patch("Special._security._material.file_versions", side_effect=CommandFailed("fixture failure")):
             result = scan(self.repo, self.policy, material="history")
         self.assertEqual(result.exit_code, 2)
         self.assertEqual(result.record()["coverage"], "incomplete")
@@ -318,7 +318,7 @@ class Scanners(unittest.TestCase):
         watch.write_text("private-marker\n", encoding="utf-8")
         safe = self.root / "safe.txt"
         safe.write_text("", encoding="utf-8")
-        done = subprocess.run([sys.executable, "-B", str(ROOT / "Special/security/scan_tree.py"),
+        done = subprocess.run([sys.executable, "-B", str(ROOT / "Special/scan_tree.py"),
                                str(self.repo), "--never-publish", str(watch), "--safe-file", str(safe), "--json"],
                               cwd=self.root, capture_output=True, text=True)
         self.assertEqual(done.returncode, 1, done.stderr + done.stdout)
@@ -339,7 +339,7 @@ class Scanners(unittest.TestCase):
         settings.write_text(json.dumps(document), encoding="utf-8")
         original = settings.read_bytes(), (self.repo / ".git/index").read_bytes(), self.git("rev-parse", "HEAD")
         for material in ("tree", "history"):
-            done = subprocess.run([sys.executable, "-B", str(ROOT / f"Special/security/scan_{material}.py"),
+            done = subprocess.run([sys.executable, "-B", str(ROOT / f"Special/scan_{material}.py"),
                 str(self.repo), "--settings-home", str(home), "--json"],
                 cwd=self.root, capture_output=True, text=True)
             self.assertEqual(done.returncode, 1, done.stderr)
@@ -361,7 +361,7 @@ class Scanners(unittest.TestCase):
         watch.write_text("private-marker\n", encoding="utf-8")
         (home / "security" / "safe.txt").write_text("", encoding="utf-8")
         before = watch.read_bytes()
-        argv = [sys.executable, "-B", str(ROOT / "Special/security/scan_tree.py"), str(self.repo), "--json"]
+        argv = [sys.executable, "-B", str(ROOT / "Special/scan_tree.py"), str(self.repo), "--json"]
         refused = subprocess.run(argv, cwd=self.root, capture_output=True, text=True)
         self.assertEqual(refused.returncode, 2)
         self.assertEqual(json.loads(refused.stdout)["coverage"], "incomplete")

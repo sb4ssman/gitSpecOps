@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import ROOT, setup
 setup()
 
-from Special import archive_sync
+from Special import sync_archive as archive_sync
 from Special._archive import operation, sync, sync_cli
 from Special._archive.plan import LocalRepo, ReconcileItem, RepoRef, SyncPlan
 from Special._settings import resolve_settings
@@ -153,7 +153,7 @@ class ArchiveSyncTests(unittest.TestCase):
 
     def test_default_and_catalog_plan_to_one_stdout_record_without_files_or_mutation(self):
         self.advance("later.txt")
-        for entry in (archive_sync.main, lambda args: gitso.main(["archive-sync", *args])):
+        for entry in (archive_sync.main, lambda args: gitso.main(["sync-archive", *args])):
             code, record, err = self.cli(entry=entry)
             self.assertEqual(code, 0, err)
             self.assertTrue(record["scan_only"])
@@ -284,7 +284,7 @@ class ArchiveSyncTests(unittest.TestCase):
 
     def test_direct_script_help_from_outside_checkout_creates_no_profile(self):
         absent = self.root / "absent-profile"
-        done = subprocess.run([sys.executable, "-B", str(ROOT / "Special" / "archive_sync.py"),
+        done = subprocess.run([sys.executable, "-B", str(ROOT / "Special" / "sync_archive.py"),
                                "--settings-home", str(absent), "--help"], cwd=self.root,
                               capture_output=True, text=True, timeout=30)
         self.assertEqual(done.returncode, 0, done.stderr)

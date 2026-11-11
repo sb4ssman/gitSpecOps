@@ -22,9 +22,9 @@ setup()
 
 from Basic._run import CommandFailed, CommandTimeout
 from Special._settings import SettingsError, resolve_document, validate_document
-from Special.security import _cli, _engines
-from Special.security._findings import Finding, Report
-from Special.security._me import Policy, load_policy
+from Special._security import _cli, _engines
+from Special._security._findings import Finding, Report
+from Special._security._me import Policy, load_policy
 
 
 class Engines(unittest.TestCase):
@@ -180,7 +180,7 @@ class PolicyAndPresentation(unittest.TestCase):
                "local_never_publish": ["machine-marker"], "engines": ["gitleaks", "trufflehog"]}}}
         with tempfile.TemporaryDirectory() as home:
             resolved = resolve_document(doc, "security", home=home)
-            with patch("Special.security._me.run", return_value=type("R", (), {"returncode": 1, "stdout": ""})()):
+            with patch("Special._security._me.run", return_value=type("R", (), {"returncode": 1, "stdout": ""})()):
                 policy = load_policy(Path(home), settings=resolved)
             self.assertEqual(policy.engines, ("gitleaks", "trufflehog"))
             self.assertEqual(policy.identities["never-publish"], ["master-marker", "machine-marker"])

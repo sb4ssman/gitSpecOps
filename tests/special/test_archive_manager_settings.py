@@ -31,7 +31,7 @@ from Special._archive.plan import RepoRef
 from Special._settings import SettingsError
 from Special._settings.archives import load_archive_settings, save_archive_preferences
 from Special._settings import store
-from Elaborate import archive_manage as scheduled
+from Elaborate import schedule_archives as scheduled
 
 
 class ManagerSettingsTests(unittest.TestCase):
@@ -387,7 +387,7 @@ class ManagerSettingsTests(unittest.TestCase):
         self.put("settings.json", "{private-broken")
         config = self.root / "sync-profile"
         environment = {**os.environ, "GITSPECOPS_HOME": str(self.home)}
-        done = subprocess.run([sys.executable, "-B", str(ROOT / "git-sync-suggester" / "sync_suggester.py"),
+        done = subprocess.run([sys.executable, "-B", str(ROOT / "Elaborate" / "publish_status.py"),
             "--config-dir", str(config), "init", "--from-archives", "--machine-id", "machine-a",
             "--machine-label", "fixture"], cwd=self.root, env=environment, capture_output=True, text=True)
         self.assertEqual(done.returncode, 2)

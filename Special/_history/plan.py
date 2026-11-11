@@ -15,7 +15,7 @@ from uuid import uuid4
 from Basic._history_read import refs
 from Special._history.native import snapshot
 from Special._history.rules import Rules
-from Special.security._private_files import read_private_json, write_private_json
+from Special._security._private_files import read_private_json, write_private_json
 
 
 def _digest(record):

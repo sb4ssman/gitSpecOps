@@ -1,0 +1,37 @@
+"""Attach App's presentation to this machine's fleet peer: the web view, optionally the tailnet.
+
+Why:          the tray, the web-only mode and the packaged desktop entry all start the same
+              peer with the same presentation; one place builds it.
+Reads:        the fleet configuration (read-only; loading never converts or saves).
+May change:   nothing.
+Results:      (configuration, serve) where serve is what Elaborate's run_peer accepts.
+Layer:        App: presence and presentation.
+Status:       working
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from App._web.server import peer_server
+from Elaborate._fleet.cli import load_saved
+from Special._settings.fleet import fleet_directory, fleet_home
+
+
+def profile_arguments(config_dir=None, settings_home=None) -> list[str]:
+    """The profile selection every handoff keeps: tray, start-at-login and the peer itself."""
+    arguments = []
+    if config_dir is not None:
+        arguments += ["--config-dir", str(Path(config_dir))]
+    arguments += ["--settings-home", str(fleet_home(settings_home))]
+    return arguments
+
+
+def presentation(config_dir=None, settings_home=None, *, remote: bool = False):
+    directory = fleet_directory(config_dir, home=settings_home)
+    config = load_saved(directory, home=settings_home)
+    serve = peer_server(int(config["local_port"]))
+    if remote:
+        from App._web.remote import with_remote
+
+        serve = with_remote(serve, config)
+    return config, serve

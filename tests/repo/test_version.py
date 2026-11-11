@@ -16,10 +16,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import ROOT, setup  # noqa: E402
 
-setup("sync")
+setup()
 
-import version  # noqa: E402
-from fleet_display import build_display  # noqa: E402
+import Basic._version as version  # noqa: E402
+from Elaborate._fleet.display import build_display  # noqa: E402
 
 
 def check(condition, message):
