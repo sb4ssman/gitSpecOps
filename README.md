@@ -279,6 +279,9 @@ python3 Special/security/scan_history.py /path/to/repo --settings-home /path/to/
 ```
 
 Saved protected values remain in force when an additional `--never-publish` file is selected.
+`security.repository_exceptions` in the private settings maps a repository path to saved
+never-publish values that repository may contain (a personal site that names a project on
+purpose); every other repository still blocks them, and explicit `--never-publish` files still apply.
 `--safe-file` and `--safe` add allowances; conflicting protected/safe values produce an error.
 Excluded roots or subtrees are refused before inspection. `--out` explicitly requests a full
 private report using the current ignored-location rules.

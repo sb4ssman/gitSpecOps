@@ -157,6 +157,16 @@ def load_policy(repo: Path, *, home=None, settings: ResolvedSettings | None = No
                     engines=tuple(values.get("engines", ())))
     policy.identities["never-publish"] = list(dict.fromkeys(
         [*values["never_publish"], *values.get("local_never_publish", ())]))
+    if settings is not None:
+        # A repository exception lifts saved never-publish values for one repository path only
+        # (a site that publishes a name on purpose). Explicit --never-publish files still apply.
+        from Special.security._reviews import repository_scope
+        scope = repository_scope(repo)
+        lifted = {value.casefold() for path, listed in values.get("repository_exceptions", {}).items()
+                  if repository_scope(path) == scope for value in listed}
+        policy.identities["never-publish"] = [value for value in policy.identities["never-publish"]
+                                              if value.casefold() not in lifted]
+        policy.sources["repository-exceptions"] = len(lifted)
     policy.sources["settings"] = "legacy-explicit" if legacy_policy else settings.summary()
     defaults = selected / "security" if legacy_policy else None
     for explicit, name, label in ((never_file, "never_publish.txt", "never-publish"),

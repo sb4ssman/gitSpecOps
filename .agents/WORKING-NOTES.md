@@ -11,9 +11,8 @@ _Last tended: 2026-11-02 (inventory export output batch)_
 ### First real pushes, 2026-11-10: what is left
 
 The binary and trailer holds are fixed (see the log). Still open:
-- **Legacy settings block the default profile** ("explicit settings migration is required"). The
-  real pushes used `--settings-home` with an empty profile, so the user's never-publish list was not
-  applied. Migrating the user's real settings needs the user's own go-ahead.
+- **Archive launchers predate the shared settings.** Three exist, none scheduled; the migration
+  left them unchanged. Regenerate them (`prepare-repair`) before relying on them again.
 - **A binary file now needs one review per exact version.** The first push of a repo with fonts asks
   for a review of each font; that is intended. Watch whether that is too much friction in real use.
 - **`tests/fleet/test_core_path.py` fails** at `fleet_tray._LogTee`: the test (2026-09-19) predates the

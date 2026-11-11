@@ -28,7 +28,7 @@ DEFAULTS = {
     "logging": {"enabled": True, "directory": "logs", "level": "INFO",
                 "max_bytes": 10 * 1024 * 1024, "backup_count": 3},
     "security": {"never_publish": [], "safe_values": [], "local_never_publish": [],
-                 "local_safe_values": [], "engines": []},
+                 "local_safe_values": [], "engines": [], "repository_exceptions": {}},
 }
 _ACCUMULATED = {"scope.exclude_paths", "security.never_publish", "security.local_never_publish"}
 SECURITY_ENGINES = ("gitleaks", "betterleaks", "trufflehog")
@@ -48,6 +48,15 @@ def _strings(value, where):
         raise SettingsError(f"{where} must be a list of nonempty strings")
 
 
+def _exceptions(value, where):
+    """{repository path: [saved never-publish values that repository may contain]}."""
+    _object(value, where)
+    for path, listed in value.items():
+        if not isinstance(path, str) or not path.strip() or "\0" in path:
+            raise SettingsError(f"{where} needs nonempty repository paths")
+        _strings(listed, where)
+
+
 def _part(value):
     _object(value, "settings")
     if set(value) - DEFAULTS.keys():
@@ -58,7 +67,9 @@ def _part(value):
             raise SettingsError(f"{section} contains an unknown field")
         for key, item in entries.items():
             where = f"{section}.{key}"
-            if section in ("scope", "security"):
+            if where == "security.repository_exceptions":
+                _exceptions(item, where)
+            elif section in ("scope", "security"):
                 _strings(item, where)
                 if where == "security.engines" and (len(item) != len(set(item)) or
                                                       not set(item) <= set(SECURITY_ENGINES)):

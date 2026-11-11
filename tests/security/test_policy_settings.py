@@ -112,6 +112,25 @@ class PolicySettingsTests(unittest.TestCase):
         self.assertEqual(policy.sources["settings"]["schema_version"], 1)
         self.assertEqual(policy.sources["settings"]["home_source"], "explicit")
 
+    def test_repository_exception_lifts_saved_values_for_that_repository_only(self):
+        other = self.root / "other"
+        other.mkdir()
+        self.profile(defaults={"security": {"never_publish": ["private-marker", "venture-name"],
+                                            "repository_exceptions": {str(self.repo): ["VENTURE-NAME"]}}})
+        self.assertEqual(subject.load_policy(self.repo).identities["never-publish"], ["private-marker"])
+        self.assertEqual(subject.load_policy(other).identities["never-publish"], ["private-marker", "venture-name"])
+        watch = self.put("watch.txt", "venture-name\n")
+        self.assertIn("venture-name", subject.load_policy(self.repo, never_file=watch).identities["never-publish"])
+        record = json.dumps(subject.load_policy(self.repo).summary())
+        self.assertNotIn("venture-name", record)
+        self.assertNotIn(str(self.repo), record)
+
+    def test_invalid_repository_exceptions_are_refused(self):
+        for bad in ([], {"": ["x"]}, {"repo": "x"}, {"repo": [""]}):
+            self.profile(defaults={"security": {"repository_exceptions": bad}})
+            with self.subTest(bad=bad), self.assertRaises(SettingsError):
+                subject.load_policy(self.repo)
+
     def test_explicit_files_add_to_common_lists_without_removing_saved_blocks(self):
         self.profile()
         watch = self.put("watch-extra.txt", "# comment\nadditional-private\n")

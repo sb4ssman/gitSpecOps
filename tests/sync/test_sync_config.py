@@ -66,6 +66,9 @@ with tempfile.TemporaryDirectory() as tmp:
           "default_machine_id produced an id the transport would reject")
 
     # --- round trip -----------------------------------------------------------------
+    # A throwaway profile: without one, saving reads the person's real settings home, and a
+    # migrated profile (common settings present) refuses this legacy-style save.
+    os.environ["GITSPECOPS_HOME"] = str(tmp / "profile")
     config_dir = tmp / "cfg"
     original = default_config("alpha-machine")
     original["machine_label"] = "ALPHA"
