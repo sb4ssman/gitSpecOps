@@ -2173,3 +2173,10 @@ No code changed; decisions recorded where they govern.
   reading Git status n of N, putting state together, fetching remotes, watching): the tray's
   tooltip and menu, and a status line under the web header. `IncrementalObserver.inventory`
   passes progress through. Full suite 86/86.
+
+## 2026-11-12 13:04 - user (claude) - Correction: refused local actions could reset the connection
+- Correction to the previous entry: the full suite was 85/86 when it was logged as 86/86, not
+  run again after the last fixes. The failure was intermittent (WinError 10053 in
+  `tests/app/test_setup_page.py`): the local server refused a request without reading its body,
+  and on Windows that can reset the connection before the browser reads why. Refusals now read a
+  small body first (`App/_web/server.py`). That test 10/10 in a row; full suite 86/86.

@@ -102,17 +102,28 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
                         "security-policy": fleet_action, "security-policy-change": fleet_action}
             if setup is not None and action.startswith("setup/"):
                 handlers[action] = lambda name, payload: setup.act(name.removeprefix("setup/"), payload)
+            def refuse(status, message):
+                # Read a small unread body first: closing a socket with unread data resets the
+                # connection on Windows, and the caller would never see why it was refused.
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if 0 < length <= 65536 and not self.headers.get("Transfer-Encoding"):
+                        self.rfile.read(length)
+                except (ValueError, OSError):
+                    pass
+                self.send(status, {"error": message})
+
             if action not in handlers or handlers[action] is None:
-                self.send(405, {"error": "this endpoint accepts no actions"})
+                refuse(405, "this endpoint accepts no actions")
                 return
             origin = f"http://{LOOPBACK}:{self.server.server_address[1]}"
             if not self.local_request() or self.headers.get("Origin") != origin \
                     or not secrets.compare_digest(self.headers.get("X-GitSpecOps-Token", "").encode(),
                                                   action_token.encode()):
-                self.send(403, {"error": "open this action from the local dashboard"})
+                refuse(403, "open this action from the local dashboard")
                 return
             if self.headers.get_content_type() != "application/json":
-                self.send(415, {"error": "JSON required"})
+                refuse(415, "JSON required")
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
