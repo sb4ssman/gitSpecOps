@@ -3,12 +3,13 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>gitSpecOps Sync-Suggester Fleet Management</title>
+<link rel="icon" id="favicon" type="image/svg+xml" href="/v1/mark.svg?machine=starting&amp;fleet=none&amp;size=32">
 <link rel="stylesheet" href="/assets/fleet_standard.css">
 <script type="module" src="/assets/fleet_standard.js"></script>
 </head>
 <body>
 <a class="skip-link" href="#workspace">Skip to repositories</a>
-<header class="app-header"><div><div class="brand">gitSpecOps <span class="preview">Development preview</span></div><h1>Sync-Suggester Fleet Management</h1></div><div class="connection-tools"><span id="connection" role="status">Connecting…</span><a href="/setup">Setup</a><button id="theme" type="button">Light mode</button><button id="refresh" type="button">Refresh view</button></div></header>
+<header class="app-header"><div class="brand-row"><img id="mark" class="mark" src="/v1/mark.svg?machine=starting&amp;fleet=none&amp;size=64" width="48" height="48" alt="gitSpecOps: starting"><div><div class="brand">gitSpecOps <span class="preview">Development preview</span></div><h1>Sync-Suggester Fleet Management</h1><p id="mark-text" class="mark-text">This machine: starting · Fleet: not known yet</p></div></div><div class="connection-tools"><span id="connection" role="status">Connecting…</span><a href="/setup">Setup</a><button id="theme" type="button">Light mode</button><button id="refresh" type="button">Refresh view</button></div></header>
 <div id="connection-warning" class="banner warning" role="alert" hidden></div>
 <nav class="tabs" aria-label="Fleet views"><button type="button" data-tab="repositories" aria-pressed="true">Repositories</button><button type="button" data-tab="map" aria-pressed="false">Network map</button><button type="button" data-tab="machines" aria-pressed="false">Machines</button><button type="button" data-tab="about" aria-pressed="false">App &amp; setup</button></nav>
 <section id="summary" class="summary-grid" aria-label="Fleet overview"></section>

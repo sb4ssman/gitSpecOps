@@ -18,7 +18,8 @@ from pathlib import Path
 #: What start-at-login registers: the tray command itself.
 TRAY_SCRIPT = Path(__file__).resolve().parents[1] / "tray.py"
 
-from App._tray.model import (GENERIC_FAILURE, POLL_SECONDS, setup_snapshot, STATE_COLOURS, Snapshot, error_snapshot,  # noqa: E402
+from App._mark.qt import icon as mark_icon  # noqa: E402
+from App._tray.model import (GENERIC_FAILURE, POLL_SECONDS, setup_snapshot, Snapshot, error_snapshot,  # noqa: E402
                              failure_reason, snapshot_from_display, stopped_snapshot)
 
 class TrayUnavailable(RuntimeError):
@@ -68,16 +69,17 @@ def _logging(settings_home):
     return configure_logging(settings, "app_tray")
 
 
-def _icon(QtGui, colour):
-    pixmap = QtGui.QPixmap(64, 64)
-    pixmap.fill(QtGui.QColor(0, 0, 0, 0))
-    painter = QtGui.QPainter(pixmap)
-    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-    painter.setBrush(QtGui.QColor(*colour))
-    painter.setPen(QtGui.QColor(30, 30, 30))
-    painter.drawEllipse(6, 6, 52, 52)
-    painter.end()
-    return QtGui.QIcon(pixmap)
+class Icons:
+    """The mark for each pair of states, painted once and reused (at most 20 pairs)."""
+
+    def __init__(self):
+        self._cache = {}
+
+    def get(self, machine: str, fleet: str):
+        key = (machine, fleet)
+        if key not in self._cache:
+            self._cache[key] = mark_icon(machine, fleet)
+        return self._cache[key]
 
 
 def missing_qt_message() -> str:
@@ -116,8 +118,8 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
         notify = QtCore.Signal(str, str)
 
     bridge = Bridge()
-    icons = {state: _icon(QtGui, colour) for state, colour in STATE_COLOURS.items()}
-    tray = QtWidgets.QSystemTrayIcon(icons["starting"])
+    icons = Icons()
+    tray = QtWidgets.QSystemTrayIcon(icons.get("starting", "none"))
     tray.setToolTip("gitSpecOps: starting")
     stopping, ready = threading.Event(), threading.Event()
     context: dict = {}
@@ -126,8 +128,10 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
     operational = _logging(settings_home)
 
     def apply(snapshot: Snapshot):
-        tray.setIcon(icons.get(snapshot.state, icons["error"]))
-        tray.setToolTip(snapshot.text[:120])
+        tray.setIcon(icons.get(snapshot.machine, snapshot.fleet))
+        tray.setToolTip(snapshot.tooltip())
+        machine_line.setText(f"This machine: {snapshot.machine_text}")
+        fleet_line.setText(f"Fleet: {snapshot.fleet_text}")
 
     def open_view():
         """Double-click: open the face the person chose, web or window."""
@@ -178,6 +182,12 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
             tray.showMessage("Could not change start at login", "Elaborate/start_at_login.py shows why.")
 
     menu = QtWidgets.QMenu()
+    # The two signals in words, the detail behind the icon without opening a window.
+    machine_line = menu.addAction("This machine: starting")
+    machine_line.setEnabled(False)
+    fleet_line = menu.addAction("Fleet: not known yet")
+    fleet_line.setEnabled(False)
+    menu.addSeparator()
     menu.addAction("Open web view").triggered.connect(lambda: webbrowser.open(context["url"])
                                                       if context.get("url") else None)
     window_action = menu.addAction("Open window")

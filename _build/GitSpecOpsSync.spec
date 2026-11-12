@@ -24,6 +24,7 @@ analysis = Analysis(
     # would fail only when a person reaches them (a menu item, recovery). Name them.
     hiddenimports=["App._tray.qt", "App._tray.model", "App._launch", "App._web.server",
                    "App._web.remote", "App._web._assets", "App._web.setup",
+                   "App._mark.geometry", "App._mark.svg", "App._mark.qt",
                    "Elaborate._fleet.setup_state", "Elaborate._fleet.autostart",
                    "Elaborate._fleet.peer", "Elaborate._fleet.local_view", "Special._sync.actions",
                    "Elaborate._recovery.runtime", "Elaborate._recovery.capture",

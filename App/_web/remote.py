@@ -26,6 +26,9 @@ import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from urllib.parse import parse_qs, urlsplit
+
+from App._mark.svg import mark_response
 from App._web._assets import load_ui_assets
 from Elaborate._fleet.display import CONTRACT_NAME
 from Elaborate._fleet.net import local_identity, peer_identity
@@ -70,7 +73,7 @@ def make_remote_server(address, build_document, assets, fleet_action, authentica
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Security-Policy",
                              "default-src 'none'; script-src 'self'; style-src 'self'; "
-                             "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; "
+                             "img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; "
                              "form-action 'none'")
             self.end_headers()
             self.wfile.write(data)
@@ -91,6 +94,9 @@ def make_remote_server(address, build_document, assets, fleet_action, authentica
             if self.path in assets:
                 data, kind = assets[self.path]
                 self.send(200, data, kind)
+                return
+            if urlsplit(self.path).path == "/v1/mark.svg":
+                self.send(*mark_response(parse_qs(urlsplit(self.path).query)))
                 return
             if self.path == "/v1/dashboard":
                 try:

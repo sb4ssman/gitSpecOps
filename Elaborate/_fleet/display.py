@@ -74,6 +74,60 @@ def _remote_checked(row, now, fetch_seconds) -> bool:
     return True
 
 
+def _plural(count: int, one: str, many: str) -> str:
+    return f"{count} {one if count == 1 else many}"
+
+
+def mark_state(rows, machines, reports, settings) -> dict:
+    """The two signals every face shows (the tray icon, the web view's mark): this machine, and
+    the fleet condensed to its worst machine. States: starting, ok, attention, error, none.
+
+    A machine's own trouble is a copy on it that is not plainly in sync (uncommitted, unpushed,
+    behind, diverged, stashed, unreadable) or a problem it reported. The fleet is "none" until
+    this machine joins one, "starting" until another machine reports, then the worst of them:
+    a machine that stopped reporting or has trouble of its own needs attention. Error is kept
+    for failures of this machine's own peer, which only the tray can see."""
+    me = settings.get("machine_id")
+    issues = {r["manifest"]["machine_id"]: len(r["issues"]) for r in reports if r["issues"]}
+
+    def trouble(machine_id):
+        return sum(1 for row in rows
+                   if (cell := row["cells"].get(machine_id)) and cell["present"]
+                   and cell["state"] != "synced")
+
+    mine = next((m for m in machines if m["id"] == me), None)
+    if mine is None:
+        machine = {"state": "starting", "text": "waiting for the first observation"}
+    else:
+        count, problems = trouble(me), issues.get(me, 0)
+        parts = [f"{count} of {mine['repository_count']} need attention" if count
+                 else f"{mine['repository_count']} repositories in sync"]
+        if problems:
+            parts.append(_plural(problems, "problem", "problems"))
+        machine = {"state": "attention" if count or problems else "ok", "text": ", ".join(parts)}
+    others = [m for m in machines if m["id"] != me]
+    if not settings.get("transport_config"):
+        fleet = {"state": "none", "text": "not in a fleet"}
+    elif not others:
+        fleet = {"state": "starting", "text": "no other machine has reported yet"}
+    else:
+        needy = [m for m in others if m["freshness"] != "current" or trouble(m["id"]) or issues.get(m["id"])]
+        if needy:
+            first = needy[0]
+            if first["freshness"] != "current":
+                why = "not reporting"
+            elif trouble(first["id"]):
+                why = _plural(trouble(first["id"]), "repository needs", "repositories need") + " attention"
+            else:
+                why = "reported a problem"
+            more = f" (+{len(needy) - 1} more)" if len(needy) > 1 else ""
+            fleet = {"state": "attention",
+                     "text": f"{len(others) - len(needy)} of {len(others)} clear; {first['label']}: {why}{more}"}
+        else:
+            fleet = {"state": "ok", "text": f"all {_plural(len(others), 'other machine', 'other machines')} clear"}
+    return {"machine": machine, "fleet": fleet}
+
+
 def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None):
     """Return JSON-compatible display v1. All clock-dependent rules use the supplied now."""
     now = now or datetime.now(timezone.utc)
@@ -201,6 +255,7 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
         "machines": machines, "groups": sorted(groups.values(), key=lambda g: g["id"].casefold()),
         "rows": rows,
         "map": {"links": links},
+        "mark": mark_state(rows, machines, reports, settings),
         "desktop_client": {"configured": bool(desktop.get("configured")),
                            "id": desktop.get("id", ""),
                            "label": desktop.get("label", "Desktop Git client"),

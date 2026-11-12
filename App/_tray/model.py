@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from App._mark.geometry import STATES as MARK_STATES
+
 CONTRACT_NAME = "gitspecops.fleet.display"
 CONTRACT_VERSION = 1
 POLL_SECONDS = 5.0
@@ -54,6 +56,16 @@ class Snapshot:
     attention: int = 0
     machines: int = 0
     stale: int = 0
+    #: The mark's two signals (App/_mark): this machine, and the fleet condensed to one state.
+    machine: str = "starting"
+    fleet: str = "none"
+    machine_text: str = "starting"
+    fleet_text: str = "not known yet"
+
+    def tooltip(self) -> str:
+        """Windows cuts tray tooltips at 127 characters: two short lines, the menu has the rest."""
+        text = f"gitSpecOps\nThis machine: {self.machine_text}\nFleet: {self.fleet_text}"
+        return text if len(text) <= 127 else text[:126] + "…"
 
 
 def snapshot_from_display(document: dict, url: str, label: str) -> Snapshot:
@@ -77,18 +89,30 @@ def snapshot_from_display(document: dict, url: str, label: str) -> Snapshot:
               if snapshot.attention else f"{snapshot.repositories} repositories, all clear")
     stale = f", {snapshot.stale} machine(s) stale" if snapshot.stale else ""
     snapshot.text = f"{label}: {detail}{stale}"
+    signals = document.get("mark") or {}
+    machine, fleet = signals.get("machine") or {}, signals.get("fleet") or {}
+    if machine.get("state") in MARK_STATES and fleet.get("state") in MARK_STATES:
+        snapshot.machine, snapshot.machine_text = machine["state"], str(machine.get("text") or "")
+        snapshot.fleet, snapshot.fleet_text = fleet["state"], str(fleet.get("text") or "")
+    else:  # a peer from before the mark: the overall state, no fleet signal
+        snapshot.machine, snapshot.machine_text = snapshot.state, detail
+        snapshot.fleet, snapshot.fleet_text = "none", "not reported by this peer"
     return snapshot
 
 
 def setup_snapshot(url: str) -> Snapshot:
     """An un-enrolled machine: not an error, an invitation."""
     return Snapshot(state="attention", url=url, ready=True,
-                    text="gitSpecOps is not set up yet. Double-click to choose your library folders.")
+                    text="gitSpecOps is not set up yet. Double-click to choose your library folders.",
+                    machine="attention", machine_text="not set up yet; double-click to start",
+                    fleet="none", fleet_text="not in a fleet")
 
 
 def error_snapshot(url: str, label: str) -> Snapshot:
     return Snapshot(state="error", url=url, ready=bool(url),
-                    text=f"{label}: cannot read the fleet dashboard right now.")
+                    text=f"{label}: cannot read the fleet dashboard right now.",
+                    machine="error", machine_text="cannot read the fleet dashboard right now",
+                    fleet="starting", fleet_text="not known right now")
 
 
 def failure_reason(error_line: str | None) -> str:
@@ -102,4 +126,6 @@ def failure_reason(error_line: str | None) -> str:
 
 def stopped_snapshot(reason: str) -> Snapshot:
     """`reason` is already one of the fixed sentences above, never the peer's own text."""
-    return Snapshot(state="error", text=f"gitSpecOps is not running: {reason}")
+    return Snapshot(state="error", text=f"gitSpecOps is not running: {reason}",
+                    machine="error", machine_text="not running; open the menu to see why",
+                    fleet="starting", fleet_text="not known while stopped")

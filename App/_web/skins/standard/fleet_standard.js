@@ -49,6 +49,22 @@ function setTheme(theme) {
   try { localStorage.setItem('gitspecops-theme', theme); } catch { /* private storage may refuse */ }
 }
 
+/** The mark: drawn by the server from the two signals the display document names. */
+let markShown = '';
+function renderMark() {
+  const mark = state.data.mark;
+  if (!mark || !mark.machine || !mark.fleet) return;
+  const m = mark.machine.state, f = mark.fleet.state;
+  const words = `This machine: ${mark.machine.text} · Fleet: ${mark.fleet.text}`;
+  byId('mark-text').textContent = words;
+  byId('mark').alt = `gitSpecOps. ${words}`;
+  if (markShown === `${m}/${f}`) return;
+  markShown = `${m}/${f}`;
+  const url = size => `/v1/mark.svg?machine=${encodeURIComponent(m)}&fleet=${encodeURIComponent(f)}&size=${size}`;
+  byId('mark').src = url(64);
+  byId('favicon').href = url(32);
+}
+
 function renderSummary() {
   const {summary} = state.data;
   const values = [
@@ -379,7 +395,7 @@ connection.addEventListener('idle', () => { controls.refresh.disabled = false; }
 connection.addEventListener('display', event => {
   if (event.detail.data.setup_required) { window.location.href = '/setup'; return; }
   state.data = event.detail.data; state.receivedAt = event.detail.receivedAt;
-  controls.warning.hidden = true; byId('connection').textContent = 'Dashboard connected'; renderAll();
+  controls.warning.hidden = true; byId('connection').textContent = 'Dashboard connected'; renderMark(); renderAll();
 });
 connection.addEventListener('unavailable', event => {
   byId('connection').textContent = 'Dashboard unavailable'; controls.warning.hidden = false;

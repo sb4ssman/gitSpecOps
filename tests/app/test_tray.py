@@ -107,7 +107,10 @@ def test_a_python_without_qt_is_pointed_at_the_project_environment():
 
     message = missing_qt_message()
     venv = TRAY_SCRIPT.parents[1] / ".venv"
-    if venv.is_dir() and "PySide6" not in sys.modules:
+    venv_python = venv / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    # Only a *different* Python is pointed at the project's environment; run under that
+    # environment itself, the plain "not installed" message is the right one.
+    if venv_python.is_file() and venv_python.resolve() != Path(sys.executable).resolve():
         check(str(venv) in message and str(TRAY_SCRIPT) in message, message)
     else:
         check("PySide6" in message, message)
@@ -181,7 +184,7 @@ def test_without_a_system_tray_the_command_steps_aside():
     from App._tray import qt
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    check(not qt._icon(QtGui, (90, 190, 90)).isNull(), "the state icon must render")
+    check(not qt.Icons().get("ok", "attention").isNull(), "the mark must render")
     if QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
         print("skip: a real system tray is available; not starting a peer from a test")
         return

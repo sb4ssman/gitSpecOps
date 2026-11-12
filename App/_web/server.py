@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from Elaborate._fleet.display import CONTRACT_NAME
 from Elaborate._fleet.local_view import display_from_transport
+from App._mark.svg import mark_response
 from App._web._assets import load_ui_assets
 
 LOOPBACK = "127.0.0.1"
@@ -50,7 +51,7 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Security-Policy",
                              "default-src 'none'; script-src 'self'; style-src 'self'; "
-                             "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; "
+                             "img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; "
                              "form-action 'none'")
             self.end_headers()
             self.wfile.write(data)
@@ -71,6 +72,9 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
                     except (OSError, ValueError) as exc:
                         state = {"error": str(exc)}
                     self.send(200, {**state, "local_actions": {"token": action_token}})
+                    return
+                if path == "/v1/mark.svg":
+                    self.send(*mark_response(query))
                     return
                 if self.path == "/v1/dashboard":
                     document = build_document()

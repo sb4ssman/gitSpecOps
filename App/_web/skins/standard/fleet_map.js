@@ -23,7 +23,7 @@ const toneOfFreshness = freshness => (freshness === 'current' ? 'success' : fres
 
 export const VIEWS = [
   ['machines', 'Machines together'],
-  ['libraries', 'Libraries: organizations on each machine'],
+  ['libraries', 'Libraries: host, organization, repository'],
   ['organization', 'One organization across machines'],
   ['repository', 'One repository across machines'],
 ];
@@ -110,24 +110,95 @@ function gridHead(machines, perspective, first) {
   return head;
 }
 
+const HOST_NAMES = {'github.com': 'GitHub', 'gitlab.com': 'GitLab', 'bitbucket.org': 'Bitbucket',
+                    'local': 'No remote: only on a machine'};
+// What is open in the tree, kept across refreshes (hosts start open, organizations closed).
+const closedHosts = new Set();
+const openGroups = new Set();
+
+/** Where each library's repositories live: host, then organization, then repository. */
+export function libraryTree(data) {
+  const hosts = new Map();
+  for (const group of data.groups) {
+    if (!hosts.has(group.host)) hosts.set(group.host, []);
+    hosts.get(group.host).push(group);
+  }
+  return [...hosts.entries()]
+    .sort(([a], [b]) => (a === 'local') - (b === 'local') || a.localeCompare(b))
+    .map(([host, groups]) => ({host, label: HOST_NAMES[host] || host, groups,
+                               count: groups.reduce((sum, g) => sum + g.count, 0),
+                               attention: groups.reduce((sum, g) => sum + g.attention, 0)}));
+}
+
+function countText(value) {
+  return value && value.present ? `${value.present} here${value.attention ? ` · ${value.attention} need attention` : ''}` : '—';
+}
+function countTone(value) {
+  return value && value.present ? (value.attention ? 'tone-warning' : '') : 'tone-muted';
+}
+
 function librariesView(container, data, perspective, onPick) {
   const machines = orderedMachines(data, perspective);
   const counts = libraryCounts(data);
-  container.append(html('p', 'Each machine’s library, by organization, lined up across machines. ' +
-    'Library folder paths stay private on each machine, so organizations stand in for them.', 'map-note'));
-  const table = html('table', undefined, 'map-grid');
-  table.append(gridHead(machines, perspective, 'Organization'));
-  for (const group of data.groups) {
-    const line = html('tr');
-    const name = html('button', `${group.label} (${group.count})`, 'repo-link');
-    name.onclick = () => onPick({view: 'organization', group: group.id});
-    const first = html('td'); first.append(name); line.append(first);
+  const redraw = () => { container.replaceChildren(); librariesView(container, data, perspective, onPick); };
+  container.append(html('p', 'Every library as a tree: where repositories are hosted, then each ' +
+    'organization, then each repository, with each machine’s copies lined up in the columns. ' +
+    'Library folder paths stay private on each machine.', 'map-note'));
+  const table = html('table', undefined, 'map-grid map-tree');
+  table.append(gridHead(machines, perspective, 'Host · organization · repository'));
+  const toggle = (label, open, onClick, level) => {
+    const button = html('button', `${open ? '▾' : '▸'} ${label}`, `tree-toggle tree-${level}`);
+    button.setAttribute('aria-expanded', String(open));
+    button.onclick = onClick;
+    return button;
+  };
+  for (const host of libraryTree(data)) {
+    const hostOpen = !closedHosts.has(host.host);
+    const line = html('tr', undefined, 'tree-host-row');
+    const first = html('td');
+    first.append(toggle(`${host.label} · ${host.groups.length} organization${host.groups.length === 1 ? '' : 's'}, ` +
+                        `${host.count} repositories${host.attention ? `, ${host.attention} need attention` : ''}`,
+                        hostOpen, () => { hostOpen ? closedHosts.add(host.host) : closedHosts.delete(host.host); redraw(); }, 'host'));
+    line.append(first);
     for (const machine of machines) {
-      const value = counts[`${group.id}\u0000${machine.id}`];
-      const text = value ? `${value.present} here${value.attention ? ` · ${value.attention} need attention` : ''}` : '—';
-      line.append(html('td', text, value ? (value.attention ? 'tone-warning' : '') : 'tone-muted'));
+      const total = {present: 0, attention: 0};
+      for (const group of host.groups) {
+        const value = counts[`${group.id}\u0000${machine.id}`];
+        if (value) { total.present += value.present; total.attention += value.attention; }
+      }
+      line.append(html('td', countText(total), countTone(total)));
     }
     table.append(line);
+    if (!hostOpen) continue;
+    for (const group of host.groups) {
+      const groupOpen = openGroups.has(group.id);
+      const row = html('tr', undefined, group.attention ? 'tree-group-row map-attention' : 'tree-group-row');
+      const cell = html('td');
+      cell.append(toggle(`${group.label} (${group.count})`, groupOpen,
+                         () => { groupOpen ? openGroups.delete(group.id) : openGroups.add(group.id); redraw(); }, 'group'));
+      const across = html('button', 'across machines', 'repo-link tree-open');
+      across.onclick = () => onPick({view: 'organization', group: group.id});
+      cell.append(across);
+      row.append(cell);
+      for (const machine of machines) {
+        const value = counts[`${group.id}\u0000${machine.id}`];
+        row.append(html('td', countText(value), countTone(value)));
+      }
+      table.append(row);
+      if (!groupOpen) continue;
+      for (const repo of rowsOf(data, group.id)) {
+        const leaf = html('tr', undefined, repo.needs_attention ? 'tree-repo-row map-attention' : 'tree-repo-row');
+        const name = html('button', `${repo.needs_attention ? '⚑ ' : ''}${repo.identity ? repo.identity.name : repo.name}`, 'repo-link tree-repo');
+        name.onclick = () => onPick({view: 'repository', repo: repo.id});
+        const lead = html('td'); lead.append(name); leaf.append(lead);
+        for (const machine of machines) {
+          const copy = repo.cells[machine.id];
+          leaf.append(html('td', copyText(copy, repo, repo.cells[perspective]),
+                           copy && copy.present ? `tone-${copy.tone}` : 'tone-muted'));
+        }
+        table.append(leaf);
+      }
+    }
   }
   container.append(table);
 }

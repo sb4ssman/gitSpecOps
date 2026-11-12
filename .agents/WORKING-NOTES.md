@@ -22,6 +22,15 @@ _Last tended: 2026-11-11 (clean-tree pass checkpoint: phases 1-8 done, phase 9 p
   status`; the tray serves setup on an un-enrolled machine and restarts the peer on changes.
   Next in the sequence: CI on three systems (tests and unsigned preview builds), then the
   updater, then signing (the user's decision). Not yet seen by the user on a real desktop.
+- **The mark, hub and ring (2026-11-12), done:** `App/_mark/` (geometry, SVG, Qt painter) is the
+  one drawing for every face: the tray icon, the web view's header and tab icon (`/v1/mark.svg`),
+  and the Qt window when it exists. The display document carries `mark` (this machine; the fleet
+  condensed to its worst machine), the tray tooltip and menu spell both out. Not yet seen by the
+  user in their own tray (the running tray predates it; restart it).
+- **A real map (2026-11-12), discussion open:** the user wants more than the list: a zoomable,
+  visual map; zoomed out, the clouds (GitHub, GitLab) and the machines; zoom into one for its
+  organizations, repositories and copies. Step taken: the Libraries view is now a tree (host,
+  organization, repository). Undecided: the drawing approach and what the cloud level shows.
 - **The whole-product picture (2026-11-12):** drafted as the eventual README in
   [`drafts/eventual-README.md`](drafts/eventual-README.md): one install per OS with `gitso`
   included, the tray and map, the growth matrix (installed, machine, fleet, managed repository,

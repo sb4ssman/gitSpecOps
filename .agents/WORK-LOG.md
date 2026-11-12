@@ -2116,3 +2116,21 @@ No code changed; decisions recorded where they govern.
   checked: Syncthing (ring, hub, three spokes) and Kubernetes (polygon with spokes); keep the
   pentagon rim prominent and never inside a filled disc. The candidates and their drawings are
   kept in the org's private lab.
+
+## 2026-11-12 10:56 - user (claude) - The mark in the app; the libraries tree
+- `App/_mark/geometry.py` (hub and ring as primitives, zoomed to fill the square, a simplified
+  drawing at 24 px and under; lines stop at node edges so hollow nodes need no masks),
+  `App/_mark/svg.py` (plain SVG, and the `/v1/mark.svg` route: known states and sizes only),
+  `App/_mark/qt.py` (QPainter pixmaps and a multi-size QIcon).
+- `Elaborate/_fleet/display.py` `mark_state`: this machine (its copies not plainly in sync, or
+  problems it reported) and the fleet ("none" until joined, "starting" until another machine
+  reports, then its worst machine). The peer passes its machine id.
+- Tray: the icon is the mark for both states; the tooltip (two lines, at most 127 characters) and
+  two status lines at the top of the menu. Web view: the mark in the header with both signals in
+  words, and as the tab icon; `img-src 'self'` added to both servers' CSP.
+- Network map: the Libraries view is a tree (host, organization, repository) with each machine's
+  copies in the columns; hosts start open, organizations closed, and stay as left.
+- `tests/app/test_mark.py` (6); `tests/app/test_tray.py`'s "different Python" check now holds
+  under the project's own Python too. Full suite 83/83. Previewed for real: Qt-painted marks at
+  16, 24 and 32 px on light and dark, and the header and tree from a saved copy of the user's live
+  document (168 repositories) in headless Edge.
