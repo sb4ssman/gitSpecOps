@@ -52,6 +52,7 @@ function setTheme(theme) {
 /** The mark: drawn by the server from the two signals the display document names. */
 let markShown = '';
 function renderMark() {
+  byId('first-observation').hidden = Boolean(state.data.machines && state.data.machines.length);
   const mark = state.data.mark;
   if (!mark || !mark.machine || !mark.fleet) return;
   const m = mark.machine.state, f = mark.fleet.state;
@@ -338,7 +339,7 @@ function renderNotices() {
   for (const notice of state.data.notices) block.append(node('p', notice.text, `tone-text-${notice.tone}`));
 }
 
-const mapOptions = {view: 'machines', perspective: null, group: 'all', repo: null};
+const mapOptions = {view: 'zoom', perspective: null, group: 'all', repo: null};
 
 function fillSelect(select, entries, chosen) {
   select.replaceChildren(...entries.map(([value, label]) => option(value, label)));
@@ -353,6 +354,7 @@ function renderMapPanel() {
   fillSelect(byId('map-repo'), data.rows.map(r => [r.id, r.name]), mapOptions.repo);
   mapOptions.perspective = byId('map-perspective').value || null;
   mapOptions.repo = byId('map-repo').value || null;
+  byId('map-perspective').closest('label').hidden = mapOptions.view === 'zoom';
   byId('map-group').closest('label').hidden = mapOptions.view !== 'organization';
   byId('map-repo').closest('label').hidden = mapOptions.view !== 'repository';
   renderMap(byId('map'), data, mapOptions, change => { Object.assign(mapOptions, change); renderMapPanel(); });

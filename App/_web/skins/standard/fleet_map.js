@@ -6,6 +6,8 @@
  * Attention, freshness and whether copies agree all come from Python (`needs_attention`,
  * `freshness`, `map.links`, `row.copies`). Colour is never the only signal: every mark has text.
  */
+import {renderZoom} from './fleet_zoom.js';
+
 const SVG = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs = {}, text) => {
   const item = document.createElementNS(SVG, tag);
@@ -22,6 +24,7 @@ const html = (tag, text, className) => {
 const toneOfFreshness = freshness => (freshness === 'current' ? 'success' : freshness === 'absent' ? 'muted' : 'warning');
 
 export const VIEWS = [
+  ['zoom', 'Zoomable map: clouds and machines'],
   ['machines', 'Machines together'],
   ['libraries', 'Libraries: host, organization, repository'],
   ['organization', 'One organization across machines'],
@@ -267,6 +270,7 @@ function repositoryView(container, data, perspective, repo) {
 /** Render one view into `container`. `onPick` receives partial option changes. */
 export function renderMap(container, data, options, onPick) {
   container.replaceChildren();
+  if (options.view === 'zoom') { renderZoom(container, data); return; }
   const perspective = options.perspective && data.machines.some(m => m.id === options.perspective)
     ? options.perspective : (data.machines[0] || {}).id;
   if (!data.machines.length) { container.append(html('p', 'No machine has reported yet.', 'empty')); return; }

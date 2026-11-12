@@ -27,10 +27,22 @@ _Last tended: 2026-11-11 (clean-tree pass checkpoint: phases 1-8 done, phase 9 p
   and the Qt window when it exists. The display document carries `mark` (this machine; the fleet
   condensed to its worst machine), the tray tooltip and menu spell both out. Not yet seen by the
   user in their own tray (the running tray predates it; restart it).
-- **A real map (2026-11-12), discussion open:** the user wants more than the list: a zoomable,
-  visual map; zoomed out, the clouds (GitHub, GitLab) and the machines; zoom into one for its
-  organizations, repositories and copies. Step taken: the Libraries view is now a tree (host,
-  organization, repository). Undecided: the drawing approach and what the cloud level shows.
+- **The zoomable map (2026-11-12), first version built:** `fleet_zoom.js`, the map's default
+  view: fleet (clouds above, machines below), a cloud's organizations, a machine's library tree
+  (host, organization; no paths), an organization's repositories, a repository's copies with
+  pull/push arrows. The user agreed with the direction; open: whether a machine's own view may
+  show real library paths (kept private for now), and its first real use on two machines.
+- **State repository: review with the user before first use (2026-11-12).** The user wants to be
+  sure how it commits, what it leaves and how it is laid out before letting gitSpecOps take one
+  over. Facts found: Contents API through `gh`, no clone; one file per machine,
+  `machines/<id>.json.gz`; one commit per write as the user, message `sync-suggester: <id>`;
+  writes every 30 minutes even when nothing changed (the heartbeat), so ~48 commits a day per
+  machine, forever in history; leaving the fleet leaves the machine's file behind. Decisions
+  pending: heartbeat cadence or another heartbeat channel, history growth, cleanup on leave.
+- **Wanted next in the UI (2026-11-12):** security visible in the web view, and a menu of every
+  command by layer, where e.g. Pull asks which repository and runs it through the same safety
+  gates as the terminal. Secret-scan engines (Gitleaks, Betterleaks, TruffleHog) are only looked
+  up when a scan selects them; nothing detects them up front or suggests installing them yet.
 - **The whole-product picture (2026-11-12):** drafted as the eventual README in
   [`drafts/eventual-README.md`](drafts/eventual-README.md): one install per OS with `gitso`
   included, the tray and map, the growth matrix (installed, machine, fleet, managed repository,

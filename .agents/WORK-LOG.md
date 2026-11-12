@@ -2134,3 +2134,14 @@ No code changed; decisions recorded where they govern.
   under the project's own Python too. Full suite 83/83. Previewed for real: Qt-painted marks at
   16, 24 and 32 px on light and dark, and the header and tree from a saved copy of the user's live
   document (168 repositories) in headless Edge.
+
+## 2026-11-12 11:37 - user (claude) - The zoomable map; setup remembers the theme; first-observation notice
+- `App/_web/skins/standard/fleet_zoom.js`: the zoomable map, now the network map's default view
+  (fleet, cloud, machine, organization, repository; a breadcrumb trail and Escape zoom out;
+  transitions honour reduced motion). Registered in the assets, the build spec, the release check
+  and the asset test. Previewed at every level from a saved copy of the user's live document.
+- The setup page applies and toggles the same light/dark choice as the dashboard (it always
+  opened dark). The dashboard now says that the first observation after a start is running,
+  rather than looking empty: the user read the empty start as a forgotten library. The tray's
+  log and the profile confirm the library was never lost.
+- Full suite 83/83.

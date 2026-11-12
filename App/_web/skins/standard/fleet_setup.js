@@ -11,6 +11,16 @@ const lines = id => byId(id).value.split('\n').map(line => line.trim()).filter(B
 let token = null;
 let wasEnrolled = null;
 
+// Light or dark, shared with the dashboard through the same browser storage key.
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  byId('theme').textContent = theme === 'dark' ? 'Light mode' : 'Dark mode';
+  byId('theme').setAttribute('aria-label', `Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`);
+  try { localStorage.setItem('gitspecops-theme', theme); } catch { /* private storage may refuse */ }
+}
+setTheme((() => { try { return localStorage.getItem('gitspecops-theme') || 'dark'; } catch { return 'dark'; } })());
+byId('theme').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+
 function say(text, tone = 'neutral') {
   const message = byId('message');
   message.textContent = text;
