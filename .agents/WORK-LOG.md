@@ -2109,3 +2109,10 @@ No code changed; decisions recorded where they govern.
   the fleet condensed to one state (the worst among the other machines); the tooltip and the tray
   menu carry the detail. Candidates mocked up: chevrons, a radial trio of branches, a cloud over a
   branch. No choice yet.
+
+## 2026-11-12 10:21 - user (claude) - Tray icon: hub and ring is the favorite
+- The user's favorite is "hub and ring": the hub is this machine; five nodes with their ring and
+  spokes are the fleet, colored by the fleet's worst state. Not chosen yet. Nearest look-alikes
+  checked: Syncthing (ring, hub, three spokes) and Kubernetes (polygon with spokes); keep the
+  pentagon rim prominent and never inside a filled disc. The candidates and their drawings are
+  kept in the org's private lab.
