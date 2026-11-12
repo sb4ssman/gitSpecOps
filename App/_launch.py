@@ -26,12 +26,25 @@ def profile_arguments(config_dir=None, settings_home=None) -> list[str]:
     return arguments
 
 
-def presentation(config_dir=None, settings_home=None, *, remote: bool = False):
+def presentation(config_dir=None, settings_home=None, *, remote: bool = False,
+                 face: str | None = None, web: str | None = None):
+    """(config, serve, choice): saved choices, with this run's overrides on top.
+
+    `serve` is None when the web view is off; the tray then shows only its own face."""
+    from Special._sync.enrollment import DEFAULT_PRESENTATION
+
     directory = fleet_directory(config_dir, home=settings_home)
     config = load_saved(directory, home=settings_home)
-    serve = peer_server(int(config["local_port"]))
-    if remote:
-        from App._web.remote import with_remote
+    choice = {**DEFAULT_PRESENTATION, **(config.get("presentation") or {})}
+    if face:
+        choice["face"] = face
+    if web or remote:
+        choice["web"] = "tailnet" if remote else web
+    serve = None
+    if choice["web"] != "off":
+        serve = peer_server(int(config["local_port"]))
+        if choice["web"] == "tailnet":
+            from App._web.remote import with_remote
 
-        serve = with_remote(serve, config)
-    return config, serve
+            serve = with_remote(serve, config)
+    return config, serve, choice

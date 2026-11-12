@@ -13,6 +13,10 @@ _Last tended: 2026-11-11 (clean-tree pass checkpoint: phases 1-8 done, phase 9 p
   revision in `knowledge/architecture-layers.md`. Both GUIs stay (Qt app usual; optional web
   server, headless or always on; tray opens either), all set by the user. Remote watch and
   act is built, off by default.
+- **Machine and fleet enrollment split (2026-11-11), done:** `Special/enroll_machine.py`
+  (several libraries, find with LOOK, add with SCAN, presentation), `Elaborate/setup_fleet.py`
+  (join, transports, leave). Left: a web-view setup page for an unenrolled tray; the Qt window;
+  real trials of each transport between real machines (C7), with the user.
 - **Executing: [`HANDOFF-CLEAN-TREE.md`](HANDOFF-CLEAN-TREE.md)** (agreed with the user
   2026-11-11). Done: the mapping, `git-sync-suggester/` and `_archive/` gone, Qt tray over
   the web view, network map views, remote watch and act, every command headed. Left: see

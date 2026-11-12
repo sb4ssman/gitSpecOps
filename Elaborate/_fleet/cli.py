@@ -48,12 +48,12 @@ def load_saved(directory: Path, *, home=None) -> dict:
     if snapshot is not None:
         config = snapshot.config("app")
         if config is None:
-            raise ValueError("no app enrollment in common settings; run 'fleet setup'")
+            raise ValueError("this machine is not enrolled; enroll it with: python Special/enroll_machine.py add <library folder>")
         return validate(config)
     directory = fleet_directory(directory, home=home)
     path = directory / APP_CONFIG
     if not path.exists():
-        raise ValueError("no saved configuration; run 'fleet setup' first")
+        raise ValueError("this machine is not enrolled; enroll it with: python Special/enroll_machine.py add <library folder>")
     return validate(migrate(json.loads(path.read_text(encoding="utf-8"))))
 
 
@@ -238,6 +238,7 @@ def build_parser():
     commands.add_parser("safe-to-wipe",
                         help="fresh-fetch every observed checkout and report whether this machine is replaceable")
     commands.add_parser("convert", help="save an older legacy configuration in the current format")
+    commands.add_parser("leave", help="stop sharing with the fleet; the machine stays enrolled")
     client = commands.add_parser("git-client", help="configure an optional local desktop Git client")
     client.add_argument("--client", choices=("sourcetree", "github-desktop"))
     client.add_argument("--executable", type=Path, help="installed client executable at a custom location")
@@ -381,35 +382,32 @@ def guided_tailnet_join_secret() -> str:
         return ""
 
 
-def setup_arguments(directory: Path, configure_only=False, *, home=None):
-    """Interactive first run. Offers every transport; requires none."""
-    print("Fleet setup. Every machine is a peer: it watches its own repositories, publishes\n"
-          "what it sees, and shows you a dashboard. Nothing here needs another machine to be\n"
-          "running, and no machine is in charge of any other.\n")
-    readiness = preflight_state()
-    print(render_preflight(readiness))
-    if not readiness["git"]:
-        raise ValueError("Git is required before fleet setup can observe a repository library")
-    if not readiness["dashboard"]:
-        raise ValueError("the default dashboard port is unavailable; use non-interactive 'fleet peer' with --local-port")
-    arguments = [*profile_arguments(directory, home), "peer"]
-    root = input("Repository library folder (inventoried once, recursively): ").strip().strip('"')
-    if not root:
-        raise ValueError("a repository library folder is required")
-    print(f"\nOne recursive inventory will run over:\n  {root}\n"
-          "After that, filesystem notifications inspect only a repository that changed.\n"
-          "No source content is copied, sent, or modified.")
-    if input("Type SCAN to allow the initial inventory: ").strip() != "SCAN":
-        raise ValueError("initial inventory was not acknowledged")
-    arguments += ["--root", root, "--acknowledge-initial-scan"]
 
-    print("\nHow should this machine share status with your others?\n"
-          "These are complements — set up as many as you can. Press Enter to skip any.")
-    secret = input("Fleet key from a machine you already set up [new fleet]: ").strip()
+def guided_fleet_setup(directory: Path, *, home=None) -> int:
+    """Join this enrolled machine to a fleet: a key (new or existing), then how it shares status.
+
+    The machine's libraries are its own enrollment (Special/enroll_machine.py); this asks only
+    the fleet's questions and offers every transport, requiring none."""
+    from Special._settings.fleet import replace_fleet_secret
+
+    snapshot = load_fleet_settings(home)
+    config = snapshot.config("app") if snapshot is not None else None
+    if config is None:
+        raise ValueError("this machine is not enrolled; enroll it with: python Special/enroll_machine.py add <library folder>")
+    print("Fleet setup. This machine is enrolled; now it joins a fleet. Every machine is a peer:\n"
+          "it publishes what it sees and reads what the others publish. None is in charge.\n")
+    readiness = preflight_state(int(config["local_port"]))
+    print(render_preflight(readiness))
+    secret = input("Fleet key from a machine already in your fleet [start a new fleet]: ").strip()
     if not secret and readiness["tailnet"]:
         secret = guided_tailnet_join_secret()
     if secret:
-        arguments += ["--fleet-secret", secret]
+        if not is_fleet_secret(secret):
+            raise ValueError("a fleet key is 64 hexadecimal characters")
+        if secret.lower() != config["fleet_secret"].lower():
+            replace_fleet_secret(secret, home=home, snapshot=snapshot)
+            print("Joined the fleet with that key.")
+    arguments = []
     if readiness["github"]:
         arguments += guided_durable_arguments()
     else:
@@ -420,20 +418,37 @@ def setup_arguments(directory: Path, configure_only=False, *, home=None):
     if folder:
         arguments += ["--folder", folder]
     if not readiness["tailnet"]:
-        print("Tailscale live sharing skipped: it is not connected. Add it later with 'fleet transports --tailnet'.")
-        arguments.append("--no-tailnet")
+        print("Tailscale live sharing skipped: it is not connected. Add it later with "
+              "Elaborate/setup_fleet.py transports --tailnet.")
     elif input("Talk directly to your other machines over Tailscale? [Y/n]: ").strip().lower() \
-            in ("n", "no"):
-        arguments.append("--no-tailnet")
+            not in ("n", "no"):
+        arguments.append("--tailnet")
+    if not arguments:
+        print("No transport chosen: this machine stays on its own. Run this again any time.")
+        return 0
+    command_transports(build_parser().parse_args(
+        [*profile_arguments(directory, home), "transports", *arguments]), directory)
     print("\nYour other machines see this one's repository names, branches and current commits,\n"
           "so each can show what the others hold. Without names they see salted ids only."
-          + ("\nA synced folder's provider (Dropbox, ...) can read those names too." if folder
-             else ""))
+          + ("\nA synced folder's provider (Dropbox, ...) can read those names too." if folder else ""))
     if input("Share names with your other machines? [Y/n]: ").strip().lower() in ("n", "no"):
-        arguments.append("--withhold-names")
-    if configure_only:
-        arguments.append("--configure-only")
-    return build_parser().parse_args(arguments)
+        config = load_saved(directory, home=home)
+        config["share_names"] = False
+        save_saved(directory, config, home=home)
+    return 0
+
+
+def command_leave(directory: Path, *, home=None) -> int:
+    """Stop sharing with the fleet: deselect every transport. The machine stays enrolled."""
+    config = load_saved(directory, home=home)
+    if not config.get("transports"):
+        print("This machine shares with no fleet; nothing to leave.")
+        return 0
+    config["transports"] = {}
+    save_saved(directory, config, home=home)
+    print("Left the fleet: no transport is selected. This machine keeps its libraries and its\n"
+          "web view; its last published status stays wherever it was published.")
+    return 0
 
 
 def command_transports(args, directory: Path) -> int:
@@ -861,7 +876,9 @@ def _main(argv=None, stopping=None, on_ready=None, serve=None):
                                   "detected": discover_clients(config.get("git_client"))}, indent=2))
             return 0
         if args.command == "setup":
-            args = setup_arguments(directory, args.configure_only, home=args.settings_home)
+            return guided_fleet_setup(directory, home=args.settings_home)
+        if args.command == "leave":
+            return command_leave(directory, home=args.settings_home)
         if args.command == "peer":
             config = configure(args, directory)
             if args.configure_only:
@@ -923,7 +940,7 @@ def main(argv=None, stopping=None, on_ready=None, serve=None):
         directory = args.config_dir.expanduser()
         try:
             with app_lock(directory):
-                code = _main([*argv, "--configure-only"])
+                code = _main(argv)
         except (OSError, ValueError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2

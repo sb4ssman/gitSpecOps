@@ -46,6 +46,7 @@ COMMANDS = (
     # Basic: one Git or host operation.
     Command("discover", "Basic/discover.py", "Basic.discover"),
     # Special: this machine, once.
+    Command("enroll-machine", "Special/enroll_machine.py", "Special._sync.commands", "enroll_machine_main"),
     Command("suggest-sync", "Special/suggest_sync.py", "Special._sync.commands", "suggest_sync_main"),
     Command("name-repo", "Special/name_repo.py", "Special._sync.commands", "name_repo_main"),
     Command("catch-up", "Special/catch_up.py", "Special._sync.commands", "catch_up_main"),

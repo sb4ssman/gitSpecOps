@@ -25,12 +25,12 @@ STATE_COLOURS = {
     "error": (225, 60, 60),
 }
 
-SETUP_HINT = "Run Elaborate/setup_fleet.py to set it up."
+SETUP_HINT = "Enroll it: python Special/enroll_machine.py add <library folder>."
 #: (what the peer said, what the person reads). The peer's own text can carry paths, so it is
 #: never shown; a known cause gets a fixed sentence, anything else the generic one.
 KNOWN_FAILURES = (
-    (("no saved configuration", "no app enrollment", "run setup first"),
-     "gitSpecOps is not set up on this machine yet. " + SETUP_HINT),
+    (("not enrolled", "no saved configuration", "no app enrollment", "run setup first"),
+     "This machine is not set up yet. " + SETUP_HINT),
     (("already running",),
      "Another gitSpecOps peer is already running for this profile."),
     (("address already in use", "only one usage of each socket address", "10048", "errno 98"),

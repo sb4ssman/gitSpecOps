@@ -38,9 +38,11 @@ from Basic._files import atomic_write_bytes
 from Special._settings.fleet import (FleetConfig, fleet_directory, load_fleet_settings,
                                     save_fleet_config)
 
+# The record and its defaults are the machine enrollment's (Special); the fleet adds transports.
+from Special._sync.enrollment import (CONFIG_VERSION, DEFAULT_FETCH_MINUTES,  # noqa: E402,F401
+                                      DEFAULT_LOCAL_PORT, new_config)
+
 APP_CONFIG = "fleet-app.json"
-CONFIG_VERSION = 5
-DEFAULT_LOCAL_PORT = 8760
 DEFAULT_TAILNET_PORT = 8765
 DEFAULT_FOLDER_SECONDS = 300
 DEFAULT_REPO_SECONDS = 1800
@@ -225,30 +227,6 @@ def policy_record(policy: CapturePolicy) -> dict:
 
 # `git fetch` every observed repository on this interval, so "behind" is measured against the
 # remote rather than against whenever someone last fetched by hand. 0 turns it off.
-DEFAULT_FETCH_MINUTES = 15
-
-
-def new_config(machine_id: str, label: str, roots, fleet_secret: str, *,
-               debounce_seconds: float = 0.75, local_port: int = DEFAULT_LOCAL_PORT,
-               transports: dict | None = None, scopes: dict | None = None,
-               share_names: bool = True) -> dict:
-    return {
-        "version": CONFIG_VERSION, "mode": "peer",
-        "fetch_minutes": DEFAULT_FETCH_MINUTES,
-        "share_names": share_names,
-        "baskets": baskets.validate_scopes(scopes) if scopes
-                   else copy.deepcopy(baskets.DEFAULT_SCOPES),
-        "recovery": {"location": None, "confirmed": False, "policies": {}},
-        "machine_id": machine_id, "label": label,
-        "fleet_secret": fleet_secret,
-        "roots": [str(Path(root).expanduser().resolve()) for root in roots],
-        "observation_mode": "filesystem-events",
-        "debounce_seconds": debounce_seconds,
-        "heartbeat": 30,
-        "inventory_notice_acknowledged": True,
-        "local_port": int(local_port),
-        "transports": transports or {},
-    }
 
 
 def describe(config: dict) -> str:

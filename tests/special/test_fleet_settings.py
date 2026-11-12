@@ -96,7 +96,7 @@ class FleetSettingsTests(unittest.TestCase):
         (self.state / "config.json").write_text("broken", encoding="utf-8")
         (self.state / "fleet-app.json").write_text("broken", encoding="utf-8")
         self.assertIsNone(cli_config.load_config(self.state))
-        with self.assertRaisesRegex(ValueError, "no app enrollment"):
+        with self.assertRaisesRegex(ValueError, "not enrolled"):
             fleet_app.load_saved(self.state)
 
     def test_invalid_common_never_falls_back(self):

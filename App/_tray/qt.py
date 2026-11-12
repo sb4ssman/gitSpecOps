@@ -80,12 +80,22 @@ def _icon(QtGui, colour):
     return QtGui.QIcon(pixmap)
 
 
-def run_tray(config_dir=None, settings_home=None, *, view="web", open_on_start=False,
+def missing_qt_message() -> str:
+    """Name the interpreter that has Qt, rather than calling it "not installed"."""
+    project = TRAY_SCRIPT.parents[1]
+    venv = project / ".venv" / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    if venv.is_file() and venv.resolve() != Path(sys.executable).resolve():
+        return (f"this Python ({sys.executable}) has no PySide6, but the project's own environment "
+                f"does. Run:\n  {venv} {TRAY_SCRIPT}")
+    return "PySide6 is not installed; install the app extra (uv sync --extra app)"
+
+
+def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_on_start=False,
              remote=False, poll_seconds=POLL_SECONDS) -> int:
     try:
         from PySide6 import QtCore, QtGui, QtWidgets
     except ImportError as exc:
-        raise TrayUnavailable("PySide6 is not installed; install the app dependency") from exc
+        raise TrayUnavailable(missing_qt_message()) from exc
     from App._launch import presentation, profile_arguments
     from Basic._version import check_for_update, version_line
     from Elaborate._fleet import autostart
@@ -98,7 +108,8 @@ def run_tray(config_dir=None, settings_home=None, *, view="web", open_on_start=F
 
     profile = profile_arguments(config_dir, settings_home)
     # What start-at-login registers: this tray, with the same choices it was started with.
-    login_arguments = [*profile, "--view", view, *(["--remote"] if remote else [])]
+    login_arguments = [*profile, *(["--view", view] if view else []), *(["--web", web] if web else []),
+                       *(["--remote"] if remote else [])]
 
     class Bridge(QtCore.QObject):
         snapshot = QtCore.Signal(object)
@@ -119,10 +130,20 @@ def run_tray(config_dir=None, settings_home=None, *, view="web", open_on_start=F
         tray.setToolTip(snapshot.text[:120])
 
     def open_view():
-        if view == "window":
-            tray.showMessage("The Qt window comes later", "Opening the web view instead.")
-        if context.get("url"):
+        """Double-click: open the face the person chose, web or window."""
+        choice = context.get("choice") or {"face": view or "web", "web": web or "loopback"}
+        if choice["face"] == "window":
+            if context.get("url"):
+                tray.showMessage("The Qt window comes later", "Opening the web view instead.")
+                webbrowser.open(context["url"])
+            else:
+                tray.showMessage("The Qt window comes later",
+                                 "Until then, turn the web view on: python Special/enroll_machine.py "
+                                 "presentation --face web --web loopback")
+        elif context.get("url"):
             webbrowser.open(context["url"])
+        elif not context.get("ready"):
+            tray.showMessage("Not running", "The peer is not running; hover the icon to see why.")
 
     def rescan():
         try:
@@ -178,16 +199,15 @@ def run_tray(config_dir=None, settings_home=None, *, view="web", open_on_start=F
     menu.addSeparator()
     menu.addAction("Quit gitSpecOps").triggered.connect(app.quit)
     tray.setContextMenu(menu)
-    tray.activated.connect(lambda reason: open_view() if reason in (
-        QtWidgets.QSystemTrayIcon.ActivationReason.Trigger,
-        QtWidgets.QSystemTrayIcon.ActivationReason.DoubleClick) else None)
+    tray.activated.connect(lambda reason: open_view() if reason ==
+                           QtWidgets.QSystemTrayIcon.ActivationReason.DoubleClick else None)
     bridge.snapshot.connect(apply)
     bridge.notify.connect(lambda title, message: tray.showMessage(title, message))
     tray.show()
 
     def on_ready(info):
         operational.event("peer_ready")
-        context.update(info)
+        context.update(info, ready=True)
         ready.set()
         bridge.snapshot.emit(Snapshot(state="starting", url=info.get("url") or "", ready=True,
                                       text="gitSpecOps: reading the fleet..."))
@@ -196,7 +216,8 @@ def run_tray(config_dir=None, settings_home=None, *, view="web", open_on_start=F
 
     def worker():
         try:
-            _config, serve = presentation(config_dir, settings_home, remote=remote)
+            _config, serve, context["choice"] = presentation(config_dir, settings_home, remote=remote,
+                                                             face=view, web=web)
             result["code"] = fleet_main([*profile, "run"], stopping=stopping, on_ready=on_ready,
                                         serve=serve)
         except Exception as exc:  # noqa: BLE001 - the icon must survive to say why
@@ -249,17 +270,19 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="tray", description=__doc__.split("\n", 1)[0])
     parser.add_argument("--config-dir", type=Path, help="local fleet state and legacy input directory")
     parser.add_argument("--settings-home", type=Path, help="common profile; defaults to the user-data home")
-    parser.add_argument("--view", choices=("web", "window"), default="web",
-                        help="what clicking the icon opens (default: web)")
+    parser.add_argument("--view", choices=("web", "window"),
+                        help="what double-clicking the icon opens (default: the saved choice)")
+    parser.add_argument("--web", choices=("off", "loopback", "tailnet"),
+                        help="serve the web view for this run (default: the saved choice)")
     parser.add_argument("--open-on-start", action="store_true", help="open the view once the peer is ready")
     parser.add_argument("--remote", action="store_true",
                         help="also serve the web view on the tailnet (App/_web/remote.py)")
     args = parser.parse_args(argv)
     try:
-        return run_tray(args.config_dir, args.settings_home, view=args.view,
+        return run_tray(args.config_dir, args.settings_home, view=args.view, web=args.web,
                         open_on_start=args.open_on_start, remote=args.remote)
     except TrayUnavailable as exc:
-        print(f"note: {exc}; use App/serve_web.py for the web view without a tray.", file=sys.stderr)
+        print(f"note: {exc}\nWithout a tray, App/serve_web.py serves the web view.", file=sys.stderr)
         return 2
     except (OSError, ValueError) as exc:
         print(f"error: {failure_reason(str(exc))}", file=sys.stderr)

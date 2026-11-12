@@ -482,3 +482,26 @@ Decided by the user:
   repo across machines; a chosen machine sets the perspective.
 - **`_archive/` (version 1) is ported where still needed, then deleted.** `tests/` keeps its
   name. Execution plan: `../HANDOFF-CLEAN-TREE.md`.
+
+## Revisions, 2026-11-11 (later): machine enrollment apart from fleet enrollment
+
+Decided by the user:
+
+- **Machine to app, app to fleet.** Enrolling the machine (`Special/enroll_machine.py`: its
+  library folders and its presentation choice) is this machine, once, and is enough for the
+  tray, the web view and every local command. Joining a fleet (`Elaborate/setup_fleet.py`: a
+  key, then any combination of the synced folder, the private GitHub state repository and
+  Tailscale) is the separate, later step; `leave` undoes it and keeps the machine.
+- **Several libraries per machine,** added one or more at a time, never overlapping. Nothing is
+  inventoried before the person names the folders and types SCAN; `find` suggests libraries
+  (a folder, or `--whole-machine`) only after LOOK, and enrolls nothing.
+- **Double-click opens the app's face,** web or the Qt window, as the user chose; the web view
+  can be off entirely (the window then reads the peer in-process). Single click does nothing.
+- **Fleet features are tested end to end:** two peers exchanging status through a synced
+  folder, through a stand-in for the GitHub Contents API, and over a loopback stand-in for the
+  tailnet, plus every transport at once (`tests/elaborate/test_fleet_transports.py`).
+- Stored shape, no migration: the settings document's `machine` block and the app component's
+  libraries are the machine enrollment; the app's transport selection is the fleet enrollment.
+  The app record's defaults live in `Special/_sync/enrollment.py`. A fleet key can be replaced
+  only while no transport is selected (nothing was shared under it).
+

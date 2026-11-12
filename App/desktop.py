@@ -50,7 +50,10 @@ def desktop_main(argv=None) -> int:
     try:
         load_saved(directory)
     except ValueError:
-        code = main(["setup", "--configure-only"])
+        # First run: enroll this machine (its libraries); joining a fleet is a later choice.
+        from Special._sync.commands import enroll_machine_main
+
+        code = enroll_machine_main(["add"])
         if code:
             return code
     return tray(["--open-on-start"])

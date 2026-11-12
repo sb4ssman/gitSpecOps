@@ -56,23 +56,35 @@ This is read-only. It checks Git, the existing `gh` login, Tailscale connectivit
 dashboard port, and common existing sync-folder locations. Missing Git is a blocker; the other
 tiers are simply reported as unavailable and can be added later.
 
+Setup is two steps, kept apart on purpose: **enroll the machine** (its libraries; this is
+enough for the tray, the web view and every local command), then, whenever you like, **join it
+to a fleet** (a key and how it shares status).
+
 ```sh
-python Elaborate/setup_fleet.py
+python Special/enroll_machine.py find /path/to/look/in     # or --whole-machine; asks you to type LOOK
+python Special/enroll_machine.py add /path/to/library [/another/library]   # asks you to type SCAN
+python Special/enroll_machine.py presentation --face web --web loopback
+python Elaborate/setup_fleet.py                              # join: key, transports, name sharing
 ```
 
-Or configure directly, with no Tailscale:
+`find` only suggests: it reads folder names where you point it, lists folders that hold
+repositories, and enrolls nothing. `add` says exactly which folders will be inventoried and
+waits for `SCAN`; a machine may hold several libraries, and they may not overlap. The
+presentation choice says what double-clicking the tray opens (`web` or `window`) and whether
+the web view is served at all (`off`, `loopback`, or `tailnet` for your own devices).
+`setup_fleet.py leave` deselects every transport; the machine keeps its libraries. A fleet key
+can be replaced (joining another fleet) only while this machine shares nothing.
+
+Scripted, in one step, with no Tailscale:
 
 ```sh
 python Elaborate/setup_fleet.py peer --root /path/to/library --acknowledge-initial-scan --no-tailnet
 ```
 
-`--root` is repeatable. Setup names the library and requires `SCAN` before its initial recursive
-inventory. `--configure-only` saves setup without starting the runtime. Another machine uses
-the same fleet key, entered in setup or supplied through `--fleet-secret`; keep the key local
-and carry it privately. When Tailscale is connected, setup can instead offer an explicit,
-authenticated hand-off from a running peer. Starting another peer does not require any other
-machine to be online.
-Avoid overlapping roots or multiple checkouts with the same remote identity in this pilot.
+`--root` is repeatable. Another machine uses the same fleet key, entered in setup or supplied
+through `--fleet-secret`; keep the key local and carry it privately. When Tailscale is
+connected, setup can instead offer an explicit, authenticated hand-off from a running peer.
+Starting another peer does not require any other machine to be online.
 
 The dashboard is normally `http://127.0.0.1:8760/` on each machine. It combines local status,
 cached peer reports, and readable manifests from configured transports, newest per machine.

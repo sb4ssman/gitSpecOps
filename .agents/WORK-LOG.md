@@ -2064,3 +2064,18 @@ No code changed; decisions recorded where they govern.
 - Checks: 79/79 test files, import direction over 177 files with no exclusion, hygiene, every
   command's --help, a disposable end-to-end run of the web view. Old archive launchers will not
   run until regenerated (expected).
+
+## 2026-11-11 16:22 - user (claude) - Machine enrollment apart from fleet enrollment
+- Decided by the user: machine to app, app to fleet; several libraries now; double-click opens
+  the chosen face (web or window) and the web view may be off; fleet features tested.
+- New `Special/enroll_machine.py` (show, find with LOOK, add with SCAN, remove, presentation)
+  over `Special/_sync/enrollment.py`, which now owns the app record's defaults. Settings gain a
+  validated `presentation` option and `replace_fleet_secret` (only while nothing is shared).
+  Guided `Elaborate/setup_fleet.py` now requires an enrolled machine and asks only fleet
+  questions; new `leave`. The tray opens its face on double-click only, follows the saved
+  presentation (overridable per run), and names the project's own Python when Qt is missing.
+- Tests: `tests/special/test_enrollment.py` (8) and `tests/elaborate/test_fleet_transports.py`
+  (5: synced folder, private state repository through a fake Contents API, tailnet on
+  loopback with its range safeguard, every transport at once, a repository made public gets
+  nothing). The checks found two safeguards working as designed (tailnet range, private-repo
+  health), not defects.

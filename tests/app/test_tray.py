@@ -102,6 +102,17 @@ def test_error_channel_forwards_and_keeps_only_the_fixed_reason():
     check(not hasattr(channel, "last_error"), "no raw error attribute exists")
 
 
+def test_a_python_without_qt_is_pointed_at_the_project_environment():
+    from App._tray.qt import TRAY_SCRIPT, missing_qt_message
+
+    message = missing_qt_message()
+    venv = TRAY_SCRIPT.parents[1] / ".venv"
+    if venv.is_dir() and "PySide6" not in sys.modules:
+        check(str(venv) in message and str(TRAY_SCRIPT) in message, message)
+    else:
+        check("PySide6" in message, message)
+
+
 def test_start_at_login_registers_the_tray_command():
     from App._tray.qt import TRAY_SCRIPT
 

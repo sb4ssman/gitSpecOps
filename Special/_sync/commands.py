@@ -297,3 +297,97 @@ def list_live_buffers_main(argv=None) -> int:
     _profile(parser)
     parser.add_argument("--backup-root", type=Path, help="VS Code Backups folder")
     return _run(list_live_buffers, parser, argv)
+
+
+# --------------------------------------------------------------------------- enroll_machine
+
+def _confirm(prompt_word: str, assume_yes: bool) -> bool:
+    if assume_yes:
+        return True
+    if not sys.stdin.isatty():
+        raise ValueError(f"confirm with --yes (no terminal to type {prompt_word})")
+    return input(f"Type {prompt_word} to allow it: ").strip() == prompt_word
+
+
+def enroll_machine(args) -> int:
+    from Special._sync import enrollment
+
+    home = args.settings_home
+    if args.action == "add":
+        paths = args.paths
+        if not paths:
+            if not sys.stdin.isatty():
+                raise ValueError("name at least one library folder")
+            answer = input("Library folder (a folder that holds your repositories): ").strip().strip('"')
+            paths = [answer] if answer else []
+            if not paths:
+                raise ValueError("no library folder given; nothing was enrolled")
+        print(enrollment.inventory_notice(paths))
+        if not _confirm("SCAN", args.yes):
+            print("Nothing was enrolled.")
+            return 1
+        roots = enrollment.add_libraries(paths, home=home, label=args.label, local_port=args.port)
+        print("Libraries:\n" + "\n".join(f"  {root}" for root in roots))
+        print("Start the app with App/tray.py; it inventories new libraries when it starts.")
+        return 0
+    if args.action == "remove":
+        if len(args.paths) != 1:
+            raise ValueError("remove one library at a time")
+        roots = enrollment.remove_library(args.paths[0], home=home)
+        print("Libraries:\n" + "\n".join(f"  {root}" for root in roots))
+        return 0
+    if args.action == "find":
+        starts = args.paths or (enrollment.whole_machine_starts() if args.whole_machine else [])
+        if not starts:
+            raise ValueError("say where to look (folders), or pass --whole-machine")
+        print("To suggest libraries, folder names (no file contents, no Git) are read under:\n"
+              + "\n".join(f"  {start}" for start in starts)
+              + f"\nup to {args.depth} levels deep. Nothing is enrolled by looking.")
+        if not _confirm("LOOK", args.yes):
+            print("Nothing was looked at.")
+            return 1
+        found = enrollment.find_libraries(starts, max_depth=args.depth)
+        if not found:
+            print("No repositories found there.")
+            return 0
+        print("Folders holding repositories (add the ones that are libraries):")
+        for item in found[:40]:
+            print(f"  {item['repositories']:5}  {item['path']}")
+        print("Then: python Special/enroll_machine.py add <folder> [<folder> ...]")
+        return 0
+    if args.action == "presentation":
+        chosen = enrollment.set_presentation(face=args.face, web=args.web, home=home)
+        print(f"Double-clicking the tray opens: {chosen['face']}. Web view: {chosen['web']}.")
+        return 0
+    machine, config = enrollment.enrollment(home)
+    if config is None:
+        print("This machine is not enrolled. Add a library folder:\n"
+              "  python Special/enroll_machine.py add <folder>\n"
+              "or let it suggest some first:\n"
+              "  python Special/enroll_machine.py find <folder> | --whole-machine")
+        return 0
+    presentation = {**enrollment.DEFAULT_PRESENTATION, **(config.get("presentation") or {})}
+    shared = "joined" if config.get("transports") else "not joined (this machine only)"
+    print(f"Machine: {config['label']} ({config['machine_id']})\nLibraries:\n"
+          + "\n".join(f"  {root}" for root in config["roots"])
+          + f"\nTray opens: {presentation['face']}. Web view: {presentation['web']}."
+          + f"\nFleet: {shared}.")
+    return 0
+
+
+def enroll_machine_main(argv=None) -> int:
+    parser = argparse.ArgumentParser(prog="enroll_machine", description=(
+        "Enroll this machine with the app: its library folders and how the app shows itself."))
+    _profile(parser, roots=False)
+    parser.add_argument("action", nargs="?", default="show",
+                        choices=("show", "add", "remove", "find", "presentation"))
+    parser.add_argument("paths", nargs="*", type=Path, help="library folders, or where to look")
+    parser.add_argument("--yes", action="store_true", help="confirm without typing SCAN or LOOK")
+    parser.add_argument("--whole-machine", action="store_true", help="find: look on every drive")
+    parser.add_argument("--depth", type=int, default=4, help="find: folder levels to look through")
+    parser.add_argument("--label", help="add: this machine's readable name")
+    parser.add_argument("--port", type=int, help="add: the web view's local port")
+    parser.add_argument("--face", choices=("web", "window"), help="what double-clicking the tray opens")
+    parser.add_argument("--web", choices=("off", "loopback", "tailnet"),
+                        help="serve the web view: off, this machine only, or also your tailnet devices")
+    return _run(enroll_machine, parser, argv)

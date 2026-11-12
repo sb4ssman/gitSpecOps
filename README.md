@@ -449,7 +449,8 @@ old" — because the freshness rules treat an old report as old, never as an all
 That is the point of publishing to more than one transport: a machine that is unreachable right
 now has usually still left a fingerprint somewhere you *can* read.
 
-**The peer runtime ships:** `Elaborate/setup_fleet.py` configures an independent machine;
+**The peer runtime ships:** `Special/enroll_machine.py` enrolls this machine (its libraries,
+and what the tray opens); `Elaborate/setup_fleet.py` joins it to a fleet;
 `Elaborate/peer.py` runs it headless; `App/tray.py` runs it behind a tray icon (Qt) with its web
 view, and `App/serve_web.py` serves the web view without a tray. `--remote` on either also
 serves the web view on the tailnet, to devices of your own Tailscale account only. Each peer

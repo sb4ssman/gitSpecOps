@@ -49,7 +49,8 @@ def with_peer(args) -> int:
     from App._launch import presentation, profile_arguments
     from Elaborate._fleet.cli import main as fleet_main
 
-    _config, serve = presentation(args.config_dir, args.settings_home, remote=args.remote)
+    _config, serve, _choice = presentation(args.config_dir, args.settings_home, remote=args.remote,
+                                           web="loopback")
     stopping = threading.Event()
     for name in ("SIGINT", "SIGTERM"):
         signal.signal(getattr(signal, name), lambda *_: stopping.set())

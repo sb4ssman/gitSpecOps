@@ -116,7 +116,8 @@ def recovery(value):
 OPTIONS = {
     "sync": {"root_recursion", "transport_names", "stale_hours", "expired_days", "compress_manifests"},
     "app": {"transport_names", "fetch_minutes", "share_names", "baskets", "recovery", "observation_mode",
-            "debounce_seconds", "heartbeat", "inventory_notice_acknowledged", "local_port", "git_client"},
+            "debounce_seconds", "heartbeat", "inventory_notice_acknowledged", "local_port", "git_client",
+            "presentation"},
     "archive_manage": {"archives"},
 }
 
@@ -149,6 +150,13 @@ def options(component, value):
             baskets(item)
         elif key == "recovery":
             recovery(item)
+        elif key == "presentation":
+            # What double-clicking the tray opens, and whether (and where) the web view is served.
+            obj(item, ("face", "web"), ("face", "web"))
+            require(item["face"] in ("web", "window"), "invalid app face")
+            require(item["web"] in ("off", "loopback", "tailnet"), "invalid web view setting")
+            require(not (item["face"] == "web" and item["web"] == "off"),
+                    "the web face needs the web view on")
         elif key == "git_client" and item is not None:
             obj(item, ("id", "executable"), ("id", "executable"))
             require(item["id"] in ("sourcetree", "github-desktop"), "unsupported desktop Git client")

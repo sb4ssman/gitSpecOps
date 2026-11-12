@@ -1,4 +1,4 @@
-"""Enroll this machine in the fleet, or change its fleet settings.
+"""Join this enrolled machine to a fleet, change how it shares, or leave the fleet.
 
 Why:          joining the fleet is what lets machines see each other.
 Reads:        the common settings profile, or the legacy fleet configuration.
@@ -21,8 +21,8 @@ from Elaborate._fleet.commands import fleet  # noqa: E402
 
 
 def main(argv=None):
-    return fleet(argv, ("setup", "peer", "convert", "transports", "baskets", "git-client",
-                        "fleet-key"))
+    return fleet(argv, ("setup", "transports", "leave", "fleet-key", "baskets", "git-client",
+                        "convert", "peer"))
 
 
 EFFECT = "remote"

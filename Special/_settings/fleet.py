@@ -24,7 +24,7 @@ from Special._settings.store import fingerprint, read_settings_document, write_s
 SYNC_OPTIONS = {"root_recursion", "transport_names", "stale_hours", "expired_days", "compress_manifests"}
 APP_REQUIRED = {"transport_names", "baskets", "recovery", "observation_mode", "debounce_seconds",
                 "heartbeat", "inventory_notice_acknowledged", "local_port"}
-APP_OPTIONS = APP_REQUIRED | {"fetch_minutes", "share_names", "git_client"}
+APP_OPTIONS = APP_REQUIRED | {"fetch_minutes", "share_names", "git_client", "presentation"}
 
 
 def fleet_home(home=None):
@@ -247,4 +247,29 @@ def save_fleet_config(config, *, component, home=None, snapshot=None):
     if isinstance(config, FleetConfig):
         config.snapshot = FleetSettings(snapshot.home, candidate, saved_revision, _digest(candidate))
         config.original = copy.deepcopy(dict(config))
+    return snapshot.home / SETTINGS_NAME
+
+
+def replace_fleet_secret(secret, *, home=None, snapshot=None):
+    """Join another fleet: replace this machine's key, only while nothing was shared under it.
+
+    A key salts every published repository id. Once any component selects a transport, ids under
+    the old key may already be on another machine, so the replacement is refused; leave the
+    fleet first (deselect every transport), then join."""
+    snapshot = snapshot or load_fleet_settings(home)
+    if snapshot is None:
+        raise SettingsError("no common settings profile; enroll this machine first")
+    snapshot.verify()
+    candidate = copy.deepcopy(snapshot.document)
+    machine = candidate.get("machine")
+    if machine is None:
+        raise SettingsError("this machine is not enrolled; enroll it before joining a fleet")
+    if any(entry.get("options", {}).get("transport_names")
+           for entry in candidate.get("components", {}).values()):
+        raise SettingsError("this machine already shares status with a fleet; leave it first "
+                            "(remove its transports), then join another")
+    machine["fleet_secret"] = secret
+    candidate = validate_document(candidate)
+    write_settings(candidate, home=snapshot.home, expected_revision=snapshot.revision,
+                   check_sources=snapshot.verify)
     return snapshot.home / SETTINGS_NAME
