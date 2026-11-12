@@ -47,8 +47,9 @@ _Last tended: 2026-11-11 (clean-tree pass checkpoint: phases 1-8 done, phase 9 p
 - **Security tab (2026-11-12), first version built:** choose organizations or repositories, audit
   files and every commit in the background (`Special/_security/_audit.py`, results in memory
   only, no paths), see installed scanners (never installed by gitSpecOps), read masked findings.
-  A high finding shows as blocked even when the scan has gaps. Next: reviewing a finding from
-  the page (accept an example, as `review_finding` does), and per-scan extra values to look for.
+  A high finding shows as blocked even when the scan has gaps. The "Protected values" card edits
+  never-publish and allowed values (loosening needs LOOSEN); each check reads the profile afresh.
+  Next: reviewing a finding from the page (accept an example, as `review_finding` does).
 - **Wanted next in the UI:** a menu of every command by layer, where e.g. catch-up asks which
   repository, previews, and runs through the same safety gates as the terminal.
 - **The whole-product picture (2026-11-12):** drafted as the eventual README in

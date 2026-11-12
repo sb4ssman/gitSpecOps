@@ -2159,3 +2159,17 @@ No code changed; decisions recorded where they govern.
   slot when GitHub is unreachable. Tests: `tests/elaborate/test_state_repo_writes.py` (3).
 - Previewed with a real read-only audit of one organization (11 repositories, about 105 s) in
   headless Edge; checkbox layout fixed after the first look. Full suite 85/85.
+
+## 2026-11-12 12:47 - user (claude) - Protected values in the web view; the working animation; a live status line
+- `Special/_security/_policy_edit.py` and the Security tab's "Protected values" card: see (masked
+  by default) and change never-publish and allowed values through the shared settings writer;
+  loosening needs the typed word LOOSEN. Audits and the security preview now load the profile
+  afresh, so a change applies to the next check without a restart (the peer's start-up snapshot
+  used to refuse any changed profile). Tests: `tests/security/test_policy_edit.py` (3).
+- The mark's working animation: colour flows in from the outer dots, then the ring's lines, the
+  spokes and the hub (`App/_mark/geometry.FRAMES`); the tray cycles the frames while working, the
+  web header's mark animates through CSS inside its SVG (`/v1/mark.svg?...&working=1`).
+- The peer says what it is doing (`activity` in the display document: finding repositories,
+  reading Git status n of N, putting state together, fetching remotes, watching): the tray's
+  tooltip and menu, and a status line under the web header. `IncrementalObserver.inventory`
+  passes progress through. Full suite 86/86.

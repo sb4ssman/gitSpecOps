@@ -64,6 +64,87 @@ async function loadEngines() {
     'a selected scanner that fails is reported as a gap, never as a pass.', 'host-note'), again);
 }
 
+// ---- protected values ---------------------------------------------------------------------------
+const LISTS = {
+  never_publish: ['Never publish', 'Your name, addresses, usernames: any of these anywhere is a high finding. ' +
+    'Matching ignores case and finds the value inside longer text.'],
+  safe_values: ['Allowed anyway', 'Exact values that look risky but are fine to publish, such as a ' +
+    'well-known test value or someone else\'s public name.'],
+};
+const policy = {lists: null, show: false, pending: {never_publish: new Set(), safe_values: new Set()}};
+const mask = value => (value.length <= 3 ? '•••' : `${value.slice(0, 2)}${'•'.repeat(Math.min(6, value.length - 3))}${value.slice(-1)}`);
+
+async function loadPolicy() {
+  try { policy.lists = (await act('security-policy')).lists; renderPolicy(); }
+  catch (error) { document.getElementById('security-policy').replaceChildren(html('p', error.message, 'tone-warning')); }
+}
+
+async function changePolicy(list, change, note) {
+  try {
+    policy.lists = (await act('security-policy-change', {list, ...change})).lists;
+    policy.pending[list].clear();
+    renderPolicy(note);
+  } catch (error) { renderPolicy(error.message, true); }
+}
+
+function renderPolicy(note = '', problem = false) {
+  const box = document.getElementById('security-policy');
+  box.replaceChildren();
+  if (!policy.lists) return;
+  const show = html('label', undefined, 'sec-option');
+  const tick = html('input'); tick.type = 'checkbox'; tick.checked = policy.show;
+  tick.onchange = () => { policy.show = tick.checked; renderPolicy(); };
+  show.append(tick, html('span', ' Show the values on this screen'));
+  box.append(show);
+  for (const [list, [title, about]] of Object.entries(LISTS)) {
+    const values = policy.lists[list] || [];
+    const section = html('div', undefined, 'sec-list');
+    section.append(html('h4', `${title} (${values.length})`), html('p', about, 'host-note'));
+    const chips = html('div', undefined, 'sec-chips');
+    for (const value of values) {
+      const marked = policy.pending[list].has(value);
+      const chip = html('button', `${policy.show ? value : mask(value)} ${marked ? '↺' : '✕'}`, `sec-value${marked ? ' sec-value-out' : ''}`);
+      chip.type = 'button';
+      chip.title = marked ? 'Keep this value' : 'Mark this value for removal';
+      chip.onclick = () => { marked ? policy.pending[list].delete(value) : policy.pending[list].add(value); renderPolicy(); };
+      chips.append(chip);
+    }
+    if (!values.length) chips.append(html('span', 'none yet', 'host-note'));
+    section.append(chips);
+    const loosensOnAdd = list === 'safe_values';
+    const add = html('div', undefined, 'sec-add');
+    const field = html('input'); field.type = 'text'; field.autocomplete = 'off'; field.spellcheck = false;
+    field.placeholder = list === 'never_publish' ? 'Add a value to protect' : 'Add an allowed value';
+    field.setAttribute('aria-label', field.placeholder);
+    const word = html('input'); word.type = 'text'; word.autocomplete = 'off'; word.placeholder = 'Type LOOSEN';
+    word.setAttribute('aria-label', 'Type LOOSEN to allow a change that weakens protection');
+    const addButton = html('button', 'Add'); addButton.type = 'button';
+    addButton.onclick = () => {
+      const value = field.value.trim();
+      if (!value) return;
+      changePolicy(list, {add: [value], ...(loosensOnAdd ? {confirm: word.value} : {})}, `Added to "${title}". It applies to the next audit.`);
+    };
+    field.onkeydown = event => { if (event.key === 'Enter') addButton.click(); };
+    add.append(field);
+    if (loosensOnAdd) add.append(word);
+    add.append(addButton);
+    section.append(add);
+    if (policy.pending[list].size) {
+      const confirm = html('div', undefined, 'sec-add');
+      const removeWord = html('input'); removeWord.type = 'text'; removeWord.autocomplete = 'off';
+      removeWord.placeholder = 'Type LOOSEN';
+      const remove = html('button', `Remove ${policy.pending[list].size}`); remove.type = 'button';
+      remove.onclick = () => changePolicy(list, {remove: [...policy.pending[list]], ...(list === 'never_publish' ? {confirm: removeWord.value} : {})},
+                                           `Removed from "${title}". It applies to the next audit.`);
+      if (list === 'never_publish') confirm.append(html('span', 'Removing protection: ', 'host-note'), removeWord);
+      confirm.append(remove);
+      section.append(confirm);
+    }
+    box.append(section);
+  }
+  if (note) box.append(html('p', note, problem ? 'tone-warning' : 'tone-success'));
+}
+
 // ---- what to audit ------------------------------------------------------------------------------
 function renderScope() {
   const box = document.getElementById('security-scope');
@@ -224,12 +305,19 @@ export function renderSecurity(container, data, connection) {
     const right = html('article', undefined, 'card');
     right.append(html('h3', 'Scanners'));
     const engines = html('div'); engines.id = 'security-engines'; right.append(engines);
-    grid.append(left, right);
+    const values = html('article', undefined, 'card');
+    values.append(html('h3', 'Protected values'), html('p', 'Saved in your gitSpecOps settings on this machine; ' +
+      'changes apply to the next audit, no restart needed.', 'host-note'));
+    const list = html('div'); list.id = 'security-policy'; values.append(list);
+    const side = html('div', undefined, 'sec-side');
+    side.append(right, values);
+    grid.append(left, side);
     const run = html('div', undefined, 'sec-run'); run.id = 'security-run';
     const message = html('p', '', 'tone-warning'); message.id = 'security-message'; message.setAttribute('role', 'status');
     const results = html('div', undefined, 'sec-results'); results.id = 'security-results';
     container.append(grid, run, message, results);
     loadEngines();
+    loadPolicy();
     act('security-status').then(result => { setAudit(result.audit); if (result.audit && result.audit.state === 'running') poll(); })
       .catch(() => setAudit(null));
   }

@@ -98,7 +98,8 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
                         "catchup-preview": fleet_action, "security-preview": fleet_action,
                         # The security audit: local only (never on the tailnet listener).
                         "security-engines": fleet_action, "security-start": fleet_action,
-                        "security-status": fleet_action, "security-stop": fleet_action}
+                        "security-status": fleet_action, "security-stop": fleet_action,
+                        "security-policy": fleet_action, "security-policy-change": fleet_action}
             if setup is not None and action.startswith("setup/"):
                 handlers[action] = lambda name, payload: setup.act(name.removeprefix("setup/"), payload)
             if action not in handlers or handlers[action] is None:
@@ -116,7 +117,8 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 # A whole organization's repository ids fit in 64 KiB; everything else stays small.
-                limit = 4096 if action.startswith("setup/") else 65536 if action == "security-start" else 1024
+                limit = (4096 if action.startswith(("setup/", "security-policy")) else
+                         65536 if action == "security-start" else 1024)
                 if not 0 < length <= limit or self.headers.get("Transfer-Encoding"):
                     raise ValueError("invalid action size")
                 payload = json.loads(self.rfile.read(length))

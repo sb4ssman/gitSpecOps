@@ -93,6 +93,32 @@ class MarkTests(unittest.TestCase):
         older = snapshot_from_display({**document, "mark": None}, "u", "prime")
         self.assertEqual((older.machine, older.fleet), ("attention", "none"), "a peer from before the mark")
 
+    def test_working_frames_light_from_the_outside_in(self):
+        from App._mark.geometry import FRAMES
+        lit_parts = []
+        for frame in range(len(FRAMES)):
+            lit_parts.append({item.part for item in mark("ok", "attention", 32, frame).items if item.lit})
+        self.assertEqual(lit_parts, [set(), {"node"}, {"node", "rim"}, {"node", "rim", "spoke"},
+                                     {"node", "rim", "spoke", "hub"}])
+        animated = svg("starting", "none", 64, working=True)
+        ElementTree.fromstring(animated)
+        self.assertIn("@keyframes w-hub", animated)
+        self.assertEqual(mark_response({"working": ["1"]})[0], 200)
+        self.assertEqual(mark_response({"working": ["yes"]})[0], 400)
+
+    def test_the_tray_shows_what_the_peer_is_doing(self):
+        document = {"contract": {"name": "gitspecops.fleet.display", "version": 1},
+                    "summary": {"repositories": 168, "attention": 0, "machines": 1},
+                    "mark": {"machine": {"state": "ok", "text": "168 repositories in sync"},
+                             "fleet": {"state": "none", "text": "not in a fleet"}},
+                    "activity": {"phase": "fetching", "text": "fetching remotes (read-only): 168 repositories"}}
+        busy = snapshot_from_display(document, "u", "prime")
+        self.assertTrue(busy.working)
+        self.assertTrue(busy.tooltip().startswith("gitSpecOps: fetching remotes"))
+        self.assertLessEqual(len(busy.tooltip()), 127)
+        calm = snapshot_from_display({**document, "activity": {"phase": "idle", "text": "watching 168"}}, "u", "prime")
+        self.assertFalse(calm.working)
+
     def test_qt_paints_the_mark(self):
         try:
             import PySide6  # noqa: F401

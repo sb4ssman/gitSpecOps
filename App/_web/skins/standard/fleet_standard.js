@@ -59,13 +59,19 @@ function renderMark() {
   const m = mark.machine.state, f = mark.fleet.state;
   const words = `This machine: ${mark.machine.text} · Fleet: ${mark.fleet.text}`;
   byId('mark-text').textContent = words;
-  byId('mark').classList.toggle('mark-busy', m === 'starting');
+  const activity = state.data.activity || {phase: 'idle', text: ''};
+  const working = m === 'starting' || (activity.phase && activity.phase !== 'idle');
+  byId('activity-text').textContent = activity.text ? activity.text[0].toUpperCase() + activity.text.slice(1) : '';
+  byId('activity').classList.toggle('working', Boolean(working));
+  const banner = byId('first-observation');
+  if (!banner.hidden && activity.text) banner.textContent = `${activity.text[0].toUpperCase() + activity.text.slice(1)}. ` +
+    'Nothing is forgotten: your repositories appear here as soon as this machine has read them.';
   byId('mark').alt = `gitSpecOps. ${words}`;
-  if (markShown === `${m}/${f}`) return;
-  markShown = `${m}/${f}`;
-  const url = size => `/v1/mark.svg?machine=${encodeURIComponent(m)}&fleet=${encodeURIComponent(f)}&size=${size}`;
-  byId('mark').src = url(64);
-  byId('favicon').href = url(32);
+  if (markShown === `${m}/${f}/${working}`) return;
+  markShown = `${m}/${f}/${working}`;
+  const url = (size, animate) => `/v1/mark.svg?machine=${encodeURIComponent(m)}&fleet=${encodeURIComponent(f)}&size=${size}${animate ? '&working=1' : ''}`;
+  byId('mark').src = url(64, working);
+  byId('favicon').href = url(32, false);
 }
 
 function renderSummary() {

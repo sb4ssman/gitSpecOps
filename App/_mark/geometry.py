@@ -33,6 +33,23 @@ RING_WIDTH = 1.3      # a hollow dot's ring
 SMALL_MAX = 24
 CANVAS = 32.0
 RANK = {"none": 0, "ok": 0, "starting": 1, "attention": 2, "error": 3}
+#: Working: colour flows in from the outside, as if the mark were absorbing information.
+#: One dark frame, then the outer dots, the ring's lines, the spokes, and finally the hub.
+FRAMES = (frozenset(), frozenset({"node"}), frozenset({"node", "rim"}),
+          frozenset({"node", "rim", "spoke"}), frozenset({"node", "rim", "spoke", "hub"}))
+FRAME_MS = 260
+#: While working, a part whose state has no colour of its own yet shows this one.
+WORKING = "#58a6ff"
+DARK_OPACITY = 0.3
+
+
+def style(item, working: bool) -> tuple[str, bool, float]:
+    """(colour, hollow, opacity) for one primitive, normally or in a working frame."""
+    if working and not item.lit:
+        return COLOURS["starting"], True, DARK_OPACITY
+    if working and item.state in HOLLOW:
+        return WORKING, False, 1.0
+    return COLOURS[item.state], item.state in HOLLOW, 1.0
 
 
 @dataclass(frozen=True)
@@ -43,6 +60,8 @@ class Line:
     y2: float
     width: float
     state: str
+    part: str = ""      # "rim" (the outer ring's lines) or "spoke"
+    lit: bool = True    # False only in a working frame that has not reached this part yet
 
 
 @dataclass(frozen=True)
@@ -51,6 +70,8 @@ class Dot:
     y: float
     r: float
     state: str
+    part: str = ""      # "node" (an outer dot) or "hub" (this machine)
+    lit: bool = True
 
 
 @dataclass(frozen=True)
@@ -84,10 +105,10 @@ def _raw(machine: str, fleet: str, small: bool) -> list:
     c, radius = 16.0, 11.8
     nodes = [(c + radius * math.cos(math.radians(-90 + 72 * k)),
               c + radius * math.sin(math.radians(-90 + 72 * k))) for k in range(5)]
-    items = [Line(*_trim(nodes[k], node, nodes[(k + 1) % 5], node), width, fleet) for k in range(5)]
-    items += [Line(*_trim((c, c), hub, p, node), width, fleet) for p in nodes]
-    items += [Dot(x, y, node, fleet) for x, y in nodes]
-    items.append(Dot(c, c, hub, machine))
+    items = [Line(*_trim(nodes[k], node, nodes[(k + 1) % 5], node), width, fleet, "rim") for k in range(5)]
+    items += [Line(*_trim((c, c), hub, p, node), width, fleet, "spoke") for p in nodes]
+    items += [Dot(x, y, node, fleet, "node") for x, y in nodes]
+    items.append(Dot(c, c, hub, machine, "hub"))
     return items
 
 
@@ -112,17 +133,20 @@ def _fit(small: bool) -> tuple[float, float, float]:
     return x0, y0, CANVAS / side
 
 
-def mark(machine: str, fleet: str, size: int = 32) -> Mark:
-    """The mark for one pair of states at one pixel size, on the 32-unit square."""
+def mark(machine: str, fleet: str, size: int = 32, frame: int | None = None) -> Mark:
+    """The mark for one pair of states at one pixel size, on the 32-unit square. `frame` (an
+    index into FRAMES) draws one step of the working animation; None draws it at rest."""
     check_state(machine)
     check_state(fleet)
     small = size <= SMALL_MAX
     x0, y0, k = _fit(small)
+    lit = FRAMES[frame] if frame is not None else None
     items = []
     for item in _raw(machine, fleet, small):
+        on = lit is None or item.part in lit
         if isinstance(item, Line):
             items.append(Line((item.x1 - x0) * k, (item.y1 - y0) * k, (item.x2 - x0) * k,
-                              (item.y2 - y0) * k, item.width * k, item.state))
+                              (item.y2 - y0) * k, item.width * k, item.state, item.part, on))
         else:
-            items.append(Dot((item.x - x0) * k, (item.y - y0) * k, item.r * k, item.state))
+            items.append(Dot((item.x - x0) * k, (item.y - y0) * k, item.r * k, item.state, item.part, on))
     return Mark(tuple(items), k)

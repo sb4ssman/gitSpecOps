@@ -18,6 +18,7 @@ from pathlib import Path
 #: What start-at-login registers: the tray command itself.
 TRAY_SCRIPT = Path(__file__).resolve().parents[1] / "tray.py"
 
+from App._mark.geometry import FRAME_MS, FRAMES  # noqa: E402
 from App._mark.qt import icon as mark_icon  # noqa: E402
 from App._tray.model import (GENERIC_FAILURE, POLL_SECONDS, setup_snapshot, Snapshot, error_snapshot,  # noqa: E402
                              failure_reason, snapshot_from_display, stopped_snapshot)
@@ -69,22 +70,16 @@ def _logging(settings_home):
     return configure_logging(settings, "app_tray")
 
 
-#: While working, the icon alternates with a dimmed copy of itself at this pace.
-BLINK_MS = 600
-BLINK_OPACITY = 0.3
-
-
 class Icons:
-    """The mark for each pair of states, painted once and reused (at most 20 pairs, and their
-    dimmed frames)."""
+    """The mark for each pair of states and each working frame, painted once and reused."""
 
     def __init__(self):
         self._cache = {}
 
-    def get(self, machine: str, fleet: str, dim: bool = False):
-        key = (machine, fleet, dim)
+    def get(self, machine: str, fleet: str, frame: int | None = None):
+        key = (machine, fleet, frame)
         if key not in self._cache:
-            self._cache[key] = mark_icon(machine, fleet, BLINK_OPACITY if dim else 1.0)
+            self._cache[key] = mark_icon(machine, fleet, frame)
         return self._cache[key]
 
 
@@ -134,24 +129,24 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
     errors = ErrorChannel(sys.stderr)
     operational = _logging(settings_home)
 
-    # Blinking: the app is working out its state (starting, first observation) or running
-    # something the person asked for from the menu.
-    blink = {"on": False, "work": 0, "snapshot": Snapshot()}
+    # Working: colour flows in from the outer dots to the hub, over and over, while the app works
+    # out its state, reads or fetches, or runs something the person asked for from the menu.
+    blink = {"frame": 0, "work": 0, "snapshot": Snapshot()}
     blink_timer = QtCore.QTimer()
-    blink_timer.setInterval(BLINK_MS)
+    blink_timer.setInterval(FRAME_MS)
 
     def show_icon():
         snapshot = blink["snapshot"]
-        working = snapshot.machine == "starting" or blink["work"] > 0
+        working = snapshot.working or blink["work"] > 0
         if working and not blink_timer.isActive():
+            blink["frame"] = 0
             blink_timer.start()
         elif not working and blink_timer.isActive():
             blink_timer.stop()
-            blink["on"] = False
-        tray.setIcon(icons.get(snapshot.machine, snapshot.fleet, dim=working and blink["on"]))
+        tray.setIcon(icons.get(snapshot.machine, snapshot.fleet, blink["frame"] if working else None))
 
     def tick():
-        blink["on"] = not blink["on"]
+        blink["frame"] = (blink["frame"] + 1) % len(FRAMES)
         show_icon()
 
     blink_timer.timeout.connect(tick)
@@ -166,6 +161,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
         tray.setToolTip(snapshot.tooltip())
         machine_line.setText(f"This machine: {snapshot.machine_text}")
         fleet_line.setText(f"Fleet: {snapshot.fleet_text}")
+        activity_line.setText(f"Now: {snapshot.activity_text}")
 
     def open_view():
         """Double-click: open the face the person chose, web or window."""
@@ -224,6 +220,8 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
     machine_line.setEnabled(False)
     fleet_line = menu.addAction("Fleet: not known yet")
     fleet_line.setEnabled(False)
+    activity_line = menu.addAction("Now: starting")
+    activity_line.setEnabled(False)
     menu.addSeparator()
     menu.addAction("Open web view").triggered.connect(lambda: webbrowser.open(context["url"])
                                                       if context.get("url") else None)

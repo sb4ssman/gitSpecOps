@@ -61,10 +61,20 @@ class Snapshot:
     fleet: str = "none"
     machine_text: str = "starting"
     fleet_text: str = "not known yet"
+    #: What the peer is doing right now (the display document's `activity`).
+    activity: str = "starting"
+    activity_text: str = "starting"
+
+    @property
+    def working(self) -> bool:
+        """The mark animates while the app is working something out or doing something."""
+        return self.machine == "starting" or self.activity not in ("idle", "")
 
     def tooltip(self) -> str:
-        """Windows cuts tray tooltips at 127 characters: two short lines, the menu has the rest."""
-        text = f"gitSpecOps\nThis machine: {self.machine_text}\nFleet: {self.fleet_text}"
+        """Windows cuts tray tooltips at 127 characters: short lines, the menu has the rest. While
+        working, the first line says what it is doing."""
+        head = f"gitSpecOps: {self.activity_text}" if self.working else "gitSpecOps"
+        text = f"{head}\nThis machine: {self.machine_text}\nFleet: {self.fleet_text}"
         return text if len(text) <= 127 else text[:126] + "…"
 
 
@@ -97,6 +107,9 @@ def snapshot_from_display(document: dict, url: str, label: str) -> Snapshot:
     else:  # a peer from before the mark: the overall state, no fleet signal
         snapshot.machine, snapshot.machine_text = snapshot.state, detail
         snapshot.fleet, snapshot.fleet_text = "none", "not reported by this peer"
+    activity = document.get("activity") or {}
+    snapshot.activity = str(activity.get("phase") or "idle")
+    snapshot.activity_text = str(activity.get("text") or "watching for changes")
     return snapshot
 
 
@@ -105,14 +118,16 @@ def setup_snapshot(url: str) -> Snapshot:
     return Snapshot(state="attention", url=url, ready=True,
                     text="gitSpecOps is not set up yet. Double-click to choose your library folders.",
                     machine="attention", machine_text="not set up yet; double-click to start",
-                    fleet="none", fleet_text="not in a fleet")
+                    fleet="none", fleet_text="not in a fleet",
+                    activity="idle", activity_text="waiting for you to choose a library")
 
 
 def error_snapshot(url: str, label: str) -> Snapshot:
     return Snapshot(state="error", url=url, ready=bool(url),
                     text=f"{label}: cannot read the fleet dashboard right now.",
                     machine="error", machine_text="cannot read the fleet dashboard right now",
-                    fleet="starting", fleet_text="not known right now")
+                    fleet="starting", fleet_text="not known right now",
+                    activity="idle", activity_text="cannot read the fleet dashboard")
 
 
 def failure_reason(error_line: str | None) -> str:
@@ -128,4 +143,5 @@ def stopped_snapshot(reason: str) -> Snapshot:
     """`reason` is already one of the fixed sentences above, never the peer's own text."""
     return Snapshot(state="error", text=f"gitSpecOps is not running: {reason}",
                     machine="error", machine_text="not running; open the menu to see why",
-                    fleet="starting", fleet_text="not known while stopped")
+                    fleet="starting", fleet_text="not known while stopped",
+                    activity="idle", activity_text="stopped")

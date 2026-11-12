@@ -262,6 +262,12 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     store = FleetStore(config_dir / "fleet.sqlite3", fleet_id)
     publisher = TransportPublisher(config.get("transports") or {})
     observer = IncrementalObserver(config)
+    # What this peer is doing right now, in words, for the tray's status line and the web view:
+    # people should see the work happen. Counts only; never a path or a repository name.
+    activity = {"phase": "starting", "text": "starting up", "done": 0, "total": 0}
+
+    def doing(phase: str, text: str, done: int = 0, total: int = 0) -> None:
+        activity.update(phase=phase, text=text, done=done, total=total)
     from Elaborate._recovery.runtime import RecoveryRuntime
     recovery = RecoveryRuntime(config, observer, log=log)
     stale_seconds = stale_after(config)
@@ -282,16 +288,27 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     action_lock = threading.Lock()
 
     def security_settings():
-        snapshot = getattr(config, "snapshot", None)
-        return getattr(snapshot, "home", settings_home), snapshot
+        """The profile as it is now, not as it was when the peer started: a policy change made
+        from the web view (or by hand) applies to the next check without a restart. Each check
+        still verifies that the profile does not change while it runs."""
+        from Special._settings.fleet import load_fleet_settings
+
+        home = getattr(getattr(config, "snapshot", None), "home", settings_home)
+        return home, load_fleet_settings(home)
 
     from Special._security._audit import AuditJobs, engines_status
+    from Special._security._policy_edit import policy_change, policy_view
     audits = AuditJobs(observer.local_checkouts, settings=security_settings)
 
     def dashboard_action(action, payload):
         """Local dashboard actions call the same headless operations as terminal routes."""
         if action == "security-engines":
             return {"engines": engines_status()}
+        if action == "security-policy":
+            return policy_view(security_settings()[0])
+        if action == "security-policy-change":
+            with action_lock:
+                return policy_change(security_settings()[0], payload)
         if action == "security-start":
             return audits.start(payload)
         if action == "security-status":
@@ -301,8 +318,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         if action == "security-preview":
             from Special._security._advice import inspect_registered
             with action_lock:
-                snapshot = getattr(config, "snapshot", None)
-                home = getattr(snapshot, "home", settings_home)
+                home, snapshot = security_settings()
                 return inspect_registered(payload, observer.local_checkouts, settings_home=home, expected_settings=snapshot)
         if action != "catchup-preview" or payload:
             raise ValueError("unsupported fleet dashboard action")
@@ -342,7 +358,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             issues = list(issues) + [
                 f"{len(pending_new)} new repository(ies) appeared in your library and are not "
                 f"observed yet: {listed}{more}. Run 'fleet rescan' to include them."]
-        return display_from_manifests(
+        document = display_from_manifests(
             manifests, fleet_id=fleet_id, names=names, issues=issues,
             stale_seconds=stale_seconds,
             settings={"machine_id": config["machine_id"],
@@ -360,6 +376,8 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                                                                    "policies": {}},
                       "withheld_repo_ids": sorted(latest["withheld"]),
                       "unobserved_count": observer.excluded_from_observation})
+        document["activity"] = dict(activity)
+        return document
 
     dashboard, url = (serve(document, desktop.handle, dashboard_action) if serve is not None
                       else (None, None))
@@ -392,7 +410,10 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     pending_new: set = set()
 
     started = time.monotonic()
-    count = observer.inventory()
+    doing("finding", "finding the repositories in your library")
+    count = observer.inventory(progress=lambda done, total, _path: doing(
+        "reading", f"reading Git status: {done} of {total} repositories", done, total))
+    doing("publishing", f"found {count} repositories; putting this machine's state together", count, count)
     log(f"Initial inventory found {count} repositories in {time.monotonic() - started:.1f}s. "
         "Filesystem events now drive targeted checks; there is no periodic scan. Ctrl-C stops.")
 
@@ -417,8 +438,10 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             delay = fetch_minutes * 60
             paths = list(latest["paths"])
             if paths:
+                doing("fetching", f"fetching remotes (read-only): {len(paths)} repositories", 0, len(paths))
                 fetched, problems = fetch_repositories(paths)
                 fetch_results.put((paths, fetched, problems))
+                doing("idle", f"watching {len(paths)} repositories for changes")
 
     if fetch_minutes > 0 and not once:
         threading.Thread(target=fetch_loop, name="fleet-fetch", daemon=True).start()
@@ -454,6 +477,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         recovery.capture_paths(observer.paths)
         recovery.acknowledge_available()
         observe("initial inventory")
+        doing("idle", f"watching {count} repositories for changes")
         if once:
             return 0
         while not stopping.is_set():
@@ -478,7 +502,10 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                 if force_inventory or request_path.exists():
                     request_path.unlink(missing_ok=True)
                     started = time.monotonic()
-                    count = observer.inventory()
+                    doing("finding", "rescanning: finding the repositories in your library")
+                    count = observer.inventory(progress=lambda done, total, _path: doing(
+                        "reading", f"rescanning: reading Git status: {done} of {total}", done, total))
+                    doing("idle", f"watching {count} repositories for changes")
                     pending_new.clear()
                     reason = f"inventory: {count} repos in {time.monotonic() - started:.1f}s"
                 elif changed:
