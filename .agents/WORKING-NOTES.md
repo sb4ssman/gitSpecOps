@@ -17,6 +17,13 @@ _Last tended: 2026-11-11 (clean-tree pass checkpoint: phases 1-8 done, phase 9 p
   (several libraries, find with LOOK, add with SCAN, presentation), `Elaborate/setup_fleet.py`
   (join, transports, leave). Left: a web-view setup page for an unenrolled tray; the Qt window;
   real trials of each transport between real machines (C7), with the user.
+- **The whole-product picture (2026-11-12):** drafted as the eventual README in
+  [`drafts/eventual-README.md`](drafts/eventual-README.md): one install per OS with `gitso`
+  included, the tray and map, the growth matrix (installed, machine, fleet, managed repository,
+  Tailscale) across See / Keep current / Protect / Coordinate / Agents, agents through the same
+  gates, signed self-updates staged across the fleet. Under discussion with the user; it
+  replaces README.md only when true. Open: the in-app setup, CI builds on three systems, the
+  updater, code signing (the user's decision).
 - **Executing: [`HANDOFF-CLEAN-TREE.md`](HANDOFF-CLEAN-TREE.md)** (agreed with the user
   2026-11-11). Done: the mapping, `git-sync-suggester/` and `_archive/` gone, Qt tray over
   the web view, network map views, remote watch and act, every command headed. Left: see

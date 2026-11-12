@@ -2082,3 +2082,8 @@ No code changed; decisions recorded where they govern.
 
 ## 2026-11-12 07:01 - user (claude) - Bootstrap keeps the tray's Qt
 - `setup_gitspecops.py bootstrap` ran plain `uv sync`, which makes .venv match exactly what is asked for and would have removed PySide6 once it became the optional `app` extra. It now runs `uv sync --extra app`. Open: the stdlib fallback (no uv) builds a .venv without Qt; part of the setup redesign under discussion.
+
+## 2026-11-12 08:11 - user (claude) - Draft of the eventual README
+- With the user: the product as a whole (three faces over one engine; the growth matrix; security
+  as a pillar; agents through the same gates; one install path; CI builds; signed self-updates).
+  Drafted as `.agents/drafts/eventual-README.md`; README.md unchanged.
