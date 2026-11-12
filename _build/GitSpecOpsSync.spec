@@ -8,7 +8,8 @@ build_dir = Path(SPECPATH).resolve()
 project_root = build_dir.parent  # this spec lives in _build/
 skins = project_root / "App" / "_web" / "skins"
 assets = ([skins / "standard" / name for name in (
-              "fleet_dashboard.html", "fleet_standard.css", "fleet_standard.js", "fleet_map.js")]
+              "fleet_dashboard.html", "fleet_standard.css", "fleet_standard.js", "fleet_map.js",
+              "fleet_setup.html", "fleet_setup.js")]
           + [skins / "_common" / name for name in ("fleet_client.js", "fleet_view.js")])
 
 analysis = Analysis(
@@ -22,7 +23,8 @@ analysis = Analysis(
     # Imported lazily, inside functions: static analysis would miss them, and the frozen app
     # would fail only when a person reaches them (a menu item, recovery). Name them.
     hiddenimports=["App._tray.qt", "App._tray.model", "App._launch", "App._web.server",
-                   "App._web.remote", "App._web._assets", "Elaborate._fleet.autostart",
+                   "App._web.remote", "App._web._assets", "App._web.setup",
+                   "Elaborate._fleet.setup_state", "Elaborate._fleet.autostart",
                    "Elaborate._fleet.peer", "Elaborate._fleet.local_view", "Special._sync.actions",
                    "Elaborate._recovery.runtime", "Elaborate._recovery.capture",
                    "Elaborate._recovery.secret_scan", "Elaborate._recovery.patch_parse",

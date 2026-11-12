@@ -16,6 +16,7 @@ import secrets
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 from Elaborate._fleet.display import CONTRACT_NAME
 from Elaborate._fleet.local_view import display_from_transport
@@ -25,7 +26,9 @@ LOOPBACK = "127.0.0.1"
 DEFAULT_PORT = 8760
 
 
-def make_local_server(address, build_document, assets, desktop_action=None, fleet_action=None):
+def make_local_server(address, build_document, assets, desktop_action=None, fleet_action=None,
+                      setup=None):
+    """`setup`: SetupRoutes (App/_web/setup.py) to mount /setup and its actions, or None."""
     if address[0] != LOOPBACK:
         raise ValueError("the local dashboard must bind to loopback")
     action_token = secrets.token_urlsafe(32)
@@ -57,9 +60,17 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
                 if not self.local_request():
                     self.send(403, {"error": "invalid local dashboard address"})
                     return
-                if self.path in assets:
-                    data, kind = assets[self.path]
+                path, query = urlsplit(self.path).path, parse_qs(urlsplit(self.path).query)
+                if path in assets and (path not in ("/setup", "/assets/fleet_setup.js") or setup):
+                    data, kind = assets[path]
                     self.send(200, data, kind)
+                    return
+                if path == "/v1/setup" and setup is not None:
+                    try:
+                        state = setup.state(readiness=query.get("readiness") == ["1"])
+                    except (OSError, ValueError) as exc:
+                        state = {"error": str(exc)}
+                    self.send(200, {**state, "local_actions": {"token": action_token}})
                     return
                 if self.path == "/v1/dashboard":
                     document = build_document()
@@ -81,6 +92,8 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
             action = self.path.removeprefix("/v1/")
             handlers = {"git-client": desktop_action, "open-git-client": desktop_action,
                         "catchup-preview": fleet_action, "security-preview": fleet_action}
+            if setup is not None and action.startswith("setup/"):
+                handlers[action] = lambda name, payload: setup.act(name.removeprefix("setup/"), payload)
             if action not in handlers or handlers[action] is None:
                 self.send(405, {"error": "this endpoint accepts no actions"})
                 return
@@ -95,13 +108,21 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
-                if not 0 < length <= 1024 or self.headers.get("Transfer-Encoding"):
+                limit = 4096 if action.startswith("setup/") else 1024
+                if not 0 < length <= limit or self.headers.get("Transfer-Encoding"):
                     raise ValueError("invalid action size")
                 payload = json.loads(self.rfile.read(length))
                 if not isinstance(payload, dict):
                     raise ValueError("expected a JSON object")
                 self.send(200, handlers[action](action, payload))
-            except (OSError, ValueError, KeyError):
+            except ValueError as exc:
+                if action.startswith("setup/"):
+                    # Setup refusals are meant for the person at this machine: say why.
+                    self.send(400, {"error": str(exc)})
+                    return
+                self.send(400, {"error": "Could not complete the desktop action. Check the client "
+                                         "selection and that this checkout still exists locally."})
+            except (OSError, KeyError):
                 # Never echo paths from a launch error into the browser document.
                 self.send(400, {"error": "Could not complete the desktop action. Check the client "
                                          "selection and that this checkout still exists locally."})
@@ -111,12 +132,13 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
     return server
 
 
-def peer_server(port: int = DEFAULT_PORT, skin: str = "standard"):
+def peer_server(port: int = DEFAULT_PORT, skin: str = "standard", setup=None):
     """What App hands a running peer (Elaborate's `run_peer(serve=...)`): this machine's
     dashboard on loopback. The peer never imports App; App attaches its presentation."""
     def attach(build_document, desktop_action, fleet_action):
         server = make_local_server((LOOPBACK, port), build_document, load_ui_assets(skin),
-                                   desktop_action=desktop_action, fleet_action=fleet_action)
+                                   desktop_action=desktop_action, fleet_action=fleet_action,
+                                   setup=setup)
         threading.Thread(target=server.serve_forever, name="fleet-dashboard", daemon=True).start()
         return server, f"http://{LOOPBACK}:{port}/"
     return attach
@@ -146,3 +168,11 @@ def serve(transport, config: dict, catalog: dict, port: int = DEFAULT_PORT,
         server.shutdown()
         server.server_close()
     return 0
+
+
+def setup_server(setup, port: int = DEFAULT_PORT, skin: str = "standard"):
+    """An un-enrolled machine's web view: only the setup page, until the machine is enrolled."""
+    document = {"contract": {"name": CONTRACT_NAME, "version": 1}, "setup_required": True}
+    server = make_local_server((LOOPBACK, port), lambda: document, load_ui_assets(skin), setup=setup)
+    threading.Thread(target=server.serve_forever, name="fleet-setup", daemon=True).start()
+    return server, f"http://{LOOPBACK}:{server.server_address[1]}/setup"

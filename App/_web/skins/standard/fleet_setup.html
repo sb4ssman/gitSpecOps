@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gitSpecOps setup</title>
+<link rel="stylesheet" href="/assets/fleet_standard.css">
+<script type="module" src="/assets/fleet_setup.js"></script>
+</head>
+<body>
+<header class="app-header"><div><div class="brand">gitSpecOps</div><h1>Set up</h1></div><div class="connection-tools"><a id="to-map" href="/" hidden>Open the map</a><span id="message" role="status"></span></div></header>
+<main id="workspace">
+<section aria-label="What you can do">
+<div class="section-title"><h2>Grow as you go</h2><p>gitSpecOps works the moment it is installed. Each step you add makes everything before it reach further.</p></div>
+<div id="tiers" class="setup-tiers"></div>
+</section>
+
+<section aria-label="This machine" class="setup-section">
+<div class="section-title"><h2>This machine</h2><p id="machine-summary">Tell gitSpecOps which folders hold your repositories. Nothing is looked at until you say so.</p></div>
+<div id="libraries"></div>
+<div class="setup-grid">
+<article class="card">
+<h3>Find libraries</h3>
+<p>Point at a folder (or the whole machine). Only folder names are read, no file contents and no Git, to list folders that hold repositories. Nothing is enrolled by looking.</p>
+<label>Look in (one folder per line)<textarea id="find-paths" rows="2" placeholder="T:\Github"></textarea></label>
+<label class="inline"><input id="find-whole" type="checkbox"> The whole machine</label>
+<label>Type LOOK to allow it<input id="find-confirm" autocomplete="off"></label>
+<button id="find" type="button">Find</button>
+<ul id="found" class="setup-list"></ul>
+</article>
+<article class="card">
+<h3>Add libraries</h3>
+<p id="add-notice">When the app next starts, it inventories these folders once, recursively: folder names and each repository's Git status. It copies, sends and changes nothing.</p>
+<label>Library folders (one per line)<textarea id="add-paths" rows="3" placeholder="T:\Github"></textarea></label>
+<label>Type SCAN to allow it<input id="add-confirm" autocomplete="off"></label>
+<button id="add" type="button">Add</button>
+</article>
+<article class="card" id="presentation-card" hidden>
+<h3>How the app shows itself</h3>
+<fieldset><legend>Double-clicking the tray opens</legend>
+<label class="inline"><input type="radio" name="face" value="web"> The web view</label>
+<label class="inline"><input type="radio" name="face" value="window"> The window (coming later)</label></fieldset>
+<fieldset><legend>The web view is served</legend>
+<label class="inline"><input type="radio" name="web" value="loopback"> On this machine only</label>
+<label class="inline"><input type="radio" name="web" value="tailnet"> Also to my own Tailscale devices</label>
+<label class="inline"><input type="radio" name="web" value="off"> Not at all</label></fieldset>
+<button id="presentation" type="button">Save</button>
+</article>
+</div>
+</section>
+
+<section aria-label="A fleet" class="setup-section" id="fleet-section" hidden>
+<div class="section-title"><h2>Your fleet</h2><p id="fleet-summary">Join this machine to your others: a key from a machine already in your fleet, or a new fleet; then any ways to share.</p></div>
+<button id="readiness" type="button" class="quiet">Check what this machine can use</button>
+<div id="readiness-report" class="notices"></div>
+<div class="setup-grid">
+<article class="card" id="join-card">
+<h3>Join or start a fleet</h3>
+<label>Fleet key from another machine (empty starts a new fleet)<input id="join-key" autocomplete="off" spellcheck="false"></label>
+<label>A folder your sync client replicates<input id="join-folder" list="sync-folders" autocomplete="off"></label>
+<datalist id="sync-folders"></datalist>
+<label>A private GitHub repository for gitSpecOps to manage (owner/name)<input id="join-repo" autocomplete="off" placeholder="your-login/gitspecops-state"></label>
+<label class="inline"><input id="join-create" type="checkbox"> Create it if it does not exist</label>
+<label class="inline"><input id="join-tailnet" type="checkbox"> Talk directly to my machines over Tailscale</label>
+<label class="inline"><input id="join-names" type="checkbox" checked> Share repository names, branches and commits with my other machines</label>
+<label>Type JOIN to allow it<input id="join-confirm" autocomplete="off"></label>
+<button id="join" type="button">Join</button>
+</article>
+<article class="card" id="leave-card" hidden>
+<h3>Leave the fleet</h3>
+<p>Stop sharing with your other machines. This machine keeps its libraries and web view; what it already shared stays where it was published.</p>
+<label>Type LEAVE to allow it<input id="leave-confirm" autocomplete="off"></label>
+<button id="leave" type="button">Leave</button>
+</article>
+</div>
+</section>
+</main>
+<footer><span>Every step here is also a command: Special/enroll_machine.py, Elaborate/setup_fleet.py.</span></footer>
+<noscript><p class="banner warning">JavaScript is required for the setup page.</p></noscript>
+</body></html>

@@ -21,8 +21,8 @@ from Elaborate._fleet.commands import fleet  # noqa: E402
 
 
 def main(argv=None):
-    return fleet(argv, ("setup", "transports", "leave", "fleet-key", "baskets", "git-client",
-                        "convert", "peer"))
+    return fleet(argv, ("setup", "status", "transports", "leave", "fleet-key", "baskets",
+                        "git-client", "convert", "peer"))
 
 
 EFFECT = "remote"

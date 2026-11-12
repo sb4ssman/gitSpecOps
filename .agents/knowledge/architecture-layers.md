@@ -505,3 +505,15 @@ Decided by the user:
   The app record's defaults live in `Special/_sync/enrollment.py`. A fleet key can be replaced
   only while no transport is selected (nothing was shared under it).
 
+## Revisions, 2026-11-12: setup in the app, one source for every setup screen
+
+- `Elaborate/_fleet/setup_state.py` is the one source for setup: the growth matrix (installed,
+  machine, fleet, managed repository, Tailscale; each unlock marked built or planned), what is
+  reached and next, readiness on request, and join/leave without prompts. The terminal guide,
+  `setup_fleet.py status [--json]` and the setup page all use it.
+- `App/_web/setup.py` mounts the setup routes in the web view (the same loopback, Host, Origin
+  and token checks as the dashboard); every change needs its typed word (LOOK, SCAN, JOIN,
+  LEAVE). An un-enrolled machine is served only the setup page (`setup_server`).
+- `App/_launch.run_app` is the app's life for the tray and `serve_web`: setup until enrolled,
+  then the peer; a setup change made in the web view restarts the peer so it takes effect.
+

@@ -377,6 +377,7 @@ controls.refresh.onclick = () => connection.refresh();
 connection.addEventListener('loading', () => { controls.refresh.disabled = true; });
 connection.addEventListener('idle', () => { controls.refresh.disabled = false; });
 connection.addEventListener('display', event => {
+  if (event.detail.data.setup_required) { window.location.href = '/setup'; return; }
   state.data = event.detail.data; state.receivedAt = event.detail.receivedAt;
   controls.warning.hidden = true; byId('connection').textContent = 'Dashboard connected'; renderAll();
 });

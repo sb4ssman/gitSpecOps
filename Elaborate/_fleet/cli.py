@@ -239,6 +239,10 @@ def build_parser():
                         help="fresh-fetch every observed checkout and report whether this machine is replaceable")
     commands.add_parser("convert", help="save an older legacy configuration in the current format")
     commands.add_parser("leave", help="stop sharing with the fleet; the machine stays enrolled")
+    status = commands.add_parser("status", help="what is set up, and what each next tier unlocks")
+    status.add_argument("--json", action="store_true", help="the whole setup state, for agents and apps")
+    status.add_argument("--readiness", action="store_true",
+                        help="also check Git, the gh login, Tailscale and sync folders")
     client = commands.add_parser("git-client", help="configure an optional local desktop Git client")
     client.add_argument("--client", choices=("sourcetree", "github-desktop"))
     client.add_argument("--executable", type=Path, help="installed client executable at a custom location")
@@ -452,52 +456,40 @@ def command_leave(directory: Path, *, home=None) -> int:
 
 
 def command_transports(args, directory: Path) -> int:
-    config = load_saved(directory, home=getattr(args, "settings_home", None))
-    transports = dict(config.get("transports") or {})
-    if args.folder and args.clear_folder:
-        raise ValueError("choose --folder or --clear-folder")
-    if args.repo and args.clear_repo:
-        raise ValueError("choose --repo or --clear-repo")
-    if args.folder:
-        folder = Path(args.folder).expanduser().resolve()
-        if not folder.is_dir():
-            raise ValueError("--folder must already exist")
-        transports["folder"] = {"path": str(folder),
-                                "seconds": args.folder_seconds or DEFAULT_FOLDER_SECONDS}
-    elif args.clear_folder:
-        transports.pop("folder", None)
-    elif args.folder_seconds and transports.get("folder"):
-        transports["folder"]["seconds"] = args.folder_seconds
-    if args.repo:
-        transports["repo"] = {"name": args.repo,
-                              "seconds": args.repo_seconds or DEFAULT_REPO_SECONDS}
-    elif args.clear_repo:
-        transports.pop("repo", None)
-    elif args.repo_seconds and transports.get("repo"):
-        transports["repo"]["seconds"] = args.repo_seconds
-    if args.tailnet:
-        transports["tailnet"] = {"port": args.tailnet_port or DEFAULT_TAILNET_PORT,
-                                 "allowed_login": None}
-    elif args.clear_tailnet:
-        transports.pop("tailnet", None)
-    elif args.tailnet_port and transports.get("tailnet"):
-        transports["tailnet"]["port"] = args.tailnet_port
-    config["transports"] = transports
-    validate(config)
-    if hasattr(config, "snapshot"):
-        config.snapshot.transport_changes("app", transports)
-        config.snapshot.verify()
-    if args.repo:
-        require_gh()
-        transport = RepoTransport(args.repo)
-        health = transport.doctor()
-        if not health.get("exists") and args.create_repo:
-            create_state_repo(args.repo)
-            health = transport.doctor()
-        if not health.get("exists") or not health.get("private") or not health.get("permissions"):
-            raise ValueError("--repo must be private and writable; add --create-repo to create it")
-    save_saved(directory, config, home=getattr(args, "settings_home", None))
-    print(f"Transports now:\n{describe(config)}\nStart with 'fleet run'.")
+    from Elaborate._fleet.setup_state import apply_transports
+
+    home = getattr(args, "settings_home", None)
+    config = apply_transports(
+        load_saved(directory, home=home), folder=args.folder, clear_folder=args.clear_folder,
+        folder_seconds=args.folder_seconds, repo=args.repo, create_repo=args.create_repo,
+        clear_repo=args.clear_repo, repo_seconds=args.repo_seconds, tailnet=args.tailnet,
+        clear_tailnet=args.clear_tailnet, tailnet_port=args.tailnet_port, directory=directory, home=home)
+    print(f"Transports now:\n{describe(config)}\nStart with Elaborate/peer.py or App/tray.py.")
+    return 0
+
+
+def command_status(args) -> int:
+    """What is set up, what each next tier needs, and what it unlocks. Works unenrolled too."""
+    from Elaborate._fleet.setup_state import setup_state
+
+    state = setup_state(args.settings_home, args.config_dir, readiness=args.readiness)
+    if args.json:
+        print(json.dumps(state, indent=2))
+        return 0
+    machine = state["machine"]
+    print("This machine: " + (f"{machine['label']}, libraries: {', '.join(machine['libraries'])}"
+                              if machine else "not enrolled"))
+    if state["fleet"]:
+        print(f"Fleet {state['fleet']['fleet_id']} through: {', '.join(state['fleet']['transports'])}")
+    for tier in state["tiers"]:
+        mark = "x" if tier["reached"] else (">" if tier["id"] == state["next"] else " ")
+        print(f"\n[{mark}] {tier['title']}  (adds: {tier['needs']})")
+        for item in tier["unlocks"]:
+            print(f"      {item['text']}" + ("" if item["built"] else "  (planned)"))
+    if state["next"] == "machine":
+        print("\nNext: python Special/enroll_machine.py add <library folder>")
+    elif state["next"]:
+        print("\nNext: python Elaborate/setup_fleet.py   (or App/tray.py, then its setup page)")
     return 0
 
 
@@ -835,6 +827,8 @@ def _main(argv=None, stopping=None, on_ready=None, serve=None):
     args = build_parser().parse_args(argv)
     if args.command == "preflight":
         return command_preflight()
+    if args.command == "status":
+        return command_status(args)
     directory = fleet_directory(args.config_dir, home=args.settings_home)
     try:
         if args.command == "rescan":
@@ -950,7 +944,7 @@ def main(argv=None, stopping=None, on_ready=None, serve=None):
         print("Setup is complete. Start gitSpecOps with the tray and web view: App/tray.py;\n"
               "the web view without a tray: App/serve_web.py; headless: Elaborate/peer.py.")
         return 0
-    if args.command in ("doctor", "rescan", "preflight", "fleet-key"):
+    if args.command in ("doctor", "rescan", "preflight", "fleet-key", "status"):
         return _main(argv, stopping, on_ready)
     try:
         with app_lock(args.config_dir.expanduser()):

@@ -2087,3 +2087,15 @@ No code changed; decisions recorded where they govern.
 - With the user: the product as a whole (three faces over one engine; the growth matrix; security
   as a pillar; agents through the same gates; one install path; CI builds; signed self-updates).
   Drafted as `.agents/drafts/eventual-README.md`; README.md unchanged.
+
+## 2026-11-12 08:52 - user (claude) - Setup in the app: page, matrix, status, and the app loop
+- New `Elaborate/_fleet/setup_state.py` (matrix with built/planned unlocks, state, readiness,
+  join and leave without prompts; `transports` now uses it), `setup_fleet.py status [--json]`,
+  `App/_web/setup.py` (setup routes with typed words, mounted in the web view), the setup page
+  (`fleet_setup.html`/`.js`), a Setup link on the dashboard, and `App/_launch.run_app` (setup
+  until enrolled, then the peer; a setup change restarts it) used by the tray and serve_web.
+- Tests: `tests/app/test_setup_page.py` (7: matrix honesty, typed words, the full find/add/
+  presentation/join/leave journey, the server's token and Origin checks, setup until enrolled,
+  restart on change). Full suite 82/82. A disposable end-to-end run: an un-enrolled serve_web
+  served setup, a library was added through the page's API, and the same address then showed
+  the map. `status` was read on the real profile (read-only).

@@ -18,7 +18,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSETS = ("fleet_dashboard.html", "fleet_standard.css", "fleet_client.js",
-          "fleet_view.js", "fleet_standard.js", "fleet_map.js")
+          "fleet_view.js", "fleet_standard.js", "fleet_map.js", "fleet_setup.html", "fleet_setup.js")
 
 
 def _git(root: Path, *args) -> tuple[bool, str]:

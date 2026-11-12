@@ -17,6 +17,11 @@ _Last tended: 2026-11-11 (clean-tree pass checkpoint: phases 1-8 done, phase 9 p
   (several libraries, find with LOOK, add with SCAN, presentation), `Elaborate/setup_fleet.py`
   (join, transports, leave). Left: a web-view setup page for an unenrolled tray; the Qt window;
   real trials of each transport between real machines (C7), with the user.
+- **Setup in the app (2026-11-12), step 1 of the product sequence, done:** the setup page
+  with the growth matrix, find/add/remove libraries, presentation, join/leave; `setup_fleet.py
+  status`; the tray serves setup on an un-enrolled machine and restarts the peer on changes.
+  Next in the sequence: CI on three systems (tests and unsigned preview builds), then the
+  updater, then signing (the user's decision). Not yet seen by the user on a real desktop.
 - **The whole-product picture (2026-11-12):** drafted as the eventual README in
   [`drafts/eventual-README.md`](drafts/eventual-README.md): one install per OS with `gitso`
   included, the tray and map, the growth matrix (installed, machine, fleet, managed repository,

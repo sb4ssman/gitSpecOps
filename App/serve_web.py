@@ -46,16 +46,14 @@ def manifests_only(args) -> int:
 def with_peer(args) -> int:
     import signal
 
-    from App._launch import presentation, profile_arguments
-    from Elaborate._fleet.cli import main as fleet_main
+    from App._launch import run_app
 
-    _config, serve, _choice = presentation(args.config_dir, args.settings_home, remote=args.remote,
-                                           web="loopback")
     stopping = threading.Event()
     for name in ("SIGINT", "SIGTERM"):
         signal.signal(getattr(signal, name), lambda *_: stopping.set())
-    return fleet_main([*profile_arguments(args.config_dir, args.settings_home), "run"],
-                      stopping=stopping, serve=serve)
+    return run_app(args.config_dir, args.settings_home, stopping=stopping, remote=args.remote,
+                   web="tailnet" if args.remote else "loopback",
+                   on_setup=lambda url: print(f"This machine is not set up yet. Open {url}", flush=True))
 
 
 def main(argv=None) -> int:

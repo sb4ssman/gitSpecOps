@@ -56,6 +56,13 @@ This is read-only. It checks Git, the existing `gh` login, Tailscale connectivit
 dashboard port, and common existing sync-folder locations. Missing Git is a blocker; the other
 tiers are simply reported as unavailable and can be added later.
 
+**The easiest way is the app itself.** Start the tray (`App/tray.py`) or the web view
+(`App/serve_web.py`). On a machine that is not enrolled, double-clicking the tray (or opening
+`http://127.0.0.1:8760/`) shows the setup page: what each step unlocks, then *find libraries*
+(LOOK), *add libraries* (SCAN), how the app shows itself, and joining a fleet (JOIN). The map
+starts by itself as soon as a library is added, and the page stays reachable from the map's
+Setup link. `python Elaborate/setup_fleet.py status` (or `--json`) shows the same picture.
+
 Setup is two steps, kept apart on purpose: **enroll the machine** (its libraries; this is
 enough for the tray, the web view and every local command), then, whenever you like, **join it
 to a fleet** (a key and how it shares status).

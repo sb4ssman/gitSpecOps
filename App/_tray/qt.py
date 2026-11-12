@@ -18,7 +18,7 @@ from pathlib import Path
 #: What start-at-login registers: the tray command itself.
 TRAY_SCRIPT = Path(__file__).resolve().parents[1] / "tray.py"
 
-from App._tray.model import (GENERIC_FAILURE, POLL_SECONDS, STATE_COLOURS, Snapshot, error_snapshot,  # noqa: E402
+from App._tray.model import (GENERIC_FAILURE, POLL_SECONDS, setup_snapshot, STATE_COLOURS, Snapshot, error_snapshot,  # noqa: E402
                              failure_reason, snapshot_from_display, stopped_snapshot)
 
 class TrayUnavailable(RuntimeError):
@@ -96,7 +96,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
         from PySide6 import QtCore, QtGui, QtWidgets
     except ImportError as exc:
         raise TrayUnavailable(missing_qt_message()) from exc
-    from App._launch import presentation, profile_arguments
+    from App._launch import profile_arguments, run_app
     from Basic._version import check_for_update, version_line
     from Elaborate._fleet import autostart
     from Elaborate._fleet.cli import main as fleet_main
@@ -131,7 +131,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
 
     def open_view():
         """Double-click: open the face the person chose, web or window."""
-        choice = context.get("choice") or {"face": view or "web", "web": web or "loopback"}
+        choice = {"face": view or "web", "web": web or "loopback", **(context.get("choice") or {})}
         if choice["face"] == "window":
             if context.get("url"):
                 tray.showMessage("The Qt window comes later", "Opening the web view instead.")
@@ -214,12 +214,18 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
         if open_on_start and info.get("url"):
             webbrowser.open(info["url"])
 
+    def on_setup(url):
+        context.update(url=url, ready=True)
+        context["choice"] = {"face": "web", "web": "loopback"}
+        bridge.snapshot.emit(setup_snapshot(url))
+        bridge.notify.emit("Set up gitSpecOps", "Double-click the icon to choose your library folders.")
+
     def worker():
         try:
-            _config, serve, context["choice"] = presentation(config_dir, settings_home, remote=remote,
-                                                             face=view, web=web)
-            result["code"] = fleet_main([*profile, "run"], stopping=stopping, on_ready=on_ready,
-                                        serve=serve)
+            context["choice"] = {}
+            result["code"] = run_app(config_dir, settings_home, stopping=stopping, on_ready=on_ready,
+                                     on_setup=on_setup, face=view, web=web, remote=remote,
+                                     choice_out=context["choice"])
         except Exception as exc:  # noqa: BLE001 - the icon must survive to say why
             result["code"] = 1
             errors.reason = errors.reason or failure_reason(str(exc))

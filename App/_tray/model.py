@@ -80,6 +80,12 @@ def snapshot_from_display(document: dict, url: str, label: str) -> Snapshot:
     return snapshot
 
 
+def setup_snapshot(url: str) -> Snapshot:
+    """An un-enrolled machine: not an error, an invitation."""
+    return Snapshot(state="attention", url=url, ready=True,
+                    text="gitSpecOps is not set up yet. Double-click to choose your library folders.")
+
+
 def error_snapshot(url: str, label: str) -> Snapshot:
     return Snapshot(state="error", url=url, ready=bool(url),
                     text=f"{label}: cannot read the fleet dashboard right now.")
