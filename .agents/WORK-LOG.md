@@ -2099,3 +2099,13 @@ No code changed; decisions recorded where they govern.
   restart on change). Full suite 82/82. A disposable end-to-end run: an un-enrolled serve_web
   served setup, a library was added through the page's API, and the same address then showed
   the map. `status` was read on the real profile (read-only).
+
+## 2026-11-12 - user (claude) - Name and tray icon: decisions so far
+- The name stays gitSpecOps. Git's trademark policy forbids "Git" as a syllable in a new name
+  (only "[Name] for Git" is offered); the user accepts that risk until the Git project raises it.
+  Alternatives considered and rejected: SpecOps-for-Git (crowded name, the user dislikes it), Git
+  Kraken (an existing product), new names (Muster and others).
+- The icon will not use or adapt the Git logo. The tray must show two signals: this machine, and
+  the fleet condensed to one state (the worst among the other machines); the tooltip and the tray
+  menu carry the detail. Candidates mocked up: chevrons, a radial trio of branches, a cloud over a
+  branch. No choice yet.
