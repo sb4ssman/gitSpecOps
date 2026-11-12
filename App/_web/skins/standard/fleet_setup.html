@@ -21,7 +21,7 @@
 <article class="card">
 <h3>Find libraries</h3>
 <p>Point at a folder (or the whole machine). Only folder names are read, no file contents and no Git, to list folders that hold repositories. Nothing is enrolled by looking.</p>
-<label>Look in (one folder per line)<textarea id="find-paths" rows="2" placeholder="T:\Github"></textarea></label>
+<label>Look in (one folder per line)<textarea id="find-paths" rows="2" placeholder="&lt;library-root&gt;"></textarea></label>
 <label class="inline"><input id="find-whole" type="checkbox"> The whole machine</label>
 <label>Type LOOK to allow it<input id="find-confirm" autocomplete="off"></label>
 <button id="find" type="button">Find</button>
@@ -30,7 +30,7 @@
 <article class="card">
 <h3>Add libraries</h3>
 <p id="add-notice">When the app next starts, it inventories these folders once, recursively: folder names and each repository's Git status. It copies, sends and changes nothing.</p>
-<label>Library folders (one per line)<textarea id="add-paths" rows="3" placeholder="T:\Github"></textarea></label>
+<label>Library folders (one per line)<textarea id="add-paths" rows="3" placeholder="&lt;library-root&gt;"></textarea></label>
 <label>Type SCAN to allow it<input id="add-confirm" autocomplete="off"></label>
 <button id="add" type="button">Add</button>
 </article>
