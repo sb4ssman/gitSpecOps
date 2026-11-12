@@ -69,16 +69,22 @@ def _logging(settings_home):
     return configure_logging(settings, "app_tray")
 
 
+#: While working, the icon alternates with a dimmed copy of itself at this pace.
+BLINK_MS = 600
+BLINK_OPACITY = 0.3
+
+
 class Icons:
-    """The mark for each pair of states, painted once and reused (at most 20 pairs)."""
+    """The mark for each pair of states, painted once and reused (at most 20 pairs, and their
+    dimmed frames)."""
 
     def __init__(self):
         self._cache = {}
 
-    def get(self, machine: str, fleet: str):
-        key = (machine, fleet)
+    def get(self, machine: str, fleet: str, dim: bool = False):
+        key = (machine, fleet, dim)
         if key not in self._cache:
-            self._cache[key] = mark_icon(machine, fleet)
+            self._cache[key] = mark_icon(machine, fleet, BLINK_OPACITY if dim else 1.0)
         return self._cache[key]
 
 
@@ -116,6 +122,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
     class Bridge(QtCore.QObject):
         snapshot = QtCore.Signal(object)
         notify = QtCore.Signal(str, str)
+        work = QtCore.Signal(int)
 
     bridge = Bridge()
     icons = Icons()
@@ -127,8 +134,35 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
     errors = ErrorChannel(sys.stderr)
     operational = _logging(settings_home)
 
+    # Blinking: the app is working out its state (starting, first observation) or running
+    # something the person asked for from the menu.
+    blink = {"on": False, "work": 0, "snapshot": Snapshot()}
+    blink_timer = QtCore.QTimer()
+    blink_timer.setInterval(BLINK_MS)
+
+    def show_icon():
+        snapshot = blink["snapshot"]
+        working = snapshot.machine == "starting" or blink["work"] > 0
+        if working and not blink_timer.isActive():
+            blink_timer.start()
+        elif not working and blink_timer.isActive():
+            blink_timer.stop()
+            blink["on"] = False
+        tray.setIcon(icons.get(snapshot.machine, snapshot.fleet, dim=working and blink["on"]))
+
+    def tick():
+        blink["on"] = not blink["on"]
+        show_icon()
+
+    blink_timer.timeout.connect(tick)
+
+    def working(delta: int):
+        blink["work"] = max(0, blink["work"] + delta)
+        show_icon()
+
     def apply(snapshot: Snapshot):
-        tray.setIcon(icons.get(snapshot.machine, snapshot.fleet))
+        blink["snapshot"] = snapshot
+        show_icon()
         tray.setToolTip(snapshot.tooltip())
         machine_line.setText(f"This machine: {snapshot.machine_text}")
         fleet_line.setText(f"Fleet: {snapshot.fleet_text}")
@@ -158,6 +192,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
 
     def preview():
         tray.showMessage("Catch-up preview", "Fetching remotes without changing branches or files.")
+        working(+1)
 
         def work():
             try:
@@ -167,6 +202,8 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
                 bridge.notify.emit("Catch-up preview", summary)
             except Exception:  # noqa: BLE001 - a menu action must never take the tray down
                 bridge.notify.emit("Catch-up preview failed", "Run Special/catch_up.py to see why.")
+            finally:
+                bridge.work.emit(-1)
         threading.Thread(target=work, name="tray-catchup-preview", daemon=True).start()
 
     def toggle_autostart(checked):
@@ -212,6 +249,8 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
     tray.activated.connect(lambda reason: open_view() if reason ==
                            QtWidgets.QSystemTrayIcon.ActivationReason.DoubleClick else None)
     bridge.snapshot.connect(apply)
+    bridge.work.connect(working)
+    show_icon()  # blinks from the first moment: nothing is known yet
     bridge.notify.connect(lambda title, message: tray.showMessage(title, message))
     tray.show()
 

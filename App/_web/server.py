@@ -95,7 +95,10 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
         def do_POST(self):
             action = self.path.removeprefix("/v1/")
             handlers = {"git-client": desktop_action, "open-git-client": desktop_action,
-                        "catchup-preview": fleet_action, "security-preview": fleet_action}
+                        "catchup-preview": fleet_action, "security-preview": fleet_action,
+                        # The security audit: local only (never on the tailnet listener).
+                        "security-engines": fleet_action, "security-start": fleet_action,
+                        "security-status": fleet_action, "security-stop": fleet_action}
             if setup is not None and action.startswith("setup/"):
                 handlers[action] = lambda name, payload: setup.act(name.removeprefix("setup/"), payload)
             if action not in handlers or handlers[action] is None:
@@ -112,7 +115,8 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
-                limit = 4096 if action.startswith("setup/") else 1024
+                # A whole organization's repository ids fit in 64 KiB; everything else stays small.
+                limit = 4096 if action.startswith("setup/") else 65536 if action == "security-start" else 1024
                 if not 0 < length <= limit or self.headers.get("Transfer-Encoding"):
                     raise ValueError("invalid action size")
                 payload = json.loads(self.rfile.read(length))
@@ -120,8 +124,9 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
                     raise ValueError("expected a JSON object")
                 self.send(200, handlers[action](action, payload))
             except ValueError as exc:
-                if action.startswith("setup/"):
-                    # Setup refusals are meant for the person at this machine: say why.
+                if action.startswith(("setup/", "security-")):
+                    # Setup and audit refusals are fixed sentences meant for the person at this
+                    # machine (never paths): say why.
                     self.send(400, {"error": str(exc)})
                     return
                 self.send(400, {"error": "Could not complete the desktop action. Check the client "

@@ -8,7 +8,7 @@ build_dir = Path(SPECPATH).resolve()
 project_root = build_dir.parent  # this spec lives in _build/
 skins = project_root / "App" / "_web" / "skins"
 assets = ([skins / "standard" / name for name in (
-              "fleet_dashboard.html", "fleet_standard.css", "fleet_standard.js", "fleet_map.js", "fleet_zoom.js",
+              "fleet_dashboard.html", "fleet_standard.css", "fleet_standard.js", "fleet_map.js", "fleet_zoom.js", "fleet_security.js",
               "fleet_setup.html", "fleet_setup.js")]
           + [skins / "_common" / name for name in ("fleet_client.js", "fleet_view.js")])
 

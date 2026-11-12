@@ -39,10 +39,18 @@ _Last tended: 2026-11-11 (clean-tree pass checkpoint: phases 1-8 done, phase 9 p
   writes every 30 minutes even when nothing changed (the heartbeat), so ~48 commits a day per
   machine, forever in history; leaving the fleet leaves the machine's file behind. Decisions
   pending: heartbeat cadence or another heartbeat channel, history growth, cleanup on leave.
-- **Wanted next in the UI (2026-11-12):** security visible in the web view, and a menu of every
-  command by layer, where e.g. Pull asks which repository and runs it through the same safety
-  gates as the terminal. Secret-scan engines (Gitleaks, Betterleaks, TruffleHog) are only looked
-  up when a scan selects them; nothing detects them up front or suggests installing them yet.
+  **Done 2026-11-12 (the user):** no more heartbeat commits: the repository is written only when
+  something changed, at most once per 30-minute slot, and only when GitHub is reachable. Still
+  open, for careful review later: how a repository-only machine proves it is alive (it reads as
+  not reporting after about an hour of quiet), and the user's idea of one machine (a "scribe",
+  over Tailscale) collecting every online machine's state into one commit for the whole fleet.
+- **Security tab (2026-11-12), first version built:** choose organizations or repositories, audit
+  files and every commit in the background (`Special/_security/_audit.py`, results in memory
+  only, no paths), see installed scanners (never installed by gitSpecOps), read masked findings.
+  A high finding shows as blocked even when the scan has gaps. Next: reviewing a finding from
+  the page (accept an example, as `review_finding` does), and per-scan extra values to look for.
+- **Wanted next in the UI:** a menu of every command by layer, where e.g. catch-up asks which
+  repository, previews, and runs through the same safety gates as the terminal.
 - **The whole-product picture (2026-11-12):** drafted as the eventual README in
   [`drafts/eventual-README.md`](drafts/eventual-README.md): one install per OS with `gitso`
   included, the tray and map, the growth matrix (installed, machine, fleet, managed repository,

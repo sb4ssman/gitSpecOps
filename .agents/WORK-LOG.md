@@ -2145,3 +2145,17 @@ No code changed; decisions recorded where they govern.
   rather than looking empty: the user read the empty start as a forgotten library. The tray's
   log and the profile confirm the library was never lost.
 - Full suite 83/83.
+
+## 2026-11-12 12:14 - user (claude) - Security tab; the mark blinks while working; no heartbeat commits
+- Security tab in the web view (`fleet_security.js`): organizations or single repositories,
+  installed-scanner check (looks only), a background audit of files and every commit with
+  progress and stop, masked findings per repository; `Special/_security/_audit.py` with the
+  `security-engines/start/status/stop` actions (local only, ids the observer knows, no paths in
+  results; 64 KiB request limit for long id lists). A known high finding reads as blocked even
+  when the scan also has gaps. Tests: `tests/security/test_audit.py` (4).
+- The tray icon blinks (alternating with a dimmed copy) while the app works out its state or
+  runs a menu action; the web view's mark pulses while this machine is starting.
+- State repository: no heartbeat writes; changes only, at most once per slot, retried at the next
+  slot when GitHub is unreachable. Tests: `tests/elaborate/test_state_repo_writes.py` (3).
+- Previewed with a real read-only audit of one organization (11 repositories, about 105 s) in
+  headless Edge; checkbox layout fixed after the first look. Full suite 85/85.

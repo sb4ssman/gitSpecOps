@@ -72,11 +72,25 @@ def pixmap(machine: str, fleet: str, size: int, ratio: float = 1.0):
     return image
 
 
-def icon(machine: str, fleet: str):
-    """One QIcon with every size drawn for its size (simplified at tray sizes)."""
+def _faded(image, opacity: float):
+    from PySide6 import QtCore, QtGui
+
+    faded = QtGui.QPixmap(image.size())
+    faded.fill(QtCore.Qt.GlobalColor.transparent)
+    painter = QtGui.QPainter(faded)
+    painter.setOpacity(opacity)
+    painter.drawPixmap(0, 0, image)
+    painter.end()
+    return faded
+
+
+def icon(machine: str, fleet: str, opacity: float = 1.0):
+    """One QIcon with every size drawn for its size (simplified at tray sizes). A lower opacity
+    gives the dimmed frame the tray alternates with while it is working."""
     from PySide6 import QtGui
 
     result = QtGui.QIcon()
     for size in ICON_SIZES:
-        result.addPixmap(pixmap(machine, fleet, size))
+        image = pixmap(machine, fleet, size)
+        result.addPixmap(image if opacity >= 1.0 else _faded(image, opacity))
     return result

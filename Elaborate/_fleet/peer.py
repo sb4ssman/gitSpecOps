@@ -107,13 +107,20 @@ class TransportPublisher:
     def publish(self, manifest: dict, changed: bool, log=_log) -> list[str]:
         """Queue this manifest for each transport, then deliver whatever is due.
 
-        A change is always queued. Unchanged state is still re-sent once per transport slot:
-        that re-send is the heartbeat that lets other machines tell a quiet machine from one
-        that is switched off.
+        A change is always queued, and delivered at most once per transport slot. A synced
+        folder also gets unchanged state once per slot: that re-send is the heartbeat that lets
+        other machines tell a quiet machine from one that is switched off, and it costs nothing.
+
+        The GitHub state repository never gets a heartbeat (the user, 2026-11-12): every write
+        there is a commit kept forever, so it writes only when something changed, at most once
+        per slot (30 minutes by default), and only when GitHub can be reached (a failed write
+        waits for the next slot). How a machine heard only through the repository proves it is
+        alive is part of the state repository's open review.
         """
         now = self.clock()
         for entry in self.entries:
-            if changed or entry.get("pending") is not None or now >= entry["next"]:
+            heartbeat = entry["name"] != "repo" and now >= entry["next"]
+            if changed or entry.get("pending") is not None or heartbeat:
                 entry["pending"] = deepcopy(manifest)
         return self.flush(log=log)
 
@@ -274,8 +281,23 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     desktop = DesktopIntegration(config.get("git_client"), observer.local_repositories, save_client)
     action_lock = threading.Lock()
 
+    def security_settings():
+        snapshot = getattr(config, "snapshot", None)
+        return getattr(snapshot, "home", settings_home), snapshot
+
+    from Special._security._audit import AuditJobs, engines_status
+    audits = AuditJobs(observer.local_checkouts, settings=security_settings)
+
     def dashboard_action(action, payload):
         """Local dashboard actions call the same headless operations as terminal routes."""
+        if action == "security-engines":
+            return {"engines": engines_status()}
+        if action == "security-start":
+            return audits.start(payload)
+        if action == "security-status":
+            return audits.status()
+        if action == "security-stop":
+            return audits.stop()
         if action == "security-preview":
             from Special._security._advice import inspect_registered
             with action_lock:

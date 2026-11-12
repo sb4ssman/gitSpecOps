@@ -29,7 +29,8 @@ export class FleetConnection extends EventTarget {
     } finally { this.busy = false; this.dispatchEvent(new CustomEvent('idle')); }
   }
   async desktopAction(action, payload, token, {structured = false} = {}) {
-    if (!['git-client', 'open-git-client', 'catchup-preview', 'security-preview'].includes(action) || !token) {
+    if (!['git-client', 'open-git-client', 'catchup-preview', 'security-preview', 'security-engines',
+         'security-start', 'security-status', 'security-stop'].includes(action) || !token) {
       throw new Error('Desktop actions are unavailable in this dashboard.');
     }
     const response = await this.fetcher(`/v1/${action}`, {

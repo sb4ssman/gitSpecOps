@@ -2,6 +2,7 @@
 import {FleetConnection} from './fleet_client.js';
 import {ageLabel, GroupExpansion, groupRows, selectRows} from './fleet_view.js';
 import {renderMap, VIEWS} from './fleet_map.js';
+import {renderSecurity} from './fleet_security.js';
 
 const byId = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -58,6 +59,7 @@ function renderMark() {
   const m = mark.machine.state, f = mark.fleet.state;
   const words = `This machine: ${mark.machine.text} · Fleet: ${mark.fleet.text}`;
   byId('mark-text').textContent = words;
+  byId('mark').classList.toggle('mark-busy', m === 'starting');
   byId('mark').alt = `gitSpecOps. ${words}`;
   if (markShown === `${m}/${f}`) return;
   markShown = `${m}/${f}`;
@@ -365,13 +367,13 @@ for (const [id, key] of [['map-view', 'view'], ['map-perspective', 'perspective'
 }
 
 function renderAll() {
-  renderSummary(); renderFilters(); renderRepositories(); renderMapPanel(); renderMachines(); renderAbout(); renderNotices();
+  renderSummary(); renderFilters(); renderRepositories(); renderMapPanel(); renderSecurity(byId('security'), state.data, connection); renderMachines(); renderAbout(); renderNotices();
   byId('last-updated').textContent = `View received ${state.receivedAt.toLocaleTimeString()}`;
 }
 
 function selectTab(tab) {
   for (const button of document.querySelectorAll('[data-tab]')) button.setAttribute('aria-pressed', String(button.dataset.tab === tab));
-  for (const id of ['repositories', 'map', 'machines', 'about']) byId(`${id}-panel`).hidden = id !== tab;
+  for (const id of ['repositories', 'map', 'security', 'machines', 'about']) byId(`${id}-panel`).hidden = id !== tab;
 }
 
 for (const control of [controls.query, controls.status, controls.machine, controls.sort]) control.addEventListener('input', renderRepositories);
