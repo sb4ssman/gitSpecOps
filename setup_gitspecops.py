@@ -60,8 +60,10 @@ def create_venv_with_uv() -> bool:
     if shutil.which("uv") is None:
         print("uv not found on PATH -- skipping the uv path.")
         return False
-    print("Creating .venv with `uv sync`...")
-    return _run(["uv", "sync"]) == 0
+    # --extra app keeps the tray's Qt (PySide6): a plain sync would remove it, since uv makes
+    # .venv match exactly what is asked for.
+    print("Creating .venv with `uv sync --extra app`...")
+    return _run(["uv", "sync", "--extra", "app"]) == 0
 
 
 def _base_python() -> str:

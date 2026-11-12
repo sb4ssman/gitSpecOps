@@ -2079,3 +2079,6 @@ No code changed; decisions recorded where they govern.
   loopback with its range safeguard, every transport at once, a repository made public gets
   nothing). The checks found two safeguards working as designed (tailnet range, private-repo
   health), not defects.
+
+## 2026-11-12 07:01 - user (claude) - Bootstrap keeps the tray's Qt
+- `setup_gitspecops.py bootstrap` ran plain `uv sync`, which makes .venv match exactly what is asked for and would have removed PySide6 once it became the optional `app` extra. It now runs `uv sync --extra app`. Open: the stdlib fallback (no uv) builds a .venv without Qt; part of the setup redesign under discussion.
