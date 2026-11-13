@@ -1,4 +1,4 @@
-<p align="center"><img src="_docs/images/gitspecops-mark.svg" width="96" height="96" alt="The gitSpecOps mark: a hub joined to a ring of machines"></p>
+<p align="center"><img src="docs/images/gitspecops-mark.svg" width="96" height="96" alt="The gitSpecOps mark: a hub joined to a ring of machines"></p>
 
 # gitSpecOps
 
@@ -14,7 +14,7 @@ It sits beside tools like GitHub Desktop and Sourcetree. They work *deeply* in o
 gitSpecOps works *broadly*, across all of them and all your machines, and opens any repository
 in your desktop Git app when you want to go deep.
 
-![The network map in the web view: GitHub above four machines (Desktop, Home server, Laptop, Old laptop), each with its repository count, what needs attention, and the copies they share](_docs/images/network-map.png)
+![The network map in the web view: GitHub above four machines (Desktop, Home server, Laptop, Old laptop), each with its repository count, what needs attention, and the copies they share](docs/images/network-map.png)
 
 *A hypothetical fleet: every machine, owner and repository name in this picture is made up.*
 
@@ -388,7 +388,7 @@ gitso serve-web               # the map without a tray
 **The map is local and needs nothing else running.** It is served on this computer only, from
 whatever status files it can read. A laptop shut for a week still appears, with its last known
 state and an honest "three days old". With your consent, the map can also be opened from your own
-Tailscale devices, and only those. See [the fleet guide](_docs/FLEET.md).
+Tailscale devices, and only those. See [the fleet guide](docs/FLEET.md).
 
 **Catch up safely** after time away:
 
@@ -438,7 +438,7 @@ Special/      this machine, once
 Elaborate/    other machines, or over time
 App/          the tray (Qt) and the map (web view)
 _os/          per-system pieces, the same files for Windows, Linux and macOS
-_docs/        the fleet guide, the display contract, recovery design, README images
+docs/         the fleet guide, the display contract, recovery design, README images
 _build/       setup, the desktop packaging recipe and release check
 tests/        offline and synthetic; no network, no real repositories
 .agents/      project brief, working notes, work log, durable knowledge
@@ -451,7 +451,7 @@ tray show; every face reads that versioned contract.
 
 **Kept out of the checkout:** settings, registrations, fleet state and logs live in your
 per-user gitSpecOps folder (`GITSPECOPS_HOME` or `GITSPECOPS_SYNC_HOME` override). Generated and
-never committed: `.venv/`, `uv.lock`, `Special/duplicate_org/runs/`, `.agents/output/`.
+never committed: `.venv/`, `Special/duplicate_org/runs/`, `.agents/output/`.
 
 ## Tests
 
@@ -465,7 +465,9 @@ python3 tests/run_all.py --jobs 1   # one at a time, output as it happens
 ## Contributing and license
 
 Working on this repository, human or agent? Start with [`.agents/README.md`](.agents/README.md)
-and the living [`.agents/WORKING-NOTES.md`](.agents/WORKING-NOTES.md).
+and the living [`.agents/WORKING-NOTES.md`](.agents/WORKING-NOTES.md). What changed in each
+version: [`CHANGELOG.md`](CHANGELOG.md). Found a security problem? Report it privately, as
+[`SECURITY.md`](SECURITY.md) describes.
 
 Licensed under the GNU General Public License, version 3 only (GPL-3.0-only): use it, study it,
 change it and share it, and share anything you distribute that builds on it under the same terms.

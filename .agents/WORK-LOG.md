@@ -2401,3 +2401,16 @@ No code changed; decisions recorded where they govern.
   [project.scripts] + setuptools packaging (the user uninstalled the uv tool). Both launchers
   ran gitso for real from a scratch folder (cmd and Git Bash). Tests: 7 new + 4 walkthrough.
   Full suite 87/87 in 109s.
+
+## 2026-11-13 12:55 - user (claude) - docs/, uv.lock tracked, SECURITY, CHANGELOG, the shape
+- `_docs/` renamed `docs/` (the folder name GitHub recognizes); live references updated, the
+  historical handoffs left as written.
+- `uv.lock` is tracked now (it pins Qt); `.gitignore`, README and the brief say so. The hygiene
+  test flagged its SHA-256 checksums as fleet-key shaped: its own loop skipped the shared second
+  opinions in `_hygiene_patterns.find` (checksum context, low-entropy runs). It now uses `find`,
+  with two new self-test cases (a key is caught; a lockfile checksum is not).
+- SECURITY.md: private reporting through GitHub, what counts, development-preview support.
+  Private vulnerability reporting is off on the repository; turning it on is the user's.
+- CHANGELOG.md, starting at 0.2.0; tagged v0.2.0.
+- `.agents/README.md` names its shape: repo-standalone from Structural-Engineering @ fdd316c,
+  linking the shape on the Sb4ssport (404 until the shelf is public).

@@ -12,7 +12,7 @@ configured transports. `gh` is needed only for GitHub; Tailscale is optional.
 Native filesystem events follow one acknowledged inventory. There is no periodic Git scan.
 Tailnet discovery/pulls run every 30 seconds. Folder/GitHub transports carry the same names-free
 v3 status manifest. Recovery content is still planned, separately from that manifest.
-Use [FLEET.md](../../_docs/FLEET.md) for current commands and
+Use [FLEET.md](../../docs/FLEET.md) for current commands and
 [tiers-and-capture.md](tiers-and-capture.md) for the agreed next work.
 
 ## Historical pilot record — superseded, not deployment instructions
@@ -105,4 +105,4 @@ never become competing authorities. Native tray, deployment packaging and enterp
 remain separate work. The display contract is now versioned and independent of the standard
 skin; see DISPLAY-CONTRACT.md. User instructions supersede older notes that no observer may run.
 
-See _docs/FLEET.md for the user guide and tests/test_fleet_app.py for boundaries.
+See docs/FLEET.md for the user guide and tests/test_fleet_app.py for boundaries.

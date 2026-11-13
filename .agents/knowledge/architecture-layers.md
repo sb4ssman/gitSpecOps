@@ -189,7 +189,7 @@ gitSpecOps/
 ├── .agents/          brief, notes, work log, knowledge, diagrams
 ├── _build/           setup_gitspecops.py (setup), PyInstaller recipe (GitSpecOpsSync.spec),
 │                     release_check.py, build notes
-├── _docs/            FLEET, DISPLAY-CONTRACT, RECOVERY-DESIGN
+├── docs/            FLEET, DISPLAY-CONTRACT, RECOVERY-DESIGN
 ├── _os/              beneath every layer: per-OS components, stdlib only (current.py decides)
 ├── Basic/            one Git or host operation, done carefully
 │   ├── clone commit discover fetch pull push reset_keep status
@@ -273,7 +273,7 @@ visible and complete from the start, not discovered module by module.
 
 Three ship: **lcars, modern, retro.** `modern` is today's dashboard; `retro` and `lcars` start as
 placeholders. Every skin consumes the versioned display contract
-(`_docs/DISPLAY-CONTRACT.md`) and refuses a version it does not recognize. None reimplements Git
+(`docs/DISPLAY-CONTRACT.md`) and refuses a version it does not recognize. None reimplements Git
 or freshness policy. The contract's builder lives in `Elaborate/_fleet/`, not in `App/`, because
 deciding what needs attention is policy and the App holds none.
 

@@ -49,7 +49,7 @@ Shape: separate staged and unstaged patches plus explicitly selected untracked f
 size-capped bundle per repository. It is **not encrypted**: each tier already relies on the
 authenticated system that carries it, while captured content is already plaintext on the source
 disk. It must be a **separate artifact from the manifest** — the manifest stays names-free.
-The [implementation contract](../../_docs/RECOVERY-DESIGN.md) specifies the
+The [implementation contract](../../docs/RECOVERY-DESIGN.md) specifies the
 trust boundary, limits, exclusions, restore and retirement. Capture, storage, preview, restore,
 per-repository policy, exact retirement proof, event-driven capture and peer acknowledgement
 are built. It remains opt-in: configure the location and select a capture basket.

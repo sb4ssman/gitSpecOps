@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # This guard's own rules and identity reader (version 1's, kept exactly). Moving it onto the
 # shared Special/_security checks is an open item in the agent notes.
-from _hygiene_patterns import ALLOWED, PERSONAL, SECRETS  # noqa: E402,F401
+from _hygiene_patterns import ALLOWED, PERSONAL, SECRETS, find  # noqa: E402,F401
 from _hygiene_patterns import identity_patterns as _identity_patterns  # noqa: E402
 from _hygiene_seeds import identity_seeds  # noqa: E402
 
@@ -69,13 +69,12 @@ def scan(names, patterns, label, root=None, show=True):
             text = (root / name).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        for description, pattern in patterns.items():
-            for match in pattern.finditer(text):
-                if ALLOWED.search(match.group(0)):
-                    continue
-                number = text.count("\n", 0, match.start()) + 1
-                findings.append(f"{name}:{number} contains {description}"
-                                + (f": {match.group(0)!r}" if show else ""))
+        # The shared rules, second opinions included: a published checksum (`sha256:` in
+        # uv.lock) is not a fleet key, here exactly as in every other scanner.
+        for found in find(text, patterns):
+            number = text.count("\n", 0, found.start) + 1
+            findings.append(f"{name}:{number} contains {found.kind}"
+                            + (f": {found.value!r}" if show else ""))
     return findings
 
 
@@ -127,6 +126,8 @@ def test_the_guard_itself_catches_what_it_claims(_names):
         "domain.txt": ("see example.com; peer at " + ".".join(["100", "101", "102", "103"]), True),
         "token.txt": ("token = 'ghp_" + "A" * 30 + "'  # example.com", True),
         "late.txt": ("x" * 600 + " ghp_" + "B" * 30, True),
+        "fleet-key.txt": ("key: " + "0123456789abcdef" * 4, True),
+        "lockfile-checksum.txt": ('hash = "sha256:' + "0123456789abcdef" * 4 + '"', False),
         "documented-shape.txt": ("never commit C:\\Users\\… or /home/<you>", False),
         "reserved-domain.txt": ("password = 'example.test'", False),
     }

@@ -4,6 +4,13 @@
 pointers to this file. Tend this document as the project evolves — it is the durable, hand-authored
 knowledge the code and git history do not capture.
 
+Shape: repo-standalone from Structural-Engineering @ fdd316c
+Coordination: standalone
+
+This `.agents/` folder is public on purpose: it follows the
+[repo-standalone shape](https://github.com/Sb4ssport-Alpha/Structural-Engineering/tree/main/shapes/repo-standalone)
+of the Sb4ssport shelf, which anyone can adopt for their own repositories.
+
 ## What this is for (read before any rule below)
 
 **Start from the situation:** a user has many repositories, spread across many orgs and
@@ -159,7 +166,7 @@ there freely. That is the release valve.
 
 > **Target architecture agreed 2026-09-20:** a composition stack built down from git —
 > `Basic → Special → Elaborate → App` — with a one-way import rule, the host seam in
-> `Basic/providers/`, three skins under `App/skins/`, and `_build/ _docs/ _tests/` at the root.
+> `Basic/providers/`, three skins under `App/skins/`, and `_build/ docs/ _tests/` at the root.
 > See [`knowledge/architecture-layers.md`](knowledge/architecture-layers.md) for the model and the
 > full target tree, and [`HANDOFF.md`](HANDOFF.md) for the migration phases. **The section below describes what is
 > on disk today.** Phase 1 landed 2026-09-21 (`Basic/` and `_os/` exist; the tool folders import
@@ -472,7 +479,7 @@ serves a loopback dashboard, and optionally pulls reports from tailnet peers eve
 One acknowledged inventory is followed by native filesystem events and targeted checks;
 there is no periodic repository scan. Newly detected checkouts are announced, then included
 only after `Elaborate/peer.py rescan`. All transports currently carry status, not recovery content.
-See [the current user guide](../_docs/FLEET.md) and
+See [the current user guide](../docs/FLEET.md) and
 [the tier roadmap](knowledge/tiers-and-capture.md).
 
 The folders `core/`, `fleet/`, and `app/` group plain modules; `_paths.py` handles imports.
@@ -495,7 +502,7 @@ builder. It owns presentation semantics such as attention, tones, filter tags, n
 capability availability. `fleet_client.js` owns transport/compatibility; `fleet_view.js` owns
 generic selectors; `fleet_dashboard.html` + `fleet_standard.*` are only the standard skin.
 Future skins, including LCARS, must consume the same `gitspecops.fleet.display` contract and
-must not reimplement Git/freshness policy. See `_docs/DISPLAY-CONTRACT.md`.
+must not reimplement Git/freshness policy. See `docs/DISPLAY-CONTRACT.md`.
 
 `Special/suggest_sync.py` (this machine) and `Elaborate/suggest_fleet_sync.py` (the fleet) are
 the entry points; `App/tray.py` runs the peer with its web view. **This tool performs Git operations** — that is the
@@ -557,7 +564,7 @@ namespaces in the capture basket — an unenrolled machine captures nothing:
   root-confined, **metadata only** — it never outputs or transmits buffer content.
 
 **Snapshots are not encrypted**, deliberately; the trust-boundary argument and the per-tier
-authority table are in `_docs/RECOVERY-DESIGN.md`. Do not reopen it without a
+authority table are in `docs/RECOVERY-DESIGN.md`. Do not reopen it without a
 concrete threat the three tiers do not already cover, and do not add a dependency for it.
 
 ### Command surface
@@ -770,10 +777,11 @@ These are local artifacts and should remain ignored:
 
 - `.venv/`
 - `*.egg-info/`
-- `uv.lock`
 - `Special/duplicate_org/runs/`
 
-If tests or `uv run` recreate `uv.lock` or egg-info metadata, remove or ignore them according to `.gitignore`; do not treat them as source.
+If tests or `uv run` recreate egg-info metadata, remove or ignore it according to `.gitignore`;
+do not treat it as source. `uv.lock` IS tracked (2026-11-13): it pins the App's Qt version so
+every machine gets the same one. Change it only with `uv lock`, alongside a dependency change.
 
 ## Validation
 
