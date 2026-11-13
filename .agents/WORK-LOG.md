@@ -2194,3 +2194,12 @@ No code changed; decisions recorded where they govern.
   any other. The editor gains the list and a "make whole-word only" move (LOOSEN), the Security
   tab shows it. A never-publish value inside a longer identifier no longer blocks a repository.
   Tests: `tests/security/test_policy_edit.py` (4). Full suite 86/86.
+
+## 2026-11-12 17:28 - user (claude) - Setup gets the station script look
+- `setup_gitspecops.py` follows the shelf's station script standard (two screens, 72-wide rules,
+  steps `[n/total] label  status  seconds  detail`, the standard console colours, status in words):
+  the menu leads with readiness (environment, launchers, git/gh/uv) and recommends a default; the
+  bootstrap, launchers and environment actions draw run screens with numbered, timed steps, a
+  short summary and one notice; tool output is kept and shown only for a failed step; `check` stays
+  read-only. The publisher line is read from pyproject.toml, not written into source. Tests updated
+  (fixtures patch the new steps; never a real environment build). Full suite 86/86.

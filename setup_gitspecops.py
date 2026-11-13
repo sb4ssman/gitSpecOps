@@ -32,10 +32,16 @@ Auth is never touched here: users authenticate their own host CLI (`gh auth logi
 from __future__ import annotations
 
 import argparse
+import getpass
+import os
 import platform
+import re
 import shutil
+import socket
 import subprocess
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 
 
@@ -44,26 +50,164 @@ WINDOWS = platform.system().lower() == "windows"
 VENV_DIR = ROOT / ".venv"
 VENV_PYTHON = VENV_DIR / ("Scripts/python.exe" if WINDOWS else "bin/python")
 
+# --------------------------------------------------------------------------------------
+# The station script look (Sb4ssport's terminal standard: two screens, 72-wide rules, steps
+# "[n/total] label  status  seconds  detail", status always in words). Each script carries
+# its own small copy of these helpers; there is no shared runtime.
+# --------------------------------------------------------------------------------------
+PRODUCT = "gitSpecOps"
+TAGLINE = "Every repository on every machine: seen, kept current, protected"
 
-def _run(cmd: list[str]) -> int:
-    """Run a command from the repo root, streaming its output. Returns the exit code."""
-    print(f"  $ {' '.join(cmd)}")
+
+def _publisher() -> str:
+    """The publisher line, from the project's own metadata (pyproject.toml's first author), so
+    no account name is written into source files."""
     try:
-        return subprocess.call(cmd, cwd=ROOT)
-    except OSError as exc:
-        print(f"  (could not run {cmd[0]}: {exc})")
-        return 1
+        text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        author = re.search(r'authors\s*=\s*\[\s*\{\s*name\s*=\s*"([^"]+)"', text).group(1)
+    except (OSError, AttributeError):
+        return PRODUCT
+    return f"{author} | https://github.com/{author}/{PRODUCT}"
 
 
-def create_venv_with_uv() -> bool:
-    """Create/refresh .venv via `uv sync`. Returns True on success."""
-    if shutil.which("uv") is None:
-        print("uv not found on PATH -- skipping the uv path.")
+PUBLISHER = _publisher()
+#: Console colour names, as ANSI codes (the terminal's theme decides the exact shade).
+TONES = {"accent": "96", "muted": "36", "text": "37", "detail": "90", "strong": "97",
+         "success": "92", "warning": "93", "error": "91"}
+STATUS_TONES = {"ok": "success", "changed": "warning", "skipped": "detail", "FAILED": "error"}
+
+
+def _colour_enabled() -> bool:
+    if os.environ.get("NO_COLOR") or not sys.stdout.isatty():
         return False
+    if WINDOWS:
+        try:  # turn on ANSI colours in a classic Windows console
+            import ctypes
+            kernel = ctypes.windll.kernel32
+            handle = kernel.GetStdHandle(-11)
+            mode = ctypes.c_uint32()
+            if kernel.GetConsoleMode(handle, ctypes.byref(mode)):
+                kernel.SetConsoleMode(handle, mode.value | 0x0004)
+        except (AttributeError, OSError):
+            return False
+    return True
+
+
+COLOUR = _colour_enabled()
+
+
+def _width() -> int:
+    columns = shutil.get_terminal_size((80, 24)).columns
+    return min(72, columns - 1) if columns >= 42 else 72
+
+
+def _clean(text) -> str:
+    """Anything printed that came from outside the script: no control characters."""
+    return re.sub(r"[\x00-\x1f\x7f]", " ", re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", str(text)))
+
+
+def say(text: str = "", tone: str = "text", end: str = "\n") -> None:
+    print(f"\x1b[{TONES[tone]}m{text}\x1b[0m" if COLOUR and text else text, end=end, flush=True)
+
+
+def line(text: str = "", tone: str = "text") -> None:
+    """Indented text, wrapped at spaces (paths after a separator) to the console width."""
+    if not text:
+        say()
+        return
+    room, rest = _width() - 2, _clean(text)
+    while len(rest) > room:
+        cut = rest.rfind(" ", 0, room + 1)
+        if cut <= 0:
+            cut = max(rest.rfind("\\", 0, room), rest.rfind("/", 0, room)) + 1 or room
+        say("  " + rest[:cut].rstrip(), tone)
+        rest = rest[cut:].lstrip()
+    say("  " + rest, tone)
+
+
+def menu_header(page: str) -> None:
+    say()
+    say(f"  {PRODUCT}  /  {page}", "accent")
+    say(f"  {TAGLINE}")
+    say(f"  {PUBLISHER}", "muted")
+    say("-" * _width(), "muted")
+
+
+def run_header(page: str, what: str) -> None:
+    bar = "=" * _width()
+    when = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    say()
+    say(bar, "muted")
+    say(f"  {PRODUCT}  /  {page}", "accent")
+    say(f"  {PUBLISHER}", "muted")
+    say(f"  {when} on {socket.gethostname()}  |  user {getpass.getuser()}  |  Python {platform.python_version()}", "detail")
+    say(f"  {what}", "detail")
+    say(bar, "muted")
+    say()
+
+
+def row(label: str, value: str, tone: str = "text") -> None:
+    say(f"  {label:<20}", "text", end="")
+    say(_clean(value), tone)
+
+
+def option(key: str, label: str, explanation: str = "") -> None:
+    say(f"  [{key}] ", "accent", end="")
+    say(label)
+    if explanation:
+        say(f"      {explanation}", "muted")
+
+
+def notice(title: str, message: str, tone: str) -> None:
+    say()
+    line(title, tone)
+    line(message)
+
+
+class Steps:
+    """Numbered steps: `[n/total] label` padded to 30, then status, seconds and detail."""
+
+    def __init__(self, total: int):
+        self.total, self.index, self.results = total, 0, []
+
+    def run(self, label: str, action) -> str:
+        self.index += 1
+        say(f"  [{self.index}/{self.total}] {label:<30}", "strong", end="")
+        started = time.monotonic()
+        try:
+            status, detail, output = action()
+        except Exception as exc:  # noqa: BLE001 - a step reports its failure; setup goes on honestly
+            status, detail, output = "FAILED", type(exc).__name__, str(exc)
+        say(f" {status:<8}", STATUS_TONES[status], end="")
+        say(f"{time.monotonic() - started:5.1f}s  {_clean(detail)}", "detail")
+        if status == "FAILED" and output:
+            for text in [l for l in _clean_lines(output)][-8:]:  # the last words, not a stack trace
+                say(f"        {text}", "detail")
+        self.results.append((label, status, detail))
+        return status
+
+
+def _clean_lines(output: str) -> list[str]:
+    return [_clean(l).rstrip() for l in str(output).splitlines() if l.strip()]
+
+
+def _capture(cmd: list[str]) -> tuple[int, str]:
+    """Run a command from the repo root and keep its output for when it fails."""
+    try:
+        done = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, errors="replace")
+        return done.returncode, (done.stdout or "") + (done.stderr or "")
+    except OSError as exc:
+        return 1, f"could not run {cmd[0]}: {exc}"
+
+
+def create_venv_with_uv() -> tuple[bool, str]:
+    """Create/refresh .venv via `uv sync`. Returns (success, output)."""
+    if shutil.which("uv") is None:
+        return False, "uv not found on PATH"
     # --extra app keeps the tray's Qt (PySide6): a plain sync would remove it, since uv makes
     # .venv match exactly what is asked for.
-    print("Creating .venv with `uv sync --extra app`...")
-    return _run(["uv", "sync", "--extra", "app"]) == 0
+    code, output = _capture(["uv", "sync", "--extra", "app"])
+    return code == 0, output
 
 
 def _base_python() -> str:
@@ -83,53 +227,102 @@ def _base_python() -> str:
     return sys.executable  # nothing better available; let venv report the real error
 
 
-def create_venv_with_stdlib() -> bool:
-    """Create a bare .venv with the stdlib venv module. Returns True on success.
+def create_venv_with_stdlib() -> tuple[bool, str]:
+    """Create a bare .venv with the stdlib venv module. Returns (success, output).
 
     Nothing is installed into it: the tools are stdlib-only scripts, so the venv just
     needs to be a clean interpreter the launchers can point at.
     """
-    print("Creating .venv with the stdlib `venv` module...")
-    if _run([_base_python(), "-m", "venv", str(VENV_DIR)]) != 0:
-        return False
+    code, output = _capture([_base_python(), "-m", "venv", str(VENV_DIR)])
+    if code != 0:
+        return False, output
     if not VENV_PYTHON.exists():
-        print(f"ERROR: expected interpreter not found at {VENV_PYTHON}")
-        return False
-    return True
+        return False, "the environment was created without its Python interpreter"
+    return True, output
+
+
+def build_environment_step() -> tuple[str, str, str]:
+    """The environment as one step: uv when present (keeps the app's Qt), else the stdlib."""
+    existed = VENV_PYTHON.exists()
+    ok, output = create_venv_with_uv()
+    how = "uv sync, with the desktop app's Qt"
+    if not ok:
+        fallback, more = create_venv_with_stdlib()
+        ok, output, how = fallback, output + "\n" + more, "Python's venv (no uv; the tray needs uv or PySide6)"
+    if not ok:
+        return "FAILED", "could not build .venv", output
+    return ("ok" if existed else "changed"), f".venv ready via {how}", ""
 
 
 def build_environment() -> bool:
     """Build .venv, preferring uv and falling back to the stdlib. Returns True on success."""
-    print("=" * 60)
-    print("Building the gitSpecOps environment (.venv)")
-    print("=" * 60)
-    if create_venv_with_uv():
-        return True
-    print("\nFalling back to the stdlib environment builder...")
-    return create_venv_with_stdlib()
+    run_header("Python environment", f"builds or refreshes .venv in {ROOT.name}")
+    steps = Steps(2)
+    built = steps.run("Python environment", build_environment_step)
+    steps.run("Environment starts", check_environment_step)
+    return finish(steps, "The environment is ready.", "The launchers still work through `uv run` when uv is on PATH.")
+
+
+def check_environment_step() -> tuple[str, str, str]:
+    """A step that starts something checks it actually runs."""
+    if not VENV_PYTHON.exists():
+        return "skipped", "no .venv; launchers fall back to `uv run`", ""
+    code, output = _capture([str(VENV_PYTHON), "-c", "import sys; print(sys.version.split()[0])"])
+    return ("ok", f"Python {output.strip()} runs", "") if code == 0 else ("FAILED", "the .venv Python does not start", output)
+
+
+PREREQUISITES = (
+    ("git", True, "required: https://git-scm.com/downloads"),
+    ("gh", True, "required for GitHub work: https://cli.github.com (then `gh auth login`)"),
+    ("uv", False, "optional, faster setup and the desktop app: https://docs.astral.sh/uv/"),
+)
+
+
+def prerequisites_step() -> tuple[str, str, str]:
+    found = [name for name, _required, _hint in PREREQUISITES if shutil.which(name)]
+    missing = [name for name, required, _hint in PREREQUISITES if required and not shutil.which(name)]
+    if missing:
+        return "FAILED", f"missing: {', '.join(missing)}", "\n".join(
+            f"{name}: {hint}" for name, required, hint in PREREQUISITES if name in missing)
+    optional = [name for name, required, _hint in PREREQUISITES if not required and name not in found]
+    return "ok", ", ".join(found) + (f" (optional {', '.join(optional)} absent)" if optional else ""), ""
 
 
 def report_prerequisites() -> None:
-    """Print whether git, gh, and uv are available (informational, non-fatal)."""
-    print()
-    print("=" * 60)
-    print("Prerequisite check")
-    print("=" * 60)
-    checks = [
-        ("git", True, "Required. Install from https://git-scm.com/downloads"),
-        ("gh", True, "Required by the org duplicator. Install from https://cli.github.com"),
-        ("uv", False, "Optional (speeds up setup). Install from https://docs.astral.sh/uv/"),
-    ]
-    for name, required, hint in checks:
+    """Show git, gh and uv, as rows (read-only, never fails setup)."""
+    menu_header("Prerequisites")
+    say()
+    for name, required, hint in PREREQUISITES:
         found = shutil.which(name)
-        if found:
-            print(f"  [ok]   {name:<4} -> {found}")
-        else:
-            tag = "MISSING" if required else "absent "
-            print(f"  [{tag}] {name:<4} -> {hint}")
-    print()
-    print("Note: `gh` must also be authenticated (`gh auth login`) before the")
-    print("org duplicator can talk to GitHub.")
+        row(name, "found" if found else ("missing: " + hint if required else "absent: " + hint),
+            "success" if found else ("error" if required else "detail"))
+    notice("Nothing was changed.", "gh must also be signed in (`gh auth login`) for GitHub work.", "success")
+
+
+def summary_facts() -> list[str]:
+    """What this folder now has, in a few facts (the steps above already said how it went)."""
+    launcher = ROOT / ("suggest-sync.ps1" if WINDOWS else "suggest-sync.sh")
+    qt = (VENV_DIR / "Lib/site-packages/PySide6").exists() or any(VENV_DIR.glob("lib/python*/site-packages/PySide6"))
+    facts = [f"Launchers {'in ' + ROOT.name if launcher.exists() else 'not written'}",
+             (".venv ready" + (", with the desktop app" if qt else ", tools only (the desktop app needs uv)"))
+             if VENV_PYTHON.exists() else "no .venv: tools run through `uv run`"]
+    missing = [name for name, required, _hint in PREREQUISITES if required and not shutil.which(name)]
+    if missing:
+        facts.append("Missing: " + ", ".join(missing))
+    return facts
+
+
+def finish(steps: "Steps", ready: str, otherwise: str) -> bool:
+    failed = [label for label, status, _detail in steps.results if status == "FAILED"]
+    say()
+    line("Summary", "accent")
+    for fact in summary_facts():
+        line(f". {fact}")
+    if failed:
+        notice("Setup incomplete", f"{', '.join(failed)} did not finish; some steps may have completed. {otherwise}", "error")
+        return False
+    notice("Ready", ready, "success")
+    return True
 
 
 # --------------------------------------------------------------------------------------
@@ -201,9 +394,10 @@ def _write_if_changed(path: Path, content: str, executable: bool = False) -> boo
     return True
 
 
-def write_launchers() -> None:
-    """Generate the launchers: one per tool, repo root, this OS only. Idempotent."""
-    print("Writing convenience launchers (generated, not committed)...")
+def write_launchers() -> list[tuple[str, bool]]:
+    """Generate the launchers: one per tool, repo root, this OS only. Idempotent.
+    Returns (name, written) for each launcher."""
+    written = []
     for tool_dir, entry, base, help_on_no_args in LAUNCHER_SPECS:
         sh = (SH_TEMPLATE
               .replace("__HELP_SH__", "true" if help_on_no_args else "false")
@@ -222,26 +416,37 @@ def write_launchers() -> None:
             if is_windows_launcher != WINDOWS:
                 continue  # generate only what this OS can use
             target = ROOT / name
-            changed = _write_if_changed(target, content, exe)
-            print(f"  {'wrote' if changed else 'ok  '} {name}")
+            written.append((name, _write_if_changed(target, content, exe)))
+    return written
+
+
+def launchers_step() -> tuple[str, str, str]:
+    results = write_launchers()
+    changed = sum(1 for _name, wrote in results if wrote)
+    detail = f"{len(results)} launchers in the repository folder" + (f", {changed} written" if changed else ", all current")
+    return ("changed" if changed else "ok"), detail, ""
+
+
+def launchers() -> int:
+    run_header("Launchers", f"writes the command launchers into {ROOT.name} (generated, not committed)")
+    steps = Steps(1)
+    steps.run("Launchers", launchers_step)
+    return 0 if finish(steps, "Run a tool through its launcher, e.g. "
+                       + ("suggest-sync.bat --help" if WINDOWS else "./suggest-sync.sh --help") + ".", "") else 1
 
 
 def bootstrap() -> int:
-    """Run the existing launcher/environment bootstrap after an explicit selection."""
-    write_launchers()
-    ok = build_environment()
-    print()
-    if ok and VENV_PYTHON.exists():
-        print(f"[ok] Environment ready: {VENV_PYTHON}")
-        print("     Launchers will now use this interpreter directly.")
-    else:
-        print("[warn] Could not build .venv. The launchers will still work by")
-        print("       falling back to `uv run` (which needs uv on PATH).")
-
-    report_prerequisites()
-    print()
-    print("Setup complete. Run a tool via its launcher, e.g.:")
-    print("  suggest-sync.bat --help" if WINDOWS else "  ./suggest-sync.sh --help")
+    """Launchers, environment and prerequisites, as one run screen."""
+    run_header("Setting up", f"launchers and .venv in {ROOT.name}; nothing outside this folder")
+    steps = Steps(4)
+    steps.run("Launchers", launchers_step)
+    steps.run("Python environment", build_environment_step)
+    steps.run("Environment starts", check_environment_step)
+    steps.run("Prerequisites", prerequisites_step)
+    ok = finish(steps, "Start the app with " + ("gitspecops-tray.bat" if WINDOWS else "./gitspecops-tray.sh")
+                + ", or run a tool through its launcher, e.g. "
+                + ("suggest-sync.bat --help" if WINDOWS else "./suggest-sync.sh --help") + ".",
+                "Run setup again after fixing what is listed; the launchers fall back to `uv run`.")
     return 0 if ok else 1
 
 
@@ -257,23 +462,42 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def readiness() -> tuple[bool, list[tuple[str, str, str]]]:
+    """Lead with the answer: is this folder set up, and what does this machine have?"""
+    venv = VENV_PYTHON.exists()
+    launcher = ROOT / ("suggest-sync.ps1" if WINDOWS else "suggest-sync.sh")
+    rows = [("Python environment", ".venv ready" if venv else "not built yet", "success" if venv else "warning"),
+            ("Launchers", "present" if launcher.exists() else "not written yet", "success" if launcher.exists() else "warning")]
+    for name, required, _hint in PREREQUISITES:
+        found = shutil.which(name) is not None
+        rows.append((name, "found" if found else ("missing" if required else "absent (optional)"),
+                     "success" if found else ("error" if required else "detail")))
+    return venv and launcher.exists(), rows
+
+
 def choose_action() -> str | None:
-    """Explain optional participation and select an implemented setup action."""
-    print("gitSpecOps setup\n"
-          "Individual tools work without fleet enrollment or the desktop app.\n"
-          "Source use needs Python 3.11+ and Git; GitHub operations also need authenticated gh.\n"
-          "This command-line bootstrap can create convenience launchers and a Python environment.")
+    """The menu screen: readiness first, then the choices, with a recommended default."""
     while True:
-        print("\n1. Set up command-line launchers and Python environment\n"
-              "2. Choose a setup item\n"
-              "3. Check prerequisites without changing anything\n"
-              "4. Configure standalone updater preferences (guided)\n"
-              "5. Preview legacy settings migration (read-only)\n"
-              "6. Use existing archive/security settings (guided review)\n"
-              "0. Exit")
+        ready, rows = readiness()
+        menu_header("Setup")
+        say()
+        line("Set up" if ready else "Not set up yet", "success" if ready else "warning")
+        line("Each tool also runs on its own, without enrolling a machine or using the desktop app.")
+        say()
+        for label, value, tone in rows:
+            row(label, value, tone)
+        say()
+        option("1", "Set up launchers and Python environment", "Writes launchers here and builds .venv; nothing outside this folder.")
+        option("2", "Choose one setup item")
+        option("3", "Check prerequisites", "Changes nothing.")
+        option("4", "Updater preferences (guided)")
+        option("5", "Preview legacy settings migration", "Read-only.")
+        option("6", "Use existing archive/security settings (guided review)")
+        option("0", "Exit")
+        default = "0" if ready else "1"
         try:
-            answer = input("Choose [0]: ").strip() or "0"
-            if answer == "0":
+            answer = input(f"  Choose [{default}]: ").strip().lower() or default
+            if answer in ("0", "q"):
                 return None
             if answer == "1":
                 return "bootstrap"
@@ -286,22 +510,24 @@ def choose_action() -> str | None:
             if answer == "6":
                 return "settings-existing"
             if answer == "2":
-                print("\n1. Generate convenience launchers\n"
-                      "2. Create or refresh the Python environment\n"
-                      "3. Configure standalone updater preferences\n"
-                      "4. Preview legacy settings migration\n"
-                      "5. Use existing archive/security settings\n"
-                      "0. Back")
-                item = input("Choose [0]: ").strip() or "0"
-                if item == "0":
+                menu_header("Setup items")
+                say()
+                option("1", "Write the launchers")
+                option("2", "Build or refresh the Python environment")
+                option("3", "Updater preferences")
+                option("4", "Preview legacy settings migration")
+                option("5", "Use existing archive/security settings")
+                option("0", "Back")
+                item = input("  Choose [0]: ").strip().lower() or "0"
+                if item in ("0", "b", "q"):
                     continue
                 if item in ("1", "2"):
                     return {"1": "launchers", "2": "environment"}[item]
                 if item in ("3", "4", "5"):
                     return {"3": "settings", "4": "settings-migration-preview", "5": "settings-existing"}[item]
-            print("Choose one of the listed items; nothing has been changed.")
+            line("Choose one of the listed keys; nothing has been changed.", "warning")
         except (EOFError, KeyboardInterrupt):
-            print("\nSetup cancelled; nothing has been changed.")
+            notice("Setup cancelled", "Nothing has been changed.", "warning")
             return None
 
 
@@ -356,8 +582,7 @@ def main(argv: list[str] | None = None) -> int:
     if action == "bootstrap":
         return bootstrap()
     if action == "launchers":
-        write_launchers()
-        return 0
+        return launchers()
     if action == "environment":
         return 0 if build_environment() else 1
     report_prerequisites()

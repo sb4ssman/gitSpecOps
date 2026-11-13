@@ -25,14 +25,22 @@ class SetupTests(unittest.TestCase):
         stack.enter_context(redirect_stdout(self.output))
         stack.enter_context(redirect_stderr(self.errors))
         stack.enter_context(patch.object(subject.sys, "stdin", SimpleNamespace(isatty=lambda: False)))
-        self.launchers = stack.enter_context(patch.object(subject, "write_launchers"))
+        self.launchers = stack.enter_context(patch.object(subject, "write_launchers", return_value=[]))
         self.environment = stack.enter_context(patch.object(subject, "build_environment", return_value=True))
         self.prerequisites = stack.enter_context(patch.object(subject, "report_prerequisites"))
+        # The run screen's steps: never a real environment build in a test.
+        self.environment_step = stack.enter_context(
+            patch.object(subject, "build_environment_step", return_value=("ok", ".venv ready", "")))
+        stack.enter_context(patch.object(subject, "check_environment_step", return_value=("ok", "runs", "")))
+        self.prerequisites_step = stack.enter_context(
+            patch.object(subject, "prerequisites_step", return_value=("ok", "git, gh", "")))
 
     def assert_no_actions(self):
         self.launchers.assert_not_called()
         self.environment.assert_not_called()
         self.prerequisites.assert_not_called()
+        self.environment_step.assert_not_called()
+        self.prerequisites_step.assert_not_called()
 
     def interactive(self, answers):
         with patch.object(subject.sys, "stdin", SimpleNamespace(isatty=lambda: True)), \
@@ -54,13 +62,15 @@ class SetupTests(unittest.TestCase):
     def test_bootstrap_remains_available_explicitly(self):
         self.assertEqual(subject.main(["bootstrap"]), 0)
         self.launchers.assert_called_once()
-        self.environment.assert_called_once()
-        self.prerequisites.assert_called_once()
+        self.environment_step.assert_called_once()
+        self.prerequisites_step.assert_called_once()
+        self.assertIn("[4/4] Prerequisites", self.output.getvalue(), "a run screen with numbered steps")
 
     def test_launchers_do_not_build_an_environment(self):
         self.assertEqual(subject.main(["launchers"]), 0)
         self.launchers.assert_called_once()
         self.environment.assert_not_called()
+        self.environment_step.assert_not_called()
         self.prerequisites.assert_not_called()
 
     def test_environment_failure_is_reported(self):
