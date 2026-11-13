@@ -38,7 +38,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from Basic._station import banner  # noqa: E402
+from Basic._station import banner, choose, line, option, say  # noqa: E402
 
 WINDOWS = platform.system().lower() == "windows"
 VENV_DIR = ROOT / ".venv"
@@ -149,57 +149,35 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("action", nargs="?",
-                        choices=("bootstrap", "environment", "check", *ACTIONS),
-                        help="bootstrap the environment, check prerequisites, or select a settings action")
+                        choices=("walkthrough", "bootstrap", "environment", "check", *ACTIONS),
+                        help="walkthrough (a person at a console), bootstrap the environment, check "
+                             "prerequisites, or select a settings action")
     add_arguments(parser)
     return parser
 
 
 def choose_action() -> str | None:
-    """Explain optional participation and select an implemented setup action."""
+    """The setup menu: the walkthrough first, then single items."""
     banner("Setup", tagline=True)
-    print("Individual tools work without fleet enrollment or the desktop app.\n"
-          "Source use needs Python 3.11+ and Git; GitHub operations also need authenticated gh.\n"
-          "This command-line bootstrap can create a Python environment.")
-    while True:
-        print("\n1. Set up the Python environment\n"
-              "2. Choose a setup item\n"
-              "3. Check prerequisites without changing anything\n"
-              "4. Configure standalone updater preferences (guided)\n"
-              "5. Preview legacy settings migration (read-only)\n"
-              "6. Use existing archive/security settings (guided review)\n"
-              "0. Exit")
-        try:
-            answer = input("Choose [0]: ").strip() or "0"
-            if answer == "0":
-                return None
-            if answer == "1":
-                return "bootstrap"
-            if answer == "3":
-                return "check"
-            if answer == "4":
-                return "settings"
-            if answer == "5":
-                return "settings-migration-preview"
-            if answer == "6":
-                return "settings-existing"
-            if answer == "2":
-                print("\n1. Create or refresh the Python environment\n"
-                      "2. Configure standalone updater preferences\n"
-                      "3. Preview legacy settings migration\n"
-                      "4. Use existing archive/security settings\n"
-                      "0. Back")
-                item = input("Choose [0]: ").strip() or "0"
-                if item == "0":
-                    continue
-                if item == "1":
-                    return "environment"
-                if item in ("2", "3", "4"):
-                    return {"2": "settings", "3": "settings-migration-preview", "4": "settings-existing"}[item]
-            print("Choose one of the listed items; nothing has been changed.")
-        except (EOFError, KeyboardInterrupt):
-            print("\nSetup cancelled; nothing has been changed.")
-            return None
+    say()
+    line("Individual tools work without fleet enrollment or the desktop app. Source use needs "
+         "Python 3.11+ and Git; GitHub operations also need the GitHub CLI, signed in.")
+    say()
+    option("1", "Walk me through everything", "Recommended. Finds what this computer already has and "
+           "asks about each part. Nothing changes until you review it.")
+    option("2", "Set up the Python environment", "This folder's .venv, then a prerequisite check.")
+    option("3", "Check prerequisites", "Changes nothing.")
+    option("4", "Configure standalone updater preferences", "Guided.")
+    option("5", "Preview legacy settings migration", "Read-only.")
+    option("6", "Use existing archive/security settings", "Guided review.")
+    option("0", "Exit")
+    try:
+        answer = choose("1234560", "1")
+    except (EOFError, KeyboardInterrupt):
+        print("\nSetup cancelled; nothing has been changed.")
+        return None
+    return {"1": "walkthrough", "2": "bootstrap", "3": "check", "4": "settings",
+            "5": "settings-migration-preview", "6": "settings-existing"}.get(answer)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -250,6 +228,17 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("migration preview does not change updater preferences")
         args.action = action
         return dispatch(args)
+    if action == "walkthrough":
+        if not sys.stdin.isatty():
+            print("The walkthrough needs a person at a console; name another action.", file=sys.stderr)
+            return 2
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from setup_walkthrough import Stop, walkthrough
+        try:
+            return walkthrough()
+        except (EOFError, KeyboardInterrupt, Stop):
+            print("\nSetup cancelled; nothing has been changed.")
+            return 0
     if action == "bootstrap":
         return bootstrap()
     if action == "environment":

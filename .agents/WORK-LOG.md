@@ -2336,3 +2336,22 @@ No code changed; decisions recorded where they govern.
   `_build/setup_gitspecops.py`. Bootstrap builds the environment and checks prerequisites, then
   points at `python gitso.py commands`. Docs and `.gitignore` no longer describe root
   launchers. A test pins that setup has no launcher writer. Full suite 86/86.
+
+## 2026-11-13 09:22 - user (claude) - Setup walks you through everything
+- At the user's direction, setup's first item is "Walk me through everything"
+  (`_build/setup_walkthrough.py`): nine areas (requirements, Python environment, the gitso
+  command, this machine, the app, desktop Git app, protection, scanners, fleet). Each shows what is
+  already here and asks; every answer is held until one review; then a run screen of numbered
+  steps. Installs use the system's package tool with the exact command shown first (winget:
+  GitHub.cli, astral-sh.uv, Gitleaks.Gitleaks, Betterleaks.Betterleaks; brew; apt when it has a
+  candidate). The status repository is not offered: experimental, untested (README says so).
+- `gitso` as a command: `[project.scripts]` plus setuptools packaging in pyproject.toml; setup
+  offers `uv tool install --editable <this folder>` (its own tool environment; follows git pull;
+  build bookkeeping in _build/). Tested into a scratch tool folder: the entry point runs this
+  clone. The dev `.venv` stays package-free (`[tool.uv] package = false`).
+- Screens follow the station design: `Basic/_station.py` gains rows, options, notices, steps.
+- Betterleaks, read up: by the original Gitleaks author, MIT; the latest stable is 1.10.1 (winget
+  has 1.9.0); version 2 (release candidates) renames the flags gitSpecOps uses and changes its JSON,
+  so only version 1 works today. Its description in the Security tab now says so.
+- Tests: walkthrough stop, missing Git, review and cancel, apply order, a failed step, masking.
+  Full suite 86/86.

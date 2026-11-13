@@ -32,7 +32,9 @@ MAX_REPOSITORIES = 1000
 ENGINE_NOTES = {
     "gitleaks": ("Gitleaks 8", "A widely used rule set for keys and tokens in files and history.",
                  "https://github.com/gitleaks/gitleaks"),
-    "betterleaks": ("Betterleaks 1", "An alternative rule set; reports in the same form as Gitleaks.", ""),
+    "betterleaks": ("Betterleaks 1", "The successor to Gitleaks, by its original author; version 1 reports "
+                    "in the same form as Gitleaks. Version 2 is not supported yet.",
+                    "https://github.com/betterleaks/betterleaks"),
     "trufflehog": ("TruffleHog 3", "Hundreds of credential detectors; run here without checking "
                    "found credentials against their providers.", "https://github.com/trufflesecurity/trufflehog"),
 }

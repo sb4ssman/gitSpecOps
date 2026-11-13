@@ -226,11 +226,15 @@ cd gitSpecOps
 python3 Special/archive_manager.py --help
 ```
 
-Optionally, `run_setup` builds a clean `.venv`; every command then runs through `gitso.py`:
+`run_setup` walks you through the rest: it finds what this computer already has (Git, the GitHub
+CLI, uv, the desktop app, library folders, start at sign-in, a desktop Git app, protected values,
+secret scanners, Tailscale, a fleet), asks about each part, and changes nothing until you review
+it. One of its questions installs `gitso` as a command for any terminal (`uv tool install`); without
+it, every command still runs through `python gitso.py`:
 
 ```powershell
 .\run_setup.bat          # or ./run_setup.sh
-python gitso.py commands
+gitso commands           # or: python gitso.py commands
 ```
 
 The project is deliberately *not* installed into `.venv`; the tools are plain scripts and `.venv`
@@ -427,7 +431,7 @@ than a choice you have to make:
 
 | Tier | What carries your status | Needs | Gives you |
 |---|---|---|---|
-| **Durable** | a private GitHub repo, via the Contents API — never cloned | your `gh` login | retains published status when a peer is offline |
+| **Durable** (experimental, untested) | a private GitHub repo, via the Contents API — never cloned | your `gh` login | retains published status when a peer is offline |
 | **Medium** | a folder your own sync client already replicates | any sync client | fast, no API budget |
 | **Live** | machines talking directly over Tailscale | Tailscale | near-real-time, readable peer names |
 
