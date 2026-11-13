@@ -46,6 +46,11 @@ class Command:
 COMMANDS = (
     # Basic: one Git or host operation.
     Command("discover", "Basic/discover.py", "Basic.discover"),
+    Command("status", "Basic/status.py", "Basic.status"),
+    Command("fetch", "Basic/fetch.py", "Basic.fetch"),
+    Command("pull", "Basic/pull.py", "Basic.pull"),
+    Command("clone", "Basic/clone.py", "Basic.clone"),
+    Command("reset-keep", "Basic/reset_keep.py", "Basic.reset_keep"),
     # Special: this machine, once.
     Command("enroll-machine", "Special/enroll_machine.py", "Special._sync.commands", "enroll_machine_main"),
     Command("suggest-sync", "Special/suggest_sync.py", "Special._sync.commands", "suggest_sync_main"),
@@ -106,8 +111,9 @@ def _help():
         print(f"  {command.name:18} {command.record()['description']}")
 
 
-def menu():
-    """Interactive selection only; cancellation/invalid selection never invokes an operation."""
+def menu(cancel: str = "cancel"):
+    """Interactive selection only; cancellation/invalid selection never invokes an operation.
+    `cancel` names what a blank answer does (setup says "go back to setup")."""
     if not sys.stdin.isatty():
         print("The menu requires a terminal; use commands or an explicit command.", file=sys.stderr)
         return 2
@@ -119,12 +125,13 @@ def menu():
             layer = command.script.split("/")[0]
             section(LAYERS.get(layer, layer))
         print(f"  {number:2}. {command.name}: {command.record()['description']}")
-    selected = input("Choose a command number, or leave blank to cancel: ").strip()
-    if not selected:
-        return 0
-    if not selected.isdigit() or not 1 <= int(selected) <= len(COMMANDS):
-        print("No command selected.", file=sys.stderr)
-        return 2
+    while True:
+        selected = input(f"Choose a command number, or leave blank to {cancel}: ").strip()
+        if not selected:
+            return 0
+        if selected.isdigit() and 1 <= int(selected) <= len(COMMANDS):
+            break
+        print(f"Choose a number from 1 to {len(COMMANDS)}.", file=sys.stderr)
     command = COMMANDS[int(selected) - 1]
     print(command.documentation())
     print("Enter arguments one per line, without shell quotes. A blank line starts the command; Ctrl+C cancels.")

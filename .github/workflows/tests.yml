@@ -1,0 +1,40 @@
+# The whole test suite on Windows, macOS and Linux, on the oldest and newest supported Python.
+# Runs on every push to main, on pull requests, and by hand from the Actions tab.
+# Read-only: no secrets, no write permission. Each third-party action is pinned to an exact
+# commit (its release tag is in the comment), so a moved tag cannot change what runs here.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }}, Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false   # one system failing must not hide how the others did
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+        python: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+      # The tests make throwaway commits in temporary repositories; Git needs a name for them.
+      - name: Git identity for test commits
+        run: |
+          git config --global user.name "gitSpecOps CI"
+          git config --global user.email "ci@example.invalid"
+      # Hosted runners have about 4 processors, which the local default would turn into 1 job.
+      - name: Run the suite
+        run: python tests/run_all.py --jobs 4

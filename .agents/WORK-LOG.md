@@ -2414,3 +2414,17 @@ No code changed; decisions recorded where they govern.
 - CHANGELOG.md, starting at 0.2.0; tagged v0.2.0.
 - `.agents/README.md` names its shape: repo-standalone from Structural-Engineering @ fdd316c,
   linking the shape on the Sb4ssport (404 until the shelf is public).
+
+## 2026-11-13 14:05 - user (claude) - CI on three systems, generated command docs, Basic commands listed
+- `.github/workflows/tests.yml`: the suite on Windows, macOS and Linux, Python 3.11 and 3.14, on
+  push to main, pull requests and by hand; read-only permissions; actions/checkout v7.0.1 and
+  setup-python v7.1.0 pinned by commit; `--jobs 4` on the 4-processor runners. Free on this
+  public repository. Not run yet: committed locally, waiting on the user before any push.
+- `_build/command_docs.py` writes docs/COMMANDS.md from each command's header;
+  tests/repo/test_command_docs.py fails when the page is stale. README links it.
+- Setup item 2 is a visit: a blank answer, a finished command or Ctrl+C returns to the setup
+  menu ("leave blank to go back to setup"). The command menu asks again after a wrong number.
+- Basic/status, fetch, pull, clone and reset_keep existed and were tested but never listed;
+  gitso lists them now (40 commands). Basic commit and push stay unlisted: their names clash
+  with the checked Special commit and push, and listing them would add an unchecked exit;
+  put to the user.

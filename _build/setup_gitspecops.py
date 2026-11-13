@@ -184,6 +184,20 @@ def choose_action() -> str | None:
             "6": "settings-migration-preview", "7": "settings-existing"}.get(answer)
 
 
+def run_one_command(back: bool) -> int:
+    """The command menu. From setup's own menu (`back`), a blank answer goes back to it."""
+    import gitso
+    try:
+        code = gitso.menu(cancel="go back to setup" if back else "cancel")
+    except (EOFError, KeyboardInterrupt):
+        print("\nCancelled; nothing was run.")
+        return 0
+    if back and code is not None:
+        say()
+        line("Back to setup.", "detail")
+    return code
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -195,9 +209,14 @@ def main(argv: list[str] | None = None) -> int:
             parser.print_help(file=sys.stderr)
             print("Name a setup action when there is no interactive terminal.", file=sys.stderr)
             return 2
-        action = choose_action()
-        if action is None:
-            return 0
+        # Running one command is a visit: when it finishes, or is cancelled, the menu comes back.
+        while True:
+            action = choose_action()
+            if action is None:
+                return 0
+            if action != "run":
+                break
+            run_one_command(back=True)
     from Special._settings.setup_cli import ACTIONS, EXISTING_ACTIONS, dispatch
 
     preference_fields = ("root", "exclude_path", "output_mode", "saved_format", "output_dir",
@@ -248,12 +267,7 @@ def main(argv: list[str] | None = None) -> int:
             print("Choosing a command needs a person at a console; run gitso.py with the command "
                   "instead.", file=sys.stderr)
             return 2
-        import gitso
-        try:
-            return gitso.menu()
-        except (EOFError, KeyboardInterrupt):
-            print("\nCancelled; nothing was run.")
-            return 0
+        return run_one_command(back=False)
     if action == "bootstrap":
         return bootstrap()
     if action == "environment":

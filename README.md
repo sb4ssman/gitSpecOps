@@ -99,7 +99,7 @@ switched off".
 | | **Nothing set up** | **+ This machine** | **+ A fleet** | **+ Tailscale** |
 |---|---|---|---|---|
 | **You add** | nothing | your library folders | a fleet key and a way to share | your own tailnet |
-| **Basic** | find, fetch and safely fast-forward any folder you name | | | |
+| **Basic** | find repositories; status, fetch, fast-forward pull, clone, on any you name | | | |
 | **Special** | check what needs attention; catch up; archives; copy an organization | an always-on map of this machine; recovery snapshots of unfinished work | | |
 | **Elaborate** | | start at sign-in | every machine on one map; where work is unpushed; clone what is missing; prove a machine safe to wipe | live status between machines; the map on your phone |
 | **Protect** | scans; checked commit and push; history cleanup | findings on the map, on request | audit every machine *(planned)* | |
@@ -172,11 +172,12 @@ gitso docs <command>               # what a command reads, may change, and retur
 ## Commands
 
 `gitso commands` lists them; each also runs by its own path, for example
-`python Special/suggest_sync.py --help`.
+`python Special/suggest_sync.py --help`. [The command reference](docs/COMMANDS.md) has every
+command's own description, generated from its source.
 
 | Layer | Commands |
 |---|---|
-| **Basic** | discover |
+| **Basic** | discover, status, fetch, pull, clone, reset-keep |
 | **Special** | enroll-machine, suggest-sync, name-repo, catch-up, audit-repos, materialize, list-live-buffers, duplicate-org, update-archive, archive-manager, sync-archive, export-inventory, restore-inventory, scan-tree, scan-history, review-finding, clean-history, follow-rewrite, commit, push |
 | **Elaborate** | setup-fleet, peer, publish-status, suggest-fleet-sync, converge, check-safe-to-wipe, recovery, doctor, preflight, start-at-login, schedule-archives |
 | **App** | tray, serve-web, setup |

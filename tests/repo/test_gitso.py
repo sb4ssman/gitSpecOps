@@ -30,7 +30,7 @@ class GitsoTests(unittest.TestCase):
                 self.assertEqual(gitso.main(arguments), 0)
             self.assertTrue(output.getvalue())
             if arguments == ["commands", "--json"]:
-                self.assertEqual(len(json.loads(output.getvalue())["commands"]), 35)
+                self.assertEqual(len(json.loads(output.getvalue())["commands"]), 40)
 
     def test_catalog_is_unique_and_descriptions_come_from_actual_source(self):
         self.assertEqual(len({command.name for command in gitso.COMMANDS}), len(gitso.COMMANDS))
@@ -76,6 +76,11 @@ class GitsoTests(unittest.TestCase):
             self.assertEqual(gitso.main(["docs", "unknown"]), 2)
             with patch.object(sys.stdin, "isatty", return_value=True), patch("builtins.input", return_value=""):
                 self.assertEqual(gitso.main(["menu"]), 0)
+            # A number out of range asks again; it never exits or runs anything.
+            with patch.object(sys.stdin, "isatty", return_value=True), \
+                    patch("builtins.input", side_effect=["99", "x", ""]) as prompt:
+                self.assertEqual(gitso.main(["menu"]), 0)
+            self.assertEqual(prompt.call_count, 3)
 
     def test_every_public_help_route_works_outside_checkout_without_profile_creation(self):
         with tempfile.TemporaryDirectory(prefix="gitso-help-") as temporary:

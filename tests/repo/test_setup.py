@@ -76,12 +76,26 @@ class SetupTests(unittest.TestCase):
         self.environment.assert_called_once()
         self.prerequisites.assert_called_once()
 
-    def test_menu_item_two_runs_one_command_without_setting_anything_up(self):
+    def test_menu_item_two_runs_one_command_then_returns_to_setup(self):
         import gitso
         with patch.object(gitso, "menu", return_value=0) as command_menu:
-            self.assertEqual(self.interactive(["2"]), 0)
-        command_menu.assert_called_once()
-        self.assertIn("Run one command, without setting anything up", self.output.getvalue())
+            self.assertEqual(self.interactive(["2", "0"]), 0)
+        command_menu.assert_called_once_with(cancel="go back to setup")
+        out = self.output.getvalue()
+        self.assertIn("Back to setup.", out)
+        self.assertEqual(out.count("[2] Run one command, without setting anything up"), 2,
+                         "the setup menu must come back after the command menu")
+        self.assert_no_actions()
+
+    def test_a_blank_answer_in_the_command_menu_goes_back_to_setup(self):
+        import gitso
+        with patch.object(subject.sys, "stdin", SimpleNamespace(isatty=lambda: True)), \
+                patch("builtins.input", side_effect=["2", "", "0"]) as prompt, \
+                patch.object(gitso, "dispatch", side_effect=AssertionError("nothing may run")):
+            self.assertEqual(subject.main([]), 0)
+        prompts = [call.args[0] for call in prompt.call_args_list]
+        self.assertEqual(len(prompts), 3, "setup menu, command menu, setup menu again")
+        self.assertIn("leave blank to go back to setup", prompts[1])
         self.assert_no_actions()
 
     def test_the_walkthrough_is_the_first_and_default_item(self):
