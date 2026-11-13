@@ -7,7 +7,7 @@ param(
 # (using an available Python without project sync/downloads), else `py`, else `python`.
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$setupScript = Join-Path $repoRoot "setup_gitspecops.py"
+$setupScript = Join-Path (Join-Path $repoRoot "_build") "setup_gitspecops.py"
 # Keep the caller's working directory so relative settings/root arguments retain their meaning.
 if (Get-Command uv -ErrorAction SilentlyContinue) {
     uv run --no-project --no-python-downloads python $setupScript @ForwardedArgs

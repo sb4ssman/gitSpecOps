@@ -82,7 +82,7 @@ COMMANDS = (
     # App: presence and presentation.
     Command("tray", "App/tray.py", "App.tray"),
     Command("serve-web", "App/serve_web.py", "App.serve_web"),
-    Command("setup", "setup_gitspecops.py", "setup_gitspecops"),
+    Command("setup", "_build/setup_gitspecops.py", "_build.setup_gitspecops"),
 )
 
 

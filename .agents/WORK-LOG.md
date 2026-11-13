@@ -2323,3 +2323,9 @@ No code changed; decisions recorded where they govern.
   heads the gitso menu and, at a console, update-archive and suggest-sync. Nothing else on any
   screen changed. The design is copied unchanged in .agents/knowledge/station-script-design.md
   with a pointer in AGENTS.md. Full suite 86/86.
+
+## 2026-11-13 08:10 - user (claude) - Setup lives in _build/
+- The user moved setup_gitspecops.py into _build/ (and removed the generated root shortcuts).
+  Followed: setup finds the repository root as its parent folder; run_setup.ps1/.sh, gitso's
+  `setup` command, three test imports, one enrollment message and the docs name
+  `_build/setup_gitspecops.py`. Verified: run_setup.ps1 check runs it; full suite 86/86.

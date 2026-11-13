@@ -234,16 +234,16 @@ your OS (`.sh` on Linux/macOS, `.ps1` + a `.bat` double-click shim on Windows):
 .\duplicate-github-org.bat
 ```
 
-Launchers are **generated, never committed** — edit `setup_gitspecops.py`, not a launcher. The
+Launchers are **generated, never committed** — edit `_build/setup_gitspecops.py`, not a launcher. The
 project is deliberately *not* installed into `.venv`; the tools are plain scripts and `.venv` is
 just a predictable interpreter.
 
 Updater preferences can be configured without installing launchers or enrolling a fleet:
 
 ```bash
-python3 setup_gitspecops.py settings
-python3 setup_gitspecops.py settings-preview --root /path/to/archive --no-log --json
-python3 setup_gitspecops.py settings-save --root /path/to/archive --no-log --json --approve '<review-id>'
+python3 _build/setup_gitspecops.py settings
+python3 _build/setup_gitspecops.py settings-preview --root /path/to/archive --no-log --json
+python3 _build/setup_gitspecops.py settings-save --root /path/to/archive --no-log --json --approve '<review-id>'
 ```
 
 Guided setup reviews changes and requires typed `SAVE`. For assisted use, copy the preview ID
@@ -253,8 +253,8 @@ environment choice, without relocating other profiles. `settings-migration-previ
 legacy mapping. For an archive/security-only profile, use the reviewed existing-settings setup:
 
 ```sh
-python3 setup_gitspecops.py settings-existing
-python3 setup_gitspecops.py settings-existing-plan --json
+python3 _build/setup_gitspecops.py settings-existing
+python3 _build/setup_gitspecops.py settings-existing-plan --json
 ```
 
 The plan changes nothing. Guided saving requires separate confirmation that legacy writers are

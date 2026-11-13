@@ -14,7 +14,7 @@ from _bootstrap import setup  # noqa: E402
 
 setup()
 
-import setup_gitspecops as subject  # noqa: E402
+from _build import setup_gitspecops as subject  # noqa: E402
 
 
 class SetupTests(unittest.TestCase):

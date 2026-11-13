@@ -33,11 +33,11 @@ sync-home override are refused here; the broad mapping preview remains read-only
 user profile has been switched by this implementation.
 
 ```sh
-python3 setup_gitspecops.py settings-existing
-python3 setup_gitspecops.py settings-existing-plan --json
-python3 setup_gitspecops.py settings-existing-save --approve '<review-id>' --legacy-writers-stopped --launcher-plan-reviewed --json
-python3 setup_gitspecops.py settings-existing-status --switch-id '<review-id>' --json
-python3 setup_gitspecops.py settings-existing-resume --switch-id '<review-id>' --legacy-writers-stopped --launcher-plan-reviewed --json
+python3 _build/setup_gitspecops.py settings-existing
+python3 _build/setup_gitspecops.py settings-existing-plan --json
+python3 _build/setup_gitspecops.py settings-existing-save --approve '<review-id>' --legacy-writers-stopped --launcher-plan-reviewed --json
+python3 _build/setup_gitspecops.py settings-existing-status --switch-id '<review-id>' --json
+python3 _build/setup_gitspecops.py settings-existing-resume --switch-id '<review-id>' --legacy-writers-stopped --launcher-plan-reviewed --json
 ```
 
 All accept a selected `--settings-home`. Plan and status create nothing. Default results expose

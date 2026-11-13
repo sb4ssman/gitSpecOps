@@ -8,7 +8,7 @@ __pycache__/
 venv/
 uv.lock
 
-# Generated convenience launchers (setup_gitspecops.py writes these; edit it, not them)
+# Generated convenience launchers (_build/setup_gitspecops.py writes these; edit it, not them)
 /update-archive.*
 /manage-archives.*
 /duplicate-github-org.*

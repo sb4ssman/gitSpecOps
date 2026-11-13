@@ -187,7 +187,8 @@ and `_archive/` are gone. A file without an underscore is a command; the rest is
 ```
 gitSpecOps/
 ├── .agents/          brief, notes, work log, knowledge, diagrams
-├── _build/           PyInstaller recipe (GitSpecOpsSync.spec), release_check.py, build notes
+├── _build/           setup_gitspecops.py (setup), PyInstaller recipe (GitSpecOpsSync.spec),
+│                     release_check.py, build notes
 ├── _docs/            FLEET, DISPLAY-CONTRACT, RECOVERY-DESIGN
 ├── _os/              beneath every layer: per-OS components, stdlib only (current.py decides)
 ├── Basic/            one Git or host operation, done carefully
@@ -216,7 +217,7 @@ gitSpecOps/
 │       skins/_common)
 ├── tests/            basic special elaborate app security archive duplicator os repo probes
 ├── gitso.py          the front door: lists and dispatches every command
-└── setup_gitspecops.py  run_setup.*  pyproject.toml (optional extra: app = PySide6)
+└── run_setup.*  pyproject.toml (optional extra: app = PySide6)
 ```
 
 The local-versus-fleet split of the old Sync Suggester: `Special/suggest_sync.py` observes,

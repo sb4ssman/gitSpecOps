@@ -2,7 +2,7 @@
 
 Run from this repository:
 
-    python setup_gitspecops.py     (or: run_setup.bat / run_setup.ps1 / run_setup.sh)
+    python _build/setup_gitspecops.py     (or: run_setup.bat / run_setup.ps1 / run_setup.sh)
 
 With no arguments, choose the command-line bootstrap or an individual setup item.
 Non-interactive callers must name an action; --help never performs setup.
@@ -38,10 +38,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-from Basic._station import banner
+# This script lives in _build/; the repository root is its parent, and the layers import from there.
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
+from Basic._station import banner  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent
 WINDOWS = platform.system().lower() == "windows"
 VENV_DIR = ROOT / ".venv"
 VENV_PYTHON = VENV_DIR / ("Scripts/python.exe" if WINDOWS else "bin/python")

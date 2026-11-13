@@ -70,7 +70,7 @@ def _snapshot(home):
     snapshot = load_fleet_settings(home)
     if snapshot is None:
         raise ValueError(f"no settings profile at {fleet_home(home)}; create it with "
-                         "setup_gitspecops.py first")
+                         "_build/setup_gitspecops.py first")
     return snapshot
 
 

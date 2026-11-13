@@ -35,7 +35,7 @@ Two causes stacked:
   at runtime. `.venv` exists only to give the launchers a clean, predictable interpreter.
   - `pyproject.toml`: added `[tool.uv]` `package = false`; dropped `[build-system]` /
     `[tool.setuptools]`. Left a comment explaining why.
-  - `setup_gitspecops.py`: `create_venv_with_stdlib()` now just makes the bare venv — no
+  - `_build/setup_gitspecops.py`: `create_venv_with_stdlib()` now just makes the bare venv — no
     `pip install -e .`, no pip upgrade.
   - Removed the existing artifacts: the two `__editable__*` files + `git_spec_ops-0.1.0.dist-info/`
     from `.venv/lib/python3.13/site-packages/`, root `git_spec_ops.egg-info/`, and `uv.lock`

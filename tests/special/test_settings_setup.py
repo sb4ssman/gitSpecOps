@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import ROOT, setup
 setup()
 
-import setup_gitspecops as command
+from _build import setup_gitspecops as command
 from Special._settings import SettingsError, resolve_settings
 from Special._settings import setup as subject
 from Special._settings import store
