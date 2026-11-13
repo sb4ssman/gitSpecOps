@@ -2237,3 +2237,12 @@ No code changed; decisions recorded where they govern.
   run screen now starts on a clean window (only at a real console, as theirs), the summary bullets
   are indented as theirs, and the publisher line is the shelf's, `Sb4ssport-Alpha |
   https://sb4ssport-alpha.github.io`. Setup tests and hygiene pass.
+
+## 2026-11-12 19:51 - user (claude) - Setup says what each layer will do to the computer
+- The user, as a first-time user, could not tell what "Next: This machine. [N] Go" would do. Before
+  every layer (and before a single layer chosen from [2]) setup now shows "Next: <layer>" with what
+  it asks, what it reads, what it changes and where (%APPDATA%\gitspecops\settings.json; the
+  "GitSpecOpsFleet" sign-in entry), what the app then does (tray icon, web view on 127.0.0.1:8760,
+  a read-only git fetch every 15 minutes, Tailscale port 8765 for own devices, a status file
+  every 5 minutes in a synced folder) and the network it uses; then "Nothing happens until you
+  answer". Values checked against the code. Rows wrap under their value. Test asserts it.

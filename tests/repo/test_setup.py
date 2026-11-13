@@ -108,6 +108,9 @@ class SetupTests(unittest.TestCase):
         with patch.object(subject, "LAYERS", layers), patch("builtins.input", side_effect=["s", "", "q"]):
             self.assertEqual(subject.walkthrough(), 0)
         self.assertEqual(ran, ["B"], "A skipped, B run (Enter goes), stopped before C")
+        out = self.output.getvalue()
+        self.assertEqual(out.count("It changes"), 3, "every layer says what it changes before the choice")
+        self.assertEqual(out.count("Nothing happens until you answer"), 3)
 
     def test_this_machine_needs_scan_to_enroll(self):
         import json

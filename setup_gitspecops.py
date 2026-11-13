@@ -147,8 +147,20 @@ def run_header(page: str, what: str) -> None:
 
 
 def row(label: str, value: str, tone: str = "text") -> None:
-    say(f"  {label:<20}", "text", end="")
-    say(_clean(value), tone)
+    """A label padded to 20 columns, then the value; continuation lines align under the value."""
+    room, rest, first = max(20, _width() - 22), _clean(value), True
+    while True:
+        if len(rest) > room:
+            cut = rest.rfind(" ", 0, room + 1)
+            cut = cut if cut > 0 else room
+            piece, rest = rest[:cut].rstrip(), rest[cut:].lstrip()
+        else:
+            piece, rest = rest, ""
+        say(f"  {label if first else '':<20}", "text", end="")
+        say(piece, tone)
+        first = False
+        if not rest:
+            return
 
 
 def option(key: str, label: str, explanation: str = "") -> None:
@@ -691,11 +703,76 @@ LAYERS = (("This machine", layer_machine), ("On this desktop", layer_desktop),
           ("Protection", layer_protection), ("A fleet", layer_fleet))
 
 
+def _settings_file() -> str:
+    try:
+        from Special._settings.fleet import fleet_home
+        path = str(Path(fleet_home(None)) / "settings.json")
+        # Short and familiar: %APPDATA%\... on Windows, ~/... elsewhere.
+        appdata = os.environ.get("APPDATA")
+        if WINDOWS and appdata and path.lower().startswith(appdata.lower()):
+            return "%APPDATA%" + path[len(appdata):]
+        home = str(Path.home())
+        return "~" + path[len(home):] if path.startswith(home) else path
+    except Exception:  # noqa: BLE001 - a description must never stop setup
+        return "your gitSpecOps settings file"
+
+
+def _login_entry() -> str:
+    if WINDOWS:
+        return ('one entry, "GitSpecOpsFleet", in your Windows sign-in list (your account only; '
+                "remove it here later, or in Task Manager under Startup apps)")
+    if sys.platform == "darwin":
+        return "one LaunchAgent file in your Library/LaunchAgents folder (your account only)"
+    return "one autostart file in ~/.config/autostart (your account only)"
+
+
+def briefs() -> list[list[tuple[str, str]]]:
+    """What each layer will do to this computer, said before the person chooses to go on."""
+    settings = _settings_file()
+    return [
+        [("It asks", "which folders hold your Git repositories, and who may see the web view."),
+         ("It reads", "only if you type LOOK: the names of folders where you say to look (no file "
+                      "contents, no Git). Once you add a library (after typing SCAN), the app reads each "
+                      "repository's Git status when it starts."),
+         ("It changes", f"one file: {settings}. Never your repositories or your files."),
+         ("Network", "none.")],
+        [("It asks", "whether the app starts when you sign in, which Git app opens repositories, and "
+                     "whether to start the app now."),
+         ("It changes", f"start at login adds {_login_entry()}. The Git app choice goes into {settings}. "
+                        "Nothing is installed."),
+         ("Then the app", "shows an icon in the tray; reads your libraries' Git status; serves its web "
+                          "view to this computer only (http://127.0.0.1:8760) unless you chose otherwise; "
+                          "and every 15 minutes runs a read-only `git fetch` for each repository."),
+         ("Network", "that fetch talks to where your repositories are hosted (GitHub and so on); it "
+                     "updates only Git's record of the remote, never your branches or files.")],
+        [("It asks", "values that must never be published: your name, email addresses, usernames."),
+         ("It changes", f"those lists in {settings}. It reads nothing, scans nothing and installs nothing."),
+         ("Network", "none.")],
+        [("It asks", "whether to start a fleet or join one (with a key from your other machine), and how "
+                     "your machines share: Tailscale, a synced folder, or both."),
+         ("It changes", f"{settings} (the fleet key and the ways to share)."),
+         ("Then the app", "shares each repository's status with your own machines only: names, branches "
+                          "and commit counts if you allow names; never file contents or folder paths. Over "
+                          "Tailscale it listens on your Tailscale address, port 8765, for your devices only. "
+                          "In a synced folder it writes one small status file every 5 minutes."),
+         ("Network", "Tailscale traffic between your machines; nothing to any other service.")],
+    ]
+
+
+def show_brief(index: int) -> None:
+    title = LAYERS[index][0]
+    say()
+    line(f"Next: {title}", "accent")
+    for label, text in briefs()[index]:
+        row(label, text, "detail" if label == "Network" else "text")
+    line("Nothing happens until you answer. Every change asks you first.", "muted")
+
+
 def walkthrough(start: int = 0) -> int:
-    """The layers in order, with an exit point before each one."""
-    for title, layer in LAYERS[start:]:
-        say()
-        choice = ask(f"Next: {title}.  [N] Go  [S] Skip it  [Q] Stop here (everything so far is kept)  [N]:", "n").lower()
+    """The layers in order, each described before the person chooses: go, skip, or stop."""
+    for index, (title, layer) in enumerate(LAYERS[start:], start):
+        show_brief(index)
+        choice = ask("[N] Go  [S] Skip it  [Q] Stop here (everything so far is kept)  [N]:", "n").lower()
         if choice == "q":
             notice("Stopped here", "Everything done so far is kept. Run setup again to continue.", "success")
             return 0
@@ -850,8 +927,10 @@ def perform(parser, args, action: str) -> int:
         code = bootstrap()
         return walkthrough() if code == 0 else code
     if action.startswith("layer-"):
-        title, layer = LAYERS[int(action.removeprefix("layer-"))]
-        layer()
+        index = int(action.removeprefix("layer-"))
+        show_brief(index)
+        if ask("Go on? [y/n] [y]:", "y").lower() == "y":
+            LAYERS[index][1]()
         return 0
     if action == "launchers":
         return launchers()
