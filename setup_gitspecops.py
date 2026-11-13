@@ -589,5 +589,27 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def run() -> int:
+    """main(), failing honestly: an unexpected error says what happened in one plain sentence,
+    and the full details go to a file (never a stack trace on the screen)."""
+    try:
+        return main()
+    except (KeyboardInterrupt, EOFError):
+        notice("Setup cancelled", "Some steps may have completed; run setup again to finish.", "warning")
+        return 130
+    except Exception as exc:  # noqa: BLE001 - the last line of defence for a person at a console
+        import tempfile
+        import traceback
+        report = Path(tempfile.gettempdir()) / "gitspecops-setup-error.txt"
+        try:
+            report.write_text(traceback.format_exc(), encoding="utf-8")
+            where = f"Details: {report}"
+        except OSError:
+            where = "The details could not be saved."
+        notice("Setup stopped unexpectedly", f"{type(exc).__name__}: {_clean(exc)}. Some steps may have "
+               f"completed. {where}", "error")
+        return 1
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run())

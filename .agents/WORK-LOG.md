@@ -2203,3 +2203,9 @@ No code changed; decisions recorded where they govern.
   short summary and one notice; tool output is kept and shown only for a failed step; `check` stays
   read-only. The publisher line is read from pyproject.toml, not written into source. Tests updated
   (fixtures patch the new steps; never a real environment build). Full suite 86/86.
+
+## 2026-11-12 17:31 - user (claude) - Setup fails honestly and visibly
+- The user reported setup crashing after choosing [1]; it could not be reproduced here (launcher,
+  piped menu with colours on: all four steps ok). Setup now catches any unexpected error with one
+  plain notice (what failed; "some steps may have completed"; where the details are, a file in the
+  temp folder), and run_setup.bat keeps its window open when setup fails. Waiting for the report.
