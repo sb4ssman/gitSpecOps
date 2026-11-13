@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 from Basic._console import enable_unicode_output
+from Basic._station import Steps, is_console, line, notice, row, run_header, say, section, summary
 from Special._settings.fleet import fleet_directory, load_fleet_settings
 
 
@@ -85,16 +86,41 @@ def suggest_sync(args) -> int:
         raise ValueError("no roots to observe; pass --root, or save roots with "
                          "Elaborate/publish_status.py init")
     stream = sys.stderr if args.json else sys.stdout
-    if args.fetch:
-        print(f"Fetching remote refs for repositories in {len(specs)} root(s): the only network "
-              "activity, and it never touches your working tree.", file=stream)
+    console = is_console() and not args.json
     # Repository ids only need a salt inside this run; nothing here leaves the machine.
     secret = (config or {}).get("fleet_secret") or new_fleet_secret()
-    observation = observe_roots(specs, secret, fetch=args.fetch, fetch_workers=args.fetch_workers,
-                                fetch_timeout=args.fetch_timeout)
-    security = inspect_paths(zip((repo["repo_id"] for repo in observation.repositories),
-                                 observation.locations),
-                             settings_home=home, expected_settings=snapshot)
+    if console:
+        run_header("Suggest sync", f"{len(specs)} library folder{'s' if len(specs) != 1 else ''} ({source})",
+                   ("fetches remotes read-only (never your working files); " if args.fetch else "no network; ")
+                   + "publishes nothing")
+        steps = Steps(2)
+        found = {}
+
+        def observe():
+            found["observation"] = observe_roots(specs, secret, fetch=args.fetch, fetch_workers=args.fetch_workers,
+                                                 fetch_timeout=args.fetch_timeout)
+            return "ok", f"{len(found['observation'].repositories)} repositories", ""
+
+        def check():
+            found["security"] = inspect_paths(zip((repo["repo_id"] for repo in found["observation"].repositories),
+                                                  found["observation"].locations),
+                                              settings_home=home, expected_settings=snapshot)
+            held = sum(1 for entry in found["security"] if entry["security"]["check_status"] != "passed")
+            return "ok", (f"{held} to review before a commit or push" if held else "nothing protected found"), ""
+        if steps.run("Fetch and read repositories" if args.fetch else "Read repositories", observe) == "FAILED":
+            notice("Could not read the repositories", "Nothing was changed.", "error")
+            return 2
+        steps.run("Security check", check)
+        observation, security = found["observation"], found.get("security", [])
+    else:
+        if args.fetch:
+            print(f"Fetching remote refs for repositories in {len(specs)} root(s): the only network "
+                  "activity, and it never touches your working tree.", file=stream)
+        observation = observe_roots(specs, secret, fetch=args.fetch, fetch_workers=args.fetch_workers,
+                                    fetch_timeout=args.fetch_timeout)
+        security = inspect_paths(zip((repo["repo_id"] for repo in observation.repositories),
+                                     observation.locations),
+                                 settings_home=home, expected_settings=snapshot)
     machine = (config or {}).get("machine_id") or "this-machine"
     manifest = build_manifest(fleet_id_for(secret), machine,
                               (config or {}).get("machine_label") or machine, observation.repositories)
@@ -102,6 +128,9 @@ def suggest_sync(args) -> int:
     branches = {**load_branches(config_dir), **observation.branches}
     if config and not args.no_catalog:
         save_catalog(config_dir, merged, branches)
+    if console:
+        show_suggestions(manifest, merged, branches, security, observation, source)
+        return 0
     if args.json:
         print(json.dumps({"schema_version": 1, "manifest": manifest, "local_security": security,
                           "artifacts": []}, indent=2, sort_keys=True))
@@ -131,6 +160,59 @@ def suggest_sync_main(argv=None) -> int:
     parser.add_argument("--json", action="store_true", help="machine-readable result")
     parser.add_argument("--no-catalog", action="store_true", help="do not update the local catalog")
     return _run(suggest_sync, parser, argv)
+
+
+#: Headline states, grouped into the sections a person acts on, most urgent first.
+SUGGESTION_GROUPS = (
+    ("Needs you", ("operation", "dirty", "local_only", "diverged"), "warning"),
+    ("Push suggested", ("ahead", "unpushed"), "warning"),
+    ("Pull suggested", ("behind",), "warning"),
+    ("Stashes to review", ("stashed",), "text"),
+    ("Upstream unknown", ("unknown",), "detail"),
+)
+
+
+def show_suggestions(manifest, catalog, branches, security, observation, source) -> None:
+    """The suggestions as station sections: one row per repository that needs something, a
+    count of those already in sync, a Summary and one notice."""
+    from Special._sync.advice import classify_repository, describe_repository, security_notices
+
+    notices = security_notices(security or [])
+    grouped, synced = {}, 0
+    for repo in manifest["repositories"]:
+        state, action = classify_repository(repo)
+        if state == "synced":
+            synced += 1
+            continue
+        grouped.setdefault(state, []).append((repo, action))
+    counts = []
+    for title, states, tone in SUGGESTION_GROUPS:
+        entries = [entry for state in states for entry in grouped.get(state, [])]
+        if not entries:
+            continue
+        section(f"{title} ({len(entries)})")
+        counts.append(f"{title}: {len(entries)}")
+        for repo, action in entries:
+            local = catalog.get(repo["repo_id"], {})
+            name = local.get("alias") or local.get("display_name") or f"repo:{repo['repo_id'][:8]}"
+            branch = repo.get("branch_id")
+            label = "(detached)" if not branch else branches.get(branch, f"branch:{branch[:8]}")
+            held = notices.get(repo["repo_id"], "")
+            row(name, f"{label}: {describe_repository(repo)}; {action}"
+                + (f". {held}" if held.startswith("SECURITY") else ""),
+                "error" if held.startswith("SECURITY") else tone)
+    section("Up to date")
+    row("In sync", f"{synced} repositor{'y' if synced == 1 else 'ies'}", "success")
+    summary([f"{len(observation.repositories)} repositories read from {source}"] + counts
+            + [f"{len(observation.issues)} could not be read fully" if observation.issues else ""])
+    for issue in observation.issues:
+        line(issue, "detail")
+    if any(grouped.values()):
+        notice("Suggestions ready", "Nothing was changed or published; act on the rows above yourself.",
+               "warning")
+    else:
+        notice("Everything is in sync", "Nothing was changed or published.", "success")
+    say()
 
 
 # --------------------------------------------------------------------------- name_repo

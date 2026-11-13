@@ -56,190 +56,15 @@ ROOT = Path(__file__).resolve().parent
 WINDOWS = platform.system().lower() == "windows"
 VENV_DIR = ROOT / ".venv"
 VENV_PYTHON = VENV_DIR / ("Scripts/python.exe" if WINDOWS else "bin/python")
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-# --------------------------------------------------------------------------------------
-# The station script look (Sb4ssport's terminal standard: two screens, 72-wide rules, steps
-# "[n/total] label  status  seconds  detail", status always in words). Each script carries
-# its own small copy of these helpers; there is no shared runtime.
-# --------------------------------------------------------------------------------------
-PRODUCT = "gitSpecOps"
-TAGLINE = "Every repository on every machine: seen, kept current, protected"
-
-
-#: The shelf's publisher line, as on every other Sb4ssport station script (DCG-Taskforce,
-#: PowerCycler): the same look across the shelf's tools.
-PUBLISHER = "Sb4ssport-Alpha | https://sb4ssport-alpha.github.io"
-#: Console colour names, as ANSI codes (the terminal's theme decides the exact shade).
-TONES = {"accent": "96", "muted": "36", "text": "37", "detail": "90", "strong": "97",
-         "success": "92", "warning": "93", "error": "91"}
-STATUS_TONES = {"ok": "success", "changed": "warning", "skipped": "detail", "FAILED": "error"}
-
-
-def _colour_enabled() -> bool:
-    if os.environ.get("NO_COLOR") or not sys.stdout.isatty():
-        return False
-    if WINDOWS:
-        try:  # turn on ANSI colours in a classic Windows console
-            import ctypes
-            kernel = ctypes.windll.kernel32
-            handle = kernel.GetStdHandle(-11)
-            mode = ctypes.c_uint32()
-            if kernel.GetConsoleMode(handle, ctypes.byref(mode)):
-                kernel.SetConsoleMode(handle, mode.value | 0x0004)
-        except (AttributeError, OSError):
-            return False
-    return True
-
-
-COLOUR = _colour_enabled()
-
-
-def _width() -> int:
-    columns = shutil.get_terminal_size((80, 24)).columns
-    return min(72, columns - 1) if columns >= 42 else 72
-
-
-def _clean(text) -> str:
-    """Anything printed that came from outside the script: no control characters."""
-    return re.sub(r"[\x00-\x1f\x7f]", " ", re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", str(text)))
-
-
-def say(text: str = "", tone: str = "text", end: str = "\n") -> None:
-    print(f"\x1b[{TONES[tone]}m{text}\x1b[0m" if COLOUR and text else text, end=end, flush=True)
-
-
-def line(text: str = "", tone: str = "text") -> None:
-    """Indented text, wrapped at spaces (paths after a separator) to the console width."""
-    if not text:
-        say()
-        return
-    room, rest = _width() - 2, _clean(text)
-    while len(rest) > room:
-        cut = rest.rfind(" ", 0, room + 1)
-        if cut <= 0:
-            cut = max(rest.rfind("\\", 0, room), rest.rfind("/", 0, room)) + 1 or room
-        say("  " + rest[:cut].rstrip(), tone)
-        rest = rest[cut:].lstrip()
-    say("  " + rest, tone)
-
-
-def clear_screen() -> None:
-    """Every screen starts on a clean window, as in the reference scripts; only for a person at
-    a real console, never when output is captured or piped."""
-    if COLOUR and sys.stdin.isatty():
-        print("\x1b[2J\x1b[3J\x1b[H", end="", flush=True)
-
-
-def menu_header(page: str) -> None:
-    clear_screen()
-    say()
-    say(f"  {PRODUCT}  /  {page}", "accent")
-    say(f"  {TAGLINE}")
-    say(f"  {PUBLISHER}", "muted")
-    say("-" * _width(), "muted")
-
-
-def run_header(page: str, what: str) -> None:
-    bar = "=" * _width()
-    when = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    clear_screen()
-    say()
-    say(bar, "muted")
-    say(f"  {PRODUCT}  /  {page}", "accent")
-    say(f"  {PUBLISHER}", "muted")
-    say(f"  {when} on {socket.gethostname()}  |  user {getpass.getuser()}  |  Python {platform.python_version()}", "detail")
-    say(f"  {what}", "detail")
-    say(bar, "muted")
-    say()
-
-
-def row(label: str, value: str, tone: str = "text") -> None:
-    """A label padded to 20 columns, then the value; continuation lines align under the value."""
-    for number, piece in enumerate(_wrap(value, max(20, _width() - 22))):
-        say(f"  {label if number == 0 else '':<20}", "text", end="")
-        say(piece, tone)
-
-
-def bullet(text: str, tone: str = "text") -> None:
-    """`   . text`, wrapped so continuation lines start under the text."""
-    room, rest, prefix = max(20, _width() - 5), _clean(text), "   . "
-    while rest:
-        if len(rest) > room:
-            cut = rest.rfind(" ", 0, room + 1)
-            cut = cut if cut > 0 else room
-            piece, rest = rest[:cut].rstrip(), rest[cut:].lstrip()
-        else:
-            piece, rest = rest, ""
-        say(prefix + piece, tone)
-        prefix = "     "
-
-
-def _wrap(text: str, room: int) -> list[str]:
-    """Text broken at spaces to fit `room` columns; a path after a `\\` or `/`."""
-    rest, lines = _clean(text), []
-    while len(rest) > room:
-        # A path breaks after a separator, even one with spaces in it; text breaks at spaces.
-        path = re.match(r"(?:[A-Za-z]:\\|\\\\|/|~[\\/]|%[A-Z]+%)", rest)
-        cut = max(rest.rfind("\\", 0, room), rest.rfind("/", 0, room)) + 1 if path else 0
-        if cut <= 0:
-            cut = rest.rfind(" ", 0, room + 1)
-        if cut <= 0:
-            cut = max(rest.rfind("\\", 0, room), rest.rfind("/", 0, room)) + 1
-        cut = cut if cut > 0 else room
-        lines.append(rest[:cut].rstrip())
-        rest = rest[cut:].lstrip()
-    return lines + [rest]
-
-
-def option(key: str, label: str, explanation: str = "") -> None:
-    """`[key] Label`, with an optional one-line explanation indented under it."""
-    prefix = f"  [{key}] "
-    room = max(20, _width() - len(prefix))
-    first, *more = _wrap(label, room)
-    say(prefix, "accent", end="")
-    say(first)
-    for text in more:
-        say(" " * len(prefix) + text)
-    for text in (_wrap(explanation, room) if explanation else []):
-        say(" " * len(prefix) + text, "muted")
-
-
-def section(title: str) -> None:
-    say()
-    line(title, "accent")
-
-
-def notice(title: str, message: str, tone: str) -> None:
-    say()
-    line(title, tone)
-    line(message)
-
-
-class Steps:
-    """Numbered steps: `[n/total] label` padded to 30, then status, seconds and detail."""
-
-    def __init__(self, total: int):
-        self.total, self.index, self.results = total, 0, []
-
-    def run(self, label: str, action) -> str:
-        self.index += 1
-        say(f"  [{self.index}/{self.total}] {label:<30}", "strong", end="")
-        started = time.monotonic()
-        try:
-            status, detail, output = action()
-        except Exception as exc:  # noqa: BLE001 - a step reports its failure; setup goes on honestly
-            status, detail, output = "FAILED", type(exc).__name__, str(exc)
-        say(f" {status:<8}", STATUS_TONES[status], end="")
-        say(f"{time.monotonic() - started:5.1f}s  {_clean(detail)}", "detail")
-        if status == "FAILED" and output:
-            for text in [l for l in _clean_lines(output)][-8:]:  # the last words, not a stack trace
-                say(f"        {text}", "detail")
-        self.results.append((label, status, detail))
-        return status
-
-
-def _clean_lines(output: str) -> list[str]:
-    return [_clean(l).rstrip() for l in str(output).splitlines() if l.strip()]
+# The station look (Sb4ssport-Authority knowledge/launchers.md) lives in Basic/_station.py, shared
+# with every gitSpecOps tool, so setup draws exactly the screens the other tools draw.
+from Basic._station import (  # noqa: E402
+    COLOUR, PRODUCT, Steps, ask, bullet, choose, clear_screen, line, menu_header, notice, option, row,
+    run_header, say, section, summary)
+from Basic._station import clean as _clean, clean_lines as _clean_lines, width as _width, wrap as _wrap  # noqa: E402,F401
 
 
 def _capture(cmd: list[str]) -> tuple[int, str]:
@@ -529,20 +354,6 @@ def build_parser() -> argparse.ArgumentParser:
 # same front door: review and apply changes, repair, remove from this computer.
 # The plan itself is Elaborate/_fleet/setup_plan.py, shared with the web view and agents.
 # --------------------------------------------------------------------------------------
-def ask(prompt: str, default: str = "") -> str:
-    """One question; Enter takes the default."""
-    return input(f"  {prompt} ").strip() or default
-
-
-def choose(keys: str, default: str) -> str:
-    """A choice from the listed keys; anything else is asked again."""
-    while True:
-        answer = ask(f"Choose [{default.upper()}]:", default).lower()
-        if len(answer) == 1 and (answer in keys.lower() or (answer == "q" and "0" in keys)):
-            return "0" if answer == "q" else answer
-        line("Choose one of the keys shown; nothing has been changed.", "warning")
-
-
 def app_python() -> str:
     """The Python that has the desktop app: the project's environment once it exists."""
     return str(VENV_PYTHON) if VENV_PYTHON.exists() else sys.executable
@@ -653,24 +464,23 @@ def feature_rows(current, choices, install) -> None:
     tools, transports = current.tools, current.fleet_transports
     section("This computer")
     row("Computer", current.machine or socket.gethostname())
-    row("Git", "found" if tools.get("git") else "missing: required. Get it at git-scm.com",
-        "success" if tools.get("git") else "error")
-    row("Python", platform.python_version())
-    if install["venv"]:
-        row("Environment", "ready (.venv in this folder)", "success")
+    if tools.get("git"):
+        row("Requirements", "ready (Git and Python found)", "success")
     else:
-        row("Environment", "not built yet; setup builds it in this folder", "warning")
+        row("Requirements", "Git is missing. Get it at git-scm.com, then run setup again.", "error")
     if install["running"]:
         row("Desktop app", "running in the tray", "success")
     elif install["desktop"]:
         row("Desktop app", "installed, not running", "text")
-    elif install["venv"]:
-        row("Desktop app", "not installed: needs uv (below); the tools work without it", "warning")
+    elif install["venv"] and not tools.get("uv"):
+        row("Desktop app", "needs uv to install (docs.astral.sh/uv); the command-line tools work "
+            "without it", "warning")
     else:
-        row("Desktop app", "setup adds it (tray icon and map)", "warning")
-    have, total = install["launchers"], install["launchers_total"]
-    row("Launchers", f"{have} of {total} in this folder" if have else "not written yet; setup writes them",
-        "success" if have == total else "warning")
+        row("Desktop app", "not installed yet; setup installs it in this folder", "warning")
+    have = install["launchers"] == install["launchers_total"]
+    row("Tool shortcuts", "in this folder: double-click gitspecops-tray to start the app; the "
+        "others open a tool" if have else "not made yet; setup puts them in this folder",
+        "text" if have else "warning")
 
     section("Your setup" if current.enrolled else "Recommended setup")
     settings_rows(current, choices)
@@ -711,10 +521,6 @@ def feature_rows(current, choices, install) -> None:
     else:
         row("Archive copies", "none. Optional: full copies of a GitHub organization, kept current "
             "(manage-archives).", "detail")
-    if tools.get("uv"):
-        row("uv", "found: builds the environment with the desktop app", "success")
-    else:
-        row("uv", "not installed. Needed for the desktop app: docs.astral.sh/uv", "warning")
 
 
 # --- the screens ---------------------------------------------------------------------
@@ -1093,7 +899,7 @@ def details_screen(current) -> None:
     row("Python", f"{platform.python_version()}  {sys.executable}")
     row("Environment", str(VENV_DIR) if install["venv"] else "not built")
     row("Desktop app", "Qt (PySide6) installed in .venv" if install["desktop"] else "Qt (PySide6) not installed")
-    row("Launchers", f"{install['launchers']} of {install['launchers_total']} in {ROOT}")
+    row("Tool shortcuts", f"{install['launchers']} files in {ROOT}")
     row("Settings file", current.settings_file)
     row("Start at sign-in", current.login_target or ("off" if current.start_at_login is False else "not available"))
     row("Web view", f"port {current.local_port} on this computer"

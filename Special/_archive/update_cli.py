@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 
 from Basic._console import enable_unicode_output
+from Basic._station import is_console, run_header  # noqa: E402
+from Special._archive.console import Working, show_update  # noqa: E402
 from Basic._run import DEFAULT_GIT_TIMEOUT_SECONDS, set_git_timeout
 from Special._archive.update_operation import UpdateRequest, explain_error, render_result, run_update
 from Special._archive.plan import DEFAULT_APPROVED_REMOTE_PREFIXES
@@ -89,6 +91,20 @@ def main(argv=None) -> int:
     set_git_timeout(args.git_timeout)
     request = UpdateRequest(scan_only=args.scan_only,
                             approved_prefixes=tuple(args.approved_remote_prefix or DEFAULT_APPROVED_REMOTE_PREFIXES))
+    console = (is_console() and settings.values["output"]["format"] != "json"
+               and settings.values["output"]["mode"] in ("stdout", "both"))
+    if console:
+        # A person at a console: the station run screen (steps per repository, Summary, notice).
+        roots = settings.values["scope"]["roots"] or [Path.cwd()]
+        run_header("Checking an archive" if args.scan_only else "Updating an archive",
+                   "  |  ".join(str(root) for root in roots),
+                   "reads every repository; changes nothing" if args.scan_only else
+                   "fast-forward only; a repository with local changes is skipped, never overwritten")
+        working = Working()
+        result = run_update(settings, request, progress=working, show_remote_urls=args.show_remote_urls)
+        working.clear()
+        show_update(result)
+        return result.exit_code
     result = run_update(settings, request, progress=lambda text: print(text, file=sys.stderr),
                         show_remote_urls=args.show_remote_urls)
     if settings.values["output"]["mode"] in ("stdout", "both"):

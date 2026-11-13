@@ -2277,3 +2277,19 @@ No code changed; decisions recorded where they govern.
   review default; options and rows wrap, paths after a separator.
 - The engine detects programs on PATH, selected scanners, registered archives and the
   scheduled refresh. Full suite 87/87.
+
+## 2026-11-13 06:56 - user (claude) - Every terminal tool draws the station screens (Sb4ssport-Authority launchers.md)
+- One copy of the station script design in gitSpecOps: `Basic/_station.py` (menu screen with title /
+  page, tagline, publisher and dash rule; run screen with double bars and context lines; rows,
+  options, sections, notices, numbered steps, Summary; standard colour names; status in words).
+  Setup now imports it instead of carrying its own copy.
+- Converted at a console (scripts, JSON and redirected output keep their formats): the gitso
+  command menu (sections, numbered options with descriptions); duplicate-github-org (mode menu,
+  requirements as rows, repository tables, review, run screen with one step per repository,
+  Summary and notice; batch and single-repository modes too); manage-archives (archives as
+  rows, Add / Check / Update / Details, run screens); update-archive (run screen, a live
+  "working on" line, one step per repository, Summary, notice; new `Special/_archive/console.py`);
+  suggest-sync (run screen with two steps, suggestions grouped by what to do, Summary, notice).
+  Shared prompts sit on the two-space indent.
+- Setup content in plain words: Requirements, Desktop app, Tool shortcuts (no launcher counts,
+  no .venv or uv on the main screen; those are in Detection details). Full suite 87/87.

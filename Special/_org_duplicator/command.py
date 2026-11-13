@@ -37,6 +37,8 @@ from Basic._confirm import (  # noqa: E402
     use_scripted_answers,
 )
 from Basic._console import enable_unicode_output, format_size  # noqa: E402
+from Basic._station import (  # noqa: E402
+    choose, clean, line, menu_header, notice, option, row, run_header, say, section, summary)
 from Basic._providers.github import compare_repos  # noqa: E402
 from Special._org_duplicator.local_repos import (  # noqa: E402
     duplicate_repo_names,
@@ -89,88 +91,68 @@ def choose_repo_subset(repos):
     raw = prompt_input("Repos to include ('1-5, 7' style, names; ENTER = all): ")
     selected, bad = parse_selection(raw, repos, key=lambda r: r['name'].lower())
     if bad:
-        print(f"Not recognized: {', '.join(bad)} — keeping all repos.")
+        line(f"Not recognized: {', '.join(bad)} — keeping all repos.")
         return repos
     if len(selected) != len(repos):
-        print(f"{len(selected)} of {len(repos)} repos selected.")
+        line(f"{len(selected)} of {len(repos)} repos selected.")
     return selected
 
 
 def display_repo_table(repos, org_name):
-    """Display repository information in a readable table format."""
-    print()
-    print("=" * 100)
-    print(f"Repositories in {org_name}")
-    print("=" * 100)
-
+    """The repositories of one organization, as a station section: a table, then totals."""
+    section(f"Repositories in {org_name}")
     if not repos:
-        print("No repositories found.")
+        line("None found.", "warning")
         return
 
     # Sort by creation date (oldest first)
     sorted_repos = sorted(repos, key=lambda r: r['createdAt'])
-
-    # Table header
-    print(f"{'#':<4} {'Name':<40} {'Size':<12} {'Private':<8} {'LFS':<6} {'Created':<20}")
-    print("-" * 100)
-
+    say(f"  {'#':>4}  {'Name':<30} {'Size':>9}  {'Private':<7}  {'LFS':<3}  {'Created':<10}", "muted")
     lfs_repos = []
     for idx, repo in enumerate(sorted_repos, 1):
-        name = repo['name'][:39] if len(repo['name']) > 39 else repo['name']
+        name = repo['name'] if len(repo['name']) <= 30 else repo['name'][:29] + "~"
         size = format_size(repo.get('diskUsage', 0))
-        private = "Yes" if repo['isPrivate'] else "No"
-        lfs = "⚠ YES" if repo['uses_lfs'] else "No"
-        created = repo['createdAt'][:10]  # Just the date part
-
-        print(f"{idx:<4} {name:<40} {size:<12} {private:<8} {lfs:<6} {created:<20}")
-
+        private = "yes" if repo['isPrivate'] else "no"
+        lfs = "yes" if repo['uses_lfs'] else "no"
+        say(f"  {idx:>4}  {clean(name):<30} {size:>9}  {private:<7}  {lfs:<3}  {repo['createdAt'][:10]:<10}",
+            "warning" if repo['uses_lfs'] else "text")
         if repo['uses_lfs']:
             lfs_repos.append(repo['name'])
-
-    print("=" * 100)
-    print(f"Total: {len(sorted_repos)} repositories")
-    print(f"Total size: {format_size(sum(r.get('diskUsage', 0) for r in sorted_repos))}")
-
+    say()
+    row("Total", f"{len(sorted_repos)} repositories, "
+                 f"{format_size(sum(r.get('diskUsage', 0) for r in sorted_repos))}")
     if lfs_repos:
-        print()
-        print("⚠ WARNING: The following repositories use Git LFS:")
-        for repo_name in lfs_repos:
-            print(f"  - {repo_name}")
-        print()
-        print("Git LFS repositories require special handling:")
-        print("  1. You must have Git LFS installed (git lfs install)")
-        print("  2. LFS files may not transfer correctly with --mirror")
-        print("  3. You may need to manually configure LFS in the new org")
-
-    print()
+        notice(f"{len(lfs_repos)} use Git LFS: {', '.join(lfs_repos)}",
+               "Install Git LFS (git lfs install) for their large files. A mirror may not carry LFS "
+               "files, and the new organization may need LFS set up.", "warning")
 
 
 def check_prerequisites():
-    """Verify git, gh, and gh auth before any operation. Exits on failure."""
+    """Verify git, gh, and gh auth before any operation, as rows. Exits on failure."""
+    section("Requirements")
     check_git_installed()
     check_gh_installed()
     check_gh_authenticated()
     remind_git_credentials()
-    print()
 
 
 def setup_operation():
     """Handle mode selection and input collection."""
-    print("=" * 60)
-    print("GitHub Organization Repository Tool")
-    print("=" * 60)
-    print()
+    menu_header("Duplicate an organization")
+    notice("Copy GitHub repositories", "Download an organization, upload a folder of repositories to "
+           "one, or copy one organization to another. It lists what it found and asks before it copies.")
     check_prerequisites()
 
-    # Mode selection
-    print("Select operation mode:")
-    print("  1. Remote → Local (download repos to disk)")
-    print("  2. Local → Remote (upload repos from disk to GitHub org)")
-    print("  3. Remote → Remote (migrate between GitHub orgs)")
-    print("  4. All my orgs → Local (batch download)")
-    print("  5. One repo → Local (owner/name or URL)")
-    print()
-    mode_choice = prompt_input("Mode (1, 2, 3, 4, or 5): ")
+    section("What to copy")
+    option("1", "Organization to this computer", "Download its repositories.")
+    option("2", "This computer to an organization", "Upload the repositories in a folder.")
+    option("3", "Organization to organization", "Copy between two organizations, through this computer.")
+    option("4", "All my organizations to this computer", "Download every organization you belong to.")
+    option("5", "One repository to this computer", "owner/name or a URL.")
+    option("0", "Exit without copying")
+    mode_choice = choose("123450", "0")
+    if mode_choice == "0":
+        sys.exit(0)
 
     if mode_choice == "1":
         operation_mode = 'download'
@@ -183,10 +165,10 @@ def setup_operation():
     elif mode_choice == "5":
         operation_mode = 'single'
     else:
-        print("ERROR: Invalid mode selection. Please choose 1, 2, 3, 4, or 5.")
+        notice("Nothing selected", "Run the tool again and choose 1 to 5.", "warning")
         sys.exit(1)
 
-    print()
+    say()
 
     # Collect mode-specific inputs
     config = {'operation_mode': operation_mode}
@@ -195,15 +177,15 @@ def setup_operation():
         config['source_org'] = prompt_input("Source organization name: ")
         config['dest_org'] = None
 
-        print()
-        print("Verifying organization access...")
+        say()
+        line("Verifying organization access...", "detail")
         check_org_access(config['source_org'])
-        print(f"✓ Access confirmed for {config['source_org']}")
-        print()
+        line(f"Access confirmed for {config['source_org']}", "success")
+        say()
 
         # Format selection
         config['use_mirror'] = prompt_clone_format()
-        print()
+        say()
 
         # Get target directory (created if missing; re-prompts on a bad path)
         config['temp_dir'] = prompt_for_directory(
@@ -211,7 +193,7 @@ def setup_operation():
             must_exist=False,
             create_ok=True,
         )
-        print()
+        say()
 
     elif operation_mode == 'upload':
         source_dir = prompt_for_directory(
@@ -223,33 +205,33 @@ def setup_operation():
         config['temp_dir'] = source_dir  # Reuse for consistency
         config['dest_org'] = prompt_input("Destination organization name: ")
         config['source_org'] = None
-        print()
+        say()
 
-        print("Local repository scan scope:")
-        print("  1. Recursive (find nested repositories; recommended)")
-        print("  2. Direct children only (original behavior)")
+        line("Local repository scan scope:")
+        say("    1. Recursive (find nested repositories; recommended)")
+        say("    2. Direct children only (original behavior)")
         scan_choice = prompt_input("Scope (1 or 2, default 1): ")
         config['recursive_scan'] = scan_choice != "2"
         if scan_choice not in ("", "1", "2"):
-            print("Invalid input, using recursive scan.")
-        print()
+            line("Invalid input, using recursive scan.")
+        say()
 
-        print("Verifying organization access...")
+        line("Verifying organization access...", "detail")
         check_org_access(config['dest_org'])
-        print(f"✓ Read access confirmed for {config['dest_org']} (write access is verified when repos are created)")
-        print()
+        line(f"Read access confirmed for {config['dest_org']} (write access is verified when repos are created)", "success")
+        say()
 
     elif operation_mode == 'migrate':
         config['source_org'] = prompt_input("Source organization name: ")
         config['dest_org'] = prompt_input("Destination organization name: ")
-        print()
+        say()
 
-        print("Verifying organization access...")
+        line("Verifying organization access...", "detail")
         check_org_access(config['source_org'])
-        print(f"✓ Access confirmed for {config['source_org']}")
+        line(f"Access confirmed for {config['source_org']}", "success")
         check_org_access(config['dest_org'])
-        print(f"✓ Read access confirmed for {config['dest_org']} (write access is verified when repos are created)")
-        print()
+        line(f"Read access confirmed for {config['dest_org']} (write access is verified when repos are created)", "success")
+        say()
 
     elif operation_mode == 'single':
         # The repo spec and target directory are collected inside run_single_repo so the
@@ -267,20 +249,20 @@ def validate_operation(config):
     operation_mode = config['operation_mode']
 
     if operation_mode == 'download':
-        print("Detecting repos...")
+        line("Detecting repos...", "detail")
         source_repos = get_repos_with_details(config['source_org'])
 
-        print("Scanning target directory for existing repos...")
+        line("Scanning target directory for existing repos...", "detail")
         existing_local = scan_local_git_repos(config['temp_dir'])
         dest_repos = existing_local
 
-        print(f"✓ {len(source_repos)} repos found in {config['source_org']}")
-        print(f"✓ {len(existing_local)} repos already exist locally")
-        print()
+        line(f"{len(source_repos)} repos found in {config['source_org']}", "success")
+        line(f"{len(existing_local)} repos already exist locally", "success")
+        say()
 
     elif operation_mode == 'upload':
         scope = "recursively" if config.get('recursive_scan', True) else "in direct children"
-        print(f"Scanning directory for git repositories {scope}...")
+        line(f"Scanning directory for git repositories {scope}...", "detail")
         local_repos = scan_local_git_repos(
             config['source_dir'], recursive=config.get('recursive_scan', True)
         )
@@ -288,30 +270,30 @@ def validate_operation(config):
 
         duplicate_names = duplicate_repo_names(source_repos)
         if duplicate_names:
-            print()
-            print("ERROR: Multiple local repositories map to the same GitHub repository name:")
+            say()
+            line("Multiple local repositories map to the same GitHub repository name:", "error")
             for name, paths in sorted(duplicate_names.items()):
-                print(f"  {name}:")
+                say(f"    {name}:")
                 for path in paths:
-                    print(f"    {path}")
-            print("Choose a narrower scan root or direct-child scope, then rerun.")
+                    say(f"      {path}")
+            line("Choose a narrower scan root or direct-child scope, then rerun.")
             sys.exit(1)
 
-        print("Detecting existing repos in destination org...")
+        line("Detecting existing repos in destination org...", "detail")
         dest_repos = get_repos_with_details(config['dest_org'])
 
-        print(f"✓ {len(source_repos)} git repositories found locally")
-        print(f"✓ {len(dest_repos)} repos found in {config['dest_org']}")
-        print()
+        line(f"{len(source_repos)} git repositories found locally", "success")
+        line(f"{len(dest_repos)} repos found in {config['dest_org']}", "success")
+        say()
 
     else:  # migrate
-        print("Detecting repos in both orgs...")
+        line("Detecting repos in both orgs...", "detail")
         source_repos = get_repos_with_details(config['source_org'])
         dest_repos = get_repos_with_details(config['dest_org'])
 
-        print(f"✓ {len(source_repos)} repos found in {config['source_org']}")
-        print(f"✓ {len(dest_repos)} repos found in {config['dest_org']}")
-        print()
+        line(f"{len(source_repos)} repos found in {config['source_org']}", "success")
+        line(f"{len(dest_repos)} repos found in {config['dest_org']}", "success")
+        say()
 
     # Initialize tracking files
     files = initialize_tracking_files(operation_mode, config.get('source_org'), config.get('dest_org'), config.get('temp_dir'))
@@ -323,23 +305,21 @@ def validate_operation(config):
 
     if conflicts:
         if operation_mode == 'download':
-            print()
-            print("=" * 60)
-            print("Some repositories already exist in the target folder.")
-            print("=" * 60)
-            print(f"⚠ {len(conflicts)} of {len(source_repos)} repos already exist in "
-                  f"{config['temp_dir']}:")
+            say()
+            section("Some repositories already exist in the target folder.")
+            line(f"{len(conflicts)} of {len(source_repos)} repos already exist in "
+                 f"{config['temp_dir']}:", "warning")
             for name_lower in sorted(conflicts):
-                print(f"    {source_names[name_lower]}")
-            print()
-            print("These will be SKIPPED — left untouched, never overwritten.")
+                say(f"      {source_names[name_lower]}")
+            say()
+            line("These will be SKIPPED — left untouched, never overwritten.")
 
             others = non_repo_entries(config['temp_dir'], existing_local)
             if others:
-                print(f"⚠ The target folder also holds {len(others)} other item(s), e.g.:")
+                line(f"The target folder also holds {len(others)} other item(s), e.g.:", "warning")
                 for name in others[:10]:
-                    print(f"    {name}")
-            print()
+                    say(f"      {name}")
+            say()
 
             for name_lower in conflicts:
                 repo_name = source_names[name_lower]
@@ -348,101 +328,80 @@ def validate_operation(config):
                         f.write(f"{repo_name}\n")
 
             if not prompt_yes_no("Continue with download?", default=False):
-                print("Aborted by user.")
+                line("Aborted by user.")
                 sys.exit(0)
-            print()
+            say()
 
         elif operation_mode == 'upload':
-            print()
-            print("=" * 60)
-            print("Matching repository names found in destination org.")
-            print("=" * 60)
-            print(f"✓ {len(conflicts)} repos already exist remotely and will be skipped")
+            say()
+            section("Matching repository names found in destination org.")
+            line(f"{len(conflicts)} repos already exist remotely and will be skipped", "success")
 
             for name_lower in conflicts:
                 repo_name = source_names[name_lower]
                 if repo_name not in load_completed_repos(files['completed']):
                     with open(files['completed'], 'a', encoding='utf-8') as f:
                         f.write(f"{repo_name}\n")
-            print()
+            say()
 
         else:  # migrate
-            print()
-            print("=" * 60)
-            print("Matching repository names found. Verifying if duplicates...")
-            print("=" * 60)
+            say()
+            section("Matching repository names found. Verifying if duplicates...")
 
             actual_conflicts = []
             verified_duplicates = []
 
             for name_lower in sorted(conflicts):
                 repo_name = source_names[name_lower]
-                print(f"Checking: {repo_name}...", end=' ')
+                say(f"  Checking: {repo_name}...", end=' ')
 
                 is_identical, reason = compare_repos(config['source_org'], config['dest_org'], repo_name)
 
                 if is_identical:
-                    print("✓ Verified duplicate")
+                    line("Verified duplicate", "success")
                     verified_duplicates.append(repo_name)
                 else:
-                    print(f"✗ Different ({reason})")
+                    line(f"Different ({reason})", "error")
                     actual_conflicts.append(repo_name)
 
-            print()
+            say()
 
             if actual_conflicts:
-                print("ERROR: Non-duplicate repositories with matching names found:")
+                line("Non-duplicate repositories with matching names found:", "error")
                 for name in actual_conflicts:
-                    print(f"  - {name}")
-                print()
-                print("This tool is intended ONLY to copy one whole github org")
-                print("into one raw empty org, and it is not built to deal with conflicts.")
+                    say(f"    - {name}")
+                say()
+                line("This tool is intended ONLY to copy one whole github org")
+                line("into one raw empty org, and it is not built to deal with conflicts.")
                 sys.exit(1)
 
             if verified_duplicates:
-                print(f"✓ All {len(verified_duplicates)} matching repos are verified duplicates")
-                print("These will be skipped during migration.")
+                line(f"All {len(verified_duplicates)} matching repos are verified duplicates", "success")
+                line("These will be skipped during migration.")
                 for repo_name in verified_duplicates:
                     if repo_name not in load_completed_repos(files['completed']):
                         with open(files['completed'], 'a', encoding='utf-8') as f:
                             f.write(f"{repo_name}\n")
-                print()
+                say()
     else:
-        print("✓ No conflicts!")
-        print()
+        line("No conflicts!", "success")
+        say()
 
     return source_repos, dest_repos, files
 
 
 def show_summary(operation_mode, total_repos, successful, failed, temp_dir, files):
-    """Display final summary statistics."""
-    print("=" * 60)
-    if operation_mode == 'download':
-        print("Download Complete")
-        print("=" * 60)
-        print(f"Total processed: {total_repos}")
-        print(f"Successful: {successful}")
-        print(f"Failed: {failed}")
-        print(f"\nRepositories saved to: {temp_dir}")
-    elif operation_mode == 'upload':
-        print("Upload Complete")
-        print("=" * 60)
-        print(f"Total processed: {total_repos}")
-        print(f"Successful: {successful}")
-        print(f"Failed: {failed}")
-        print(f"\nRepositories uploaded from: {temp_dir}")
-    else:  # migrate
-        print("Migration Complete")
-        print("=" * 60)
-        print(f"Total processed: {total_repos}")
-        print(f"Successful: {successful}")
-        print(f"Failed: {failed}")
-
-    if failed > 0:
-        print(f"\nSee {files['error']} for error details")
-
-    print(f"\nCompleted repos logged in: {files['completed']}")
-    print(f"Success log: {files['success']}")
+    """The run's Summary and one result notice."""
+    where = {"download": f"saved in {temp_dir}", "upload": f"uploaded from {temp_dir}",
+             "migrate": "copied between the organizations"}.get(operation_mode, "")
+    summary([f"{successful} of {total_repos} repositories {where}",
+             f"{failed} failed; details in {files['error']}" if failed else "",
+             f"Finished repositories are listed in {files['completed']}; a rerun skips them"])
+    if failed:
+        notice("Finished with failures", f"{failed} did not copy. Run the tool again to retry them; "
+               "the rest are kept.", "error")
+    else:
+        notice("Finished", "Every repository copied.", "success")
 
 
 _EPILOG = f"""\
@@ -540,7 +499,7 @@ def main(argv=None):
         try:
             lines = args.answers.read_text(encoding="utf-8").split("\n")
         except (OSError, UnicodeDecodeError) as exc:
-            print(f"ERROR: cannot read --answers file {args.answers}: {exc}")
+            line(f"cannot read --answers file {args.answers}: {exc}", "error")
             sys.exit(2)
         if lines and lines[-1] == "":
             lines.pop()  # drop the phantom entry from a trailing newline
@@ -582,38 +541,23 @@ def main(argv=None):
         print_download_warnings()
         source_repos = choose_repo_subset(source_repos)
     elif operation_mode == 'upload':
-        print()
-        print("=" * 100)
-        print("Local Git Repositories Found")
-        print("=" * 100)
+        section("Repositories found on this computer")
         if not source_repos:
-            print("No git repositories found.")
+            line("None found.", "warning")
         else:
-            print(f"{'#':<4} {'Name':<40} {'Type':<12} {'Path':<50}")
-            print("-" * 100)
+            say(f"  {'#':>4}  {'Name':<40} {'Kind':<8}", "muted")
             for idx, repo in enumerate(sorted(source_repos, key=lambda r: r['name']), 1):
-                repo_type = "Mirror" if repo.get('is_mirror', False) else "Regular"
-                path_display = repo['path'][:49] if len(repo['path']) > 49 else repo['path']
-                print(f"{idx:<4} {repo['name']:<40} {repo_type:<12} {path_display:<50}")
-            print("=" * 100)
-            print(f"Total: {len(source_repos)} repositories")
-        print()
+                kind = "mirror" if repo.get('is_mirror', False) else "working"
+                say(f"  {idx:>4}  {clean(repo['name'])[:40]:<40} {kind:<8}")
+            say()
+            row("Total", f"{len(source_repos)} repositories")
     else:  # migrate
         display_repo_table(source_repos, config['source_org'])
         display_repo_table(dest_repos, config['dest_org'])
 
     # Pause for user review
-    print()
-    print("=" * 60)
-    print("Review the repository information above.")
-    print("=" * 60)
-    if operation_mode == 'download':
-        prompt_input("Press ENTER to continue to download setup...")
-    elif operation_mode == 'upload':
-        prompt_input("Press ENTER to continue to upload setup...")
-    else:
-        prompt_input("Press ENTER to continue to migration setup...")
-    print()
+    notice("Review the repositories above", "Nothing has been copied. Next: where and how.")
+    prompt_input("  Press Enter to continue: ")
 
     # Get temp directory for migrate mode
     if operation_mode == 'migrate':
@@ -622,56 +566,41 @@ def main(argv=None):
             must_exist=False,
             create_ok=True,
         )
-        print()
+        say()
 
     # Load completed repos
     completed_repos = load_completed_repos(files['completed'])
     remaining_repos = [r for r in source_repos if r['name'] not in completed_repos]
 
+    section("Ready")
     if completed_repos:
-        print(f"{len(completed_repos)} repos already completed")
-        print(f"{len(remaining_repos)} repos remaining")
-    else:
-        if operation_mode == 'download':
-            print(f"Ready to download {len(remaining_repos)} repos from {config['source_org']}")
-        elif operation_mode == 'upload':
-            print(f"Ready to upload {len(remaining_repos)} repos to {config['dest_org']}")
-        else:  # migrate
-            print(f"Ready to copy {len(remaining_repos)} repos from {config['source_org']} to {config['dest_org']}")
-
-    print()
+        row("Already finished", f"{len(completed_repos)} repositories (skipped)")
+    verb = {"download": f"download from {config['source_org']}", "upload": f"upload to {config['dest_org']}",
+            "migrate": f"copy from {config['source_org']} to {config['dest_org']}"}[operation_mode]
+    row("To do", f"{len(remaining_repos)} repositories: {verb}")
+    if config.get('temp_dir'):
+        row("Folder", str(config['temp_dir']))
 
     # Ask about parallel operations for download mode
     parallel_workers = 1
     if operation_mode == 'download' and len(remaining_repos) > 1:
-        print("Parallel downloads can speed up the process significantly.")
-        parallel_input = prompt_input("Number of parallel downloads (1-5, default 3): ")
-        if parallel_input == "":
-            parallel_workers = 3
-        elif parallel_input.isdigit() and 1 <= int(parallel_input) <= 5:
+        parallel_input = prompt_input("  Downloads at once, 1 to 5 [3]: ")
+        if parallel_input.isdigit() and 1 <= int(parallel_input) <= 5:
             parallel_workers = int(parallel_input)
         else:
-            print("Invalid input, using default (3)")
             parallel_workers = 3
-        print(f"Using {parallel_workers} parallel download(s)")
-        print()
+        row("At once", f"{parallel_workers} downloads")
 
     # Confirm before proceeding
-    confirmation = prompt_input('Type "YES" to continue: ')
+    say()
+    confirmation = prompt_input('  Type YES to start, anything else cancels: ')
     if confirmation != "YES":
-        print("Aborted.")
+        notice("Cancelled", "Nothing was copied.", "warning")
         sys.exit(0)
 
-    print()
-    print("=" * 60)
-    if operation_mode == 'download':
-        print("Starting download...")
-    elif operation_mode == 'upload':
-        print("Starting upload...")
-    else:  # migrate
-        print("Starting migration...")
-    print("=" * 60)
-    print()
+    run_header({"download": "Downloading", "upload": "Uploading", "migrate": "Copying"}[operation_mode],
+               f"{len(remaining_repos)} repositories: {verb}",
+               f"folder: {config.get('temp_dir') or '-'}  |  log: {files['success']}")
 
     # Sort repos
     if operation_mode != 'upload':
@@ -687,9 +616,6 @@ def main(argv=None):
     # Execute operation. Download always runs through the pool (workers may be 1); upload and
     # migrate are sequential because they create remote repos and we don't want to race those.
     if operation_mode == 'download':
-        if parallel_workers > 1:
-            print(f"Starting parallel downloads with {parallel_workers} workers...")
-            print()
         with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
             futures = [
                 executor.submit(
@@ -709,12 +635,13 @@ def main(argv=None):
         for idx, repo in enumerate(remaining_repos, 1):
             if operation_mode == 'upload':
                 result = process_upload_repo(
-                    repo, config['dest_org'], files['completed'], files['success'], files['error']
+                    repo, config['dest_org'], files['completed'], files['success'], files['error'],
+                    idx, total_repos
                 )
             else:  # migrate
                 result = process_migrate_repo(
                     repo, config['source_org'], config['dest_org'], config['temp_dir'],
-                    files['completed'], files['success'], files['error']
+                    files['completed'], files['success'], files['error'], idx, total_repos
                 )
             if result['status'] == 'success':
                 successful += 1
@@ -730,9 +657,9 @@ def cli_main(argv=None):
     try:
         return main(argv)
     except KeyboardInterrupt:
-        print("\n\nInterrupted by user.")
-        print("If any repos were processed, progress is saved in the tracking file.")
-        print("Run script again to resume.")
+        say()
+        notice("Stopped", "Some repositories may have finished; they are recorded, and running the "
+               "tool again continues with the rest.", "warning")
         sys.exit(0)
 
 

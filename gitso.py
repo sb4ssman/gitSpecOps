@@ -42,6 +42,20 @@ class Command:
                 "description": self.documentation().split("\n", 1)[0]}
 
 
+#: The menu's sections: the layer each command belongs to, in words a person reads.
+SECTIONS = (
+    ("One Git operation", ("discover",)),
+    ("This computer", ("enroll-machine", "suggest-sync", "name-repo", "catch-up", "audit-repos", "materialize",
+                       "list-live-buffers", "duplicate-org", "update-archive", "archive-manager", "sync-archive",
+                       "export-inventory", "restore-inventory")),
+    ("Security", ("scan-tree", "scan-history", "review-finding", "clean-history", "follow-rewrite", "commit",
+                  "push")),
+    ("Your machines, and over time", ("setup-fleet", "peer", "publish-status", "suggest-fleet-sync", "converge",
+                                      "check-safe-to-wipe", "recovery", "doctor", "preflight", "start-at-login",
+                                      "schedule-archives")),
+    ("The app", ("tray", "serve-web", "setup")),
+)
+
 COMMANDS = (
     # Basic: one Git or host operation.
     Command("discover", "Basic/discover.py", "Basic.discover"),
@@ -100,24 +114,51 @@ def _help():
 
 
 def menu():
-    """Interactive selection only; cancellation/invalid selection never invokes an operation."""
+    """Interactive selection only; cancellation/invalid selection never invokes an operation.
+    Drawn as a station menu screen (Sb4ssport-Authority knowledge/launchers.md)."""
     if not sys.stdin.isatty():
         print("The menu requires a terminal; use commands or an explicit command.", file=sys.stderr)
         return 2
-    for number, command in enumerate(COMMANDS, 1):
-        print(f"  {number:2}. {command.name}: {command.record()['description']}")
-    selected = input("Choose a command number, or leave blank to cancel: ").strip()
-    if not selected:
+    from Basic._station import ask, choose_number, line, menu_header, notice, option, say, section
+
+    by_name = {command.name: command for command in COMMANDS}
+    ordered = [by_name[name] for _title, names in SECTIONS for name in names if name in by_name]
+    ordered += [command for command in COMMANDS if command not in ordered]
+    menu_header("Commands")
+    notice("Every gitSpecOps command", "Choose one to read what it does and run it. Nothing runs until "
+           "you start it.")
+    number = 0
+    listed = set()
+    for title, names in SECTIONS:
+        section(title)
+        for name in names:
+            if name in by_name:
+                number += 1
+                listed.add(name)
+                option(str(number), name, by_name[name].record()["description"])
+    extra = [command for command in COMMANDS if command.name not in listed]
+    if extra:
+        section("Other")
+        for command in extra:
+            number += 1
+            option(str(number), command.name, command.record()["description"])
+    say()
+    option("0", "Exit")
+    selected = choose_number(len(ordered), "0")
+    if selected == "0":
         return 0
-    if not selected.isdigit() or not 1 <= int(selected) <= len(COMMANDS):
-        print("No command selected.", file=sys.stderr)
-        return 2
-    command = COMMANDS[int(selected) - 1]
-    print(command.documentation())
-    print("Enter arguments one per line, without shell quotes. A blank line starts the command; Ctrl+C cancels.")
+    command = ordered[int(selected) - 1]
+    menu_header(command.name)
+    say()
+    for paragraph in command.documentation().split("\n\n"):
+        text = " ".join(part.strip() for part in paragraph.splitlines())
+        line(text, "text" if not paragraph.startswith("    ") else "detail")
+        say()
+    line("Enter arguments one per line, without shell quotes. A blank line starts the command; "
+         "Ctrl+C cancels.", "muted")
     arguments = []
     while True:
-        argument = input("argument: ")
+        argument = ask("argument:")
         if not argument:
             break
         arguments.append(argument)

@@ -22,6 +22,8 @@ if _ROOT not in sys.path:
 from _os.current import launcher  # noqa: E402
 from Basic._confirm import confirm_typed, prompt_input, prompt_yes_no  # noqa: E402
 from Basic._console import enable_unicode_output  # noqa: E402
+from Basic._station import (  # noqa: E402
+    ask, choose, is_console, menu_header, notice, option, row, run_header, say, section)
 from Basic._discovery import list_child_dirs  # noqa: E402
 from Basic._facts import is_repo_root  # noqa: E402
 from Special._runtime.files import RuntimeIOError, checked_path, excluded, linked
@@ -261,33 +263,54 @@ def print_registry(show_status: bool, *, home=None) -> None:
             print(f"  repos at install: {details.get('repo_count', 0)}")
 
 
+def _archive_rows(item: dict, details: dict, *, full: bool = False) -> None:
+    """One archive as station rows; `full` adds the paths and receipts."""
+    row("Folder", "found" if details["root_exists"] else "missing", "success" if details["root_exists"] else "error")
+    row("Mode", "sync: also downloads new repositories" if item.get("mode") == MODE_SYNC
+        else "update: keeps the existing copies current")
+    row("Repositories", f"{details['repo_count_at_install']} when it was added")
+    row("Update shortcut", ("in the folder" if details["launcher_exists"] else "missing; add the folder again")
+        + (f" ({details['launcher_type']})" if full else ""), "text" if details["launcher_exists"] else "warning")
+    result = details.get("last_run_result")
+    row("Last run", (details.get("last_run_at") or "never") + (f": {result}" if result else ""),
+        "error" if result and result not in ("ok", "success", "completed") else "text")
+    if full:
+        row("Shortcut file", details.get("launcher") or "none")
+        row("Added", details.get("installed_at") or "unknown")
+        row("Took", f"{details.get('last_run_elapsed_seconds')} s" if details.get("last_run_elapsed_seconds") else "unknown")
+        row("Latest report", details.get("latest_report") or "none")
+    else:
+        row("Latest report", details.get("latest_report_at") or "none")
+
+
 def print_dashboard(*, home=None) -> None:
+    """The archives menu screen's top: what is registered, each as rows."""
     data = load_registry(home=home)
     installations = data["installations"]
-    print("=" * 60)
-    print(f"{APP_NAME} v{VERSION}")
-    print("=" * 60)
-    print(f"Registry: {registry_path(home)}")
-    print(f"Managed archives: {len(installations)}")
-    print()
+    menu_header("Archives")
     if not installations:
-        print("No managed archives yet.")
-        print()
+        notice("No archives yet", "An archive is a folder of full repository copies, kept current from "
+               "GitHub. Add one with 1.")
         return
+    notice(f"{len(installations)} archive{'s' if len(installations) != 1 else ''}",
+           "Folders of full repository copies, kept current from GitHub.", "success")
     for index, item in enumerate(installations, start=1):
         _guard_archive(data, Path(item["root"]))
-        details = installation_status(item)
-        print(f"{index}. {details['root']}")
-        print(f"   mode: {item.get('mode', 'update')}")
-        print(f"   repos at install: {details['repo_count_at_install']}")
-        print(f"   root: {'ok' if details['root_exists'] else 'missing'}")
-        print(f"   launcher: {'ok' if details['launcher_exists'] else 'missing'} ({details['launcher_type']})")
-        print(f"   installed: {details.get('installed_at') or 'unknown'}")
-        print(f"   last run: {details.get('last_run_at') or 'never'}")
-        print(f"   last result: {details.get('last_run_result') or 'unknown'}")
-        print(f"   last elapsed: {details.get('last_run_elapsed_seconds') or 'unknown'}")
-        print(f"   latest report: {details.get('latest_report_at') or 'none'}")
-        print()
+        section(f"{index}. {item['root']}")
+        _archive_rows(item, installation_status(item))
+
+
+def show_details(*, home=None) -> None:
+    """Detection details for the archives: paths, receipts, the registry file."""
+    data = load_registry(home=home)
+    menu_header("Archive details")
+    section("Records")
+    row("Registry", str(registry_path(home)))
+    row("Version", f"{APP_NAME} {VERSION}")
+    for index, item in enumerate(data["installations"], start=1):
+        _guard_archive(data, Path(item["root"]))
+        section(f"{index}. {item['root']}")
+        _archive_rows(item, installation_status(item), full=True)
 
 
 # --------------------------------------------------------------------------------------
@@ -295,8 +318,14 @@ def print_dashboard(*, home=None) -> None:
 # --------------------------------------------------------------------------------------
 def refresh_all(scan_only: bool, force_sync: bool = False, *, home=None,
                 only_root: Path | None = None, overrides=None) -> int:
-    """Present the shared headless result through selected CLI channels."""
+    """Present the shared headless result through selected CLI channels; at a console, as a
+    station run screen (the caller draws its header)."""
     result = run_refresh(home=home, only_root=only_root, scan_only=scan_only, force_sync=force_sync, overrides=overrides)
+    output = result.settings.values["output"] if result.settings is not None else None
+    if is_console() and (output is None or (output["format"] != "json" and output["mode"] in ("stdout", "both"))):
+        from Special._archive.console import show_refresh
+        show_refresh(result, explain=error_message)
+        return result.exit_code
     if result.settings is not None:
         output = result.settings.values["output"]
         if output["mode"] in ("stdout", "both"):
@@ -325,29 +354,36 @@ def choose_folder_dialog() -> Path | None:
 
 
 def _install_interactively(approved_prefixes: list[str], *, home=None) -> None:
-    path_text = prompt_input("Archive folder path (blank opens picker): ")
+    menu_header("Add an archive")
+    notice("A folder of repository copies", "gitSpecOps registers it and puts an update shortcut in it. "
+           "It reads the folder; it changes no repository until you run an update.")
+    say()
+    path_text = prompt_input("Folder path (Enter opens a folder picker): ")
     target = Path(path_text) if path_text else choose_folder_dialog()
     if not target:
-        print("No archive folder selected.")
+        notice("Nothing added", "No folder was chosen.", "warning")
         return
     _guard_archive(load_registry(home=home), Path(os.path.abspath(target.expanduser())))
     target = target.resolve()
     if not target.is_dir():
-        print(f"Not a directory: {target}")
+        notice("Nothing added", f"Not a folder: {target}", "error")
         return
 
     # Registration never repairs origins/folders or runs a second operation pipeline.
-    answer = prompt_input("Saved refresh mode - [u]pdate existing or [s]ync including missing? [U/s]: ").lower()
-    mode = MODE_SYNC if answer in ("s", "sync") else MODE_UPDATE
+    section("How it updates")
+    option("1", "Update", "Keeps the copies already there current.")
+    option("2", "Sync", "Also downloads repositories that are new on GitHub.")
+    mode = MODE_SYNC if choose("12", "1") == "2" else MODE_UPDATE
     try:
         record = install_launchers(target, approved_prefixes, show_progress=True, mode=mode, home=home)
     except (ValueError, OSError) as exc:
-        print(f"Error: {exc}")
+        notice("Nothing added", str(exc), "error")
         return
-    print(f"Installed archive launcher for {record.root}")
-    print(f"  Launcher: {record.launcher}  (mode: {record.mode})")
-    print(f"  Registry: {registry_path(home)}")
-    if prompt_yes_no("Run the saved refresh now?", default=False):
+    notice("Added", f"{record.root} is an archive ({record.mode}).", "success")
+    row("Update shortcut", str(record.launcher))
+    say()
+    if prompt_yes_no("Update it now?", default=False):
+        run_header("Updating an archive", f"{record.root}  |  mode: {record.mode}")
         refresh_archive(target, home=home)
 
 def interactive_menu(approved_prefixes: list[str], *, home=None) -> int:
@@ -356,37 +392,39 @@ def interactive_menu(approved_prefixes: list[str], *, home=None) -> int:
         return 2
     while True:
         print_dashboard(home=home)
-        print("Actions:")
-        print("  1. Install or refresh an archive launcher")
-        print("  2. Scan all managed archives")
-        print("  3. Update all managed archives")
-        print("  4. Show detailed status")
-        print("  Q. Quit")
-        print()
-        choice = prompt_input("Choice: ").lower()
-        print()
-
+        say()
+        option("1", "Add an archive", "A folder of repository copies; it gets an update shortcut.")
+        option("2", "Check every archive", "Reads what changed on GitHub; changes nothing.")
+        option("3", "Update every archive", "Fetches, and fast-forwards each copy; never overwrites your work.")
+        option("D", "Archive details")
+        option("0", "Exit")
+        choice = choose("123d0", "0")
+        if choice == "0":
+            return 0
         if choice == "1":
             _install_interactively(approved_prefixes, home=home)
         elif choice == "2":
+            run_header("Checking archives", "reads every archive and GitHub; changes nothing")
             refresh_all(scan_only=True, home=home)
         elif choice == "3":
-            if confirm_typed("YES", 'Type "YES" to refresh all managed archives: '):
-                # Each archive runs its own configured mode. This promotes ALL of them to sync.
-                force_sync = prompt_yes_no("Force SYNC (clone missing) for EVERY archive, "
-                                           "overriding per-archive mode?", default=False)
-                refresh_all(scan_only=False, force_sync=force_sync, home=home)
+            menu_header("Update every archive")
+            notice("Each archive updates in its own mode", "Copies are fast-forwarded only; work that is "
+                   "only on this computer is never overwritten.")
+            say()
+            if not confirm_typed("YES", "Type YES to update every archive: "):
+                notice("Cancelled", "Nothing was updated.", "warning")
             else:
-                print("Skipped.")
-        elif choice == "4":
-            print_registry(show_status=True, home=home)
-            print()
-            prompt_input("Press ENTER to continue...")
-        elif choice in {"q", "quit", "exit"}:
-            return 0
-        else:
-            print("Unknown choice.")
-        print()
+                # Each archive runs its own configured mode. This promotes ALL of them to sync.
+                force_sync = prompt_yes_no("Also download new repositories for every archive (sync), "
+                                           "whatever its own mode?", default=False)
+                run_header("Updating archives", "every registered archive"
+                           + ("  |  sync: also downloads new repositories" if force_sync else ""))
+                refresh_all(scan_only=False, force_sync=force_sync, home=home)
+        elif choice == "d":
+            show_details(home=home)
+        say()
+        ask("Press Enter to return:")
+
 
 def refresh_overrides(args, parser=None):
     """Output choices are valid only for a selected refresh action."""
