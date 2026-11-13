@@ -2375,3 +2375,10 @@ No code changed; decisions recorded where they govern.
 - README: the mark at the top; a network-map picture of a made-up fleet (_docs/images/).
 - Tests: Task Manager and Startup Applications switches (fake registry, temp folder), sign-in
   choices, Tailscale choices, run-one-command, install suggestions. Full suite 86/86.
+
+## 2026-11-13 11:05 - user (claude) - The test suite runs several files at once
+- `tests/run_all.py --jobs N`: each file still in its own process; output held per file and
+  printed whole; times per file, the slowest 8, total. Default: a quarter of the logical
+  processors, at most 4. Measured here (16 cores, 32 logical): 1 at a time 371s; 4, 108s;
+  8, 104s; 16, 103s. The floor is security/test_commit_gate.py (~81s alone).
+- Checked first: tests use temporary folders; the one environment change is per process.

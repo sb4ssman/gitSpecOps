@@ -587,7 +587,8 @@ else XDG on POSIX / `%APPDATA%` on Windows, under `gitspecops/sync-suggester/`.
 Every test is offline and synthetic — no network, no real repository, no personal name:
 
 ```bash
-python3 tests/run_all.py
+python3 tests/run_all.py            # several files at once (up to 4), each in its own process
+python3 tests/run_all.py --jobs 1   # one at a time, output as it happens
 ```
 
 ---
