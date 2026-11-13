@@ -2310,3 +2310,16 @@ No code changed; decisions recorded where they govern.
 - `.agents/knowledge/station-script-design.md`: a verbatim copy of the standard (the authority
   stays in Sb4ssport-Authority). AGENTS.md and the knowledge index point every agent at it
   before touching console output. Full suite 87/87.
+
+## 2026-11-13 07:56 - user (claude) - Undo: back to e5ffc55, plus the station banner only
+- At the user's direction ("undo everything; the CLI visual fluff only"), every file changed
+  since e5ffc55 is restored to e5ffc55: setup (the original menu), the setup tests, the tools,
+  Basic/_confirm.py, gitso, README, .gitignore, run_setup.bat. Removed what those commits
+  added: Elaborate/_fleet/setup_plan.py, Special/_archive/console.py,
+  tests/elaborate/test_setup_plan.py. Earlier entries above describe work that is now undone.
+- Added only the banner the station script design dictates: `Basic/_station.py` (`banner`);
+  it replaces the opening title block of setup (menu, environment build, prerequisite check),
+  the duplicator (menu, start of a run, batch, single repository) and manage-archives, and
+  heads the gitso menu and, at a console, update-archive and suggest-sync. Nothing else on any
+  screen changed. The design is copied unchanged in .agents/knowledge/station-script-design.md
+  with a pointer in AGENTS.md. Full suite 86/86.

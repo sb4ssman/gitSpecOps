@@ -32,7 +32,7 @@ from Basic._confirm import (
     resolve_directory,
 )
 from Basic._console import PRINT_LOCK, format_size
-from Basic._station import clean, line, menu_header, notice, row, run_header, say, section, summary
+from Basic._station import banner
 from Basic._providers.github import (
     check_repo_for_lfs,
     list_my_orgs,
@@ -60,31 +60,39 @@ def choose_orgs(orgs):
     and exclusions via 'except' or '!'.
     Examples: '1-5, 7, 9-25' · 'all except example-org' · 'all except 1,4' · 'all,!2-4'
     """
-    section(f"Your account and organizations ({len(orgs)})")
-    say(f"  {'#':>4}  {'Name':<30} {'Role':<8} State", "muted")
+    print()
+    print(f"Orgs the authenticated account belongs to: {len(orgs)}")
+    print(f"{'#':<4} {'Login':<30} {'Role':<8} State")
+    print("-" * 60)
     for idx, org in enumerate(orgs, 1):
-        state = org.get('state', '?') + ("  (you)" if org.get('personal') else "")
-        say(f"  {idx:>4}  {clean(org['login']):<30} {org.get('role', '?'):<8} {state}")
-    say()
-    line("Choose by number or name: 1-5, 7 or all; except (or !) leaves some out, as in all except 2.",
-         "muted")
+        state = org.get('state', '?')
+        if org.get('personal'):
+            state += "  (you)"
+        print(f"{idx:<4} {org['login']:<30} {org.get('role', '?'):<8} {state}")
+    print()
     while True:
-        raw = prompt_input("  Which to download: ")
+        raw = prompt_input(
+            "Namespaces to download ('1-5, 7, 9-25' style, names, 'all'; "
+            "'except' or '!' excludes): "
+        )
         selected, bad = parse_selection(raw, orgs, key=lambda o: o['login'].lower())
         if bad:
-            say(f"  Not recognized: {', '.join(bad)}. Try again.", "warning")
+            print(f"Not recognized: {', '.join(bad)}. Try again.")
             continue
         if not selected:
-            say("  That leaves nothing selected. Try again.", "warning")
+            print("Selection is empty after exclusions. Try again.")
             continue
         return selected
 
 
 def _prompt_parallel():
     """Ask how many parallel downloads to run per org (1-5). Empty / bad input -> 3."""
-    raw = prompt_input("  Downloads at once, 1 to 5 [3]: ")
+    raw = prompt_input("Number of parallel downloads per org (1-5, default 3): ")
+    if not raw:
+        return 3
     if raw.isdigit() and 1 <= int(raw) <= 5:
         return int(raw)
+    print("Invalid input, using default (3)")
     return 3
 
 
@@ -97,7 +105,7 @@ def ask_filters(args=None, assume_yes=False):
             return value
         return default if assume_yes else prompter()
 
-    section("Which repositories")
+    print()
     include_private = resolved(
         "private", True, lambda: prompt_yes_no("Include private repos?", default=True))
     include_archived = resolved(
@@ -111,6 +119,7 @@ def ask_filters(args=None, assume_yes=False):
     elif assume_yes:
         use_mirror = False
     else:
+        print()
         use_mirror = prompt_clone_format()
 
     parallel_workers = getattr(args, "parallel", None)
@@ -138,13 +147,16 @@ def download_one_org(item, root, use_mirror, parallel_workers):
     """Download one org's filtered repos into <root>/<org>. Returns a stats dict."""
     org = item['org']
     org_dir = os.path.join(root, org)
-    section(f"{org}: {len(item['repos'])} repositories into {org_dir}")
+    print()
+    print("=" * 60)
+    print(f"[{org}] downloading {len(item['repos'])} repos -> {org_dir}")
+    print("=" * 60)
     stats = {'org': org, 'planned': len(item['repos']), 'downloaded': 0,
              'skipped_existing': 0, 'failed': 0, 'error': None}
     try:
         os.makedirs(org_dir, exist_ok=True)
     except OSError as exc:
-        line(f"Could not create the folder: {exc}", "error")
+        print(f"  ✗ [{org}] Could not create folder: {exc}")
         stats['error'] = str(exc)
         return stats
 
@@ -154,9 +166,10 @@ def download_one_org(item, root, use_mirror, parallel_workers):
     remaining = pending_repos(item['repos'], existing_names, completed)
     stats['skipped_existing'] = len(item['repos']) - len(remaining)
     if stats['skipped_existing']:
-        line(f"Skipping {stats['skipped_existing']} already here or finished in an earlier run.", "detail")
+        print(f"  [{org}] skipping {stats['skipped_existing']} repo(s) already local "
+              f"or completed in a previous run")
     if not remaining:
-        line("Nothing to download.", "detail")
+        print(f"  [{org}] nothing to download.")
         return stats
 
     total = len(remaining)
@@ -175,16 +188,14 @@ def download_one_org(item, root, use_mirror, parallel_workers):
             except Exception as exc:  # a worker should never raise, but one bug must not abort the batch
                 stats['failed'] += 1
                 with PRINT_LOCK:
-                    line(f"A download stopped unexpectedly: {exc}", "error")
+                    print(f"  ✗ [{org}] a download worker crashed: {exc}")
                 continue
             if result['status'] == 'success':
                 stats['downloaded'] += 1
             else:
                 stats['failed'] += 1
-    line(f"{stats['downloaded']} downloaded, {stats['failed']} failed"
-         + (f"; details in {files['error']}" if stats['failed'] else ""),
-         "error" if stats['failed'] else "detail")
-    stats['errors_file'] = str(files['error'])
+    print(f"  [{org}] done: {stats['downloaded']} downloaded, {stats['failed']} failed "
+          f"(errors: {files['error']})")
     return stats
 
 def _select_namespaces(orgs, spec):
@@ -193,25 +204,23 @@ def _select_namespaces(orgs, spec):
         return choose_orgs(orgs)
     selected, bad = parse_selection(spec, orgs, key=lambda o: o['login'].lower())
     if bad:
-        notice("Nothing downloaded", f"--namespaces: not recognized: {', '.join(bad)}", "error")
+        print(f"--namespaces: not recognized: {', '.join(bad)}")
         return []
     if not selected:
-        notice("Nothing downloaded", "--namespaces leaves nothing selected.", "error")
+        print("--namespaces: selection is empty after exclusions.")
         return []
-    row("Namespaces", ", ".join(o['login'] for o in selected))
+    print(f"Namespaces from --namespaces: {', '.join(o['login'] for o in selected)}")
     return selected
 
 
 def run_batch_download(args=None):
     assume_yes = bool(getattr(args, "yes", False))
-    menu_header("Download your organizations")
-    notice("Your account and organizations to this computer", "Choose which; it lists what it found "
-           "and asks before it downloads anything.")
-    say()
-    line("Reading your organizations from GitHub...", "detail")
+    banner("Batch download: your namespaces -> Local", tagline=True)
+
+    print("Listing your org memberships...")
     orgs = list_my_orgs()
     if not orgs:
-        notice("Nothing to download", "Your GitHub account belongs to no organizations.", "warning")
+        print("No org memberships found for the authenticated account. Nothing to do.")
         return
     selected = _select_namespaces(orgs, getattr(args, "namespaces", None))
     if not selected:
@@ -226,9 +235,9 @@ def run_batch_download(args=None):
     else:
         root, error = resolve_directory(dest, create_missing=True)
         if error:
-            notice("Nothing downloaded", f"--dest: {error}", "error")
+            print(f"--dest: {error}")
             return
-        row("Folder", str(root))
+        print(f"Destination: {root}")
 
     (include_private, include_archived,
      include_forks, use_mirror, parallel_workers) = ask_filters(args, assume_yes)
@@ -236,24 +245,25 @@ def run_batch_download(args=None):
 
     # ---- Inventory pass (read-only): access + repos + user filters + existing locals ----
     inventory = []
-    section("What each has")
     for org in selected:
         login = org['login']
+        print()
+        print(f"--- {login}: checking access and inventory...")
         error = org_access_error(login)
         if error:
-            row(login, f"no access: {error}", "error")
+            print(f"  ✗ No access: {error}")
             inventory.append({'org': login, 'repos': [], 'error': error})
             continue
         repos, fetch_error = org_repos_with_details_safe(login)
         if fetch_error:
-            row(login, f"could not be listed: {fetch_error}", "error")
+            print(f"  ✗ Fetch failed: {fetch_error}")
             inventory.append({'org': login, 'repos': [], 'error': fetch_error})
             continue
         kept = filter_repos(repos, include_private, include_archived, include_forks)
         excluded = len(repos) - len(kept)
         existing = scan_local_git_repos(os.path.join(root, login))
-        note = f", {excluded} left out by your choices" if excluded else ""
-        row(login, f"{len(repos)} repositories{note}, {len(existing)} already here", "success")
+        note = f", {excluded} excluded by filters" if excluded else ""
+        print(f"  ✓ {len(repos)} repos{note}, {len(existing)} already local")
         inventory.append({'org': login, 'repos': kept, 'existing': existing, 'error': None})
 
     # ---- Repo-level granularity: the same grammar, per namespace (ENTER = all) ----
@@ -262,7 +272,7 @@ def run_batch_download(args=None):
             if item['error'] or not item['repos']:
                 continue
             login = item['org']
-            section(f"{login}: {len(item['repos'])} repositories")
+            print(f"\n[{login}] {len(item['repos'])} repos:")
             ordered = sorted(item['repos'], key=lambda r: r['name'].lower())
             for idx, repo in enumerate(ordered, 1):
                 flags = "".join(flag for flag, on in (
@@ -271,39 +281,47 @@ def run_batch_download(args=None):
                     (" fork", repo.get('isFork')),
                     (" LFS", repo.get('uses_lfs')),
                 ) if on)
-                say(f"  {idx:>4}  {clean(repo['name'])[:30]:<30} {format_size(repo.get('diskUsage', 0)):>9}{flags}")
+                print(f"{idx:>3}. {repo['name']:<40}{format_size(repo.get('diskUsage', 0)):>10}{flags}")
             while True:
-                raw = prompt_input(f"  Which of {login} (Enter for all; 1-5, names, except): ")
+                raw = prompt_input(f"Repos of {login} (ENTER = all; ranges/names/'except') : ")
                 selected, bad = parse_selection(raw, ordered, key=lambda r: r['name'].lower())
                 if bad:
-                    say(f"  Not recognized: {', '.join(bad)}. Try again.", "warning")
+                    print(f"Not recognized: {', '.join(bad)}. Try again.")
                     continue
-                line(f"{login}: nothing selected; it is skipped." if not selected else
-                     f"{login}: {len(selected)} of {len(ordered)} selected.", "detail")
+                if not selected:
+                    print(f"  {login}: nothing selected — namespace will be skipped.")
+                else:
+                    print(f"  {login}: {len(selected)} of {len(ordered)} repos selected.")
                 item['repos'] = selected
                 break
 
     # ---- Confirmation: one table, one YES ----
-    section("Plan")
+    print()
+    print("=" * 80)
+    print("Batch plan")
+    print("=" * 80)
     total_repos = total_kb = 0
     for item in inventory:
         if item['error']:
-            row(item['org'], "unavailable; skipped", "error")
+            print(f"  {item['org']:<24} UNAVAILABLE: {item['error']}")
             continue
         size = sum(r.get('diskUsage', 0) for r in item['repos'])
         total_repos += len(item['repos'])
         total_kb += size
-        row(item['org'], f"{len(item['repos'])} repositories, {format_size(size)}")
-    row("Total", f"{total_repos} repositories, {format_size(total_kb)}, into {root}")
+        print(f"  {item['org']:<24} {len(item['repos']):>4} repos  {format_size(size):>10}"
+              f"  ->  {os.path.join(root, item['org'])}")
+    print("-" * 80)
+    print(f"  TOTAL: {total_repos} repos, {format_size(total_kb)}, "
+          f"into {len(inventory)} org folder(s) under {root}")
     if total_repos == 0:
-        notice("Nothing to download", "Check your choices above. Nothing was changed.", "warning")
+        print("Nothing to download (check your filter answers). No changes made.")
         return
-    say()
-    if not assume_yes and prompt_input("  Type YES to start, anything else cancels: ") != "YES":
-        notice("Cancelled", "Nothing was downloaded.", "warning")
+    print()
+    if assume_yes:
+        print('Starting the batch download (--yes).')
+    elif prompt_input('Type "YES" to start the batch download: ') != "YES":
+        print("Aborted. Nothing was downloaded.")
         return
-    run_header("Downloading", f"{total_repos} repositories from {len(inventory)} namespaces",
-               f"into {root}")
 
     # ---- Download pass ----
     started = datetime.now()
@@ -320,7 +338,14 @@ def run_batch_download(args=None):
 
 def show_summary(results, started, root, include_private, include_archived,
                  include_forks, use_mirror, parallel_workers):
-    """The run's Summary and one result notice; the manifest records the whole batch."""
+    print()
+    print("=" * 60)
+    print("Batch complete")
+    print("=" * 60)
+    for s in results:
+        note = f"  (error: {s['error']})" if s['error'] else ""
+        print(f"  {s['org']:<24} downloaded {s['downloaded']}/{s['planned']}  "
+              f"skipped {s['skipped_existing']}  failed {s['failed']}{note}")
     manifest = {
         'started': started.isoformat(timespec='seconds'),
         'finished': datetime.now().isoformat(timespec='seconds'),
@@ -329,31 +354,21 @@ def show_summary(results, started, root, include_private, include_archived,
                     'forks': include_forks},
         'mirror': use_mirror,
         'parallel_workers': parallel_workers,
-        'orgs': [{key: value for key, value in s.items() if key != 'errors_file'} for s in results],
+        'orgs': results,
         'totals': {
             'downloaded': sum(s['downloaded'] for s in results),
             'skipped_existing': sum(s['skipped_existing'] for s in results),
             'failed': sum(s['failed'] for s in results),
         },
     }
-    facts = [f"{s['org']}: {s['downloaded']} of {s['planned']} downloaded"
-             + (f", {s['skipped_existing']} already here" if s['skipped_existing'] else "")
-             + (f", {s['failed']} failed" if s['failed'] else "")
-             + (f" (unavailable: {s['error']})" if s['error'] else "") for s in results]
     try:
         RUNS_DIR.mkdir(parents=True, exist_ok=True)
         manifest_path = RUNS_DIR / f"batch_{started.strftime('%Y%m%d_%H%M%S')}.json"
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding='utf-8')
-        facts.append(f"Record of this batch: {manifest_path}")
+        print(f"\nBatch manifest: {manifest_path}")
     except OSError as exc:
-        facts.append(f"The batch record could not be written: {exc}")
-    summary(facts)
-    failed = manifest['totals']['failed']
-    if failed:
-        notice("Finished with failures", f"{failed} did not download. Run the same batch again to retry "
-               "them; finished and existing repositories are skipped.", "error")
-    else:
-        notice("Finished", "Run the same batch again any time; it downloads only what is new.", "success")
+        print(f"\n(could not write the batch manifest: {exc})")
+    print("Resume: rerun the same batch; completed and already-local repos are skipped.")
 
 
 def _spec_has_owner(spec):
@@ -391,11 +406,11 @@ def _resolve_repo_or_prompt(spec, allow_prompt):
     while True:
         if not spec:
             if not allow_prompt:
-                notice("Nothing downloaded", "Name a repository: --single owner/name, or a URL.", "error")
+                print("✗ No repo given. Use --single owner/name (or a full URL).")
                 return None
-            spec = prompt_input("  Repository (owner/name or a URL; Enter cancels): ").strip()
+            spec = prompt_input("Repo (owner/name or full URL; blank to cancel): ").strip()
             if not spec:
-                notice("Cancelled", "Nothing was downloaded.", "warning")
+                print("Cancelled — nothing downloaded.")
                 return None
         had_owner = _spec_has_owner(spec)
         data, problem = _resolve_one_repo(spec)
@@ -403,26 +418,23 @@ def _resolve_repo_or_prompt(spec, allow_prompt):
             owner = (data.get('owner') or {}).get('login')
             name = data.get('name')
             if not owner or not name:
-                line("GitHub returned no owner or name for that; try another.", "error")
+                print("✗ gh returned a repo record with no owner/name; try a different spec.")
                 if not allow_prompt:
                     return None
                 spec = None
                 continue
             vis = "private" if data.get('isPrivate') else "public"
-            say()
-            row("Repository", f"{owner}/{name}")
-            row("Size", f"{vis}, {format_size(data.get('diskUsage') or 0)}")
+            marker = "  ⚠ owner was assumed" if not had_owner else ""
+            print(f"\n  → {owner}/{name}  ({vis}, {format_size(data.get('diskUsage') or 0)}){marker}")
             if data.get('description'):
-                row("Description", str(data['description'])[:120])
-            if not had_owner:
-                line("The owner was assumed: you gave only a name.", "warning")
+                print(f"    {str(data['description'])[:80]}")
             if not had_owner and allow_prompt:
-                keep = prompt_input(f'  Use {owner}/{name}? Y keeps it, anything else asks again: ')
+                keep = prompt_input(f'  Use {owner}/{name}? [y] to keep, anything else to re-enter: ')
                 if keep.lower() != "y":
                     spec = None
                     continue
             return data
-        line(problem, "error")
+        print(f"✗ {problem}")
         if not allow_prompt:
             return None
         spec = None
@@ -432,7 +444,7 @@ def run_single_repo(spec, root, args=None):
     """Mode 5: download one repo (owner/name or URL) into <root>/<owner>/<repo>."""
     assume_yes = bool(getattr(args, "yes", False))
     clone_format = getattr(args, "format", None)
-    menu_header("Download one repository")
+    banner("Single repo -> Local", tagline=True)
 
     data = _resolve_repo_or_prompt(spec, allow_prompt=not assume_yes)
     if data is None:
@@ -447,11 +459,11 @@ def run_single_repo(spec, root, args=None):
     if repo['isFork'] or repo['isArchived']:
         tags = " and ".join(t for t in ("a fork" if repo['isFork'] else "",
                                         "archived" if repo['isArchived'] else "") if t)
-        row("Note", f"this repository is {tags}")
+        print(f"  (this repo is {tags})")
 
     if root is None:
         if assume_yes:
-            notice("Nothing downloaded", "--yes with --single needs --dest.", "error")
+            print("✗ --yes with --single requires --dest.")
             return
         root = prompt_for_directory(
             "Parent directory (an <owner>/<repo> subfolder will be created inside): ",
@@ -460,7 +472,7 @@ def run_single_repo(spec, root, args=None):
 
     repo['uses_lfs'] = check_repo_for_lfs(owner, repo['name'])
     if repo['uses_lfs']:
-        row("Git LFS", "used: its large files need git lfs installed", "warning")
+        print("  ⚠ uses Git LFS")
 
     print_download_warnings()
 
@@ -469,29 +481,28 @@ def run_single_repo(spec, root, args=None):
     existing = {r['name'].lower() for r in scan_local_git_repos(org_dir)}
     completed = {name.lower() for name in load_completed_repos(files['completed'])}
     if repo['name'].lower() in existing or repo['name'].lower() in completed:
-        notice("Already here", f"{owner}/{repo['name']} is already in {org_dir}. Nothing to do.", "success")
+        print(f"\n✓ {owner}/{repo['name']} already exists locally or is logged complete. Nothing to do.")
         return
 
+    print()
     if clone_format is not None:
         use_mirror = clone_format == "mirror"
     elif assume_yes:
         use_mirror = False
     else:
         use_mirror = prompt_clone_format()
-    say()
-    if not assume_yes and prompt_input(f"  Type YES to download {owner}/{repo['name']} into {org_dir}: ") != "YES":
-        notice("Cancelled", "Nothing was downloaded.", "warning")
+    print()
+    if assume_yes:
+        print(f"Downloading {owner}/{repo['name']} into {org_dir} (--yes).")
+    elif prompt_input(f'Type "YES" to download {owner}/{repo["name"]} into {org_dir}: ') != "YES":
+        print("Aborted. Nothing was downloaded.")
         return
-    run_header("Downloading", f"{owner}/{repo['name']}", f"into {org_dir}")
     try:
         os.makedirs(org_dir, exist_ok=True)
     except OSError as exc:
-        notice("Nothing downloaded", f"The folder could not be created: {exc}", "error")
+        print(f"✗ Could not create folder: {exc}")
         return
     result = download_single_repo(repo, 1, 1, owner, org_dir, use_mirror,
                                   files['completed'], files['success'], files['error'])
-    summary([f"Saved in {org_dir}" if result['status'] == 'success' else f"Details in {files['error']}"])
-    if result['status'] == 'success':
-        notice("Finished", f"{owner}/{repo['name']} is downloaded.", "success")
-    else:
-        notice("Did not download", "Nothing was kept. Run the tool again to retry.", "error")
+    print()
+    print(f"Done: {result['status']} — resume/manifest files in {files['completed'].parent}")

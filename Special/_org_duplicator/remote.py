@@ -20,7 +20,6 @@ from Basic._providers.github import (
     org_access_error,
     run_gh,
 )
-from Basic._station import notice, row
 from Basic._run import run_checked
 
 # The .gitattributes probe is a tiny single-file API read; it must never sit on the default
@@ -36,12 +35,14 @@ def check_git_installed():
     """Verify git is installed."""
     try:
         run_checked(['git', '--version'], timeout=30)
-        row("Git", "found", "success")
+        print("✓ git installed")
         return True
     except Exception:
-        row("Git", "missing", "error")
-        notice("Git is required", "Install it from https://git-scm.com/downloads (Linux: your package "
-               "manager), then run this tool again. Nothing was copied.", "error")
+        print("✗ git is not installed")
+        print("Install git and rerun this tool:")
+        print("  Windows: https://git-scm.com/download/win")
+        print("  macOS: https://git-scm.com/download/mac")
+        print("  Linux: Use your distribution's package manager")
         sys.exit(1)
 
 
@@ -49,13 +50,14 @@ def check_gh_installed():
     """Verify gh CLI is installed."""
     try:
         run_gh(['--version'])
-        row("GitHub CLI", "found", "success")
+        print("✓ gh CLI installed")
         return True
     except GhError:
-        row("GitHub CLI", "missing", "error")
-        notice("The GitHub CLI (gh) is required", "Windows: winget install --id GitHub.cli; macOS: brew "
-               "install gh; Linux: https://cli.github.com. Then run this tool again. Nothing was copied.",
-               "error")
+        print("✗ GitHub CLI (gh) is not installed")
+        print("Install GitHub CLI and rerun this tool:")
+        print("  Windows: winget install --id GitHub.cli")
+        print("  macOS: brew install gh")
+        print("  Linux: See https://cli.github.com/")
         sys.exit(1)
 
 
@@ -63,25 +65,24 @@ def check_gh_authenticated():
     """Verify gh is authenticated."""
     try:
         run_gh(['auth', 'status'])
-        row("GitHub sign-in", "signed in", "success")
+        print("✓ gh authenticated")
     except GhError:
-        row("GitHub sign-in", "not signed in", "error")
-        notice("Sign in to GitHub first", "Run gh auth login, then run this tool again. Nothing was copied.",
-               "error")
+        print("ERROR: gh is not authenticated.")
+        print("Run: gh auth login")
         sys.exit(1)
 
 
 def remind_git_credentials():
     """Keep credential configuration user-owned while explaining private-clone setup."""
-    row("Git credentials", "yours; if a private clone fails, run gh auth setup-git", "detail")
+    print("ℹ Git credentials are user-managed. If private clones fail, run: gh auth setup-git")
 
 
 def check_org_access(org):
     """Verify read access to an organization (write is verified at repo-create time)."""
     error = org_access_error(org)
     if error:
-        notice(f"Cannot open the organization {org}", "Check the name, and that your GitHub account "
-               "can see it. Nothing was copied.", "error")
+        print(f"ERROR: Cannot access organization '{org}'")
+        print("Make sure you have access and the org name is correct.")
         sys.exit(1)
 
 

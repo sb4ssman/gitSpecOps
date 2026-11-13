@@ -13,7 +13,6 @@ uv.lock
 /manage-archives.*
 /duplicate-github-org.*
 /suggest-sync.*
-/gitspecops-tray.*
 
 # Tool runtime state
 archive_updater_registry.json

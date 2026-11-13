@@ -25,12 +25,10 @@ Architecture is a layer stack with a one-way import rule — see
 [`.agents/knowledge/architecture-layers.md`](.agents/knowledge/architecture-layers.md). Plain
 scripts throughout: no `src/` package, no console-script entry points.
 
-**Every terminal screen follows the station script design**, a verbatim copy of Sb4ssport's
-standard: [`.agents/knowledge/station-script-design.md`](.agents/knowledge/station-script-design.md).
-Read it before touching any console output; draw screens only through `Basic/_station.py`
-(banner, rows, options, notices, steps, summary). The authority is
-`Sb4ssport-Alpha/Sb4ssport-Authority/.agents/knowledge/launchers.md`: when it changes, re-copy
-it here unchanged and bring `Basic/_station.py` into line in the same batch.
+Terminal screens follow Sb4ssport's station script design, copied unchanged in
+[`.agents/knowledge/station-script-design.md`](.agents/knowledge/station-script-design.md) (the
+authority is Sb4ssport-Authority `.agents/knowledge/launchers.md`; re-copy it when it changes).
+Every screen opens with its banner, drawn by `Basic/_station.py`.
 
 Keep [`.agents/WORKING-NOTES.md`](.agents/WORKING-NOTES.md) current as you work, and graduate
 completed work into [`.agents/WORK-LOG.md`](.agents/WORK-LOG.md) — appended at the bottom,

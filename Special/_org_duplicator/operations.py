@@ -15,7 +15,6 @@ import time
 
 from Basic._confirm import prompt_input
 from Basic._console import PRINT_LOCK, format_size
-from Basic._station import say, step_line
 from Basic._providers.github import create_repo, ensure_repo
 from Basic._run import CommandTimeout, run_checked
 from Special._org_duplicator.local_repos import safe_cleanup_directory
@@ -69,6 +68,11 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
     cloning = False
 
     try:
+        with PRINT_LOCK:
+            print(f"[{idx}/{total_repos}] Processing: {repo_name} [{repo_size}]")
+            if uses_lfs:
+                print("  ⚠ This repo uses Git LFS")
+
         # Determine final path based on format
         if use_mirror:
             repo_final_path = os.path.join(temp_dir, f"{repo_name}.git")
@@ -87,6 +91,9 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
 
         clone_url = f"https://github.com/{source_org}/{repo_name}.git"
 
+        with PRINT_LOCK:
+            print(f"  → [{repo_name}] Cloning from {source_org}...")
+
         # Clone with retries
         clone_cmd = ['git', 'clone', '--mirror', clone_url, repo_final_path] if use_mirror \
             else ['git', 'clone', clone_url, repo_final_path]
@@ -101,8 +108,8 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
                 if attempt >= RETRY_ATTEMPTS - 1:
                     raise
                 with PRINT_LOCK:
-                    say(f"        {repo_name}: clone attempt {attempt + 1} failed "
-                        f"({str(exc).splitlines()[-1][:80]}); retrying", "detail")
+                    print(f"  → [{repo_name}] clone attempt {attempt + 1} failed "
+                          f"({str(exc).splitlines()[-1][:120]}); retrying...")
                 # A partial clone left behind will make the retry fail on "directory exists".
                 _undo_own_clone(repo_final_path, temp_dir, repo_name, was_empty_folder)
                 time.sleep(_retry_backoff(attempt))
@@ -117,8 +124,7 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
         success_msg = f"✓ {repo_name} complete (took {elapsed:.1f}s)"
         log_message(success_msg, success_log)
         with PRINT_LOCK:
-            step_line(idx, total_repos, repo_name, "ok", elapsed,
-                      repo_size + ("; uses Git LFS" if uses_lfs else ""))
+            print(f"✓ [{repo_name}] Complete ({elapsed:.1f}s)")
 
         return {'status': 'success', 'repo': repo_name, 'time': elapsed}
 
@@ -129,24 +135,30 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
         error_msg = f"✗ {repo_name} FAILED after {elapsed:.1f}s: {str(e)}"
         log_message(error_msg, error_log)
         with PRINT_LOCK:
-            step_line(idx, total_repos, repo_name, "FAILED", elapsed, str(e).splitlines()[-1][:120] if str(e) else "")
+            print(f"✗ [{repo_name}] FAILED: {str(e)}")
 
         return {'status': 'failed', 'repo': repo_name, 'time': elapsed, 'error': str(e)}
 
 
-def process_upload_repo(repo, dest_org, completed_file, success_log, error_log, idx=1, total=1):
-    """Process a single repository upload; one step line when it finishes."""
+def process_upload_repo(repo, dest_org, completed_file, success_log, error_log):
+    """Process a single repository upload."""
     repo_name = repo['name']
     repo_path = repo['path']
     start_time = time.time()
     is_mirror = repo.get('is_mirror', False)
 
-    existed = False
+    print(f"Processing: {repo_name}")
+    if is_mirror:
+        print("  → Mirror repository")
+
     try:
         # Step 1: Create repo in dest org (default to private)
-        existed = not ensure_repo(dest_org, repo_name, private=True)
+        print(f"  → Creating in {dest_org}...")
+        if not ensure_repo(dest_org, repo_name, private=True):
+            print("  → Repository already exists, skipping creation")
 
         # Step 2: Push all refs to dest org (excluding pull request refs)
+        print(f"  → Pushing to {dest_org}...")
         push_url = f"https://github.com/{dest_org}/{repo_name}.git"
 
         max_retries = RETRY_ATTEMPTS
@@ -168,7 +180,7 @@ def process_upload_repo(repo, dest_org, completed_file, success_log, error_log, 
                 raise  # a hung command won't un-hang on a retry
             except RuntimeError:
                 if attempt < max_retries - 1:
-                    say(f"        {repo_name}: push attempt {attempt + 1} failed; retrying", "detail")
+                    print(f"  → Push attempt {attempt + 1} failed, retrying...")
                     time.sleep(_retry_backoff(attempt))
                 else:
                     raise
@@ -181,22 +193,19 @@ def process_upload_repo(repo, dest_org, completed_file, success_log, error_log, 
         elapsed = time.time() - start_time
         success_msg = f"✓ {repo_name} complete (took {elapsed:.1f}s)"
         log_message(success_msg, success_log)
-        step_line(idx, total, repo_name, "ok", elapsed,
-                  ("mirror; " if is_mirror else "") + ("pushed to the existing repository" if existed
-                                                       else f"created in {dest_org}, private"))
+        print()
         return {'status': 'success', 'elapsed': elapsed}
 
     except Exception as e:
         elapsed = time.time() - start_time
         error_msg = f"✗ {repo_name} FAILED after {elapsed:.1f}s: {str(e)}"
         log_message(error_msg, error_log)
-        step_line(idx, total, repo_name, "FAILED", elapsed, str(e).splitlines()[-1][:120] if str(e) else "")
+        print()
         return {'status': 'failed', 'elapsed': elapsed, 'error': str(e)}
 
 
-def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, success_log, error_log,
-                         idx=1, total=1):
-    """Process a single repository migration; one step line when it finishes."""
+def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, success_log, error_log):
+    """Process a single repository migration."""
     repo_name = repo['name']
     start_time = time.time()
     is_private = repo['isPrivate']
@@ -204,12 +213,17 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
     uses_lfs = repo.get('uses_lfs', False)
     repo_size = format_size(repo.get('diskUsage', 0))
 
+    print(f"Processing: {repo_name} [{repo_size}]")
+    if uses_lfs:
+        print("  ⚠ This repo uses Git LFS")
+
     repo_temp_path = os.path.join(temp_dir, repo_name)
     created = False  # cleanup may remove only a mirror this run cloned
     was_empty_folder = False
 
     try:
         # Step 1: Clone from source org
+        print(f"  → Cloning from {source_org}...")
 
         # A folder already at the working path was not made by this run: an empty one is used
         # (and left empty afterwards); anything else is refused, never deleted.
@@ -232,16 +246,18 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
                 raise  # a hung command won't un-hang on a retry
             except RuntimeError:
                 if attempt < max_retries - 1:
-                    say(f"        {repo_name}: clone attempt {attempt + 1} failed; retrying", "detail")
+                    print(f"  → Clone attempt {attempt + 1} failed, retrying...")
                     _undo_own_clone(repo_temp_path, temp_dir, repo_name, was_empty_folder)
                     time.sleep(_retry_backoff(attempt))
                 else:
                     raise
 
         # Step 2: Create repo in dest org
+        print(f"  → Creating in {dest_org}...")
         create_repo(dest_org, repo_name, private=is_private, description=description)
 
         # Step 3: Push to dest org (excluding pull request refs)
+        print(f"  → Pushing to {dest_org}...")
         push_url = f"https://github.com/{dest_org}/{repo_name}.git"
 
         # Retry logic for push
@@ -263,12 +279,13 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
                 raise  # a hung command won't un-hang on a retry
             except RuntimeError:
                 if attempt < max_retries - 1:
-                    say(f"        {repo_name}: push attempt {attempt + 1} failed; retrying", "detail")
+                    print(f"  → Push attempt {attempt + 1} failed, retrying...")
                     time.sleep(_retry_backoff(attempt))
                 else:
                     raise
 
         # Step 4: Clean up temp directory (safely)
+        print("  → Cleaning up...")
         _undo_own_clone(repo_temp_path, temp_dir, repo_name, was_empty_folder)
 
         # Step 5: Mark as complete
@@ -279,8 +296,7 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
         elapsed = time.time() - start_time
         success_msg = f"✓ {repo_name} complete (took {elapsed:.1f}s)"
         log_message(success_msg, success_log)
-        step_line(idx, total, repo_name, "ok", elapsed,
-                  f"{repo_size} copied to {dest_org}" + ("; uses Git LFS" if uses_lfs else ""))
+        print()
         return {'status': 'success', 'elapsed': elapsed}
 
     except Exception as e:
@@ -291,35 +307,37 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
         elapsed = time.time() - start_time
         error_msg = f"✗ {repo_name} FAILED after {elapsed:.1f}s: {str(e)}"
         log_message(error_msg, error_log)
-        step_line(idx, total, repo_name, "FAILED", elapsed, str(e).splitlines()[-1][:120] if str(e) else "")
+        print()
         return {'status': 'failed', 'elapsed': elapsed, 'error': str(e)}
 
 
 def prompt_clone_format():
     """Prompt until the user explicitly chooses a working or mirror clone."""
-    from Basic._station import option, section
-    section("How to copy each repository")
-    option("1", "Working copies", "A regular clone: the files of the default branch, ready to work in.")
-    option("2", "Mirrors", "An archival copy of every branch and tag, without working files.")
+    print("Download format:")
+    print("  1. Working repositories (regular clone)")
+    print("  2. Mirror repositories (--mirror, archival)")
     while True:
-        choice = prompt_input("  Choose [1 or 2]: ")
+        choice = prompt_input("Format (1 or 2): ")
         if choice in ("1", "2"):
             return choice == "2"
-        say("  Choose 1 or 2.", "warning")
+        print("Please choose 1 or 2.")
 
 
 def print_download_warnings() -> None:
     """Uniform download limitations, shown before any download-mode confirmation."""
-    from Basic._station import bullet, section
-    section("Before you download")
-    for text in (
-            "Each repository arrives in <folder>/<organization>/<repository>.",
-            "A working copy has the default branch's files; other branches stay on GitHub until you "
-            "check them out. A mirror keeps every branch and tag, without working files.",
-            "Repositories already here are skipped; a rerun skips the ones already finished.",
-            "Private repositories appear only if your GitHub account can see them.",
-            "Repositories that use Git LFS are marked; their large files need git lfs installed.",
-            "Sizes are what GitHub reports; disk use can differ.",
-            "A failed repository is logged and the rest continue; details are in the runs folder.",
-            "Nothing is pushed, created, changed or deleted on GitHub."):
-        bullet(text)
+    print()
+    print("-" * 60)
+    print("DOWNLOAD BEHAVIOR & LIMITATIONS (applies to every repo below)")
+    print("-" * 60)
+    print("• Arrival layout: <parent>/<namespace>/<repo> — one folder per namespace.")
+    print("• Regular clone: working copy of the default branch (others stay remote-tracking).")
+    print("• Mirror clone: full archival copy of all refs, no working tree.")
+    print("• Already-local repos are skipped; completed repos are skipped on rerun (resume).")
+    print("• Private repos appear only if your authenticated account can see them.")
+    print("• LFS repos are flagged; regular clones need `git lfs` installed for content.")
+    print("• Sizes shown are GitHub's reported size — real disk use can differ (history, LFS).")
+    print("• Failures are collected per repo; the run continues; details land in the runs/ logs.")
+    print("• Downloads are local-only: nothing is pushed, created, edited, or deleted remotely.")
+    print("• Interactive only — nothing here runs scheduled or in the background.")
+    print("-" * 60)
+    print()

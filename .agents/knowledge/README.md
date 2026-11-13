@@ -28,10 +28,6 @@ decision and its rationale, a non-obvious constraint, an investigation result.
   better, and the phased plan.
 - [`shared-layer.md`](shared-layer.md) — *superseded by the layer stack; kept for history.* The `shared/` cross-operation primitive layer: admission
   rule, module list, import mechanics, Linux notes.
-- [`station-script-design.md`](station-script-design.md) — **a verbatim copy of Sb4ssport's
-  terminal standard** (Sb4ssport-Authority `.agents/knowledge/launchers.md` is the authority;
-  re-copy it, never edit it here). Every console screen: the banner, menu and run screens,
-  rows, options, steps, colours. Implemented once in `Basic/_station.py`.
 - [`test-suite-audit.md`](test-suite-audit.md) — **2026-10-19, first read of what the tests
   assert.** Strong where it exists; confirmed defects (safe-to-wipe says SAFE over unpushed work;
   duplicator cleanup deletes a non-repository folder), the untested mutating verbs, weak

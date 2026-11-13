@@ -3,7 +3,7 @@
 Settled 2026-10-21, screens matched 2026-10-22; one banner on every screen 2026-11-13. How
 Sb4ssport terminal scripts (install, check, setup, cleanup, maintenance launchers) look and
 behave, so every station script is recognizable. DCG-Taskforce is the reference; PowerCycler
-is the first adoption; gitSpecOps follows it too (see "Where this standard is used").
+is the first adoption. Both draw the same two screens.
 
 **This document is the whole standard.** Each script carries its own small
 implementation of it (a few print helpers) in its own repository. There is no shared
@@ -22,8 +22,7 @@ shrinks them to the window.
 on a menu screen an optional tagline; the publisher line; the context lines; a double bar.
 The first context line is always when, computer, user and shell version. A run screen adds
 what is being changed and where its files or log are; a menu screen may add where the
-product keeps its files. The banner is the station's signature: a screen without it is not
-a station screen.
+product keeps its files.
 
 **Menu screen:** the banner, then the answer first (a notice), rows and options.
 
@@ -130,18 +129,5 @@ A `.cmd` launcher calls
 so it runs from a fresh clone or downloaded ZIP. It checks that its folder is complete
 and tells the user to extract the ZIP first if not. `.cmd` files are pinned to CRLF in
 `.gitattributes`.
-
-## Where this standard is used
-
-| Product | Its implementation |
-|---|---|
-| DCG-Taskforce (reference) | `Enforce-DCG-Tasks.ps1` / `.sh` (menus), `Task-Enforcement/dcg-windows.ps1` (run screen) |
-| AHK-PowerCycler | `windows/PowerCycler.Console.ps1` |
-| gitSpecOps (`sb4ssman/gitSpecOps`) | `Basic/_station.py`, used by setup and every terminal tool |
-
-A product published outside this organization (gitSpecOps) keeps a verbatim copy of this
-document in its own `.agents/knowledge/` and names this file as the authority. When this
-document changes, re-copy it there and bring each implementation above into line in the same
-batch of work.
 
 This document does not authorize installation, guard changes or publication.

@@ -63,10 +63,7 @@ def _no_answer_available(prompt: str) -> NoReturn:
 
 
 def prompt_input(prompt: str) -> str:
-    """Read one stripped answer: from the scripted queue if present, else the terminal.
-    The prompt sits on the station screens' two-space indent."""
-    if not prompt.startswith(" "):
-        prompt = "  " + prompt
+    """Read one stripped answer: from the scripted queue if present, else the terminal."""
     while True:
         if _SCRIPTED_ANSWERS:
             value = _SCRIPTED_ANSWERS.pop(0).strip()
@@ -79,7 +76,7 @@ def prompt_input(prompt: str) -> str:
             except EOFError:
                 _no_answer_available(prompt)
         if _looks_like_activation(value.lower()):
-            print("  Ignoring a terminal activation command; please enter your choice.")
+            print("Ignoring terminal activation command; please enter your choice.")
             continue
         return value
 
@@ -95,7 +92,7 @@ def prompt_yes_no(question: str, default: bool = True) -> bool:
             return True
         if answer in ("n", "no"):
             return False
-        print("  Please answer y or n.")
+        print("Please answer y or n.")
 
 
 def confirm_typed(word: str, prompt: str) -> bool:
@@ -114,29 +111,29 @@ def prompt_for_directory(prompt_text, must_exist=False, create_ok=True):
     while True:
         raw = prompt_input(prompt_text)
         if not raw:
-            print("  Please enter a path.")
+            print("Please enter a path.")
             continue
         path = os.path.expanduser(os.path.expandvars(raw))
 
         if os.path.isdir(path):
             return path
         if os.path.exists(path):
-            print(f"  {path} exists but is not a folder. Try again.")
+            print(f"ERROR: {path} exists but is not a directory. Try again.")
             continue
 
         # Path does not exist.
         if must_exist or not create_ok:
-            print(f"  That folder does not exist: {path}. Try again.")
+            print(f"ERROR: Directory does not exist: {path}. Try again.")
             continue
         if not prompt_yes_no(f"'{path}' does not exist. Create it?", default=True):
-            print("  Not created. Enter a different path.")
+            print("Not created. Enter a different path.")
             continue
         try:
             os.makedirs(path, exist_ok=True)
         except OSError as exc:
-            print(f"  Could not create {path}: {exc}. Try again.")
+            print(f"ERROR: Could not create {path}: {exc}. Try again.")
             continue
-        print(f"  Created {path}")
+        print(f"Created: {path}")
         return path
 
 
