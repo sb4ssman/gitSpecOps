@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from Special._sync.advice import describe_repository, repository_flags
-from Elaborate._fleet.aggregate import age_seconds, build_rows, machine_views
+from Elaborate._fleet.aggregate import SEVERITY, age_seconds, build_rows, machine_views
 from Basic._version import VERSION  # read from pyproject.toml, where it is written down once
 
 CONTRACT_NAME = "gitspecops.fleet.display"
@@ -30,7 +30,7 @@ def _cell(cell):
     if not cell.present:
         return {"present": False, "freshness": "absent", "state": "absent",
                 "description": "Not reported here", "tone": "muted", "tags": ["missing"],
-                "facts": None}
+                "needs_attention": False, "facts": None}
     flags = repository_flags(cell.repo)
     tags = []
     if "dirty" in flags:
@@ -52,8 +52,11 @@ def _cell(cell):
         tone = "neutral"
     else:
         tone = "success"
+    # This copy's own share of the row's attention rule: unfinished work here (stashed or worse).
+    # Every view counts a machine's attention from this, never from the whole row.
     return {"present": True, "freshness": cell.freshness, "state": cell.effective_state,
             "description": description, "tone": tone, "tags": tags,
+            "needs_attention": SEVERITY.get(cell.effective_state, 0) >= SEVERITY["stashed"],
             "facts": {key: cell.repo.get(key) for key in (
                 "staged", "unstaged", "untracked", "stashes", "ahead", "behind",
                 "operation", "has_upstream", "upstream_observed_at", "has_remote", "unpushed",
@@ -154,10 +157,11 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
         group = groups.setdefault(group_id, {"id": group_id, "label": identity["owner"],
                                             "host": identity["host"], "count": 0, "attention": 0})
         cells = {mid: _cell(cell) for mid, cell in row.cells.items()}
-        # Same severity policy as the CLI; missing/stale reports additionally deserve attention
-        # in this live view. A client must not infer this from a numeric threshold or color.
-        attention = row.severity >= 20 or any(
-            not cell.present or cell.freshness != "current" for cell in row.cells.values())
+        # Attention means unfinished work somewhere: stashed or worse, including work an old
+        # report last showed (stale_work). A repository missing from a machine is normal, and a
+        # clean copy on an old report stays "unknown" (never an all-clear) without needing
+        # attention. A client must not infer this from a numeric threshold or color.
+        attention = row.severity >= SEVERITY["stashed"]
         tags = set(tag for cell in cells.values() for tag in cell["tags"])
         if attention:
             tags.add("attention")

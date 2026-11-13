@@ -2445,3 +2445,16 @@ No code changed; decisions recorded where they govern.
   libraries differ shows nearly everything amber; (2) "Machines together" counts that row-level
   attention per machine (Desktop 8 of 8) while the zoomable map counts the machine's own
   copies (2 of 8); (3) no view shows repository names on machines in one picture.
+
+## 2026-11-13 15:40 - user (claude) - The map shows libraries; attention means unfinished work
+- Decided with the user: a repository needs attention only for unfinished work somewhere
+  (stashed or worse, including work a stale report last showed). Absent from a machine is
+  normal; a clean copy on an old report is "unknown", not an all-clear, and not flagged.
+  display.py implements it; each cell now carries its own `needs_attention`, and every view
+  counts a machine's flags from its cells (Machines together said 8 of 8 where the zoomable map
+  said 2 of 8). DISPLAY-CONTRACT.md says so; two dashboard tests pin it.
+- The fleet level of the zoomable map now shows each machine's library under it: host and
+  organization headings, every repository as a dot coloured by that copy (unfinished work
+  first), at most 16 lines then "+ N more"; everything clickable to zoom in.
+- README map redone from the real web view with a made-up fleet (two clouds, four machines,
+  13 repositories), clipped to the map.

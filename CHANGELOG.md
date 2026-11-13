@@ -13,6 +13,10 @@ while the version starts with 0, gitSpecOps is a development preview and anythin
 - **Tests on Windows, macOS and Linux** with GitHub Actions, and a generated command reference
   (`docs/COMMANDS.md`).
 - **Setup:** running one command returns to the setup menu afterwards.
+- **The map:** under each machine, its library (every organization and repository it holds,
+  coloured by that copy's own state). A repository is flagged only for unfinished work: being
+  absent from a machine is normal, and a clean copy on an old report is "unknown" but not
+  flagged. Every view now counts a machine's flags from its own copies.
 
 ## 0.2.0 — 2026-11-13
 

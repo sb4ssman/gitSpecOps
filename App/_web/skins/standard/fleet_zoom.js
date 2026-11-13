@@ -29,7 +29,8 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const HOST_NAMES = {'github.com': 'GitHub', 'gitlab.com': 'GitLab', 'bitbucket.org': 'Bitbucket', local: 'No remote'};
 const hostOf = row => (row.identity && row.identity.host && row.identity.host !== 'local' ? row.identity.host : 'local');
 const hostName = host => HOST_NAMES[host] || host;
-const trouble = cell => Boolean(cell && cell.present && cell.state !== 'synced');
+// The copy's own attention, decided in Python (the display contract); never recomputed here.
+const trouble = cell => Boolean(cell && cell.present && cell.needs_attention);
 const toneClass = tone => (tone === 'danger' ? 'z-danger' : tone === 'warning' ? 'z-warn' : tone === 'muted' ? 'z-muted' : 'z-ok');
 // A cloud outline on a 32-unit box, centred near (16, 9), about 25 units wide.
 const CLOUD = 'M7.5 16.3 A3.8 3.8 0 0 1 6.8 8.8 A6.2 6.2 0 0 1 18.6 6.4 A4.8 4.8 0 0 1 25.6 10.8 A2.9 2.9 0 0 1 25 16.3 Z';
@@ -116,9 +117,43 @@ function frame(container, height, title) {
 }
 
 // ---- levels ---------------------------------------------------------------------------------
+/** Each machine's library for the fleet level: host and organization headings, then each
+ *  repository it holds (its own unfinished work first), at most `limit` lines. */
+function libraryLines(data, machineId, limit) {
+  const byOrg = new Map();
+  for (const row of data.rows) {
+    const cell = row.cells[machineId];
+    if (!cell || !cell.present) continue;
+    const key = `${hostOf(row)}\u0000${row.group_id}`;
+    if (!byOrg.has(key)) byOrg.set(key, {host: hostOf(row), id: row.group_id, label: row.namespace, repos: []});
+    byOrg.get(key).repos.push({row, cell});
+  }
+  const lines = [];
+  const orgs = [...byOrg.values()].sort((a, b) => a.host.localeCompare(b.host) || a.label.localeCompare(b.label));
+  const total = orgs.reduce((sum, org) => sum + 1 + org.repos.length, 0);
+  for (const org of orgs) {
+    if (lines.length >= limit - 1) break;
+    lines.push({kind: 'org', org});
+    org.repos.sort((a, b) => trouble(b.cell) - trouble(a.cell) || a.row.name.localeCompare(b.row.name));
+    for (const repo of org.repos) {
+      if (lines.length >= limit - 1) break;
+      lines.push({kind: 'repo', ...repo});
+    }
+  }
+  const shown = lines.filter(line => line.kind === 'repo').length;
+  const all = orgs.reduce((sum, org) => sum + org.repos.length, 0);
+  if (lines.length < total && all > shown) lines.push({kind: 'more', count: all - shown});
+  return lines;
+}
+
+const LIBRARY_TOP = 640, LIBRARY_LINE = 19, LIBRARY_LIMIT = 16;
+
 function fleetLevel(container, data) {
   const clouds = hosts(data), machines = [...data.machines].sort((a, b) => a.label.localeCompare(b.label));
-  const svg = frame(container, 600, 'The fleet: clouds and machines');
+  const libraries = new Map(machines.map(m => [m.id, libraryLines(data, m.id, LIBRARY_LIMIT)]));
+  const deepest = Math.max(0, ...[...libraries.values()].map(lines => lines.length));
+  const svg = frame(container, deepest ? LIBRARY_TOP + deepest * LIBRARY_LINE + 20 : 600,
+                    'The fleet: clouds, machines and their libraries');
   const xs = (n, i) => (1000 / (n + 1)) * (i + 1);
   const cloudAt = new Map(clouds.map((c, i) => [c.host, [xs(clouds.length, i), 120]]));
   const machineAt = new Map(machines.map((m, i) => [m.id, [xs(machines.length, i), 470]]));
@@ -156,6 +191,30 @@ function fleetLevel(container, data) {
     machineBox(svg, x, y, machine, `${count} repos${bad ? ` · ${bad} ⚑` : ''}`,
                machine.freshness !== 'current' ? 'warning' : bad ? 'warning' : 'success',
                () => { zoomTo({kind: 'machine', id: machine.id}); rerender(); });
+  }
+  const column = 1000 / (machines.length + 1), width = Math.floor((column - 24) / 7.2);
+  for (const machine of machines) {                         // each machine's library, below
+    const [x] = machineAt.get(machine.id), left = x - column / 2 + 14;
+    libraries.get(machine.id).forEach((line, i) => {
+      const y = LIBRARY_TOP + i * LIBRARY_LINE;
+      if (line.kind === 'org') {
+        const item = node(svg, {label: `${line.org.label} on ${hostName(line.org.host)}. Open the organization.`,
+                                onOpen: () => { zoomTo({kind: 'organization', id: line.org.id}); rerender(); }});
+        item.append(el('text', {x: left, y, class: 'z-row z-strong z-muted-text'},
+                            clip(`${hostName(line.org.host)} · ${line.org.label}`, width)));
+      } else if (line.kind === 'repo') {
+        const name = line.row.identity ? line.row.identity.name : line.row.name;
+        const tone = trouble(line.cell) ? 'warning' : line.cell.state === 'unknown' ? 'muted' : 'success';
+        const item = node(svg, {label: `${name} on ${machine.label}: ${line.cell.description}. Open.`,
+                                onOpen: () => { zoomTo({kind: 'repository', id: line.row.id}); rerender(); }});
+        item.append(el('circle', {cx: left + 12, cy: y - 4, r: 4.5, class: `z-dot ${toneClass(tone)}`}));
+        item.append(el('text', {x: left + 24, y, class: 'z-row'}, clip(name, width - 3)));
+      } else {
+        const item = node(svg, {label: `${line.count} more on ${machine.label}. Open the machine.`,
+                                onOpen: () => { zoomTo({kind: 'machine', id: machine.id}); rerender(); }});
+        item.append(el('text', {x: left + 24, y, class: 'z-row z-muted-text'}, `+ ${line.count} more`));
+      }
+    });
   }
   if (!machines.length) svg.append(el('text', {x: 500, y: 470, class: 'z-detail'}, 'No machine has reported yet.'));
 }

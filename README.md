@@ -14,7 +14,7 @@ It sits beside tools like GitHub Desktop and Sourcetree. They work *deeply* in o
 gitSpecOps works *broadly*, across all of them and all your machines, and opens any repository
 in your desktop Git app when you want to go deep.
 
-![The network map in the web view: GitHub above four machines (Desktop, Home server, Laptop, Old laptop), each with its repository count, what needs attention, and the copies they share](docs/images/network-map.png)
+![The network map: two clouds (GitHub and GitLab) above four machines (Desktop, Home server, Laptop, Old laptop), lines showing how many repositories each machine holds from each cloud and how many need attention, and under each machine its library: every organization and repository it holds, amber where that copy has unfinished work](docs/images/network-map.png)
 
 *A hypothetical fleet: every machine, owner and repository name in this picture is made up.*
 
