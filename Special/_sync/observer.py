@@ -14,7 +14,7 @@ if _REPO_ROOT not in sys.path:
 
 from Basic._discovery import find_repos  # noqa: E402
 from Basic._facts import (git_stdout, remote_urls, repo_facts, root_commit,  # noqa: E402
-                          shares_history, unpushed_commits)
+                          shares_history, unpushed_commits, upstream_force_updated)
 from Basic._identity import parse_remote_url  # noqa: E402
 from Basic._run import run_git  # noqa: E402
 
@@ -271,9 +271,11 @@ def observe_paths(paths: list[Path], secret: str | None = None,
         if counts is None:
             issues.append(f"status unreadable, so uncommitted work cannot be ruled out: {path}")
             continue
-        if facts.get("ahead") and facts.get("behind") and shares_history(path) is False:
+        if facts.get("ahead") and facts.get("behind") and (
+                shares_history(path) is False or upstream_force_updated(path)):
             # Not ordinary divergence: the upstream's history was rewritten after this clone
-            # was made (every commit differs). A pull refuses; merging would bring it back.
+            # was made (every commit differs, or the last fetch was a forced update because the
+            # rewrite kept the earliest commits). A pull refuses or merges it back; never pull.
             issues.append("upstream history was rewritten; review this clone before "
                           f"moving it (do not pull or merge): {path}")
         repo_id, kind, has_remote, host, owner, name = _identity(path, facts, secret)

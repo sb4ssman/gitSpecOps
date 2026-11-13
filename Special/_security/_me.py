@@ -157,6 +157,7 @@ def load_policy(repo: Path, *, home=None, settings: ResolvedSettings | None = No
                     engines=tuple(values.get("engines", ())))
     policy.identities["never-publish"] = list(dict.fromkeys(
         [*values["never_publish"], *values.get("local_never_publish", ())]))
+    policy.identities["never-publish-word"] = list(dict.fromkeys(values.get("never_publish_words", ())))
     if settings is not None:
         # A repository exception lifts saved never-publish values for one repository path only
         # (a site that publishes a name on purpose). Explicit --never-publish files still apply.
@@ -164,8 +165,9 @@ def load_policy(repo: Path, *, home=None, settings: ResolvedSettings | None = No
         scope = repository_scope(repo)
         lifted = {value.casefold() for path, listed in values.get("repository_exceptions", {}).items()
                   if repository_scope(path) == scope for value in listed}
-        policy.identities["never-publish"] = [value for value in policy.identities["never-publish"]
-                                              if value.casefold() not in lifted]
+        for kind in ("never-publish", "never-publish-word"):
+            policy.identities[kind] = [value for value in policy.identities[kind]
+                                       if value.casefold() not in lifted]
         policy.sources["repository-exceptions"] = len(lifted)
     policy.sources["settings"] = "legacy-explicit" if legacy_policy else settings.summary()
     defaults = selected / "security" if legacy_policy else None
@@ -182,7 +184,8 @@ def load_policy(repo: Path, *, home=None, settings: ResolvedSettings | None = No
         else:
             policy.identities["never-publish"].extend(listed)
     if not legacy_policy:
-        combined = {"never_publish": policy.identities["never-publish"], "safe_values": policy.safe}
+        combined = {"never_publish": policy.identities["never-publish"],
+                    "never_publish_words": policy.identities["never-publish-word"], "safe_values": policy.safe}
         _part({"security": combined})
         _policy_conflicts({"security": combined})
 
@@ -210,6 +213,7 @@ def load_policy(repo: Path, *, home=None, settings: ResolvedSettings | None = No
     policy.identities["home-folder name"] = [Path.home().name]
     if not legacy_policy:
         _policy_conflicts({"security": {"never_publish": policy.identities["never-publish"],
+                                        "never_publish_words": policy.identities["never-publish-word"],
                                         "safe_values": [*policy.safe, *policy.logins]}})
     policy.logins = sorted(set(policy.logins))
     policy.safe = sorted(set(policy.safe))

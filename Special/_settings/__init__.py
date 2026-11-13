@@ -27,10 +27,13 @@ DEFAULTS = {
     "output": {"mode": "stdout", "format": "text", "directory": "reports"},
     "logging": {"enabled": True, "directory": "logs", "level": "INFO",
                 "max_bytes": 10 * 1024 * 1024, "backup_count": 3},
-    "security": {"never_publish": [], "safe_values": [], "local_never_publish": [],
+    # never_publish_words: protected values matched only as whole words (no letter, digit or
+    # underscore touching either side), for short values that also occur inside other words.
+    "security": {"never_publish": [], "never_publish_words": [], "safe_values": [], "local_never_publish": [],
                  "local_safe_values": [], "engines": [], "repository_exceptions": {}},
 }
-_ACCUMULATED = {"scope.exclude_paths", "security.never_publish", "security.local_never_publish"}
+_ACCUMULATED = {"scope.exclude_paths", "security.never_publish", "security.never_publish_words",
+                "security.local_never_publish"}
 SECURITY_ENGINES = ("gitleaks", "betterleaks", "trufflehog")
 
 
@@ -109,7 +112,7 @@ def _merge(values, updates, sources, source):
 
 def _policy_conflicts(values):
     security = values["security"]
-    blocked = {value.casefold() for key in ("never_publish", "local_never_publish")
+    blocked = {value.casefold() for key in ("never_publish", "never_publish_words", "local_never_publish")
                for value in security.get(key, ())}
     if blocked.intersection(value.casefold() for key in ("safe_values", "local_safe_values")
                             for value in security.get(key, ())):

@@ -122,8 +122,10 @@ def published_before(repo: Path, new_tip: str) -> list[str]:
                        if len(value) >= 40 and set(value) != {"0"} and value not in values]
     current = run_git(repo, ["for-each-ref", "--format=%(objectname)", "refs/remotes"]).stdout
     values += [value for value in current.split() if value not in values]
+    # Not part of the new history = not one of its ancestors. (Sharing no commit at all is too
+    # strict: a rewrite keeps every commit before its first change, often the root.)
     return [value for value in values
-            if run_git(repo, ["merge-base", value, new_tip]).returncode == 1]
+            if run_git(repo, ["merge-base", "--is-ancestor", value, new_tip]).returncode == 1]
 
 
 def assess(repo: Path, *, fetch: bool = True) -> dict:
@@ -149,8 +151,12 @@ def assess(repo: Path, *, fetch: bool = True) -> dict:
     if not upstream:
         found.update(action="skip", why=f"{branch} has no upstream")
         return found
-    if run_git(repo, ["merge-base", "HEAD", upstream]).returncode == 0:
-        found.update(action="current", why=f"{branch} shares history with {upstream}")
+    # "Current" means one history contains the other (a normal pull or push handles it). Merely
+    # sharing *some* commit is not enough: a rewrite keeps every commit before its first change
+    # (often the root), so an old clone still shares history with the rewritten upstream.
+    if (run_git(repo, ["merge-base", "--is-ancestor", upstream, "HEAD"]).returncode == 0
+            or run_git(repo, ["merge-base", "--is-ancestor", "HEAD", upstream]).returncode == 0):
+        found.update(action="current", why=f"{branch} and {upstream} are on one history")
         return found
     if run_git(repo, ["status", "--porcelain", "--untracked-files=no"]).stdout.strip():
         found["why"] = ("uncommitted changes to tracked files: commit or stash them first (or "

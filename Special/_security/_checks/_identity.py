@@ -10,8 +10,10 @@ def check(text, where, policy, object_id=""):
             if not value or (kind in {"configured name", "machine name"} and
                             (len(value) < 4 or value.lower() in {"user", "admin", "root", "home", "test", "runner", "localhost", "main", "github"})):
                 continue
-            pattern = re.compile(rf"(?i)(?<![A-Za-z0-9]){re.escape(value)}(?![A-Za-z0-9])")
+            edge = "A-Za-z0-9_" if kind == "never-publish-word" else "A-Za-z0-9"
+            pattern = re.compile(rf"(?i)(?<![{edge}]){re.escape(value)}(?![{edge}])")
+            name = "never-publish" if kind == "never-publish-word" else kind
             for match in pattern.finditer(text):
-                if kind == "never-publish" or not policy.allowed(text, *match.span()):
-                    yield Finding(kind, "leak", match[0], where, object_id,
+                if name == "never-publish" or not policy.allowed(text, *match.span()):
+                    yield Finding(name, "leak", match[0], where, object_id,
                                   text.count("\n", 0, match.start()) + 1)

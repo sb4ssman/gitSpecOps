@@ -2180,3 +2180,17 @@ No code changed; decisions recorded where they govern.
   `tests/app/test_setup_page.py`): the local server refused a request without reading its body,
   and on Windows that can reset the connection before the browser reads why. Refusals now read a
   small body first (`App/_web/server.py`). That test 10/10 in a row; full suite 86/86.
+
+## 2026-11-12 16:59 - user (claude) - follow after a rewrite that kept the root; whole-word protected values
+- `follow` called a pre-rewrite clone "current" when the old and new histories shared any commit;
+  a rewrite keeps every commit before its first change (often the root), so a real rewritten
+  repository was skipped ("nothing to follow") and a later pull would have merged the old history
+  back. Now "current" means one history contains the other, and old remote values count as
+  published unless they are ancestors of the new tip. The observer also calls a diverged clone
+  whose upstream was force-updated a rewrite (`Basic/_facts.upstream_force_updated`). Regression
+  test: a rewrite that keeps the root (`tests/special/test_follow_rewrite.py`).
+- Whole-word protected values (the user's choice): `security.never_publish_words`, matched only
+  when no letter, digit or underscore touches the value; a match is a never-publish finding like
+  any other. The editor gains the list and a "make whole-word only" move (LOOSEN), the Security
+  tab shows it. A never-publish value inside a longer identifier no longer blocks a repository.
+  Tests: `tests/security/test_policy_edit.py` (4). Full suite 86/86.

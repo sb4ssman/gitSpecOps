@@ -68,10 +68,14 @@ async function loadEngines() {
 const LISTS = {
   never_publish: ['Never publish', 'Your name, addresses, usernames: any of these anywhere is a high finding. ' +
     'Matching ignores case and finds the value inside longer text.'],
+  never_publish_words: ['Never publish (whole words)', 'Matched only as a whole word: no letter, digit or ' +
+    'underscore may touch it. For a short value, such as a first name, that also occurs inside other words ' +
+    '(a time-zone id, a code name).'],
   safe_values: ['Allowed anyway', 'Exact values that look risky but are fine to publish, such as a ' +
     'well-known test value or someone else\'s public name.'],
 };
-const policy = {lists: null, show: false, pending: {never_publish: new Set(), safe_values: new Set()}};
+const policy = {lists: null, show: false,
+                pending: {never_publish: new Set(), never_publish_words: new Set(), safe_values: new Set()}};
 const mask = value => (value.length <= 3 ? '•••' : `${value.slice(0, 2)}${'•'.repeat(Math.min(6, value.length - 3))}${value.slice(-1)}`);
 
 async function loadPolicy() {
@@ -133,11 +137,18 @@ function renderPolicy(note = '', problem = false) {
       const confirm = html('div', undefined, 'sec-add');
       const removeWord = html('input'); removeWord.type = 'text'; removeWord.autocomplete = 'off';
       removeWord.placeholder = 'Type LOOSEN';
+      const blocking = list !== 'safe_values';
       const remove = html('button', `Remove ${policy.pending[list].size}`); remove.type = 'button';
-      remove.onclick = () => changePolicy(list, {remove: [...policy.pending[list]], ...(list === 'never_publish' ? {confirm: removeWord.value} : {})},
+      remove.onclick = () => changePolicy(list, {remove: [...policy.pending[list]], ...(blocking ? {confirm: removeWord.value} : {})},
                                            `Removed from "${title}". It applies to the next audit.`);
-      if (list === 'never_publish') confirm.append(html('span', 'Removing protection: ', 'host-note'), removeWord);
+      if (blocking) confirm.append(html('span', 'Removing or narrowing protection: ', 'host-note'), removeWord);
       confirm.append(remove);
+      if (list === 'never_publish') {
+        const narrow = html('button', `Make ${policy.pending[list].size} whole-word only`); narrow.type = 'button';
+        narrow.onclick = () => changePolicy(list, {move_to_words: [...policy.pending[list]], confirm: removeWord.value},
+                                            'Moved to "Never publish (whole words)". It applies to the next audit.');
+        confirm.append(narrow);
+      }
       section.append(confirm);
     }
     box.append(section);

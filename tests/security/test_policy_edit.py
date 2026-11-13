@@ -48,6 +48,29 @@ class PolicyEditTests(unittest.TestCase):
         view = policy_change(self.home, {"list": "safe_values", "remove": ["st_something"]})
         self.assertEqual(view["lists"]["safe_values"], [], "removing an allowance tightens: no word")
 
+    def test_whole_word_values(self):
+        with self.assertRaisesRegex(ValueError, "type LOOSEN"):
+            policy_change(self.home, {"list": "never_publish", "move_to_words": ["private-marker"]})
+        view = policy_change(self.home, {"list": "never_publish", "move_to_words": ["PRIVATE-MARKER"], "confirm": "LOOSEN"})
+        self.assertEqual((view["lists"]["never_publish"], view["lists"]["never_publish_words"]), ([], ["private-marker"]))
+        with self.assertRaisesRegex(ValueError, "type LOOSEN"):
+            policy_change(self.home, {"list": "never_publish_words", "remove": ["private-marker"]})
+        with self.assertRaisesRegex(ValueError, "not saved"):
+            policy_change(self.home, {"list": "safe_values", "add": ["private-marker"], "confirm": "LOOSEN"})
+
+        from Special._security._checks._identity import check
+
+        class Policy:
+            identities = {"never-publish-word": ["Marker"], "never-publish": ["Plain"]}
+
+            def allowed(self, text, start, end):
+                return True  # never-publish matches ignore allowances either way
+        text = "by Marker.\nPort_Marker and MarkerX\nSt_Plain\n"
+        found = [(f.check, f.line) for f in check(text, "f.txt", Policy())]
+        self.assertIn(("never-publish", 1), found, "a whole word is caught, as a never-publish finding")
+        self.assertNotIn(("never-publish", 2), found, "not inside another word, underscore included")
+        self.assertIn(("never-publish", 3), found, "an anywhere value still matches after an underscore")
+
     def test_refusals(self):
         for bad in ({"list": "engines", "add": ["x"]}, {"list": "never_publish"}, {"list": "never_publish", "add": [""]},
                     {"list": "never_publish", "add": ["x" * 201]}, {"list": "never_publish", "add": ["x"], "path": "/"}):

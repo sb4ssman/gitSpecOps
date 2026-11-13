@@ -69,6 +69,16 @@ def shares_history(repo_path: Path) -> bool | None:
     return False if proc.returncode == 1 else None
 
 
+def upstream_force_updated(repo_path: Path) -> bool:
+    """Whether the last fetch moved the upstream by a forced (non-fast-forward) update.
+
+    A rewrite keeps every commit before its first change, often the root, so a clone made before
+    it can still share history with the rewritten upstream; then only this record tells a
+    rewrite from ordinary divergence. Read-only: the remote-tracking ref's own log."""
+    proc = run_git(repo_path, ["reflog", "-1", "--format=%gs", "@{upstream}"])
+    return proc.returncode == 0 and "forced-update" in proc.stdout
+
+
 def remote_urls(repo_path: Path) -> dict[str, str]:
     """Every remote's fetch URL, by name. Empty when there is no remote (or git failed)."""
     proc = run_git(repo_path, ["remote", "-v"])

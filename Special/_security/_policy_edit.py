@@ -4,14 +4,16 @@ Why:          the values that must never be published (a name, an address, a use
               values allowed despite looking risky belong to the person, and they should be able
               to see and change them where they look at findings, not only in a settings file.
 Reads:        the common settings profile's `defaults.security` lists.
-May change:   `never_publish` and `safe_values` in that profile, through the shared settings
-              writer (stale-file checks, conflict checks, atomic write). Nothing else.
+May change:   `never_publish`, `never_publish_words` and `safe_values` in that profile, through
+              the shared settings writer (stale-file checks, conflict checks, atomic write).
+              Nothing else.
 Results:      the lists, and the lists after a change.
 Layer:        Special: this machine, once.
 Status:       working
 
 Tightening (adding a never-publish value, removing an allowance) needs no extra step. Loosening
-(removing a never-publish value, adding an allowance) needs the typed word LOOSEN. Matching is
+(removing a never-publish value, adding an allowance, or making a value whole-word only) needs
+the typed word LOOSEN. Matching is
 case-insensitive, as the scanner's is. Each audit reads the profile afresh, so a change applies
 to the next audit without restarting anything.
 """
@@ -20,7 +22,9 @@ from __future__ import annotations
 from Special._settings import SettingsError
 from Special._settings.security import load_security_settings, save_security_settings
 
-LISTS = ("never_publish", "safe_values")
+LISTS = ("never_publish", "never_publish_words", "safe_values")
+#: Lists whose entries block: removing from them weakens protection.
+BLOCKING = ("never_publish", "never_publish_words")
 LOOSEN_WORD = "LOOSEN"
 MAX_VALUE = 200
 MAX_CHANGE = 50
@@ -31,6 +35,30 @@ def _load(home):
         return load_security_settings(home)
     except SettingsError as exc:
         raise ValueError(f"the settings profile could not be read: {exc}") from None
+
+
+def _move_to_words(home, name, values, confirm) -> dict:
+    """Never-publish values become whole-word values, in one save. Narrower matching weakens
+    protection (a value inside another word is no longer caught), so it needs LOOSEN."""
+    if name != "never_publish" or not values:
+        raise ValueError("move_to_words takes values from never_publish")
+    if confirm != LOOSEN_WORD:
+        raise ValueError(f"whole-word matching catches less: type {LOOSEN_WORD} to allow it")
+    snapshot = _load(home)
+    owned = snapshot.owned_policy()
+    current = {v.casefold(): v for v in owned["never_publish"]}
+    if any(v.casefold() not in current for v in values):
+        raise ValueError("a value to move is not in the list (it may have changed); reload")
+    moving = {v.casefold() for v in values}
+    words = list(owned["never_publish_words"])
+    known = {v.casefold() for v in words}
+    words += [current[key] for key in dict.fromkeys(v.casefold() for v in values) if key not in known]
+    try:
+        save_security_settings(snapshot, {"never_publish": [v for v in owned["never_publish"] if v.casefold() not in moving],
+                                          "never_publish_words": words})
+    except SettingsError as exc:
+        raise ValueError(f"not saved: {exc}") from None
+    return policy_view(home)
 
 
 def policy_view(home) -> dict:
@@ -50,15 +78,17 @@ def _values(payload, key) -> list[str]:
 
 
 def policy_change(home, payload) -> dict:
-    if not isinstance(payload, dict) or not set(payload) <= {"list", "add", "remove", "confirm"}:
-        raise ValueError("send list, and add and/or remove")
+    if not isinstance(payload, dict) or not set(payload) <= {"list", "add", "remove", "confirm", "move_to_words"}:
+        raise ValueError("send list, and add, remove or move_to_words")
     name = payload.get("list")
     if name not in LISTS:
-        raise ValueError("list must be never_publish or safe_values")
+        raise ValueError("list must be never_publish, never_publish_words or safe_values")
+    if "move_to_words" in payload:
+        return _move_to_words(home, name, _values(payload, "move_to_words"), payload.get("confirm"))
     add, remove = _values(payload, "add"), _values(payload, "remove")
     if not add and not remove:
         raise ValueError("nothing to change")
-    loosens = bool(remove) if name == "never_publish" else bool(add)
+    loosens = bool(remove) if name in BLOCKING else bool(add)
     if loosens and payload.get("confirm") != LOOSEN_WORD:
         raise ValueError(f"this weakens what is protected: type {LOOSEN_WORD} to allow it")
     snapshot = _load(home)

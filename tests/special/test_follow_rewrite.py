@@ -49,11 +49,17 @@ def commit(repo: Path, message: str, **who) -> None:
     git(repo, "commit", "-qm", message, **who)
 
 
-def rewrite_bare(bare: Path, work: Path) -> dict:
-    """What filter-repo does, by hand: every commit again, same trees and times, new identity."""
+def rewrite_bare(bare: Path, work: Path, keep_first: bool = False) -> dict:
+    """What filter-repo does, by hand: every commit again, same trees and times, new identity.
+    `keep_first` keeps the root commit unchanged, as a real rewrite keeps every commit before its
+    first change: the old and new histories then still share a commit."""
     git(work, "fetch", "-q", "origin")
     mapping, parent = {}, None
-    for sha in git(work, "rev-list", "--reverse", "origin/main").split():
+    commits = git(work, "rev-list", "--reverse", "origin/main").split()
+    if keep_first:
+        parent = mapping[commits[0]] = commits[0]
+        commits = commits[1:]
+    for sha in commits:
         fields = git(work, "log", "-1", "--format=%T%x00%aI%x00%cI%x00%B", sha).split("\0")
         env = {**os.environ, "GIT_AUTHOR_NAME": TARGET[0], "GIT_AUTHOR_EMAIL": TARGET[1],
                "GIT_COMMITTER_NAME": TARGET[0], "GIT_COMMITTER_EMAIL": TARGET[1],
@@ -198,6 +204,37 @@ with tempfile.TemporaryDirectory(prefix="follow-sweep-") as temp:
     check("after following, relink updates the quoted id and leaves it uncommitted",
           total == 1 and (work / "LOG.md").read_text() == f"see {mapping[first][:7]}\n"
           and git(work, "status", "--porcelain").strip() == "M LOG.md")
+
+# --- a rewrite that kept the root: old and new histories still share a commit -----------------
+# (2026-11-12) `follow` called such a clone "current" because the two shared *a* commit; a
+# later pull would have merged the old history back in.
+with tempfile.TemporaryDirectory(prefix="follow-shared-root-") as temp:
+    tmp = Path(temp)
+    bare = tmp / "remote.git"
+    git(tmp, "init", "-q", "--bare", "-b", "main", str(bare))
+    seed = tmp / "seed"
+    git(tmp, "clone", "-q", str(bare), str(seed))
+    for step in range(3):
+        (seed / "f.txt").write_text(f"step {step}\n")
+        commit(seed, f"step {step}")
+    git(seed, "push", "-q", "origin", "main")
+    stale = tmp / "stale"
+    git(tmp, "clone", "-q", str(bare), str(stale))
+    rewrite_bare(bare, seed, keep_first=True)
+    git(stale, "fetch", "-q", "origin")
+    check("the old clone still shares the kept root with the rewritten upstream",
+          subprocess.run(["git", "-C", str(stale), "merge-base", "HEAD", "origin/main"],
+                         capture_output=True).returncode == 0)
+    from Special._sync.observer import observe_paths  # noqa: E402
+
+    check("the observer calls it a rewritten upstream, not plain divergence",
+          any(issue.startswith("upstream history was rewritten") for issue in observe_paths([stale]).issues))
+    found = rewrite.assess(stale, fetch=False)
+    check("a diverged clone that shares only the kept root is not 'current'", found["action"] == "move", found)
+    with redirect_stdout(io.StringIO()):
+        moved = rewrite.follow(stale, fetch=False, assume_yes=True)
+    check("and follow moves it onto the rewritten history",
+          moved == 0 and git(stale, "rev-parse", "HEAD") == git(stale, "rev-parse", "origin/main"))
 
 os.environ.pop("GIT_AUTHOR_DATE")
 os.environ.pop("GIT_COMMITTER_DATE")
