@@ -157,6 +157,92 @@ def test_autostart_roundtrip_without_touching_the_machine():
         fleet_autostart._BACKENDS.update(original)
 
 
+class _Handle:
+    def __init__(self, path):
+        self.path = path
+
+    def __enter__(self):
+        return self.path
+
+    def __exit__(self, *_):
+        return False
+
+
+class FakeWinreg:
+    """An in-memory registry: the Run key, and Task Manager's StartupApproved switch once used."""
+    HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, KEY_SET_VALUE, REG_SZ = 1, 2, 4, 8, 1
+    RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
+
+    def __init__(self):
+        self.keys = {self.RUN: {}}
+
+    def OpenKey(self, _hive, path, *_rest):  # noqa: N802 - winreg's name
+        if path not in self.keys:
+            raise FileNotFoundError(path)
+        return _Handle(path)
+
+    def QueryValueEx(self, path, name):  # noqa: N802
+        try:
+            return self.keys[path][name], 1
+        except KeyError:
+            raise FileNotFoundError(name) from None
+
+    def SetValueEx(self, path, name, _reserved, _kind, value):  # noqa: N802
+        self.keys[path][name] = value
+
+    def DeleteValue(self, path, name):  # noqa: N802
+        if name not in self.keys[path]:
+            raise FileNotFoundError(name)
+        del self.keys[path][name]
+
+
+def test_windows_task_manager_switch_is_read_and_reset():
+    fake, original = FakeWinreg(), sys.modules.get("winreg")
+    sys.modules["winreg"] = fake
+    approved, off = fleet_autostart._APPROVED, {fleet_autostart.APP_NAME: bytes([3]) + bytes(11)}
+    try:
+        fleet_autostart._windows_enable(["python.exe", "tray.py"])
+        state = fleet_autostart._windows_status()
+        check(state["enabled"] and not state["turned_off_elsewhere"], state)
+        fake.keys[approved] = dict(off)  # Task Manager > Startup apps > Disable
+        state = fleet_autostart._windows_status()
+        check(state["registered"] and not state["enabled"] and state["turned_off_elsewhere"], state)
+        fleet_autostart._windows_enable(["python.exe", "tray.py"])
+        check(fleet_autostart._windows_status()["enabled"], "enabling must turn Task Manager's switch back on")
+        fake.keys[approved] = dict(off)
+        check(fleet_autostart._windows_disable() is True, "the entry must be removed")
+        check(not fake.keys[approved] and not fake.keys[FakeWinreg.RUN],
+              "removing must leave nothing behind in either place")
+    finally:
+        if original is None:
+            sys.modules.pop("winreg", None)
+        else:
+            sys.modules["winreg"] = original
+
+
+def test_linux_startup_applications_switch_is_read_and_reset():
+    import tempfile
+    with tempfile.TemporaryDirectory() as home:
+        before = os.environ.get("XDG_CONFIG_HOME")
+        os.environ["XDG_CONFIG_HOME"] = home
+        try:
+            fleet_autostart._linux_enable(["/usr/bin/python3", "tray.py"])
+            check(fleet_autostart._linux_status()["enabled"], "a new entry starts on")
+            path = fleet_autostart._xdg_autostart_path()
+            path.write_text(path.read_text(encoding="utf-8").replace(
+                "X-GNOME-Autostart-enabled=true", "X-GNOME-Autostart-enabled=false"), encoding="utf-8")
+            state = fleet_autostart._linux_status()
+            check(state["registered"] and not state["enabled"] and state["turned_off_elsewhere"], state)
+            fleet_autostart._linux_enable(["/usr/bin/python3", "tray.py"])
+            check(fleet_autostart._linux_status()["enabled"], "enabling must turn it back on")
+            check(fleet_autostart._linux_disable() is True and not path.exists(), "removing deletes the entry")
+        finally:
+            if before is None:
+                os.environ.pop("XDG_CONFIG_HOME", None)
+            else:
+                os.environ["XDG_CONFIG_HOME"] = before
+
+
 def test_launch_command_is_absolute():
     command = fleet_autostart.launch_command(["--view", "web"])
     check(command[-2:] == ["--view", "web"] and Path(command[0]).is_absolute(), command)

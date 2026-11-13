@@ -42,13 +42,13 @@ VENV_PYTHON = VENV_DIR / ("Scripts/python.exe" if WINDOWS else "bin/python")
 AREAS = ("Requirements", "Python environment", "The gitso command", "This machine", "The app",
          "Desktop Git app", "Protection", "Scanners", "Fleet")
 
+from Special._security._audit import INSTALL_PACKAGES  # noqa: E402  the Security tab suggests the same
+
 #: Package names per installer. Missing means setup cannot install it on that system.
 PACKAGES = {
     "gh": {"winget": "GitHub.cli", "brew": "gh", "apt": "gh"},
     "uv": {"winget": "astral-sh.uv", "brew": "uv"},
-    "gitleaks": {"winget": "Gitleaks.Gitleaks", "brew": "gitleaks", "apt": "gitleaks"},
-    "betterleaks": {"winget": "Betterleaks.Betterleaks", "brew": "betterleaks"},
-    "trufflehog": {"brew": "trufflehog"},
+    **INSTALL_PACKAGES,
 }
 HOME_PAGES = {
     "gh": "https://cli.github.com", "uv": "https://docs.astral.sh/uv/",
@@ -170,11 +170,15 @@ def detect() -> dict:
     found["fleet"] = dict((state["fleet"] or {}).get("transports") or {})
     found["tailnet"] = bool(state["readiness"]["tailnet"])
     found["synced_folders"] = list(state["readiness"]["folders"])
+    found["login"], found["login_elsewhere"] = None, ""
     try:
         status = autostart.status()
-        found["login"] = bool(status.get("enabled")) if status.get("supported") else None
+        if status.get("supported"):
+            found["login"] = ("elsewhere" if status.get("turned_off_elsewhere")
+                              else "on" if status.get("enabled") else "off")
+            found["login_elsewhere"] = status.get("elsewhere") or ""
     except (OSError, ValueError, ImportError):
-        found["login"] = None
+        pass
     configured = _configured_client()
     found["client"] = (configured or {}).get("id", "")
     found["clients"] = discover_clients(configured)
@@ -318,9 +322,11 @@ def area_gitso(found: dict, plan: Plan) -> None:
     screen(3, "The gitso command")
     row("gitso command", "installed" if found["gitso"] else "not installed",
         "success" if found["gitso"] else "text")
-    line("gitso runs every gitSpecOps command from any terminal, in any folder: gitso commands, "
-         "gitso scan-tree ., and so on. Installed with uv as its own tool; it runs this folder, so "
-         "a git pull updates it. Remove it any time with: uv tool uninstall git-spec-ops", "muted")
+    line("gitso is a command of its own, alongside git and gh: it makes gitSpecOps' special "
+         "operations available in any terminal, in any folder (gitso commands, gitso scan-tree ., "
+         "and so on), using git and gh underneath. It replaces nothing. uv installs it as a small "
+         "launcher that runs the code in this folder. Without it, the same commands run as: "
+         "python gitso.py <command>. Remove it any time with: uv tool uninstall git-spec-ops", "muted")
     if found["gitso"] or not plan.uv_after:
         if not plan.uv_after:
             line("Needs uv (the previous step).", "warning")
@@ -395,36 +401,49 @@ def _add_libraries(paths) -> str:
     return f"{len(add_libraries(paths))} library folders"
 
 
+#: Where each system lets people switch start-up items on and off without gitSpecOps.
+LOGIN_SWITCH = ("Task Manager > Startup apps" if WINDOWS else "System Settings > Login Items" if MAC
+                else "Startup Applications")
+
+
 def area_app(found: dict, plan: Plan) -> None:
-    from Special._sync.enrollment import set_presentation
     screen(5, "The app")
-    if found["login"] is None:
-        row("Start at sign-in", "not available on this system", "detail")
-    else:
-        row("Start at sign-in", "on" if found["login"] else "off")
-    row("Web view", "this computer and your Tailscale devices" if found["web"] == "tailnet" else "this computer only")
-    line("The app is a tray icon and a web view of your repositories. Starting at sign-in keeps it "
-         "watching; the web view can also be opened from your own Tailscale devices.", "muted")
-    if found["login"] is not None and plan.venv_after:
-        want = yes_no("Start gitSpecOps when you sign in?" if not found["login"] else
-                      "Keep starting gitSpecOps when you sign in?", "y",
-                      "One entry for your account only; remove it any time here." if not found["login"] else "")
-        if want != found["login"]:
-            plan.add("Start at sign-in", ("Start at sign-in: add one entry for your account" if want
-                                          else "Start at sign-in: remove the entry"),
-                     lambda: _start_at_login(want))
-    elif not plan.venv_after:
-        line("Start at sign-in needs the Python environment (step 2).", "warning")
-    if not plan.enrolled_after:
-        line("The web view's reach is saved with a library folder (step 4).", "warning")
+    state, where = found["login"], found.get("login_elsewhere") or LOGIN_SWITCH
+    row("Start at sign-in", {None: "not available on this system", "on": "on", "off": "off"}.get(
+        state, f"off: turned off in {where}"), "success" if state == "on" else "text")
+    line("The app is a tray icon and a map of your repositories, on this computer. Starting it at "
+         f"sign-in keeps it watching. It appears in {LOGIN_SWITCH} like any other start-up item; "
+         "switching it there is noticed here and in the tray menu.", "muted")
+    if state is None:
         return
-    if found["tailscale"] or found["tailnet"]:
-        tailnet = yes_no("Let your own Tailscale devices open the web view?", "y" if found["web"] == "tailnet" else "n",
-                         "Your phone or another of your computers; nothing outside your tailnet can.")
-        web = "tailnet" if tailnet else "loopback"
-        if web != found["web"]:
-            plan.add("Web view", f"Web view: {'this computer and your Tailscale devices' if tailnet else 'this computer only'}",
-                     lambda: str(set_presentation(face=found["face"], web=web)["web"]))
+    if not plan.venv_after:
+        line("Start at sign-in needs the Python environment (step 2).", "warning")
+        return
+    say()
+    if state == "on":
+        option("K", "Keep starting at sign-in")
+        option("R", "Remove it", "gitSpecOps no longer starts when you sign in; the entry is deleted.")
+        keys, default = "kr0", "k"
+    elif state == "elsewhere":
+        option("T", "Turn it back on", f"It was turned off in {where}; this turns it on there again.")
+        option("K", f"Leave it off in {where}")
+        option("R", "Remove the entry", f"It disappears from {where} too.")
+        keys, default = "tkr0", "k"
+    else:
+        option("A", "Start gitSpecOps when you sign in", "One entry for your account only. Remove it "
+               f"here any time, or switch it off in {LOGIN_SWITCH}.")
+        option("N", "Not now")
+        keys, default = "an0", "a"
+    option("0", "Stop the walkthrough", "Nothing has been changed.")
+    answer = choose(keys, default)
+    if answer == "0":
+        raise Stop
+    if answer in ("a", "t"):
+        plan.add("Start at sign-in", "Start at sign-in: " + ("add one entry for your account" if answer == "a"
+                                                              else f"turn it back on in {where}"),
+                 lambda: _start_at_login(True))
+    elif answer == "r":
+        plan.add("Start at sign-in", "Start at sign-in: remove the entry", lambda: _start_at_login(False))
 
 
 def _start_at_login(enable: bool) -> str:
@@ -433,7 +452,7 @@ def _start_at_login(enable: bool) -> str:
     if done.returncode:
         raise RuntimeError((done.stderr or done.stdout).strip().splitlines()[-1] if (done.stderr or done.stdout).strip()
                            else "start at sign-in could not be changed")
-    return "entry added" if enable else "entry removed"
+    return "on" if enable else "entry removed"
 
 
 def area_client(found: dict, plan: Plan) -> None:
@@ -564,29 +583,43 @@ def _select_engines(chosen) -> str:
     return ", ".join(chosen) or "own checks only"
 
 
+TAILSCALE_WHY = ("Your machines exchange repository status directly over your own tailnet, "
+                 "and every machine's map shows the whole fleet. Nothing passes through anyone else.")
+
+
 def area_fleet(found: dict, plan: Plan) -> None:
     from Elaborate._fleet.setup_state import join_fleet, leave_fleet
     screen(9, "Fleet")
+    has_tailscale = bool(found["tailscale"] or found["tailnet"])
+    over_tailscale = "tailnet" in found["fleet"]
     row("Tailscale", "connected" if found["tailnet"] else "installed, not connected" if found["tailscale"]
-        else "not installed", "success" if found["tailnet"] else "warning")
-    if not found["tailscale"]:
-        line(f"Tailscale lets your machines talk directly. Get it at {HOME_PAGES['tailscale']}.", "muted")
+        else "not installed (optional)", "success" if found["tailnet"] else "text")
     row("Synced folders", ", ".join(found["synced_folders"]) or "none found")
-    row("This machine", ("in a fleet: " + ", ".join(found["fleet"])) if found["fleet"] else "on its own")
+    if found["fleet"]:
+        ways = [{"tailnet": "Tailscale", "folder": "a synced folder"}.get(w, w) for w in found["fleet"]]
+        row("This machine", "in a fleet, over " + " and ".join(ways), "success")
+    else:
+        row("This machine", "on its own")
     line("A fleet is your machines watching each other: every machine's map shows every copy of "
          "every repository. Machines share names, branches and counts only; never file contents or "
-         "folder paths. Experimental and untested: a status repository on GitHub (not offered here).",
-         "muted")
+         "folder paths. They share over Tailscale, a synced folder, or both; Tailscale is optional. "
+         "Experimental and untested: a status repository on GitHub (not offered here).", "muted")
+    if not has_tailscale:
+        line(f"Tailscale is free for personal use: {HOME_PAGES['tailscale']}. Run setup again after "
+             "installing it to operate over it.", "muted")
     if not plan.enrolled_after:
         line("A fleet needs a library folder on this machine (step 4).", "warning")
         return
     say()
     if found["fleet"]:
         option("K", "Keep the fleet as it is")
+        if has_tailscale:
+            option("T", "Stop operating over Tailscale" if over_tailscale else "Operate over Tailscale",
+                   "" if over_tailscale else TAILSCALE_WHY)
         option("S", "Show this machine's fleet key", "To add another machine. It appears in this window only.")
-        option("L", "Leave the fleet", "This machine keeps its libraries and web view.")
+        option("L", "Leave the fleet", "This machine keeps its libraries and map.")
         option("0", "Stop the walkthrough", "Nothing has been changed.")
-        answer = choose("ksl0", "k")
+        answer = choose("k" + ("t" if has_tailscale else "") + "sl0", "k")
         if answer == "0":
             raise Stop
         if answer == "s":
@@ -597,6 +630,16 @@ def area_fleet(found: dict, plan: Plan) -> None:
                 ask("Press Enter when you have copied it:")
         elif answer == "l":
             plan.add("Fleet", "Fleet: leave (this machine keeps its libraries)", lambda: (leave_fleet(), "left")[1])
+            _browser_reach(found, plan, False)
+            return
+        elif answer == "t":
+            on = not over_tailscale
+            others = [w for w in found["fleet"] if w != "tailnet"]
+            plan.add("Fleet", "Fleet: " + ("operate over Tailscale" if on else "stop operating over Tailscale"
+                                           + ("" if others else "; this machine leaves the fleet")),
+                     lambda: _tailscale_transport(on))
+            over_tailscale = on
+        _browser_reach(found, plan, over_tailscale)
         return
     option("1", "Start a fleet with this machine", "Then add your other machines with this machine's key.")
     option("2", "Join a fleet", "Needs the key shown on a machine already in the fleet.")
@@ -613,9 +656,12 @@ def area_fleet(found: dict, plan: Plan) -> None:
         if len(key) != 64:
             line("A fleet key is 64 characters; nothing will be joined. Run setup again with the key.", "warning")
             return
-    tailnet = bool(found["tailnet"]) and yes_no("Share over Tailscale?", "y", "Recommended: your machines talk directly.")
+    tailnet = has_tailscale and yes_no("Let gitSpecOps operate over Tailscale?", "y", TAILSCALE_WHY)
+    if tailnet and not found["tailnet"]:
+        line("Tailscale is installed but not connected; sign in to Tailscale for your machines to "
+             "see each other.", "warning")
     folder = ""
-    if found["synced_folders"] and yes_no("Also share through a synced folder?", "n",
+    if found["synced_folders"] and yes_no("Also share through a synced folder?", "n" if tailnet else "y",
                                           "One small status file there every 5 minutes; the folder's provider can read it."):
         folder = found["synced_folders"][0]
     if not (tailnet or folder):
@@ -623,8 +669,34 @@ def area_fleet(found: dict, plan: Plan) -> None:
         return
     names = yes_no("Share repository names, branches and commit counts with your machines?", "y")
     ways = " and ".join(w for w in ("Tailscale" if tailnet else "", f"a synced folder ({folder})" if folder else "") if w)
-    plan.add("Fleet", f"Fleet: {'join' if key else 'start'} a fleet, sharing through {ways}",
+    plan.add("Fleet", f"Fleet: {'join' if key else 'start'} a fleet, operating over {ways}",
              lambda: (join_fleet(key=key, folder=folder or None, tailnet=tailnet, share_names=names), "joined")[1])
+    _browser_reach(found, plan, tailnet)
+
+
+def _browser_reach(found: dict, plan: Plan, over_tailscale: bool) -> None:
+    """Separate from the fleet: whether a browser on another Tailscale device may open this
+    machine's map. Machines in the fleet do not need it; they each show the fleet themselves."""
+    from Special._sync.enrollment import set_presentation
+    now = found["web"] == "tailnet"
+    want = over_tailscale and yes_no(
+        "Also open this machine's map in a browser on your other Tailscale devices?", "y" if now else "n",
+        "For a phone, or a computer without gitSpecOps. Your fleet machines do not need this; each "
+        "shows the fleet on its own map. Only devices in your own tailnet can reach it.")
+    if want != now:
+        web = "tailnet" if want else "loopback"
+        plan.add("Map in a browser", "Map in a browser: " + ("this computer and your Tailscale devices" if want
+                                                             else "this computer only"),
+                 lambda: str(set_presentation(face=found["face"], web=web)["web"]))
+
+
+def _tailscale_transport(on: bool) -> str:
+    from Elaborate._fleet.cli import load_saved
+    from Elaborate._fleet.setup_state import apply_transports
+    from Special._settings.fleet import fleet_directory
+    directory = fleet_directory()
+    apply_transports(load_saved(directory), tailnet=on, clear_tailnet=not on, directory=directory)
+    return "over Tailscale" if on else "not over Tailscale"
 
 
 # --------------------------------------------------------------------------- review and apply

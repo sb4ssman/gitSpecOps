@@ -17,6 +17,7 @@ silent pass. Nothing here installs anything.
 from __future__ import annotations
 
 import shutil
+import sys
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,11 +41,35 @@ ENGINE_NOTES = {
 }
 
 
+#: Each engine's package with each system's package tool. Suggested to the person, never run here.
+INSTALL_PACKAGES = {
+    "gitleaks": {"winget": "Gitleaks.Gitleaks", "brew": "gitleaks", "apt": "gitleaks"},
+    "betterleaks": {"winget": "Betterleaks.Betterleaks", "brew": "betterleaks"},
+    "trufflehog": {"brew": "trufflehog"},
+}
+
+
+def install_suggestion(engine: str) -> str | None:
+    """The command that installs `engine` on this system, to show; None when there is none."""
+    tool = ("winget" if sys.platform == "win32" else "brew" if sys.platform == "darwin"
+            else "apt" if shutil.which("apt-get") else "")
+    package = INSTALL_PACKAGES.get(engine, {}).get(tool)
+    if not package or not shutil.which("apt-get" if tool == "apt" else tool):
+        return None
+    return {"winget": f"winget install --id {package} --exact", "brew": f"brew install {package}",
+            "apt": f"sudo apt-get install {package}"}[tool]
+
+
 def engines_status() -> list[dict]:
-    """Which optional engines are installed on this machine (on PATH). Only looks."""
-    return [{"engine": name, "label": ENGINE_NOTES[name][0], "about": ENGINE_NOTES[name][1],
-             "home_page": ENGINE_NOTES[name][2], "installed": shutil.which(name) is not None}
-            for name in SECURITY_ENGINES]
+    """Which optional engines are installed on this machine (on PATH), and how to install a
+    missing one here. Only looks."""
+    status = []
+    for name in SECURITY_ENGINES:
+        installed = shutil.which(name) is not None
+        status.append({"engine": name, "label": ENGINE_NOTES[name][0], "about": ENGINE_NOTES[name][1],
+                       "home_page": ENGINE_NOTES[name][2], "installed": installed,
+                       "install": None if installed else install_suggestion(name)})
+    return status
 
 
 def _without_path(record: dict) -> dict:

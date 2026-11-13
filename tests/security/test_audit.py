@@ -107,11 +107,21 @@ class AuditTests(unittest.TestCase):
         self.assertLess(audit["done"], 3)
 
     def test_engines_are_only_looked_for(self):
-        with patch("Special._security._audit.shutil.which", return_value=None) as which:
+        with patch("Special._security._audit.shutil.which", return_value=None), \
+                patch("Special._security._audit.subprocess", create=True) as never_run:
             status = engines_status()
         self.assertEqual([item["engine"] for item in status], ["gitleaks", "betterleaks", "trufflehog"])
         self.assertTrue(all(not item["installed"] for item in status))
-        self.assertEqual(which.call_count, 3)
+        self.assertTrue(all(item["install"] is None for item in status), "no package tool, no suggestion")
+        self.assertFalse(never_run.mock_calls, "looking must never run anything")
+
+    def test_a_missing_engine_comes_with_this_systems_install_command(self):
+        with patch("Special._security._audit.sys.platform", "win32"), \
+                patch("Special._security._audit.shutil.which", side_effect=lambda name: name if name == "winget" else None):
+            status = {item["engine"]: item for item in engines_status()}
+        self.assertEqual(status["gitleaks"]["install"], "winget install --id Gitleaks.Gitleaks --exact")
+        self.assertIsNone(status["trufflehog"]["install"], "no winget package: the home page instead")
+        self.assertTrue(status["trufflehog"]["home_page"])
 
 
 if __name__ == "__main__":

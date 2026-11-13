@@ -23,7 +23,7 @@ dependencies = []
 
 # `gitso` as a command in any terminal, for setup's "Install the gitso command": `uv tool install
 # --editable <this folder>` builds a separate tool environment (never this folder's .venv) whose
-# `gitso` runs this checkout, so it follows `git pull`. Remove with `uv tool uninstall git-spec-ops`.
+# `gitso` launcher runs the code in this checkout. Remove with `uv tool uninstall git-spec-ops`.
 [project.scripts]
 gitso = "gitso:main"
 

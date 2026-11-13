@@ -86,6 +86,12 @@ COMMANDS = (
 )
 
 
+#: The menu's headings, in the order the commands are listed.
+LAYERS = {"Basic": "Basic: one Git or host operation", "Special": "Special: this machine, once",
+          "Elaborate": "Elaborate: other machines, or over time", "App": "App: presence and presentation",
+          "_build": "Setup"}
+
+
 def dispatch(command: Command, argv):
     """Invoke one chosen existing CLI adapter; never rewrite scope, argv or authorization."""
     module = importlib.import_module(command.module)
@@ -104,9 +110,13 @@ def menu():
     if not sys.stdin.isatty():
         print("The menu requires a terminal; use commands or an explicit command.", file=sys.stderr)
         return 2
-    from Basic._station import banner
+    from Basic._station import banner, section
     banner("Commands", tagline=True)
+    layer = None
     for number, command in enumerate(COMMANDS, 1):
+        if command.script.split("/")[0] != layer:
+            layer = command.script.split("/")[0]
+            section(LAYERS.get(layer, layer))
         print(f"  {number:2}. {command.name}: {command.record()['description']}")
     selected = input("Choose a command number, or leave blank to cancel: ").strip()
     if not selected:

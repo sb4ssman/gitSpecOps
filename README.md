@@ -1,3 +1,5 @@
+<p align="center"><img src="_docs/images/gitspecops-mark.svg" width="96" height="96" alt="The gitSpecOps mark: a hub joined to a ring of machines"></p>
+
 # gitSpecOps 
 
 **git Special Operations** — careful, boring, stdlib-only tools for when you have far too many
@@ -176,6 +178,10 @@ the laptop." Then it helps you fix it: group fast-forward everything after weeks
 ahead-only work, clone a set you are missing, or recover uncommitted work stranded on a machine
 that is currently switched off.
 
+![The network map in the web view: GitHub above four machines (Desktop, Home server, Laptop, Old laptop), each with its repository count, what needs attention, and the copies they share](_docs/images/network-map.png)
+
+*A hypothetical fleet: every machine, owner and repository name in this picture is made up.*
+
 **Watching never changes anything by itself.** The background peer observes, publishes and
 fetches. It changes a repository only where you set up a standing consent for it — fast-forward
 of clean, behind-only checkouts, say, on wake — and never commits, merges, rebases or forces.
@@ -229,8 +235,13 @@ python3 Special/archive_manager.py --help
 `run_setup` walks you through the rest: it finds what this computer already has (Git, the GitHub
 CLI, uv, the desktop app, library folders, start at sign-in, a desktop Git app, protected values,
 secret scanners, Tailscale, a fleet), asks about each part, and changes nothing until you review
-it. One of its questions installs `gitso` as a command for any terminal (`uv tool install`); without
-it, every command still runs through `python gitso.py`:
+it. To skip all of that, its second item runs any single Basic, Special or Elaborate command
+straight from the folder, installing nothing: registering archive folders to keep updated, say.
+
+`gitso` is a command of its own, alongside `git` and `gh`: it makes the special operations
+available in any terminal and uses `git` and `gh` underneath; it replaces neither. One of the
+walkthrough's questions installs it (`uv tool install`); without it, every command still runs
+through `python gitso.py`:
 
 ```powershell
 .\run_setup.bat          # or ./run_setup.sh

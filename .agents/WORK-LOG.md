@@ -2355,3 +2355,23 @@ No code changed; decisions recorded where they govern.
   so only version 1 works today. Its description in the Security tab now says so.
 - Tests: walkthrough stop, missing Git, review and cancel, apply order, a failed step, masking.
   Full suite 86/86.
+
+## 2026-11-13 10:25 - user (claude) - Start at sign-in follows other switches; Tailscale means the fleet
+- `gitso` is a command of its own beside git and gh, using them underneath; wording fixed in setup,
+  README and pyproject (it never "follows git pull"). Installed on this machine with
+  `uv tool install --editable`; bookkeeping went to _build/, the root stayed clean.
+- Start at sign-in reads each system's own switch: Task Manager / Settings (StartupApproved\Run),
+  Startup Applications (Hidden / X-GNOME-Autostart-enabled), Login Items (launchctl
+  print-disabled; not yet tried on a Mac). Turned off there shows as off, not on; enabling turns
+  that switch back on; removing leaves nothing in either place. The tray re-reads it each time
+  its menu opens. Setup offers add, keep, remove, or turn back on.
+- Tailscale moved to the Fleet screen as "operate over Tailscale" (the tailnet transport), asked
+  only when Tailscale is present; a fleet member can start or stop it. Opening a map in a browser
+  on other Tailscale devices is a separate, plainly worded follow-up.
+- Setup item 2 runs one command without setting anything up (the gitso menu, now grouped by
+  Basic, Special, Elaborate, App).
+- The Security tab shows the install command for a missing scanner on this system (never runs
+  it); setup takes its scanner packages from the same list.
+- README: the mark at the top; a network-map picture of a made-up fleet (_docs/images/).
+- Tests: Task Manager and Startup Applications switches (fake registry, temp folder), sign-in
+  choices, Tailscale choices, run-one-command, install suggestions. Full suite 86/86.

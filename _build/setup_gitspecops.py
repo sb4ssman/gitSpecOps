@@ -149,8 +149,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("action", nargs="?",
-                        choices=("walkthrough", "bootstrap", "environment", "check", *ACTIONS),
-                        help="walkthrough (a person at a console), bootstrap the environment, check "
+                        choices=("walkthrough", "run", "bootstrap", "environment", "check", *ACTIONS),
+                        help="walkthrough (a person at a console), run one command from the menu "
+                             "without setting anything up, bootstrap the environment, check "
                              "prerequisites, or select a settings action")
     add_arguments(parser)
     return parser
@@ -165,19 +166,22 @@ def choose_action() -> str | None:
     say()
     option("1", "Walk me through everything", "Recommended. Finds what this computer already has and "
            "asks about each part. Nothing changes until you review it.")
-    option("2", "Set up the Python environment", "This folder's .venv, then a prerequisite check.")
-    option("3", "Check prerequisites", "Changes nothing.")
-    option("4", "Configure standalone updater preferences", "Guided.")
-    option("5", "Preview legacy settings migration", "Read-only.")
-    option("6", "Use existing archive/security settings", "Guided review.")
+    option("2", "Run one command, without setting anything up", "Any Basic, Special or Elaborate "
+           "command, straight from this folder: for example, register archive folders to keep updated "
+           "(archive-manager). Installs nothing.")
+    option("3", "Set up the Python environment", "This folder's .venv, then a prerequisite check.")
+    option("4", "Check prerequisites", "Changes nothing.")
+    option("5", "Configure standalone updater preferences", "Guided.")
+    option("6", "Preview legacy settings migration", "Read-only.")
+    option("7", "Use existing archive/security settings", "Guided review.")
     option("0", "Exit")
     try:
-        answer = choose("1234560", "1")
+        answer = choose("12345670", "1")
     except (EOFError, KeyboardInterrupt):
         print("\nSetup cancelled; nothing has been changed.")
         return None
-    return {"1": "walkthrough", "2": "bootstrap", "3": "check", "4": "settings",
-            "5": "settings-migration-preview", "6": "settings-existing"}.get(answer)
+    return {"1": "walkthrough", "2": "run", "3": "bootstrap", "4": "check", "5": "settings",
+            "6": "settings-migration-preview", "7": "settings-existing"}.get(answer)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -238,6 +242,17 @@ def main(argv: list[str] | None = None) -> int:
             return walkthrough()
         except (EOFError, KeyboardInterrupt, Stop):
             print("\nSetup cancelled; nothing has been changed.")
+            return 0
+    if action == "run":
+        if not sys.stdin.isatty():
+            print("Choosing a command needs a person at a console; run gitso.py with the command "
+                  "instead.", file=sys.stderr)
+            return 2
+        import gitso
+        try:
+            return gitso.menu()
+        except (EOFError, KeyboardInterrupt):
+            print("\nCancelled; nothing was run.")
             return 0
     if action == "bootstrap":
         return bootstrap()

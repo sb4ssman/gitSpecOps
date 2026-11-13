@@ -9,6 +9,12 @@ account and a different Tailscale identity -- the exact correctness trap recorde
 Every backend is reversible from the same API (``disable``) and inspectable (``status``), so a
 user is never left with a startup entry they cannot find. No backend writes outside the user's
 own profile.
+
+Each system also has its own switch for start-up items, which people use without gitSpecOps:
+Task Manager or Settings > Apps > Startup on Windows, Startup Applications on Linux desktops,
+Login Items on macOS. ``status`` reads that switch, so an entry turned off there is reported as
+off ("turned_off_elsewhere"), never as on. ``enable`` turns that switch back on; ``disable``
+removes the entry and that switch's record of it, leaving nothing behind.
 """
 from __future__ import annotations
 
@@ -56,14 +62,40 @@ def _windows_key():
                           winreg.KEY_READ | winreg.KEY_WRITE)
 
 
+#: Task Manager's and Settings' own on/off switch for each Run entry. A missing value means on;
+#: a value whose first byte is odd (03) means the person turned it off there.
+_APPROVED = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
+
+
+def _windows_turned_off() -> bool:
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _APPROVED) as key:
+            data, _kind = winreg.QueryValueEx(key, APP_NAME)
+    except FileNotFoundError:
+        return False
+    return bool(data) and bool(data[0] & 1)
+
+
+def _windows_forget_switch():
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _APPROVED, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.DeleteValue(key, APP_NAME)
+    except FileNotFoundError:
+        pass
+
+
 def _windows_status():
     import winreg
     try:
         with _windows_key() as key:
             value, _kind = winreg.QueryValueEx(key, APP_NAME)
-            return {"enabled": True, "target": value}
     except FileNotFoundError:
-        return {"enabled": False, "target": None}
+        return {"enabled": False, "registered": False, "turned_off_elsewhere": False, "target": None}
+    off = _windows_turned_off()
+    return {"enabled": not off, "registered": True, "turned_off_elsewhere": off,
+            "elsewhere": "Task Manager (Startup apps)" if off else None, "target": value}
 
 
 def _windows_enable(command):
@@ -75,11 +107,13 @@ def _windows_enable(command):
             command = [str(pythonw), *command[1:]]
     with _windows_key() as key:
         winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, _quote(command))
+    _windows_forget_switch()  # turned off in Task Manager before: on again, as asked
     return _quote(command)
 
 
 def _windows_disable():
     import winreg
+    _windows_forget_switch()
     try:
         with _windows_key() as key:
             winreg.DeleteValue(key, APP_NAME)
@@ -97,13 +131,21 @@ def _xdg_autostart_path() -> Path:
 
 
 def _linux_status():
+    """Startup Applications (GNOME, Cinnamon, MATE, KDE) turn an entry off inside the file:
+    ``Hidden=true`` or ``X-GNOME-Autostart-enabled=false``."""
     path = _xdg_autostart_path()
     if not path.is_file():
-        return {"enabled": False, "target": None}
+        return {"enabled": False, "registered": False, "turned_off_elsewhere": False, "target": None}
+    fields = {}
     for line in path.read_text(encoding="utf-8").splitlines():
-        if line.startswith("Exec="):
-            return {"enabled": True, "target": line[5:]}
-    return {"enabled": True, "target": str(path)}
+        name, sep, value = line.partition("=")
+        if sep:
+            fields.setdefault(name.strip(), value.strip())
+    off = (fields.get("Hidden", "").lower() == "true"
+           or fields.get("X-GNOME-Autostart-enabled", "").lower() == "false")
+    return {"enabled": not off, "registered": True, "turned_off_elsewhere": off,
+            "elsewhere": "Startup Applications" if off else None,
+            "target": fields.get("Exec") or str(path)}
 
 
 def _linux_enable(command):
@@ -178,9 +220,34 @@ def _launch_agent_path() -> Path:
     return Path.home() / "Library" / "LaunchAgents" / f"com.gitspecops.{APP_NAME}.plist"
 
 
+_MAC_LABEL = f"com.gitspecops.{APP_NAME}"
+
+
+def _macos_domain() -> str:
+    return f"gui/{os.getuid()}"
+
+
+def _macos_turned_off() -> bool:
+    """System Settings > General > Login Items, and `launchctl disable`, record the agent as
+    disabled in launchd; `launchctl print-disabled` lists it. Not yet tried on a Mac."""
+    try:
+        out = subprocess.run(["launchctl", "print-disabled", _macos_domain()], capture_output=True,
+                             text=True, timeout=30).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    for line in out.splitlines():
+        if f'"{_MAC_LABEL}"' in line:
+            return line.rstrip().endswith(("disabled", "true"))
+    return False
+
+
 def _macos_status():
     path = _launch_agent_path()
-    return {"enabled": path.is_file(), "target": str(path) if path.is_file() else None}
+    if not path.is_file():
+        return {"enabled": False, "registered": False, "turned_off_elsewhere": False, "target": None}
+    off = _macos_turned_off()
+    return {"enabled": not off, "registered": True, "turned_off_elsewhere": off,
+            "elsewhere": "Login Items" if off else None, "target": str(path)}
 
 
 def _macos_enable(command):
@@ -192,10 +259,13 @@ def _macos_enable(command):
         '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
         '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
         '<plist version="1.0">\n<dict>\n'
-        f"  <key>Label</key><string>com.gitspecops.{APP_NAME}</string>\n"
+        f"  <key>Label</key><string>{_MAC_LABEL}</string>\n"
         f"  <key>ProgramArguments</key>\n  <array>\n{arguments}  </array>\n"
         "  <key>RunAtLoad</key><true/>\n"
         "</dict>\n</plist>\n", encoding="utf-8")
+    # Turned off in Login Items before: on again, as asked.
+    subprocess.run(["launchctl", "enable", f"{_macos_domain()}/{_MAC_LABEL}"], capture_output=True,
+                   check=False, timeout=30)
     subprocess.run(["launchctl", "load", str(path)], capture_output=True, check=False, timeout=30)
     return str(path)
 

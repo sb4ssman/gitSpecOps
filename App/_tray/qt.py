@@ -234,10 +234,23 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
     menu.addSeparator()
     login = menu.addAction("Start at login")
     login.setCheckable(True)
-    try:
-        login.setChecked(bool(autostart.status().get("enabled")))
-    except (OSError, ValueError):
-        login.setEnabled(False)
+
+    def show_login_state():
+        # Read each time the menu opens: the person may have switched it in Task Manager,
+        # Startup Applications or Login Items since. Showing it must not change it.
+        try:
+            state = autostart.status()
+        except (OSError, ValueError):
+            login.setEnabled(False)
+            return
+        login.blockSignals(True)
+        login.setChecked(bool(state.get("enabled")))
+        login.blockSignals(False)
+        login.setText(f"Start at login (turned off in {state['elsewhere']})"
+                      if state.get("turned_off_elsewhere") else "Start at login")
+
+    show_login_state()
+    menu.aboutToShow.connect(show_login_state)
     login.toggled.connect(toggle_autostart)
     version_action = menu.addAction(version_line())
     version_action.setEnabled(False)

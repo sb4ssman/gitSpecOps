@@ -71,10 +71,18 @@ class SetupTests(unittest.TestCase):
         self.prerequisites.assert_called_once()
         self.environment.assert_not_called()
 
-    def test_menu_item_two_builds_the_environment_only(self):
-        self.assertEqual(self.interactive(["2"]), 0)
+    def test_menu_item_three_builds_the_environment_only(self):
+        self.assertEqual(self.interactive(["3"]), 0)
         self.environment.assert_called_once()
         self.prerequisites.assert_called_once()
+
+    def test_menu_item_two_runs_one_command_without_setting_anything_up(self):
+        import gitso
+        with patch.object(gitso, "menu", return_value=0) as command_menu:
+            self.assertEqual(self.interactive(["2"]), 0)
+        command_menu.assert_called_once()
+        self.assertIn("Run one command, without setting anything up", self.output.getvalue())
+        self.assert_no_actions()
 
     def test_the_walkthrough_is_the_first_and_default_item(self):
         with patch.object(subject.sys, "stdin", SimpleNamespace(isatty=lambda: True)), \
@@ -111,7 +119,8 @@ class WalkthroughTests(unittest.TestCase):
                 "gitso": None, "tailscale": None, "venv": True, "desktop": True, "git_name": "",
                 "git_email": "", "user": "", "enrolled": True, "machine": "Box", "libraries": ["/code"],
                 "web": "loopback", "face": "web", "fleet": {}, "tailnet": False, "synced_folders": [],
-                "login": True, "client": "", "clients": {}, "protected": {"never_publish": ["x"]},
+                "login": "on", "login_elsewhere": "", "client": "", "clients": {},
+                "protected": {"never_publish": ["x"]},
                 "engines": [], "gitleaks": None, "betterleaks": None, "trufflehog": None}
         base.update(overrides)
         return base
@@ -159,6 +168,43 @@ class WalkthroughTests(unittest.TestCase):
         out = self.output.getvalue()
         self.assertIn("FAILED", out)
         self.assertIn("Setup incomplete", out)
+
+    def area(self, area, answers, **overrides):
+        plan = self.walk.Plan(enrolled_after=True, venv_after=True)
+        with patch("builtins.input", side_effect=answers):
+            area(self.found(**overrides), plan)
+        return plan
+
+    def test_start_at_sign_in_turned_off_elsewhere_is_shown_and_can_be_turned_back_on(self):
+        plan = self.area(self.walk.area_app, ["t"], login="elsewhere", login_elsewhere="Task Manager (Startup apps)")
+        out = self.output.getvalue()
+        self.assertIn("off: turned off in Task Manager (Startup apps)", out)
+        self.assertIn("[T] Turn it back on", out)
+        self.assertEqual([c.review for c in plan.changes],
+                         ["Start at sign-in: turn it back on in Task Manager (Startup apps)"])
+
+    def test_start_at_sign_in_can_be_removed(self):
+        plan = self.area(self.walk.area_app, ["r"], login="on")
+        self.assertEqual([c.review for c in plan.changes], ["Start at sign-in: remove the entry"])
+
+    def test_keeping_start_at_sign_in_changes_nothing(self):
+        self.assertEqual(self.area(self.walk.area_app, [""], login="on").changes, [])
+
+    def test_without_tailscale_the_fleet_does_not_ask_about_it(self):
+        self.area(self.walk.area_fleet, ["n"], tailscale=None, tailnet=False)
+        out = self.output.getvalue()
+        self.assertIn("not installed (optional)", out)
+        self.assertNotIn("operate over Tailscale?", out)
+
+    def test_a_fleet_member_can_start_operating_over_tailscale(self):
+        plan = self.area(self.walk.area_fleet, ["t", "n"], tailscale="tailscale", tailnet=True,
+                         fleet={"folder": {}})
+        self.assertEqual([c.review for c in plan.changes], ["Fleet: operate over Tailscale"])
+        self.assertIn("Also open this machine's map in a browser", self.output.getvalue())
+
+    def test_starting_a_fleet_over_tailscale(self):
+        plan = self.area(self.walk.area_fleet, ["1", "y", "y", "n"], tailscale="tailscale", tailnet=True)
+        self.assertEqual([c.review for c in plan.changes], ["Fleet: start a fleet, operating over Tailscale"])
 
     def test_protected_values_are_masked_on_screen(self):
         self.assertEqual(self.walk.masked("someone@example.invalid"), "so" + "*" * 20 + "d")

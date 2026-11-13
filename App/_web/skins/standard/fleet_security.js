@@ -54,6 +54,11 @@ async function loadEngines() {
       const link = html('a', 'Where to get it'); link.href = engine.home_page; link.target = '_blank'; link.rel = 'noopener';
       text.append(html('span', ' '), link);
     }
+    if (!engine.installed && engine.install) {
+      const how = html('span', undefined, 'sec-install');
+      how.append(html('span', 'To install it, run in a terminal: ', 'host-note'), html('code', engine.install));
+      text.append(how);
+    }
     row.append(tick, text);
     box.append(row);
   }
