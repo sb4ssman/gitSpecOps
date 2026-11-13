@@ -9,7 +9,8 @@
 No arguments shows the menu only in a terminal; otherwise help, without setup or prompts.
 Commands forward explicit arguments to existing entry functions, preserving their consent,
 settings and output behavior. This is a common front door, not a second operation engine.
-Optional integrations stay optional; this launcher never installs aliases or changes profiles.
+Optional integrations stay optional; this launcher never changes PATH or shell profiles. Only
+setup does, when you choose it there (_build/gitso_command.py), and it can remove them again.
 """
 from __future__ import annotations
 

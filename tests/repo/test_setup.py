@@ -121,7 +121,10 @@ class WalkthroughTests(unittest.TestCase):
                 "web": "loopback", "face": "web", "fleet": {}, "tailnet": False, "synced_folders": [],
                 "login": "on", "login_elsewhere": "", "client": "", "clients": {},
                 "protected": {"never_publish": ["x"]},
-                "engines": [], "gitleaks": None, "betterleaks": None, "trufflehog": None}
+                "engines": [], "gitleaks": None, "betterleaks": None, "trufflehog": None,
+                "gitso_command": {"launcher": "none", "on_path": False, "folder": "/home/x/.gitspecops/bin",
+                                  "aliases": [], "in_this_terminal": False},
+                "alias_targets": ["/home/x/.bashrc"], "powershell_profiles_run": None}
         base.update(overrides)
         return base
 
@@ -205,6 +208,20 @@ class WalkthroughTests(unittest.TestCase):
     def test_starting_a_fleet_over_tailscale(self):
         plan = self.area(self.walk.area_fleet, ["1", "y", "y", "n"], tailscale="tailscale", tailnet=True)
         self.assertEqual([c.review for c in plan.changes], ["Fleet: start a fleet, operating over Tailscale"])
+
+    def test_gitso_can_be_put_on_the_command_path_with_an_optional_alias(self):
+        plan = self.area(self.walk.area_gitso, ["a", "y"])
+        self.assertEqual([c.title for c in plan.changes], ["The gitso command", "gitso alias"])
+        self.assertIn("/home/x/.gitspecops/bin", plan.changes[0].review)
+        self.assertIn("/home/x/.bashrc", plan.changes[1].review)
+        self.assertNotIn("uv tool", self.output.getvalue())
+
+    def test_gitso_in_place_can_be_kept_or_removed(self):
+        here = {"launcher": "here", "on_path": True, "folder": "/home/x/.gitspecops/bin",
+                "aliases": ["/home/x/.bashrc"], "in_this_terminal": True}
+        self.assertEqual(self.area(self.walk.area_gitso, ["", ""], gitso_command=here).changes, [])
+        plan = self.area(self.walk.area_gitso, ["r", "n"], gitso_command=here)
+        self.assertEqual([c.review.split(":")[0] for c in plan.changes], ["gitso command", "gitso alias"])
 
     def test_protected_values_are_masked_on_screen(self):
         self.assertEqual(self.walk.masked("someone@example.invalid"), "so" + "*" * 20 + "d")

@@ -2382,3 +2382,22 @@ No code changed; decisions recorded where they govern.
   processors, at most 4. Measured here (16 cores, 32 logical): 1 at a time 371s; 4, 108s;
   8, 104s; 16, 103s. The floor is security/test_commit_gate.py (~81s alone).
 - Checked first: tests use temporary folders; the one environment change is per process.
+
+## 2026-11-13 12:10 - user (claude) - README rebuilt; gitso as plain-text launchers
+- README.md rebuilt in the agreed order from the 2026-11-12 goal draft (now retired): one line,
+  the map, how it works in four steps and three layers, what never happens, three ways in, the
+  growth table (following setup_state TIERS; unbuilt items marked planned), tray and map,
+  protect, agents, commands by layer, then the details. Stale commands corrected (gitso has no
+  `sync` or `app`: publish-status check, setup-fleet fleet-key). The draft's unbuilt promises
+  moved to WORKING-NOTES.
+- gitso on the command path without packaging: `_build/gitso_command.py` writes readable
+  launchers in ~/.gitspecops/bin (the rustup/deno/bun convention), `gitso.cmd` + a Git Bash
+  script on Windows, a sh script elsewhere; each picks this folder's .venv at run time, else the
+  base Python that ran setup. PATH: the Windows user Path (with a change broadcast); on
+  macOS/Linux a marked block in ~/.profile, ~/.bashrc and ~/.bash_profile when present, ~/.zshenv,
+  fish conf.d. Optional alias: a marked function block in bash, zsh, fish and PowerShell profiles;
+  a Restricted PowerShell policy is warned about. Remove deletes exactly what was written.
+  Walkthrough screen 3 offers set up / keep / fix / remove, and the alias. Removed the
+  [project.scripts] + setuptools packaging (the user uninstalled the uv tool). Both launchers
+  ran gitso for real from a scratch folder (cmd and Git Bash). Tests: 7 new + 4 walkthrough.
+  Full suite 87/87 in 109s.

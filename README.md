@@ -1,609 +1,477 @@
 <p align="center"><img src="_docs/images/gitspecops-mark.svg" width="96" height="96" alt="The gitSpecOps mark: a hub joined to a ring of machines"></p>
 
-# gitSpecOps 
+# gitSpecOps
 
-**git Special Operations** — careful, boring, stdlib-only tools for when you have far too many
-Git repositories and doing it by hand has stopped being reasonable.
+**Git Special Operations: every copy of every Git repository you have, on every machine you
+own, seen on one map, kept current, protected and coordinated.**
 
-**Work-in-progress checkpoint:** settings, security and interface integration has changed
-substantially and is still under way. Direct/CLI components have focused Windows evidence;
-complete GUI parity, native Linux/macOS and real-fleet acceptance remain unfinished. This
-checkpoint preserves development progress and does not declare a finished release.
+You have repositories on a laptop, a desktop, a server, maybe an old machine in a closet. Some
+have work you never pushed. Some are behind. Some exist on one machine only. Some contain a
+value that must never be published. gitSpecOps knows, shows you on one map, and asks you one
+clear question about anything that needs you.
 
-**Work-in-progress checkpoint:** settings, security and interface integration has changed
-substantially and is still under way. Direct/CLI components have focused Windows evidence;
-complete GUI parity, native Linux/macOS and real-fleet acceptance remain unfinished. This
-checkpoint preserves development progress and does not declare a finished release.
-
-Each operation is the kind of script you would eventually write yourself, with the dangerous
-parts already thought through: it shows you a plan before it acts, it refuses anything ambiguous,
-and it never touches your credentials.
-
-The common source launcher is `python gitso.py`: use `commands` to list operations, `docs`
-to read source-derived usage, or a command such as `scan-tree --help`. With a terminal it also
-offers a menu. Existing direct scripts remain supported; the launcher calls their entry
-functions and preserves their individual behavior. It does not install a shell alias.
-
-Security scans use built-in checks without extra Python packages. Optional credential engines
-can be selected individually or together with repeatable `--engine gitleaks`, `--engine
-betterleaks` or `--engine trufflehog`; `--engine none` overrides saved selection. Selected
-unavailable/unsupported engines report incomplete checking. Findings are masked but include
-locations, line numbers, finding ids and review guidance. No engine is installed automatically;
-native engine/version validation remains development work.
-
-Archive Sync's explicit `--publish` action now checks the exact outgoing history before sending
-one planned commit/branch. Prohibited values, high-confidence credential patterns, unresolved
-findings and incomplete checks hold the push; `--yes` does not bypass security. An earlier
-commit can still block publication even if the latest files are clean. The direct checked
-commit and push commands use the same checks. Select a profile with `--settings-home`;
-security scan/review/commit/push commands can explicitly read existing text policy using
-`--legacy-policy` without converting settings. Basic Git operations stay policy-free.
-
-Full reports are explicit: `--out` creates a new private JSON file at the selected destination.
-Outside Git, choose storage you control; inside Git the destination must be ignored and
-untracked. Existing files, links and invalid destinations are refused, without fallback.
-Normal stdout remains masked and lists the actual report artifact.
-
-For a documented example or test fixture, preview a review tied to that exact finding/content:
-
-```sh
-python gitso.py scan-tree /path/to/repo --settings-home /private/profile --out /private/reports/scan.json --json
-python gitso.py review-finding /private/reports/scan.json finding-000001 --settings-home /private/profile --reason "Reviewed example"
-```
-
-The review preview writes nothing. Rerun the same arguments with `--apply --approve REVIEW_PLAN_ID`
-using the returned plan id. The private decision records the reason; ordinary output does not
-repeat it. Rescan before taking an action. Changed bytes, location or repository require review
-again; unchanged accepted examples stay visible with a review id. Prohibited values, strong
-credentials, unsupported external-engine findings and coverage gaps cannot be waived. A binary
-file (a font, an executable) is a "binary content" finding rather than a gap: its readable strings
-are checked, and a review accepts that exact file version at that place, so changed bytes need
-review again. PDFs and 7z/RAR archives remain coverage gaps.
-To revoke, replace the finding argument with `--revoke REVIEW_ID`, preview and approve that plan.
-Records stay local under the selected profile; they are not automatically shared with the fleet.
-
-If Git's line-ending conversion or a clean filter changes a reviewed working file when staged,
-the commit check can hold the different staged bytes. Use `scan-tree --staged --out FILE` to
-inspect/review those staged changes, then create a fresh commit preview. This scan never stages
-or commits anything and leaves the working files alone. It excludes deleted versions and
-unstaged/untracked bytes; use history scanning separately for old material.
-
-**Dangerous history maintenance:** `clean-history` plans explicit cleanup and rewrites only a
-new private mirror. It preserves the source checkout and never publishes. Start with a full
-private `scan-history --out` report, then select finding IDs and explicit paths in a choice
-document. `python gitso.py docs clean-history` gives the current JSON format directly from source.
-Raw protected values are read programmatically; an agent does not need them in its choice file.
-
-```sh
-python gitso.py clean-history plan /private/history.json --choices /private/choices.json --settings-home /private/profile --include-remote-refs --plan-out /private/plan.json --json
-python gitso.py clean-history apply /private/plan.json --settings-home /private/profile --workspace /private/new-run --approve PLAN_ID
-```
-
-Use the same selected profile/policy mode for both steps. Tracking refs require explicit
-inclusion; their names, remote-only commits and symbolic aliases are preserved without fetching.
-Apply requires an attended terminal and typed `REWRITE`; there is no `--yes` or confirmation flag.
-The exact plan, native diagnostics and full rescan remain private, with masked results and
-presented artifacts. Settings/report/log failures never select another location or profile.
-Remaining findings or coverage gaps hold the result for review. A verified mirror does not
-rotate credentials, erase other copies, authorize publication or update other clones.
-
----
-
-## The special operations
-
-### 1. GitHub Organization Duplicator
-
-*Copy an entire namespace — down, up, or across — without clicking through a hundred
-repositories.*
-
-```bash
-python3 Special/duplicate_org.py
-```
-
-Downloads every repo in an org, uploads a folder of local repos into one, or migrates org → org.
-Previews what it will do, checks for name collisions before any remote call, asks for typed
-confirmation, and writes resumable run files so an interrupted 300-repo migration continues
-instead of restarting. Handles private/archived/fork filters, mirror or working clones, and
-parallel workers.
-
-### 2. Archive Updater
-
-*Point it at a folder full of clones and keep every one of them current, safely.*
-
-```bash
-python3 Special/update_archive.py --root /path/to/archive
-```
-
-Use `--scan-only --json --no-log` for a machine-readable inspection without report or log
-files on an unconfigured profile. Saved roots, exclusions and output/logging preferences are
-optional; explicit flags override them. Reports are off by default, while compact counts-only
-logs default to the selected user-data home. `--no-report` forces stdout and `--no-log` disables
-logging separately. Legacy settings require explicit migration; they are never silently adopted.
-
-**Fast-forward pulls only.** It never merges, rebases, resets, stashes, or deletes; a repository
-that is dirty, diverged, or on an unapproved remote is reported and skipped, not "fixed". The
-richer engine (`sync_archive.py`) additionally discovers an org's full repo set and can clone
-what is missing, repair stale origins after a rename, and rename folders to match upstream —
-each as a separate, explicitly approved class of change.
-
-Manage registered archives with current saved choices:
-
-```sh
-python3 Special/archive_manager.py --list
-python3 Special/archive_manager.py --refresh /path/to/archive --scan-only --json --no-report --no-log
-python3 Special/archive_manager.py --install /path/to/archive --mode update
-```
-
-Use `--settings-home /path/to/profile` to select a profile. Existing common v2 settings own
-archive choices; legacy-only profiles retain their registry without automatic migration.
-New archive launchers read saved choices when run. Reinstall without mode/remote-prefix flags
-to preserve those choices; older launchers need deliberate regeneration before migration.
-`--forget` removes common registration while retaining receipts and launchers for review.
-Refresh uses common `archive_manage` output/logging preferences. Reports default off; a saved
-preference or `--output-dir` enables one aggregate report. `--output-mode stdout|file|both`,
-`--json`/`--format`, `--no-report`, `--log`/`--no-log` and `--log-dir` override those choices.
-Invalid selected sinks stop the operation without choosing another location. Structured results
-list the actual report/log artifacts; file-only mode announces them on stderr. Update mode uses
-the Git-only updater; sync mode retains approved pull/clone discovery. Refresh never publishes,
-rewrites origins or renames folders. `--force-sync` changes only that invocation's mode.
-
-Programmatic callers can import `run_refresh` from `Special.archive_manager`; it returns a
-masked result with per-archive operations, outcomes and partial failures, without printing or
-capturing process output. Scan-only leaves receipts unchanged. Actual run receipts record
-status/time, while report locations come from the invocation's artifacts; status no longer
-guesses a report by searching archive folders. Registration/launcher creation and scheduling
-retain their separate workflows and remaining legacy logging.
-
-### 3. Sync Suggester
-
-*Know what every one of your machines left unfinished — which clone on which computer has
-uncommitted work, unpushed commits, or a report too stale to trust — and then put it all in
-order from wherever you are sitting.*
-
-```bash
-python3 Special/suggest_sync.py            # this machine: what needs attention; nothing published
-python3 Elaborate/suggest_fleet_sync.py    # every machine, from their published status
-python3 Special/catch_up.py                # plan a safe fast-forward of this machine's checkouts
-python3 App/tray.py                        # the fleet peer behind a tray icon, with its web view
-```
-
-Suggesting sync for one machine needs no fleet. An existing common profile owns enrollment;
-select it with `--settings-home`, and `--config-dir` separately selects local fleet state and
-legacy inputs. Invalid common settings never fall back to old files, and saves preserve other
-components. Profiles with only legacy configuration still work in place; loading never
-converts them, and `Elaborate/setup_fleet.py convert` is the one explicit conversion.
-
-Across machines it becomes the thing you actually want at 2am: "you left 17 uncommitted files on
-the laptop." Then it helps you fix it: group fast-forward everything after weeks away, publish
-ahead-only work, clone a set you are missing, or recover uncommitted work stranded on a machine
-that is currently switched off.
+It sits beside tools like GitHub Desktop and Sourcetree. They work *deeply* in one repository;
+gitSpecOps works *broadly*, across all of them and all your machines, and opens any repository
+in your desktop Git app when you want to go deep.
 
 ![The network map in the web view: GitHub above four machines (Desktop, Home server, Laptop, Old laptop), each with its repository count, what needs attention, and the copies they share](_docs/images/network-map.png)
 
 *A hypothetical fleet: every machine, owner and repository name in this picture is made up.*
 
-**Watching never changes anything by itself.** The background peer observes, publishes and
-fetches. It changes a repository only where you set up a standing consent for it — fast-forward
-of clean, behind-only checkouts, say, on wake — and never commits, merges, rebases or forces.
-Everything else is a command you ran, from the terminal or a button, with a plan shown first and
-nothing ambiguous applied.
+> **Development preview.** Everything below marked *(planned)* is not built yet. Development and
+> testing happen on Windows first; Linux and macOS are being verified now.
 
 ---
+
+## How it works
+
+1. **Every machine writes one small status file about its own repositories:** names, branches,
+   and how far ahead, behind or uncommitted each copy is. Never file contents, never folder paths.
+2. **Every machine reads everyone's files and draws the same map.** A machine that is switched
+   off still appears, with its last report and how old that report is.
+3. **The files travel however you like:** directly between your machines over Tailscale, through
+   a folder your sync client already shares (OneDrive, Dropbox, Syncthing, a network share), or both.
+4. **Git and the GitHub CLI do every real operation.** gitSpecOps looks, plans, checks and asks.
+
+That is the whole system. Everything else is built on it in three layers, each using only the
+one before:
+
+| Layer | Means | For example |
+|---|---|---|
+| **Basic** | one Git or host operation, done carefully | find every repository under a folder |
+| **Special** | this machine, once | what needs attention here; catch up safely; scan before publishing |
+| **Elaborate** | other machines, or over time | the fleet map; is this machine safe to wipe; start at sign-in |
+
+Security sits alongside every layer: the same checks run at every exit, whether a commit, a push
+or a publish.
+
+## What never happens
+
+- No force push, no `reset --hard`, no rebase, merge or delete as an automatic action, ever.
+- Nothing changes a repository by itself. Watching only watches; every change is a command you
+  ran, shown as a plan first.
+- Nothing is scanned before you name the folders, and "find my libraries" looks only where you
+  say, after you say so.
+- No credentials stored: Git, `gh` and Tailscale use your own sign-ins.
+- Nothing leaves your machine except what you chose to share: status facts, and repository names
+  only if you allow them. Never paths, diffs, file contents or commit messages.
+
+---
+
+## Get started
+
+You need **Python 3.11 or later** and **Git**. Everything else is optional and only for the
+features that use it: the GitHub CLI (`gh`), Tailscale, a file-sync client, a secret scanner.
+
+```sh
+git clone https://github.com/sb4ssman/gitSpecOps
+cd gitSpecOps
+./run_setup.sh          # Windows: run_setup.bat
+```
+
+Setup offers three ways in:
+
+1. **Walk me through everything.** It finds what this computer already has (Git, the GitHub
+   CLI and its sign-in, the desktop app, library folders, start at sign-in, a desktop Git app,
+   protected values, secret scanners, Tailscale, a fleet), asks about each part, and changes
+   nothing until you have reviewed the whole list.
+2. **Run one command, without setting anything up.** Any Basic, Special or Elaborate command,
+   straight from the folder, installing nothing: registering archive folders to keep updated, say.
+3. **The `gitso` command.** A command of its own, beside `git` and `gh`, in any terminal. The
+   walkthrough can put it on your command path (small text launchers in `~/.gitspecops/bin`, on
+   every system), and optionally add it to your shells as an alias; it removes both just as
+   easily. Without it, every command runs as `python gitso.py <command>`.
+
+```sh
+gitso commands             # every command, by layer
+gitso docs suggest-sync    # what a command reads, may change, and returns
+gitso suggest-sync         # this machine: what needs attention
+```
+
+---
+
+## Grow as you go
+
+gitSpecOps is useful with nothing set up, and every step multiplies what came before: a fleet of
+four machines turns "see my repositories" into "see every copy, on all four, even the ones
+switched off".
+
+| | **Nothing set up** | **+ This machine** | **+ A fleet** | **+ Tailscale** |
+|---|---|---|---|---|
+| **You add** | nothing | your library folders | a fleet key and a way to share | your own tailnet |
+| **Basic** | find, fetch and safely fast-forward any folder you name | | | |
+| **Special** | check what needs attention; catch up; archives; copy an organization | an always-on map of this machine; recovery snapshots of unfinished work | | |
+| **Elaborate** | | start at sign-in | every machine on one map; where work is unpushed; clone what is missing; prove a machine safe to wipe | live status between machines; the map on your phone |
+| **Protect** | scans; checked commit and push; history cleanup | findings on the map, on request | audit every machine *(planned)* | |
+| **Agents can** | work on folders you name | work on this machine | observe the whole fleet | |
+
+Also planned: keeping repositories current automatically under a consent you set; asking
+another machine to act, live over Tailscale or when it next wakes. A private GitHub repository
+as a fourth way to share is built but **experimental and untested**.
+
+---
+
+## The tray and the map
+
+One tray icon, one colour, one meaning:
+
+| Colour | Means |
+|---|---|
+| Green | This machine and the fleet are in order. |
+| Amber | Something waits for one decision from you. |
+| Red | Something is wrong; the tooltip says what. |
+
+Double-click opens the map in your browser, served only on this computer. Right-click to rescan,
+preview a catch-up, start at sign-in, or quit.
+
+The map shows your machines and the copies they hold. Copies of the same repository line up
+across machines, so "ahead here, behind there, missing on that one" is visible at a glance.
+Switch views: a zoomable map of clouds and machines; machines together; libraries; one
+organization across machines; one repository across machines. Choose any machine as the point
+of view. The **Security** tab scans the repositories you tick, and shows each scanner you could
+add with the command that installs it on your system.
+
+---
+
+## Protect
+
+Publishing a repository publishes its whole history, not just today's files. gitSpecOps checks
+before anything leaves:
+
+- **Scans** of the working files, the staged bytes, or the full history, with built-in checks
+  and, if you have them, Gitleaks, Betterleaks (version 1) or TruffleHog.
+- **Checked commit and push.** A commit carries exactly the files you named; a push sends exactly
+  the planned commits. Both are held by a secret, a value on your never-publish list, or an
+  unreviewed binary.
+- **Reviews.** Accept one finding at one exact place, once; it is not a blanket exception.
+- **History cleanup.** Rewrite history into a new private copy, prove what changed, rescan, and
+  only then publish; afterwards your clones follow the new history, and the commit ids quoted in
+  your files are updated.
+
+## For AI agents
+
+`gitso` is built so an agent can work with your repositories as safely as you can:
+
+```sh
+gitso suggest-sync --json          # this machine: what needs attention
+gitso suggest-fleet-sync           # every machine
+gitso scan-tree <repo> --json      # findings, masked
+gitso commit <repo> <files> -m "…" # a plan with an id; nothing happens yet
+gitso commit <repo> <files> -m "…" --apply --approve <plan id>
+gitso docs <command>               # what a command reads, may change, and returns
+```
+
+- **Every command says what it does** before it does it: what it reads, what it may change,
+  where results go.
+- **Plans, then approval.** Anything that changes a repository first returns a plan with an id;
+  applying requires that exact plan, and a changed repository invalidates it.
+- **The same gates as you.** An agent's commit and push pass the same security checks, so it
+  cannot publish what must not leave.
+- **Machine-readable** results with `--json`, and no prompts when every choice is a flag.
+
+## Commands
+
+`gitso commands` lists them; each also runs by its own path, for example
+`python Special/suggest_sync.py --help`.
+
+| Layer | Commands |
+|---|---|
+| **Basic** | discover |
+| **Special** | enroll-machine, suggest-sync, name-repo, catch-up, audit-repos, materialize, list-live-buffers, duplicate-org, update-archive, archive-manager, sync-archive, export-inventory, restore-inventory, scan-tree, scan-history, review-finding, clean-history, follow-rewrite, commit, push |
+| **Elaborate** | setup-fleet, peer, publish-status, suggest-fleet-sync, converge, check-safe-to-wipe, recovery, doctor, preflight, start-at-login, schedule-archives |
+| **App** | tray, serve-web, setup |
+
+## Updates
+
+Running from a clone, `git pull` brings the latest version; your settings live outside the
+folder, so an update never touches them. Downloadable releases that update themselves are
+*(planned)*.
+
+---
+
+# In depth
 
 ## Requirements and hard assumptions
 
-Read this once; it explains most of the design.
-
 | | |
 |---|---|
-| **Python 3.11+** | No runtime dependencies. Everything is the standard library. |
-| **`git` on PATH** | Every Git operation shells out to your real `git`. |
-| **`gh`, already authenticated** | Required for anything that talks to GitHub. |
+| **Python 3.11+** | The command-line tools use only the standard library. The tray needs Qt (PySide6), which setup installs into this folder's `.venv` with `uv`. |
+| **`git` on PATH** | Every Git operation runs your real `git`. |
+| **`gh`, already signed in** | Only for anything that talks to GitHub. |
 
-```bash
-gh auth login      # you do this; gitSpecOps never does
-```
+**Authentication is yours and stays yours.** gitSpecOps stores no token, writes no credential
+file, configures no keyring, and never prompts for a password. It runs CLIs you have already
+signed in to (`gh auth login` is yours to run). If `gh` is not signed in, GitHub features decline
+to run; they never ask you for a secret.
 
-**The hard assumption is that authentication is yours and stays yours.** gitSpecOps stores no
-token, writes no credential file, configures no keyring, and never prompts for a password. It
-shells out to CLIs you have already logged into. If `gh` is not authenticated, GitHub-aware
-features decline to run — they do not fall back to asking you for a secret.
-
-Consequences worth knowing up front:
-
-- Anything GitHub-specific (org listing, repo creation, following renames) needs `gh`. Plain
-  archive updating needs only `git`, and works against any host.
+- Anything GitHub-specific (organization listing, repository creation, following renames) needs
+  `gh`. Plain archive updating needs only `git`, and works against any host.
 - `GIT_TERMINAL_PROMPT=0` is forced everywhere, so a repository with expired credentials fails in
-  under a second instead of hanging forever on an invisible prompt.
+  under a second instead of hanging on an invisible prompt.
 - Every subprocess has a timeout. Nothing blocks unbounded.
 
-**Optional, and only where named:** `uv` (faster environment setup), Tailscale (live fleet tier
-only), a folder-sync client or a private GitHub repo (cross-machine status transport).
+## Setup without the walkthrough
 
----
+Updater preferences can be configured without enrolling this machine:
 
-## Install and run
-
-There is no install step. Clone it and run the scripts:
-
-```bash
-git clone https://github.com/sb4ssman/gitSpecOps
-cd gitSpecOps
-python3 Special/archive_manager.py --help
-```
-
-`run_setup` walks you through the rest: it finds what this computer already has (Git, the GitHub
-CLI, uv, the desktop app, library folders, start at sign-in, a desktop Git app, protected values,
-secret scanners, Tailscale, a fleet), asks about each part, and changes nothing until you review
-it. To skip all of that, its second item runs any single Basic, Special or Elaborate command
-straight from the folder, installing nothing: registering archive folders to keep updated, say.
-
-`gitso` is a command of its own, alongside `git` and `gh`: it makes the special operations
-available in any terminal and uses `git` and `gh` underneath; it replaces neither. One of the
-walkthrough's questions installs it (`uv tool install`); without it, every command still runs
-through `python gitso.py`:
-
-```powershell
-.\run_setup.bat          # or ./run_setup.sh
-gitso commands           # or: python gitso.py commands
-```
-
-The project is deliberately *not* installed into `.venv`; the tools are plain scripts and `.venv`
-is just a predictable interpreter.
-
-Updater preferences can be configured without installing launchers or enrolling a fleet:
-
-```bash
+```sh
 python3 _build/setup_gitspecops.py settings
 python3 _build/setup_gitspecops.py settings-preview --root /path/to/archive --no-log --json
 python3 _build/setup_gitspecops.py settings-save --root /path/to/archive --no-log --json --approve '<review-id>'
 ```
 
-Guided setup reviews changes and requires typed `SAVE`. For assisted use, copy the preview ID
-and keep the same target/options when saving; changed files invalidate it. Paths are hidden
-unless `--show-paths` is selected. A custom `--settings-home` stays an explicit invocation/
-environment choice, without relocating other profiles. `settings-migration-preview` can inspect
-legacy mapping. For an archive/security-only profile, use the reviewed existing-settings setup:
+Guided setup reviews changes and requires typed `SAVE`. For assisted use, copy the preview id
+and keep the same target and options when saving; changed files invalidate it. Paths are hidden
+unless `--show-paths` is given. `settings-migration-preview` inspects an older profile's
+mapping. For an archive and security profile from an older version, use the reviewed
+existing-settings setup:
 
 ```sh
 python3 _build/setup_gitspecops.py settings-existing
 python3 _build/setup_gitspecops.py settings-existing-plan --json
 ```
 
-The plan changes nothing. Guided saving requires separate confirmation that legacy writers are
-stopped and the launcher plan was reviewed, then typed `SAVE`. Assisted use has an explicit
-`settings-existing-save --approve '<review-id>' --legacy-writers-stopped --launcher-plan-reviewed`
-action. Original bytes are retained under the selected user-data home before shared settings
-are created. `settings-existing-status --switch-id '<review-id>'` inspects any interrupted switch;
-`settings-existing-resume` requires the two confirmations again and refuses newer data. Add
-`--settings-home /path/to/profile` when needed. Paths are hidden unless the plan's `--show-paths`
-is selected. Launcher repair/retirement stays a separate choice; this action does not run Git,
-refresh archives, change scheduling or enroll a fleet. Profiles with existing fleet configuration
-need a separately reviewed conversion.
+The plan changes nothing. Guided saving requires separate confirmation that older writers are
+stopped and the launcher plan was reviewed, then typed `SAVE`; assisted use has
+`settings-existing-save --approve '<review-id>' --legacy-writers-stopped --launcher-plan-reviewed`.
+The original bytes are kept under the selected user-data folder before shared settings are
+created. `settings-existing-status --switch-id '<review-id>'` inspects an interrupted switch, and
+`settings-existing-resume` finishes it. Add `--settings-home /path/to/profile` to select a
+profile. Profiles with existing fleet configuration need a separately reviewed conversion
+(`gitso setup-fleet convert`).
 
----
+## Security in detail
 
-## Security scans
-
-Active scans use common security policy and print masked results without creating reports or logs:
+Scans use your saved security policy and print masked results without writing reports or logs:
 
 ```sh
-python3 Special/scan_tree.py /path/to/repo --settings-home /path/to/profile --json
-python3 Special/scan_history.py /path/to/repo --settings-home /path/to/profile --json
+gitso scan-tree /path/to/repo --json
+gitso scan-history /path/to/repo --json
 ```
 
-Saved protected values remain in force when an additional `--never-publish` file is selected.
-`security.repository_exceptions` in the private settings maps a repository path to saved
-never-publish values that repository may contain (a personal site that names a project on
-purpose); every other repository still blocks them, and explicit `--never-publish` files still apply.
-`--safe-file` and `--safe` add allowances; conflicting protected/safe values produce an error.
-Excluded roots or subtrees are refused before inspection. `--out` explicitly requests a full
-private report using the current ignored-location rules.
+- **Engines.** Built-in checks need no extra packages. Choose optional engines with repeatable
+  `--engine gitleaks`, `--engine betterleaks` or `--engine trufflehog`; `--engine none` overrides
+  the saved choice. A selected engine that is missing or unsupported makes the scan
+  *incomplete*, never a pass. Nothing is installed automatically.
+- **Protected values.** Saved never-publish values always apply; `--never-publish` files add to
+  them, `--safe-file` and `--safe` add allowances, and conflicting values are an error.
+  `security.repository_exceptions` lets one repository contain named protected values on purpose
+  (a personal site that names a project); every other repository still blocks them.
+- **Reports.** `--out` writes a full private JSON report, only where you say: outside Git, storage
+  you control; inside Git, an ignored and untracked path. Existing files and links are refused.
+- **Older profiles.** `--legacy-policy` reads an unmigrated profile's text lists without changing
+  them.
 
-For an unmigrated profile, `--legacy-policy` explicitly reads its old text lists without
-changing them. It refuses an existing common settings file. Default scans never silently
-fall back to legacy policy. General settings conversion, policy editing UI and fleet/action integration remain
-unfinished; these scans do not enforce commits or pushes in other tools.
-
-### Checked named-file commits
-
-Preview the working-tree files, message and effective Git author/committer before committing:
+**Reviews.** For a documented example or a test fixture, review that exact finding:
 
 ```sh
-python3 gitso.py commit /path/to/repo file.py docs/usage.md -m 'Describe the change' --json
-python3 gitso.py commit /path/to/repo file.py docs/usage.md -m 'Describe the change' --apply --approve '<plan-id>'
+gitso scan-tree /path/to/repo --out /private/reports/scan.json --json
+gitso review-finding /private/reports/scan.json finding-000001 --reason "Reviewed example"
 ```
 
-Use the same arguments and the preview's `plan_id`; changed inputs invalidate approval.
-`Special/commit_repo.py` is the equivalent direct entry point. Both accept `--settings-home`.
-Only the named files are committed, using their whole working-tree contents, preserving other
-staged work. This is not a commit of the entire index. Checks include Git-filtered staged bytes
-and the final native hook inputs. Findings needing review and incomplete checks hold the action.
+The preview writes nothing; rerun with `--apply --approve <plan id>`. Changed bytes, location or
+repository need review again. Protected values, strong credentials, unsupported engine findings
+and coverage gaps cannot be waived. A binary file (a font, an executable) is a "binary content"
+finding: its readable strings are checked, and a review accepts that exact file at that place.
+PDFs and 7z/RAR archives remain coverage gaps. Revoke with `--revoke <review id>`. Reviews stay
+on this machine.
 
-Existing traditional hooks retain their order through a temporary per-invocation relay; no
-hooks or Git settings are permanently installed. Requires Git 2.36 or later. Direct individual
-files/deletions on an attached branch are supported; directories, linked files, merge/rebase
-states and newer configured hook chains require compatibility work. Hook edits to approved
-contents/message require another preview. A refusal after staging leaves the selected files
-staged. If Git already created a commit and final verification fails, the result says `partial`
-and reports whether a commit was observed; inspect locally before retrying. Nothing is pushed
-or automatically undone. Native Git/hook error text stays out of normal text/JSON output.
+**Staged bytes.** If Git's line-ending conversion or a clean filter changes a reviewed file when
+staged, `scan-tree --staged --out FILE` inspects exactly what would be committed. It never stages
+or commits anything.
 
-### Checked publication and sync advice
+**Checked commit.** Preview the files, message and author, then apply that exact plan:
 
 ```sh
-python3 gitso.py push /path/to/repo --json
-python3 gitso.py push /path/to/repo --apply --approve '<plan-id>'
-python3 gitso.py sync --settings-home /path/to/profile check --root /path/to/library --local-only --no-publish --no-catalog --json
+gitso commit /path/to/repo file.py docs/usage.md -m 'Describe the change' --json
+gitso commit /path/to/repo file.py docs/usage.md -m 'Describe the change' --apply --approve '<plan-id>'
 ```
 
-`Special/push_repo.py` is the direct push route. Preview selects the local branch/tip/destination
-and policy without network access or outgoing security clearance. Apply requires the unchanged
-plan, fetches and checks actual outgoing history through the same gate as Archive Sync, then
-publishes that fixed branch snapshot. There is no force, extra-tag or security-bypass option.
+Only the named files are committed, with their whole working contents; other staged work is
+kept. Existing hooks run in their usual order through a temporary relay; no hooks or Git
+settings are installed. Requires Git 2.36 or later. Directories, linked files, merge or rebase
+states need compatibility work. If Git created a commit but final verification fails, the result
+says `partial`; nothing is pushed or undone automatically.
 
-Sync `check` now checks local working files and cached outgoing history alongside Git status.
-Missing upstreams, stale scope, selected-engine failures and unsupported mappings are explicit;
-advice does not authorize an action. Its JSON is a local envelope with `schema_version`,
-`manifest`, `local_security` and `artifacts`, replacing the former bare-manifest stdout. Only
-`manifest` is sent to transports. Security findings stay local. Observation still succeeds with
-alerts so useful sync facts remain available; inspect each security `check_status`.
+**Checked push.** `gitso push /path/to/repo --json` previews the branch, tip and destination
+without network access; `--apply --approve '<plan-id>'` fetches, checks the actual outgoing
+history through the same gate as archive publishing, then pushes that fixed snapshot. There is
+no force, extra-tag or bypass option.
 
-The running local peer dashboard offers **Check local security** on observed local repositories.
-It invokes the same reader for every local copy and displays timestamped masked findings and
-coverage in session memory. It writes no report and shares no findings. Existing manifest-only
-dashboards and watch mode do not perform these checks; fleet status alone is not clearance.
+**Status with security.** `gitso publish-status check --root /path/to/library --local-only
+--no-publish --no-catalog --json` reports Git status together with local findings. Only the
+status manifest is ever shared; findings stay on this machine. The map's **Check local
+security** runs the same checks on observed repositories, in memory only.
 
-Fleet setup now hides generated keys. Use `gitso sync fleet-key` or `gitso app fleet-key` for
-metadata; `--show` deliberately prints the raw key here. An agent capturing that output sees it.
-The native Windows tray uses the shared event/counter logger at the selected app logging
-directory (`<user-data>/logs/app_tray.log` by default), respecting disabled logging and sink
-errors. Console output and shown keys are not copied into logs or notifications.
+**History cleanup** is dangerous maintenance and is built to be hard to misuse. It rewrites only
+a new private mirror, never the source, and never publishes:
 
-## Archive updating in more detail
-
-### `update_archive.py` vs `sync_archive.py`
-
-Both fast-forward clean repositories. The difference is remote discovery:
-
-- **`update_archive.py`** — `git` only, no network beyond the pull. It updates what is already
-  on disk. Works with any Git host.
-- **`sync_archive.py`** — asks a provider (GitHub via `gh`) what *should* be there, so it can
-  clone missing repositories, spot renames, and flag orphans.
-
-If no provider matches the host, or discovery fails, `sync_archive.py` **degrades to update-only**
-— it pulls every clean repo and never invents a clone, an orphan, or a rename from a failed
-listing. That fallback is enforced by a flag (`remote_authoritative`) and pinned by tests.
-
-Identity is by **stable provider id**, never by folder name or URL. GitHub node ids survive both
-repository and organization renames, so a deliberately renamed local folder is preserved while
-genuine upstream drift is surfaced for you to confirm.
-
-### `archive_manager.py` — the local front door
-
-Registers archives, installs per-archive launchers, refreshes saved update/sync modes and writes
-local logs. Scheduling remains in `Elaborate/schedule_archives.py`. The registry, log and scheduled
-refresh-all launcher live in
-your per-user gitSpecOps folder (`%APPDATA%\gitspecops` on Windows, `~/.config/gitspecops`
-elsewhere; `GITSPECOPS_HOME` overrides), never in the checkout, so the scheduled task keeps
-working when the code moves.
-
-```powershell
-python Special\archive_manager.py --refresh-all --scan-only
-python Elaborate/schedule_archives.py --install-monthly-task --task-day 1 --task-time 09:00
-python Elaborate/schedule_archives.py --task-status
+```sh
+gitso scan-history /path/to/repo --out /private/history.json --json
+gitso clean-history plan /private/history.json --choices /private/choices.json --include-remote-refs --plan-out /private/plan.json --json
+gitso clean-history apply /private/plan.json --workspace /private/new-run --approve PLAN_ID
 ```
 
-Generated archive launchers only refresh saved update/sync choices. Origin and folder repairs
-require explicit archive-sync flags. Registration selects the saved mode, then offers a normal
-refresh; it does not repair repositories while registering them.
+`gitso docs clean-history` gives the choices format. Apply needs an attended terminal and typed
+`REWRITE`; there is no `--yes`. Remaining findings or gaps hold the result for review. A verified
+mirror does not rotate credentials, erase other copies or update other clones: publishing it is
+your step, and `gitso follow-rewrite` then moves your clones onto it.
 
-`Special/update_archive.py` is the updater. `Special/archive_manager.py` owns registration and
-local refresh. `Elaborate/schedule_archives.py` only creates refresh-all launchers or manages
-scheduling; it does not accept local management flags. Generated refresh-all launchers invoke
-the Special manager directly. Existing launchers are never rewritten automatically.
+## Archives
 
-Archive commands default to stdout, with optional counts-only local logging. Saved settings or
-`--output-mode`, `--output-dir`, `--json`, `--log` and `--no-log` select channels. Required
-destinations fail explicitly without fallback. Results list actual report/log artifacts;
-file-only commands present their destinations on stderr. Direct scripts and `gitso` use the
-same headless operations. Archive sync defaults to a preview; mutations require approval,
-including `--yes` when invoked without a terminal.
+### Copy an organization
 
-### Publishing — explicit remote writes
-
-```bash
-python3 Special/sync_archive.py --root /path/to/archive --publish --dry-run
+```sh
+gitso duplicate-org
 ```
 
-`--publish` pushes **without `--force`**, so Git itself refuses anything that is not a
-fast-forward — the mirror image of `pull --ff-only`. Only clean, ahead-only repositories are
-eligible. Diverged goes to a human; behind-only needs a pull first. It re-fetches immediately
-before pushing, so "the remote moved" is reported rather than forced. It is its own apply class
-and **cannot** be combined with update/sync/reconcile, nor emitted by any generated launcher or
-scheduled task. Nothing is ever auto-committed, under any flag.
+Downloads every repository in an organization, uploads a folder of local repositories into one,
+or migrates organization to organization. Previews, checks for name collisions before any remote
+call, asks for typed confirmation, and writes resumable run files so an interrupted migration
+continues instead of restarting.
 
----
+### Keep archives current
 
-## Sync Suggester — the optional, larger one
+```sh
+gitso update-archive --root /path/to/archive
+gitso archive-manager --list
+gitso archive-manager --install /path/to/archive --mode update
+```
 
-The first two operations are careful scripts. This one is a small distributed system, so it is
-opt-in and configured once per machine.
+**Fast-forward pulls only.** A repository that is dirty, diverged, or on an unapproved remote is
+reported and skipped, never "fixed". `update-archive` uses only `git` and updates what is on
+disk, with any host. `sync-archive` asks GitHub (via `gh`) what *should* be there, so it can
+also clone what is missing, repair stale origins after a rename, and rename folders to match
+upstream, each as a separate, explicitly approved kind of change. If discovery fails it falls
+back to updating only; it never invents a clone, an orphan or a rename from a failed listing.
+Identity is by stable provider id, never by folder name or URL.
+
+`archive-manager` registers archives, refreshes them in their saved mode, and installs
+per-archive launchers; `schedule-archives` sets up a monthly refresh. Registrations live in your
+per-user gitSpecOps folder (`%APPDATA%\gitspecops` on Windows, `~/.config/gitspecops` elsewhere;
+`GITSPECOPS_HOME` overrides), never in the checkout, so a scheduled refresh keeps working when
+the code moves. Output goes to the terminal by default; reports and counts-only logs are opt-in.
+Use `--scan-only` to look without changing anything.
+
+### Publishing archives
+
+```sh
+gitso sync-archive --root /path/to/archive --publish --dry-run
+```
+
+`--publish` pushes without force, so Git itself refuses anything that is not a fast-forward.
+Only clean, ahead-only repositories are eligible, the exact outgoing history is checked first,
+and the remote is fetched again just before pushing. It cannot be combined with other changes,
+or run by a launcher or a scheduled task. Nothing is ever committed automatically.
+
+## The fleet in detail
 
 Every machine observes itself and writes **one file that it alone owns**; no machine is in charge
-of another. That single-writer rule is why there is no conflict-resolution code anywhere in this
-repository.
+of another. That single-writer rule is why there is no conflict-resolution code anywhere here.
 
-### Three transports — use as many as you can
-
-They are complements, not alternatives. Each one is another way for a machine to leave a
-fingerprint and another way for you to read one, so configuring all three is the goal rather
-than a choice you have to make:
-
-| Tier | What carries your status | Needs | Gives you |
+| Way to share | What carries the status | Needs | Gives you |
 |---|---|---|---|
-| **Durable** (experimental, untested) | a private GitHub repo, via the Contents API — never cloned | your `gh` login | retains published status when a peer is offline |
-| **Medium** | a folder your own sync client already replicates | any sync client | fast, no API budget |
-| **Live** | machines talking directly over Tailscale | Tailscale | near-real-time, readable peer names |
+| **Tailscale** | your machines, directly | Tailscale | near-real-time; readable machine names |
+| **A synced folder** | a folder your sync client already replicates | any sync client | fast; no account |
+| **A managed repository** (experimental, untested) | a private GitHub repository, never cloned | your `gh` sign-in | status kept while every machine is off |
 
-```bash
-python3 Elaborate/publish_status.py init --state-repo owner/private-repo --root ~/code
-python3 Elaborate/publish_status.py check      # observe, publish, advise
-python3 Elaborate/suggest_fleet_sync.py        # text, every machine
-python3 App/serve_web.py --manifests-only      # the browser view of published status
-```
-
-**The web view is local and needs nothing else to be running.** `App/serve_web.py` binds to
-loopback on this machine and renders whatever manifests it can read from whichever transports
-are configured. No Tailscale, no second machine awake, no server anywhere. A laptop that has
-been shut for a week still appears, with its last known state and an honest "this is three days
-old" — because the freshness rules treat an old report as old, never as an all-clear.
-
-That is the point of publishing to more than one transport: a machine that is unreachable right
-now has usually still left a fingerprint somewhere you *can* read.
-
-**The peer runtime ships:** `Special/enroll_machine.py` enrolls this machine (its libraries,
-and what the tray opens); `Elaborate/setup_fleet.py` joins it to a fleet;
-`Elaborate/peer.py` runs it headless; `App/tray.py` runs it behind a tray icon (Qt) with its web
-view, and `App/serve_web.py` serves the web view without a tray. `--remote` on either also
-serves the web view on the tailnet, to devices of your own Tailscale account only. Each peer
-observes through native filesystem events, publishes to its configured transports, and
-optionally pulls from tailnet peers. No central host is required.
-See [the fleet guide](_docs/FLEET.md) for setup and transport commands.
-
-### Catch up safely
-
-When returning to a machine after time away, use catch-up instead of pulling an unreviewed
-pile of checkouts by hand:
+Use as many as you can: each is another place a machine leaves its last report.
 
 ```sh
-python Special/catch_up.py
-python Special/catch_up.py --apply --yes
+gitso enroll-machine          # this machine's library folders
+gitso setup-fleet             # join or start a fleet; choose how to share
+gitso suggest-fleet-sync      # every machine, as text
+gitso tray                    # the peer behind a tray icon, with the map
+gitso serve-web               # the map without a tray
 ```
 
-The first command always performs a fresh, non-interactive fetch for each locally observed
-checkout and prints a plan. It changes no branch, index, or working file. The second command
-repeats that plan and fast-forwards only checkouts that are clean and behind-only; `--yes` makes
-the mutation explicit for terminal and unattended use. Dirty, untracked, ahead, diverged,
-detached, no-upstream, unreadable, and failed-fetch checkouts are listed for a human and are
-never altered. Catch up neither commits nor pushes work. Stop the local peer before running it;
-the fleet's configuration lock enforces that boundary, then the next peer start publishes the
-new status.
+**The map is local and needs nothing else running.** It is served on this computer only, from
+whatever status files it can read. A laptop shut for a week still appears, with its last known
+state and an honest "three days old". With your consent, the map can also be opened from your own
+Tailscale devices, and only those. See [the fleet guide](_docs/FLEET.md).
 
-### What crosses the wire
+**Catch up safely** after time away:
 
-Published manifests (schema v5) identify repositories by `HMAC-SHA256(fleet secret,
-host/owner/name)` — or, for a repository with no usable remote, an HMAC of its root commit, so
-the only copy of something is still on the map. **By default each record also names the
-repository, its checked-out branch and its current commit**, so every machine can show — and
-route you to — what the others hold, even a machine not seen in a week. One setting
-(`--withhold-names`, or "no" at setup) turns that off, and then a record is salted digests and
-small integers only. Never published, either way: local paths, URLs, filenames, diffs, commit
-messages or source content. A synced folder's provider can read whatever the manifest carries;
-setup says so beside the question. Details and honest limits:
+```sh
+gitso catch-up                # a fresh fetch and a plan; changes nothing
+gitso catch-up --apply --yes  # fast-forward only clean, behind-only checkouts
+```
+
+Dirty, untracked, ahead, diverged, detached, unreadable and failed-fetch checkouts are listed for
+you and never altered. Catch-up never commits or pushes. Stop the local peer first; the fleet's
+lock enforces that.
+
+**What crosses the wire.** Repositories are identified by `HMAC-SHA256(fleet key,
+host/owner/name)`, or for one with no usable remote, an HMAC of its root commit, so the only copy
+of something is still on the map. By default each record also names the repository, its branch
+and its commit, so every machine can show what the others hold. One setting (`--withhold-names`,
+or "no" during setup) turns that off. Never shared, either way: local paths, URLs, file names,
+diffs, commit messages or contents. A synced folder's provider can read whatever the status
+carries; setup says so beside the question. Details:
 [`.agents/knowledge/manifest-privacy.md`](.agents/knowledge/manifest-privacy.md).
 
-Two rules that make the advice trustworthy:
+- **Silence is never good news.** A report too old to trust never produces an "all clear"; stale
+  unfinished work keeps its warning.
+- **Machine freshness and remote freshness are separate clocks**, and the map says which is which.
 
-- **Silence is never good news.** A report too old to trust can never produce an "all clear"; a
-  stale clean report becomes `unknown`, while stale unfinished work keeps its warning.
-- **Machine freshness and remote freshness are separate clocks.** A manifest written a second ago
-  says nothing about how old its remote-tracking refs are, and the dashboard says which is which.
+The fleet key is shown only when you ask: `gitso setup-fleet fleet-key --show`. Anyone, or any
+program, that reads it can join your fleet.
 
----
+## Safety model
+
+- **Fast-forward only, everywhere.** Pulls are `--ff-only`; every push is a non-force push.
+- **Detect, show the plan, approve, run, review.** Failures are collected and reported at the
+  end. Nothing ambiguous is applied automatically.
+- **Destructive-adjacent actions are interactive only** and need typed confirmation; scheduled
+  and launcher runs cannot reach them.
+- **A tray item or a map button runs the same command as the terminal**, with the same plan and
+  confirmation. Operations that change repositories refuse to run beside a live peer.
+- **Bounded everything:** timeouts, bounded discovery and thread pools, non-interactive Git.
+- **Your credentials stay yours.** No token is read, stored, forwarded or logged.
 
 ## Layout
 
 ```text
-Basic/        one Git or host operation, done carefully: the subprocess wrapper, repository
-              facts, discovery, prompts, state paths, host providers (_providers/), version
-Special/      this machine, once: suggest_sync, catch_up, audit_repos, materialize,
-              list_live_buffers, name_repo, update_archive, sync_archive, archive_manager,
-              duplicate_org, export_inventory, restore_inventory, scan_tree, scan_history,
-              review_finding, clean_history, follow_rewrite, commit_repo, push_repo
-Elaborate/    other machines, or over time: setup_fleet, peer, publish_status,
-              suggest_fleet_sync, converge, check_safe_to_wipe, recovery, doctor, preflight,
-              start_at_login, schedule_archives (follow_rewrite_fleet, request: placeholders)
-App/          presence and presentation: tray (Qt), serve_web, desktop, window (placeholder);
-              the web view in _web/ (server, tailnet listener, skins)
-_os/          per-OS pieces, the same files for Windows, Linux and macOS
-_docs/        FLEET, DISPLAY-CONTRACT, RECOVERY-DESIGN
-_build/       desktop packaging recipe and release check
-tests/        offline, synthetic; no network, no real repositories
+gitso.py      the front door: every command, by name
+Basic/        one Git or host operation, done carefully
+Special/      this machine, once
+Elaborate/    other machines, or over time
+App/          the tray (Qt) and the map (web view)
+_os/          per-system pieces, the same files for Windows, Linux and macOS
+_docs/        the fleet guide, the display contract, recovery design, README images
+_build/       setup, the desktop packaging recipe and release check
+tests/        offline and synthetic; no network, no real repositories
 .agents/      project brief, working notes, work log, durable knowledge
 ```
 
 A file without an underscore is a command, runnable by its own path and listed by `gitso`;
-anything with one is plumbing. Everything below `App/` is standard-library Python; the tray
-and window use PySide6 (Qt), the App's one declared dependency. `Elaborate/_fleet/display.py`
-is the only module that turns fleet state into display semantics: every skin, the tray
-included, reads that versioned contract rather than reclassifying Git facts.
+anything with one is plumbing. Everything below `App/` is standard-library Python.
+`Elaborate/_fleet/display.py` is the only module that turns fleet state into what the map and
+tray show; every face reads that versioned contract.
 
----
-
-## Safety model
-
-- **Fast-forward only, everywhere.** Pulls are `--ff-only`; the single push path is a non-force
-  push. Git itself refuses anything that would lose work.
-- **Detect → show the plan → approve by class → execute gracefully → review.** Failures are
-  collected, never fatal, and reported at the end. Nothing ambiguous is auto-applied.
-- **Destructive-adjacent actions are interactive-only** and require typed confirmation. They are
-  structurally excluded from scheduled and launcher runs.
-- **Watching never changes anything by itself; background change only under a consent you
-  configured; everything else is a command you invoked.** Nothing is changed as a side effect of
-  observation, or of time passing. The only unattended change is one you set up explicitly and
-  can see and revoke — fast-forward of a clean, behind-only checkout, as the archive launchers
-  already do — and no consent can cover a commit, merge, rebase, reset, rename, delete or force.
-  A tray item or dashboard button runs the same command as the terminal, with the same plan and
-  confirmation. Sync Suggester's mutating operations
-  (`Special/catch_up.py --apply`, `Special/materialize.py --apply`, recovery restore) are named, confirmed,
-  refuse to run beside a live peer, and follow the same plan-then-approve ladder as the rest.
-- **Bounded everything.** Per-command timeouts, bounded discovery, bounded thread pools, forced
-  non-interactive Git so nothing can hang on a hidden prompt.
-- **Your credentials stay yours.** No token is read, stored, forwarded, or logged.
-
-When unsure, look before you leap:
-
-```bash
-python3 Special/archive_manager.py --refresh-all --scan-only
-python3 Special/sync_archive.py --root /path --publish --dry-run
-```
-
----
-
-## Generated, local, and never committed
-
-`.venv/`, `uv.lock`, `*.egg-info/`, `/build/`, `/dist/`, `Special/duplicate_org/runs/`, and
-`.agents/output/`. The archive registry is not in the
-checkout at all: it lives in the per-user gitSpecOps folder.
-
-Sync Suggester keeps its state **outside the repository** entirely — `GITSPECOPS_SYNC_HOME`,
-else XDG on POSIX / `%APPDATA%` on Windows, under `gitspecops/sync-suggester/`.
-
----
+**Kept out of the checkout:** settings, registrations, fleet state and logs live in your
+per-user gitSpecOps folder (`GITSPECOPS_HOME` or `GITSPECOPS_SYNC_HOME` override). Generated and
+never committed: `.venv/`, `uv.lock`, `Special/duplicate_org/runs/`, `.agents/output/`.
 
 ## Tests
 
-Every test is offline and synthetic — no network, no real repository, no personal name:
+Every test is offline and synthetic: no network, no real repository, no personal name.
 
-```bash
+```sh
 python3 tests/run_all.py            # several files at once (up to 4), each in its own process
 python3 tests/run_all.py --jobs 1   # one at a time, output as it happens
 ```
 
----
-
 ## Contributing and license
 
-Working on this repo, human or agent? Start with
-[`.agents/README.md`](.agents/README.md) — the primary project brief — and the living
-[`.agents/WORKING-NOTES.md`](.agents/WORKING-NOTES.md).
+Working on this repository, human or agent? Start with [`.agents/README.md`](.agents/README.md)
+and the living [`.agents/WORKING-NOTES.md`](.agents/WORKING-NOTES.md).
 
 Licensed under the GNU General Public License, version 3 only (GPL-3.0-only): use it, study it,
 change it and share it, and share anything you distribute that builds on it under the same terms.
 To build gitSpecOps into a product that is not GPL-3.0, ask for a commercial license by opening
-an issue on this repository. Versions up to commit `cacee74` were released under Apache
-2.0 and remain so. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+an issue on this repository. Versions up to commit `cacee74` were released under Apache 2.0 and
+remain so. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
 
 Contributions are welcome. Because gitSpecOps is also offered under a commercial license, a
 contribution can be accepted only with the contributor's agreement that it may be distributed

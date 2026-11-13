@@ -21,26 +21,8 @@ classifiers = [
 # No runtime dependencies below App/: every operation is stdlib-only and run as a script.
 dependencies = []
 
-# `gitso` as a command in any terminal, for setup's "Install the gitso command": `uv tool install
-# --editable <this folder>` builds a separate tool environment (never this folder's .venv) whose
-# `gitso` launcher runs the code in this checkout. Remove with `uv tool uninstall git-spec-ops`.
-[project.scripts]
-gitso = "gitso:main"
-
-[build-system]
-requires = ["setuptools>=69"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-py-modules = ["gitso"]
-
-[tool.setuptools.packages.find]
-include = ["Basic*", "Special*", "Elaborate*", "App*", "_os*"]
-namespaces = true
-
-# Build bookkeeping goes in _build/, never the repository root.
-[tool.distutils.egg_info]
-egg_base = "_build"
+# `gitso` on the command path is setup's job (_build/gitso_command.py): plain-text launchers that
+# run gitso.py, the same on every system. Nothing here builds or installs a package.
 
 [project.optional-dependencies]
 # The App's tray and window (Qt). Nothing below App/ may import it; the web view needs none.

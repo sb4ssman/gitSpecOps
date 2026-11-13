@@ -183,6 +183,10 @@ def detect() -> dict:
     found["client"] = (configured or {}).get("id", "")
     found["clients"] = discover_clients(configured)
     found["protected"], found["engines"] = _security()
+    from _build import gitso_command
+    found["gitso_command"] = gitso_command.status()
+    found["alias_targets"] = [str(path) for path in gitso_command.alias_files()]
+    found["powershell_profiles_run"] = gitso_command.powershell_runs_profiles() if WINDOWS else None
     for name in SCANNERS:
         found[name] = shutil.which(name)
     return found
@@ -319,29 +323,61 @@ def _build_env() -> str:
 
 
 def area_gitso(found: dict, plan: Plan) -> None:
+    from _build import gitso_command as command
     screen(3, "The gitso command")
-    row("gitso command", "installed" if found["gitso"] else "not installed",
-        "success" if found["gitso"] else "text")
-    line("gitso is a command of its own, alongside git and gh: it makes gitSpecOps' special "
-         "operations available in any terminal, in any folder (gitso commands, gitso scan-tree ., "
-         "and so on), using git and gh underneath. It replaces nothing. uv installs it as a small "
-         "launcher that runs the code in this folder. Without it, the same commands run as: "
-         "python gitso.py <command>. Remove it any time with: uv tool uninstall git-spec-ops", "muted")
-    if found["gitso"] or not plan.uv_after:
-        if not plan.uv_after:
-            line("Needs uv (the previous step).", "warning")
-        return
-    if yes_no("Install the gitso command?", "y", f"Runs: uv tool install --editable {ROOT}"):
-        plan.add("The gitso command", "gitso command: uv tool install --editable (this folder)", _install_gitso)
-
-
-def _install_gitso() -> str:
-    uv = shutil.which("uv")
-    if not uv:
-        raise RuntimeError("uv is not on PATH; open a new terminal and run setup again")
-    if subprocess.call([uv, "tool", "install", "--editable", str(ROOT)]) != 0:
-        raise RuntimeError("uv tool install did not finish")
-    return "gitso works in a new terminal"
+    state = found["gitso_command"]
+    where = state["folder"]
+    row("Command path", {"here": "set up", "elsewhere": "set up for another gitSpecOps folder",
+                         "none": "not set up"}[state["launcher"]]
+        + (", but its folder is not on PATH" if state["launcher"] != "none" and not state["on_path"] else ""),
+        "success" if state["launcher"] == "here" and state["on_path"] else "text")
+    row("Shell alias", ", ".join(Path(p).name for p in state["aliases"]) or "none")
+    files = "gitso.cmd and gitso (for Git Bash)" if WINDOWS else "gitso"
+    reach = "adds that folder to your user Path" if WINDOWS else \
+        "adds that folder to PATH with a marked line in your shell startup files"
+    line("gitso is a command of its own, alongside git and gh: gitSpecOps' special operations in "
+         "any terminal, in any folder (gitso commands, gitso scan-tree ., and so on), using git and "
+         f"gh underneath. It replaces nothing. Setup writes {files}, small text files you can read, "
+         f"in {where}, and {reach}. They run this folder's gitso.py with Python; nothing is compiled "
+         "or installed. Without it, the same commands run as: python gitso.py <command>.", "muted")
+    say()
+    if state["launcher"] == "none":
+        option("A", "Put gitso on your command path")
+        option("N", "Not now")
+        keys, default = "an0", "a"
+    elif state["launcher"] == "here" and state["on_path"]:
+        option("K", "Keep it")
+        option("R", "Remove it", f"Deletes the files in {where} and takes the folder off PATH.")
+        keys, default = "kr0", "k"
+    else:
+        option("F", "Fix it", "Point it at this folder and put its folder on PATH.")
+        option("K", "Leave it as it is")
+        option("R", "Remove it", f"Deletes the files in {where} and takes the folder off PATH.")
+        keys, default = "fkr0", "f"
+    option("0", "Stop the walkthrough", "Nothing has been changed.")
+    answer = choose(keys, default)
+    if answer == "0":
+        raise Stop
+    if answer in ("a", "f"):
+        plan.add("The gitso command", f"gitso command: write {files} in {where}; {reach}",
+                 lambda: command.install_launchers())
+    elif answer == "r":
+        plan.add("The gitso command", f"gitso command: delete it from {where} and take the folder off PATH",
+                 lambda: command.remove_launchers())
+    targets = found["alias_targets"]
+    if state["aliases"]:
+        if not yes_no("Keep the gitso alias in your shell profiles?", "y"):
+            plan.add("gitso alias", "gitso alias: remove the marked lines from " + ", ".join(state["aliases"]),
+                     lambda: command.remove_aliases())
+    elif targets:
+        warn = ("" if found["powershell_profiles_run"] is not False else
+                " PowerShell's execution policy here does not run profiles, so PowerShell would not "
+                "see it; the command path works there anyway.")
+        if yes_no("Also add gitso to your shell profiles, as an alias?", "n",
+                  "Optional: the command path above is enough. Adds a marked block to: "
+                  + ", ".join(targets) + "." + warn):
+            plan.add("gitso alias", "gitso alias: a marked block in " + ", ".join(targets),
+                     lambda: command.install_aliases())
 
 
 def area_machine(found: dict, plan: Plan) -> None:

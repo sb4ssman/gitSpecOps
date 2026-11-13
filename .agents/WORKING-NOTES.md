@@ -52,13 +52,14 @@ _Last tended: 2026-11-11 (clean-tree pass checkpoint: phases 1-8 done, phase 9 p
   Next: reviewing a finding from the page (accept an example, as `review_finding` does).
 - **Wanted next in the UI:** a menu of every command by layer, where e.g. catch-up asks which
   repository, previews, and runs through the same safety gates as the terminal.
-- **The whole-product picture (2026-11-12):** drafted as the eventual README in
-  [`drafts/eventual-README.md`](drafts/eventual-README.md): one install per OS with `gitso`
-  included, the tray and map, the growth matrix (installed, machine, fleet, managed repository,
-  Tailscale) across See / Keep current / Protect / Coordinate / Agents, agents through the same
-  gates, signed self-updates staged across the fleet. Under discussion with the user; it
-  replaces README.md only when true. Open: the in-app setup, CI builds on three systems, the
-  updater, code signing (the user's decision).
+- **The whole-product picture:** README.md was rebuilt from the 2026-11-12 goal draft
+  (2026-11-13; the draft is retired). What the draft promised and is not built stays open here:
+  one download per OS with `gitso` included; signed self-updates, staged across the fleet; CI
+  builds and tests on Windows, macOS and Linux; the managed repository as one shared privacy
+  policy and each machine's inbox of requests; coordination (ask another machine to act, live or
+  when it next wakes); automatic keep-current under a consent; auditing every machine. Code
+  signing is the user's decision. `Elaborate/_fleet/setup_state.py` TIERS marks each as built or
+  not, and the README's table follows it.
 - **Executing: [`HANDOFF-CLEAN-TREE.md`](HANDOFF-CLEAN-TREE.md)** (agreed with the user
   2026-11-11). Done: the mapping, `git-sync-suggester/` and `_archive/` gone, Qt tray over
   the web view, network map views, remote watch and act, every command headed. Left: see
