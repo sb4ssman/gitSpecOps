@@ -1,4 +1,4 @@
-"""Setup selection is explicit; fixtures never generate launchers or build environments."""
+"""Setup selection is explicit; fixtures never build environments, and setup writes no shortcuts."""
 from __future__ import annotations
 
 import io
@@ -25,12 +25,10 @@ class SetupTests(unittest.TestCase):
         stack.enter_context(redirect_stdout(self.output))
         stack.enter_context(redirect_stderr(self.errors))
         stack.enter_context(patch.object(subject.sys, "stdin", SimpleNamespace(isatty=lambda: False)))
-        self.launchers = stack.enter_context(patch.object(subject, "write_launchers"))
         self.environment = stack.enter_context(patch.object(subject, "build_environment", return_value=True))
         self.prerequisites = stack.enter_context(patch.object(subject, "report_prerequisites"))
 
     def assert_no_actions(self):
-        self.launchers.assert_not_called()
         self.environment.assert_not_called()
         self.prerequisites.assert_not_called()
 
@@ -53,32 +51,27 @@ class SetupTests(unittest.TestCase):
 
     def test_bootstrap_remains_available_explicitly(self):
         self.assertEqual(subject.main(["bootstrap"]), 0)
-        self.launchers.assert_called_once()
         self.environment.assert_called_once()
         self.prerequisites.assert_called_once()
 
-    def test_launchers_do_not_build_an_environment(self):
-        self.assertEqual(subject.main(["launchers"]), 0)
-        self.launchers.assert_called_once()
-        self.environment.assert_not_called()
-        self.prerequisites.assert_not_called()
+    def test_setup_writes_no_shortcuts(self):
+        self.assertFalse(hasattr(subject, "write_launchers"), "setup must not generate shortcut launchers")
+        with self.assertRaises(SystemExit):
+            subject.main(["launchers"])
 
     def test_environment_failure_is_reported(self):
         self.environment.return_value = False
         self.assertEqual(subject.main(["environment"]), 1)
-        self.launchers.assert_not_called()
         self.prerequisites.assert_not_called()
 
     def test_check_only_checks_prerequisites(self):
         self.assertEqual(subject.main(["check"]), 0)
         self.prerequisites.assert_called_once()
-        self.launchers.assert_not_called()
         self.environment.assert_not_called()
 
     def test_guided_selection_runs_only_the_selected_item(self):
         self.assertEqual(self.interactive(["2", "1"]), 0)
-        self.launchers.assert_called_once()
-        self.environment.assert_not_called()
+        self.environment.assert_called_once()
         self.prerequisites.assert_not_called()
 
     def test_back_and_invalid_selection_then_exit_do_nothing(self):

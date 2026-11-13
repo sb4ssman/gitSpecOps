@@ -8,12 +8,6 @@ __pycache__/
 venv/
 uv.lock
 
-# Generated convenience launchers (_build/setup_gitspecops.py writes these; edit it, not them)
-/update-archive.*
-/manage-archives.*
-/duplicate-github-org.*
-/suggest-sync.*
-
 # Tool runtime state
 archive_updater_registry.json
 # Stale pre-rename folder; archive_manager.py used to generate launchers here.

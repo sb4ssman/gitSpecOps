@@ -2329,3 +2329,10 @@ No code changed; decisions recorded where they govern.
   Followed: setup finds the repository root as its parent folder; run_setup.ps1/.sh, gitso's
   `setup` command, three test imports, one enrollment message and the docs name
   `_build/setup_gitspecops.py`. Verified: run_setup.ps1 check runs it; full suite 86/86.
+
+## 2026-11-13 08:27 - user (claude) - Setup writes no shortcuts
+- At the user's direction (per-tool shortcuts in the root do not match gitSpecOps): removed
+  the launcher templates, `write_launchers`, the `launchers` action and both menu entries from
+  `_build/setup_gitspecops.py`. Bootstrap builds the environment and checks prerequisites, then
+  points at `python gitso.py commands`. Docs and `.gitignore` no longer describe root
+  launchers. A test pins that setup has no launcher writer. Full suite 86/86.

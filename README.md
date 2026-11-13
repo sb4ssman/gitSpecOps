@@ -226,17 +226,15 @@ cd gitSpecOps
 python3 Special/archive_manager.py --help
 ```
 
-Optionally, `run_setup` builds a clean `.venv` and writes one convenience launcher per tool for
-your OS (`.sh` on Linux/macOS, `.ps1` + a `.bat` double-click shim on Windows):
+Optionally, `run_setup` builds a clean `.venv`; every command then runs through `gitso.py`:
 
 ```powershell
 .\run_setup.bat          # or ./run_setup.sh
-.\duplicate-github-org.bat
+python gitso.py commands
 ```
 
-Launchers are **generated, never committed** — edit `_build/setup_gitspecops.py`, not a launcher. The
-project is deliberately *not* installed into `.venv`; the tools are plain scripts and `.venv` is
-just a predictable interpreter.
+The project is deliberately *not* installed into `.venv`; the tools are plain scripts and `.venv`
+is just a predictable interpreter.
 
 Updater preferences can be configured without installing launchers or enrolling a fleet:
 
@@ -560,9 +558,8 @@ python3 Special/sync_archive.py --root /path --publish --dry-run
 
 ## Generated, local, and never committed
 
-`.venv/`, `uv.lock`, `*.egg-info/`, `/build/`, `/dist/`, the generated root launchers
-(`update-archive.*`, `manage-archives.*`, `duplicate-github-org.*`, `suggest-sync.*`),
-`Special/duplicate_org/runs/`, and `.agents/output/`. The archive registry is not in the
+`.venv/`, `uv.lock`, `*.egg-info/`, `/build/`, `/dist/`, `Special/duplicate_org/runs/`, and
+`.agents/output/`. The archive registry is not in the
 checkout at all: it lives in the per-user gitSpecOps folder.
 
 Sync Suggester keeps its state **outside the repository** entirely — `GITSPECOPS_SYNC_HOME`,
