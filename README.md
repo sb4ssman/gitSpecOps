@@ -1,89 +1,61 @@
-# gitSpecOps 
+# gitSpecOps
 
-**git Special Operations** — careful, boring, stdlib-only tools for when you have far too many
-Git repositories and doing it by hand has stopped being reasonable.
+**Every repository on every machine: seen, kept current, protected.**
 
-**Work-in-progress checkpoint:** settings, security and interface integration has changed
-substantially and is still under way. Direct/CLI components have focused Windows evidence;
-complete GUI parity, native Linux/macOS and real-fleet acceptance remain unfinished. This
-checkpoint preserves development progress and does not declare a finished release.
+gitSpecOps watches all of your Git repositories on all of your computers. It shows them on one
+map, keeps them current without ever risking your work, and stops anything private from being
+published. Every operation shows its plan before it acts, refuses anything ambiguous, and
+leaves your credentials alone.
 
-**Work-in-progress checkpoint:** settings, security and interface integration has changed
-substantially and is still under way. Direct/CLI components have focused Windows evidence;
-complete GUI parity, native Linux/macOS and real-fleet acceptance remain unfinished. This
-checkpoint preserves development progress and does not declare a finished release.
+**Work in progress.** On Windows, setup, the tray app, the web view, the command-line tools and
+the security checks are in daily use. Native Linux and macOS support and testing across a real
+fleet of machines are unfinished. See [Status](#status).
 
-Each operation is the kind of script you would eventually write yourself, with the dangerous
-parts already thought through: it shows you a plan before it acts, it refuses anything ambiguous,
-and it never touches your credentials.
+## What it does
 
-The common source launcher is `python gitso.py`: use `commands` to list operations, `docs`
-to read source-derived usage, or a command such as `scan-tree --help`. With a terminal it also
-offers a menu. Existing direct scripts remain supported; the launcher calls their entry
-functions and preserves their individual behavior. It does not install a shell alias.
+- **One map of everything.** A tray app and a web view show every repository on every machine:
+  what is uncommitted, unpushed, behind, or the only copy anywhere. The tray icon, a hub and
+  ring, shows the state of the whole fleet at a glance and animates while it works.
+- **Your machines, together.** Computers share status with each other over Tailscale, a folder
+  your sync client already copies, or a private GitHub repository. They share repository names,
+  branches and counts; never file contents or folder paths.
+- **Kept current, safely.** A read-only fetch every 15 minutes keeps the picture fresh. Catch-up
+  fast-forwards only clean checkouts that are simply behind. Nothing is ever merged, rebased,
+  reset or forced.
+- **Protected.** You list the values that must never be published: your name, email addresses,
+  usernames, either anywhere in text or as whole words only. A checked commit or push holds
+  anything that contains one, and scans of working files and full history find them. History
+  can be cleaned into a new private mirror, and other clones follow the rewrite safely.
+- **Special operations.** Copy a whole GitHub organization; keep archives of repository copies
+  current; get a suggestion for every repository on this machine.
 
-Security scans use built-in checks without extra Python packages. Optional credential engines
-can be selected individually or together with repeatable `--engine gitleaks`, `--engine
-betterleaks` or `--engine trufflehog`; `--engine none` overrides saved selection. Selected
-unavailable/unsupported engines report incomplete checking. Findings are masked but include
-locations, line numbers, finding ids and review guidance. No engine is installed automatically;
-native engine/version validation remains development work.
+## Set it up
 
-Archive Sync's explicit `--publish` action now checks the exact outgoing history before sending
-one planned commit/branch. Prohibited values, high-confidence credential patterns, unresolved
-findings and incomplete checks hold the push; `--yes` does not bypass security. An earlier
-commit can still block publication even if the latest files are clean. The direct checked
-commit and push commands use the same checks. Select a profile with `--settings-home`;
-security scan/review/commit/push commands can explicitly read existing text policy using
-`--legacy-policy` without converting settings. Basic Git operations stay policy-free.
-
-Full reports are explicit: `--out` creates a new private JSON file at the selected destination.
-Outside Git, choose storage you control; inside Git the destination must be ignored and
-untracked. Existing files, links and invalid destinations are refused, without fallback.
-Normal stdout remains masked and lists the actual report artifact.
-
-For a documented example or test fixture, preview a review tied to that exact finding/content:
-
-```sh
-python gitso.py scan-tree /path/to/repo --settings-home /private/profile --out /private/reports/scan.json --json
-python gitso.py review-finding /private/reports/scan.json finding-000001 --settings-home /private/profile --reason "Reviewed example"
+```text
+run_setup.bat        (Windows; or ./run_setup.sh on Linux and macOS)
 ```
 
-The review preview writes nothing. Rerun the same arguments with `--apply --approve REVIEW_PLAN_ID`
-using the returned plan id. The private decision records the reason; ordinary output does not
-repeat it. Rescan before taking an action. Changed bytes, location or repository require review
-again; unchanged accepted examples stay visible with a review id. Prohibited values, strong
-credentials, unsupported external-engine findings and coverage gaps cannot be waived. A binary
-file (a font, an executable) is a "binary content" finding rather than a gap: its readable strings
-are checked, and a review accepts that exact file version at that place, so changed bytes need
-review again. PDFs and 7z/RAR archives remain coverage gaps.
-To revoke, replace the finding argument with `--revoke REVIEW_ID`, preview and approve that plan.
-Records stay local under the selected profile; they are not automatically shared with the fleet.
+Setup is a standard installer. The first screen shows this computer and every feature and
+integration with its status in words: requirements, the desktop app, your library folders,
+the web view, start at sign-in, protection, GitHub, Tailscale, synced folders and archives.
+**Customize** changes each choice separately; **Review** lists exactly what will change on this
+computer and what will not; **Install** does it all on one screen of numbered steps; **Done**
+offers to start the app. Nothing changes until you confirm the review. It installs for your
+account only, inside this folder, with no administrator rights. Run it again to change your
+setup, repair it, or uninstall it (your repositories and settings are kept).
 
-If Git's line-ending conversion or a clean filter changes a reviewed working file when staged,
-the commit check can hold the different staged bytes. Use `scan-tree --staged --out FILE` to
-inspect/review those staged changes, then create a fresh commit preview. This scan never stages
-or commits anything and leaves the working files alone. It excludes deleted versions and
-unstaged/untracked bytes; use history scanning separately for old material.
+Then double-click `gitspecops-tray` to start the app, or run `python gitso.py` for a menu of
+every command. Every terminal screen follows the Sb4ssport station script design, the same
+look as the other Sb4ssport tools: menu screens, run screens with numbered steps, a summary
+and one clear result.
 
-**Dangerous history maintenance:** `clean-history` plans explicit cleanup and rewrites only a
-new private mirror. It preserves the source checkout and never publishes. Start with a full
-private `scan-history --out` report, then select finding IDs and explicit paths in a choice
-document. `python gitso.py docs clean-history` gives the current JSON format directly from source.
-Raw protected values are read programmatically; an agent does not need them in its choice file.
+## Status
 
-```sh
-python gitso.py clean-history plan /private/history.json --choices /private/choices.json --settings-home /private/profile --include-remote-refs --plan-out /private/plan.json --json
-python gitso.py clean-history apply /private/plan.json --settings-home /private/profile --workspace /private/new-run --approve PLAN_ID
-```
-
-Use the same selected profile/policy mode for both steps. Tracking refs require explicit
-inclusion; their names, remote-only commits and symbolic aliases are preserved without fetching.
-Apply requires an attended terminal and typed `REWRITE`; there is no `--yes` or confirmation flag.
-The exact plan, native diagnostics and full rescan remain private, with masked results and
-presented artifacts. Settings/report/log failures never select another location or profile.
-Remaining findings or coverage gaps hold the result for review. A verified mirror does not
-rotate credentials, erase other copies, authorize publication or update other clones.
+| | |
+|---|---|
+| **Working, Windows** | setup, tray app and web view, security checks and scans, history cleanup, the special operations |
+| **In progress** | the fleet across real machines (Tailscale, synced folder); the web view's Setup page on the same setup engine as the terminal; native Linux and macOS |
+| **Planned** | a scheduled, reviewed status repository for the fleet; more of the command menu inside the app |
 
 ---
 
@@ -190,7 +162,7 @@ Read this once; it explains most of the design.
 
 | | |
 |---|---|
-| **Python 3.11+** | No runtime dependencies. Everything is the standard library. |
+| **Python 3.11+** | The tools are standard-library only. The desktop app adds PySide6 (Qt), which setup installs with `uv`. |
 | **`git` on PATH** | Every Git operation shells out to your real `git`. |
 | **`gh`, already authenticated** | Required for anything that talks to GitHub. |
 
@@ -218,7 +190,8 @@ only), a folder-sync client or a private GitHub repo (cross-machine status trans
 
 ## Install and run
 
-There is no install step. Clone it and run the scripts:
+Setup (above) is the front door for the app. The command-line tools need no installation:
+clone the repository and run the scripts directly.
 
 ```bash
 git clone https://github.com/sb4ssman/gitSpecOps
@@ -271,6 +244,73 @@ need a separately reviewed conversion.
 ---
 
 ## Security scans
+
+### From the command line
+
+Security scans use built-in checks without extra Python packages. Optional credential engines
+can be selected individually or together with repeatable `--engine gitleaks`, `--engine
+betterleaks` or `--engine trufflehog`; `--engine none` overrides saved selection. Selected
+unavailable/unsupported engines report incomplete checking. Findings are masked but include
+locations, line numbers, finding ids and review guidance. No engine is installed automatically;
+native engine/version validation remains development work.
+
+Archive Sync's explicit `--publish` action now checks the exact outgoing history before sending
+one planned commit/branch. Prohibited values, high-confidence credential patterns, unresolved
+findings and incomplete checks hold the push; `--yes` does not bypass security. An earlier
+commit can still block publication even if the latest files are clean. The direct checked
+commit and push commands use the same checks. Select a profile with `--settings-home`;
+security scan/review/commit/push commands can explicitly read existing text policy using
+`--legacy-policy` without converting settings. Basic Git operations stay policy-free.
+
+Full reports are explicit: `--out` creates a new private JSON file at the selected destination.
+Outside Git, choose storage you control; inside Git the destination must be ignored and
+untracked. Existing files, links and invalid destinations are refused, without fallback.
+Normal stdout remains masked and lists the actual report artifact.
+
+For a documented example or test fixture, preview a review tied to that exact finding/content:
+
+```sh
+python gitso.py scan-tree /path/to/repo --settings-home /private/profile --out /private/reports/scan.json --json
+python gitso.py review-finding /private/reports/scan.json finding-000001 --settings-home /private/profile --reason "Reviewed example"
+```
+
+The review preview writes nothing. Rerun the same arguments with `--apply --approve REVIEW_PLAN_ID`
+using the returned plan id. The private decision records the reason; ordinary output does not
+repeat it. Rescan before taking an action. Changed bytes, location or repository require review
+again; unchanged accepted examples stay visible with a review id. Prohibited values, strong
+credentials, unsupported external-engine findings and coverage gaps cannot be waived. A binary
+file (a font, an executable) is a "binary content" finding rather than a gap: its readable strings
+are checked, and a review accepts that exact file version at that place, so changed bytes need
+review again. PDFs and 7z/RAR archives remain coverage gaps.
+To revoke, replace the finding argument with `--revoke REVIEW_ID`, preview and approve that plan.
+Records stay local under the selected profile; they are not automatically shared with the fleet.
+
+If Git's line-ending conversion or a clean filter changes a reviewed working file when staged,
+the commit check can hold the different staged bytes. Use `scan-tree --staged --out FILE` to
+inspect/review those staged changes, then create a fresh commit preview. This scan never stages
+or commits anything and leaves the working files alone. It excludes deleted versions and
+unstaged/untracked bytes; use history scanning separately for old material.
+
+**Dangerous history maintenance:** `clean-history` plans explicit cleanup and rewrites only a
+new private mirror. It preserves the source checkout and never publishes. Start with a full
+private `scan-history --out` report, then select finding IDs and explicit paths in a choice
+document. `python gitso.py docs clean-history` gives the current JSON format directly from source.
+Raw protected values are read programmatically; an agent does not need them in its choice file.
+
+```sh
+python gitso.py clean-history plan /private/history.json --choices /private/choices.json --settings-home /private/profile --include-remote-refs --plan-out /private/plan.json --json
+python gitso.py clean-history apply /private/plan.json --settings-home /private/profile --workspace /private/new-run --approve PLAN_ID
+```
+
+Use the same selected profile/policy mode for both steps. Tracking refs require explicit
+inclusion; their names, remote-only commits and symbolic aliases are preserved without fetching.
+Apply requires an attended terminal and typed `REWRITE`; there is no `--yes` or confirmation flag.
+The exact plan, native diagnostics and full rescan remain private, with masked results and
+presented artifacts. Settings/report/log failures never select another location or profile.
+Remaining findings or coverage gaps hold the result for review. A verified mirror does not
+rotate credentials, erase other copies, authorize publication or update other clones.
+
+### Active scans
 
 Active scans use common security policy and print masked results without creating reports or logs:
 
@@ -561,7 +601,8 @@ python3 Special/sync_archive.py --root /path --publish --dry-run
 ## Generated, local, and never committed
 
 `.venv/`, `uv.lock`, `*.egg-info/`, `/build/`, `/dist/`, the generated root launchers
-(`update-archive.*`, `manage-archives.*`, `duplicate-github-org.*`, `suggest-sync.*`),
+(`update-archive.*`, `manage-archives.*`, `duplicate-github-org.*`, `suggest-sync.*`,
+`gitspecops-tray.*`),
 `Special/duplicate_org/runs/`, and `.agents/output/`. The archive registry is not in the
 checkout at all: it lives in the per-user gitSpecOps folder.
 

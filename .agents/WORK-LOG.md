@@ -2293,3 +2293,11 @@ No code changed; decisions recorded where they govern.
   Shared prompts sit on the two-space indent.
 - Setup content in plain words: Requirements, Desktop app, Tool shortcuts (no launcher counts,
   no .venv or uv on the main screen; those are in Detection details). Full suite 87/87.
+
+## 2026-11-13 06:57 - user (claude) - README leads with what gitSpecOps is now
+- New opening: the one-line promise, what it does (the map, the fleet, kept current, protected,
+  special operations), Set it up (the standard installer, then gitspecops-tray and gitso), and
+  an honest Status table (fleet across real machines and the web Setup page still in progress).
+  The dense command-line security notes moved, unchanged, into Security scans; the duplicated
+  work-in-progress paragraph is gone; requirements name PySide6 for the desktop app.
+- `.gitignore`: the generated gitspecops-tray launchers, like the other generated shortcuts.
