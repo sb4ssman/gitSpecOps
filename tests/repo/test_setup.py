@@ -107,7 +107,7 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(self.wizard(["0"], self.fresh_computer()), 0)
         self.assertEqual(self.applied, [])
         self.assert_no_actions()
-        self.assertIn("Ready to set up", self.output.getvalue())
+        self.assertIn("Ready to install", self.output.getvalue())
 
     def test_review_lists_the_changes_and_cancel_changes_nothing(self):
         self.assertEqual(self.wizard(["1", "0", "0"], self.fresh_computer()), 0)
@@ -134,7 +134,7 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(self.wizard(["1", "0", "b", "0", "0", "0"], Current(start_at_login=False)), 0)
         out = self.output.getvalue()
         self.assertIn("Add a library folder", out)
-        self.assertNotIn("[I] Set up", out)
+        self.assertNotIn("[I] Install", out)
         self.assertEqual(self.applied, [])
 
     def test_customize_back_without_changes_keeps_the_old_choices(self):
@@ -158,14 +158,14 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(self.applied, [])
         self.assert_no_actions()
 
-    def test_a_set_up_computer_offers_repair_and_removal(self):
+    def test_a_set_up_computer_offers_apply_and_uninstall(self):
         from Elaborate._fleet.setup_plan import Current
         current = Current(enrolled=True, machine="Box", libraries=["/code"], start_at_login=True)
         self.assertEqual(self.wizard(["0"], current, changes=[]), 0)
         out = self.output.getvalue()
         self.assertIn("gitSpecOps is set up on this computer", out)
-        self.assertIn("[1] Repair", out)
-        self.assertIn("[U] Remove from this computer", out)
+        self.assertIn("[1] Review and apply", out)
+        self.assertIn("[U] Uninstall gitSpecOps", out)
 
 
 if __name__ == "__main__":

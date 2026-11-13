@@ -2263,3 +2263,17 @@ No code changed; decisions recorded where they govern.
 - Tests: `tests/elaborate/test_setup_plan.py` (3, throwaway profile, no network) and the wizard
   flows in `tests/repo/test_setup.py` (start, review and cancel, apply, first setup needs a
   library, customize back without changes, cancel, a set-up computer). Full suite 87/87.
+
+## 2026-11-13 06:32 - user (claude) - Setup shows the whole feature and integration matrix, to the station standard
+- The start screen leads with the answer, then every feature and integration in sections, one
+  row each with a status in words: This computer (computer, Git, Python, environment, desktop
+  app, launchers), Your setup / Recommended setup (libraries, web view, start at sign-in,
+  desktop Git app, fleet), Protection (publish checks, protected values, credential scanners),
+  Integrations (GitHub, Tailscale, synced folder, archive copies and their schedule, uv).
+  Optional ones say what they add, never as failures.
+- Matched to PowerCycler and the station standard: [1] Review and apply (repair is a review
+  with nothing else to change), [U] Uninstall gitSpecOps, [D] Detection details (paths, every
+  program on PATH, fleet transports, protection lists), [I] Install / [A] Apply, Cancel as the
+  review default; options and rows wrap, paths after a separator.
+- The engine detects programs on PATH, selected scanners, registered archives and the
+  scheduled refresh. Full suite 87/87.

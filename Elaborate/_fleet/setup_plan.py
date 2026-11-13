@@ -4,7 +4,9 @@ Why:          setup is one plan, reviewed and then applied, on every face: the t
               (setup_gitspecops.py), the web view's Setup page, and agents. They share this
               engine, so they can never disagree about what a choice does.
 Reads:        the settings profile, the start-at-login registration, installed desktop Git
-              apps, Tailscale and synced-folder availability. Never a repository's contents.
+              apps, Tailscale and synced-folder availability, which helper programs are on PATH,
+              the selected credential scanners, registered archives and their scheduled refresh.
+              Never a repository's contents.
 May change:   nothing until `apply`. Then exactly the planned changes: library folders and
               the web view's reach (enrollment), the start-at-login entry, the desktop Git app,
               protected values, and the fleet (key and ways to share). Never a repository.
@@ -19,6 +21,7 @@ Every Change carries the words the review shows: what it does, and what it reads
 from __future__ import annotations
 
 import copy
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -27,6 +30,9 @@ from pathlib import Path
 WEB_CHOICES = {"loopback": "this computer only", "tailnet": "this computer and your own Tailscale devices",
                "off": "not served"}
 FLEET_MODES = ("none", "keep", "new", "join")
+#: Programs gitSpecOps can use when they are on PATH. Only git is required.
+TOOLS = ("git", "gh", "uv", "tailscale", "gitleaks", "betterleaks", "trufflehog")
+ARCHIVE_TASK = "gitSpecOps Archive Refresh"
 
 
 @dataclass
@@ -48,6 +54,11 @@ class Current:
     synced_folders: list = field(default_factory=list)
     github: bool = False
     settings_file: str = ""
+    local_port: int = 8760
+    tools: dict = field(default_factory=dict)     # program -> its path, "" when not on PATH
+    engines: list = field(default_factory=list)   # credential scanners selected for scans
+    archives: int | None = 0                      # registered archive copies; None: unreadable
+    archive_task: bool | None = None              # monthly refresh scheduled; None: not checked
 
 
 @dataclass
@@ -85,6 +96,7 @@ def detect(home=None, config_dir=None, *, python=None) -> Current:
         current.enrolled, current.machine = True, machine["label"]
         current.libraries = list(machine["libraries"])
         current.web, current.face = machine["presentation"]["web"], machine["presentation"]["face"]
+        current.local_port = machine["local_port"]
     if state["fleet"]:
         current.fleet_transports = dict(state["fleet"]["transports"])
         current.share_names = bool(state["fleet"]["share_names"])
@@ -111,7 +123,30 @@ def detect(home=None, config_dir=None, *, python=None) -> Current:
         current.settings_file = str(Path(fleet_home(home)) / "settings.json")
     except (OSError, ValueError):
         current.settings_file = "the gitSpecOps settings file"
+    current.tools = {name: shutil.which(name) or "" for name in TOOLS}
+    try:
+        from Special._settings import resolve_settings
+        current.engines = list(resolve_settings(home=home).values["security"]["engines"])
+    except (OSError, ValueError, KeyError):
+        current.engines = []
+    try:
+        from Special._archive.registry import load_registry
+        current.archives = len(load_registry(home=home)["installations"])
+    except (OSError, ValueError, KeyError):
+        current.archives = None
+    current.archive_task = _archive_task()
     return current
+
+
+def _archive_task() -> bool | None:
+    """Whether the monthly archive refresh is scheduled. Windows only; read-only."""
+    if sys.platform != "win32":
+        return None
+    try:
+        return subprocess.run(["schtasks", "/Query", "/TN", ARCHIVE_TASK], capture_output=True,
+                              timeout=10).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return None
 
 
 def _configured_client(home, config_dir):
