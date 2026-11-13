@@ -2230,3 +2230,10 @@ No code changed; decisions recorded where they govern.
 - Tests: exit points (skip, go, stop) and "This machine" refusing without SCAN on a throwaway
   profile; the guided-menu tests stop at the first exit point. A real run of all four layers with
   no-change answers drew each from the live profile. Full suite 86/86.
+
+## 2026-11-12 19:16 - user (claude) - Setup looks the same as the shelf's other scripts
+- Compared with DCG-Taskforce's and PowerCycler's own code: colours already matched (their
+  console colour names map one to one to the ANSI codes used). Differences fixed: every menu and
+  run screen now starts on a clean window (only at a real console, as theirs), the summary bullets
+  are indented as theirs, and the publisher line is the shelf's, `Sb4ssport-Alpha |
+  https://sb4ssport-alpha.github.io`. Setup tests and hygiene pass.

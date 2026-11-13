@@ -59,18 +59,9 @@ PRODUCT = "gitSpecOps"
 TAGLINE = "Every repository on every machine: seen, kept current, protected"
 
 
-def _publisher() -> str:
-    """The publisher line, from the project's own metadata (pyproject.toml's first author), so
-    no account name is written into source files."""
-    try:
-        text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        author = re.search(r'authors\s*=\s*\[\s*\{\s*name\s*=\s*"([^"]+)"', text).group(1)
-    except (OSError, AttributeError):
-        return PRODUCT
-    return f"{author} | https://github.com/{author}/{PRODUCT}"
-
-
-PUBLISHER = _publisher()
+#: The shelf's publisher line, as on every other Sb4ssport station script (DCG-Taskforce,
+#: PowerCycler): the same look across the shelf's tools.
+PUBLISHER = "Sb4ssport-Alpha | https://sb4ssport-alpha.github.io"
 #: Console colour names, as ANSI codes (the terminal's theme decides the exact shade).
 TONES = {"accent": "96", "muted": "36", "text": "37", "detail": "90", "strong": "97",
          "success": "92", "warning": "93", "error": "91"}
@@ -125,7 +116,15 @@ def line(text: str = "", tone: str = "text") -> None:
     say("  " + rest, tone)
 
 
+def clear_screen() -> None:
+    """Every screen starts on a clean window, as in the reference scripts; only for a person at
+    a real console, never when output is captured or piped."""
+    if COLOUR and sys.stdin.isatty():
+        print("\x1b[2J\x1b[3J\x1b[H", end="", flush=True)
+
+
 def menu_header(page: str) -> None:
+    clear_screen()
     say()
     say(f"  {PRODUCT}  /  {page}", "accent")
     say(f"  {TAGLINE}")
@@ -136,6 +135,7 @@ def menu_header(page: str) -> None:
 def run_header(page: str, what: str) -> None:
     bar = "=" * _width()
     when = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    clear_screen()
     say()
     say(bar, "muted")
     say(f"  {PRODUCT}  /  {page}", "accent")
@@ -326,7 +326,7 @@ def finish(steps: "Steps", ready: str, otherwise: str) -> bool:
     say()
     line("Summary", "accent")
     for fact in summary_facts():
-        line(f". {fact}")
+        say(f"   . {_clean(fact)}")
     if failed:
         notice("Setup incomplete", f"{', '.join(failed)} did not finish; some steps may have completed. {otherwise}", "error")
         return False
