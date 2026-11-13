@@ -527,7 +527,7 @@ def feature_rows(current, choices, install) -> None:
 def start_screen(current, choices, pending: int) -> str:
     install = install_state()
     git_found = bool(current.tools.get("git", shutil.which("git")))
-    menu_header("Setup")
+    menu_header("Setup", f"folder: {_short(str(ROOT))}  |  settings: {_short(current.settings_file)}")
     if not git_found:
         notice("Needs attention", "Git is required. Install it from https://git-scm.com/downloads, "
                "then run setup again.", "warning")

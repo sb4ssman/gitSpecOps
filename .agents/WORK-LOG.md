@@ -2301,3 +2301,12 @@ No code changed; decisions recorded where they govern.
   The dense command-line security notes moved, unchanged, into Security scans; the duplicated
   work-in-progress paragraph is gone; requirements name PySide6 for the desktop app.
 - `.gitignore`: the generated gitspecops-tray launchers, like the other generated shortcuts.
+
+## 2026-11-13 07:16 - user (claude) - The station banner on every screen; the standard copied in
+- The station design (Sb4ssport-Authority launchers.md) now opens every screen with one banner.
+  `Basic/_station.py`: `banner()` (double bar, title / page, tagline on menus, publisher,
+  when/computer/user/Python, context, double bar); `menu_header` and `run_header` both use it;
+  the dash rule is gone. Setup's start screen adds folder and settings as context.
+- `.agents/knowledge/station-script-design.md`: a verbatim copy of the standard (the authority
+  stays in Sb4ssport-Authority). AGENTS.md and the knowledge index point every agent at it
+  before touching console output. Full suite 87/87.

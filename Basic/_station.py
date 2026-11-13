@@ -10,13 +10,14 @@ Results:      text on stdout.
 Layer:        Basic (presentation plumbing every layer may use; no policy).
 Status:       working
 
-Two kinds of screen. A **menu screen**: `gitSpecOps  /  Page`, the tagline, the publisher line,
-a dash rule; then a notice that leads with the answer, rows, sections and `[key] Label` options,
-and `Choose [default]:`. A **run screen**: a double bar above and below the title, publisher and
-context lines (when, computer, user, Python; then what is being changed), numbered steps
+The standard itself is copied, verbatim, in .agents/knowledge/station-script-design.md; the
+Sb4ssport-Authority file is the authority. Every screen opens with the same **banner**: a double
+bar; `gitSpecOps  /  Page`; on a menu screen the tagline; the publisher line; the context lines
+(when, computer, user, Python; then what is being changed, or where); a double bar. A **menu
+screen** follows it with a notice that leads with the answer, rows, sections and `[key] Label`
+options, and `Choose [default]:`. A **run screen** follows it with numbered steps
 `[n/total] label  status  seconds  detail`, a Summary and one result notice.
-Text is indented two spaces; rules and bars are 72 wide from column 0, narrower in a narrower
-console. Colours are the standard console names (the terminal's theme decides the shade) and
+Text is indented two spaces; bars are 72 wide from column 0, narrower in a narrower console. Colours are the standard console names (the terminal's theme decides the shade) and
 every status also has words. Anything printed that came from outside is stripped of control
 characters. Output that is not a terminal gets no colour and no clearing.
 """
@@ -108,25 +109,18 @@ def clear_screen() -> None:
         print("\x1b[2J\x1b[3J\x1b[H", end="", flush=True)
 
 
-def menu_header(page: str) -> None:
-    """A menu screen's top: title / page, tagline, publisher, then a dash rule."""
-    clear_screen()
-    say()
-    say(f"  {PRODUCT}  /  {page}", "accent")
-    say(f"  {TAGLINE}")
-    say(f"  {PUBLISHER}", "muted")
-    say("-" * width(), "muted")
-
-
-def run_header(page: str, *context: str) -> None:
-    """A run screen's top: double bars around the title, publisher and context lines. Context
-    lines are printed whole, never wrapped."""
+def banner(page: str, *context: str, tagline: bool = False) -> None:
+    """The banner every station screen opens with: a double bar; the title / page; on a menu
+    screen the tagline; the publisher; the when/computer/user/shell line and any further
+    context lines, printed whole (never wrapped); a double bar."""
     bar = "=" * width()
     when = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     clear_screen()
     say()
     say(bar, "muted")
     say(f"  {PRODUCT}  /  {page}", "accent")
+    if tagline:
+        say(f"  {TAGLINE}")
     say(f"  {PUBLISHER}", "muted")
     say(f"  {when} on {socket.gethostname()}  |  user {getpass.getuser()}  |  Python {platform.python_version()}",
         "detail")
@@ -134,6 +128,16 @@ def run_header(page: str, *context: str) -> None:
         if text:
             say("  " + clean(text), "detail")
     say(bar, "muted")
+
+
+def menu_header(page: str, *context: str) -> None:
+    """A menu screen's top: the banner, with the tagline."""
+    banner(page, *context, tagline=True)
+
+
+def run_header(page: str, *context: str) -> None:
+    """A run screen's top: the banner, with what is being changed and where in `context`."""
+    banner(page, *context)
     say()
 
 
