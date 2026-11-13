@@ -94,11 +94,43 @@ class SetupTests(unittest.TestCase):
     def test_after_an_item_the_menu_waits_and_returns(self):
         # 2026-11-12: a double-clicked window closed the moment setup finished, which looked
         # like a crash. Now the result waits for Enter and the menu comes back; 0 leaves.
-        self.assertEqual(self.interactive(["1", "", "0"]), 0)
+        # [1] installs, then offers the layers; "q" stops at the first exit point.
+        self.assertEqual(self.interactive(["1", "q", "", "0"]), 0)
         self.environment_step.assert_called_once()
         out = self.output.getvalue()
         self.assertIn("Ready", out, "the item's result is on screen")
+        self.assertIn("Stopped here", out, "stopping at an exit point keeps what was done")
         self.assertEqual(out.count("gitSpecOps  /  Setup\n"), 2, "the menu is shown again after the item")
+
+    def test_exit_points_skip_go_and_stop(self):
+        ran = []
+        layers = tuple((title, lambda title=title: ran.append(title)) for title in ("A", "B", "C"))
+        with patch.object(subject, "LAYERS", layers), patch("builtins.input", side_effect=["s", "", "q"]):
+            self.assertEqual(subject.walkthrough(), 0)
+        self.assertEqual(ran, ["B"], "A skipped, B run (Enter goes), stopped before C")
+
+    def test_this_machine_needs_scan_to_enroll(self):
+        import json
+        import subprocess
+        import tempfile
+
+        from App._web.setup import SetupRoutes
+        from Elaborate._fleet.setup_state import setup_state
+        with tempfile.TemporaryDirectory(prefix="setup-layer-") as temp:
+            home, state_dir, library = Path(temp) / "profile", Path(temp) / "state", Path(temp) / "code"
+            home.mkdir()
+            (home / "settings.json").write_text(json.dumps({"schema_version": 2}), encoding="utf-8")
+            subprocess.run(["git", "init", "-q", str(library / "one")], check=True)
+            routes = lambda: SetupRoutes(home, state_dir)  # noqa: E731
+            with patch.object(subject, "setup_routes", routes):
+                # Do not look; add the folder by path; type the word wrong: nothing is enrolled.
+                with patch("builtins.input", side_effect=["n", str(library), "scan"]):
+                    subject.layer_machine()
+                self.assertIsNone(setup_state(home, state_dir)["machine"])
+                with patch("builtins.input", side_effect=["n", str(library), "SCAN", ""]):
+                    subject.layer_machine()
+            self.assertEqual(setup_state(home, state_dir)["machine"]["libraries"], [str(library.resolve())])
+            self.assertIn("type SCAN", self.output.getvalue())
 
     def test_back_and_invalid_selection_then_exit_do_nothing(self):
         self.assertEqual(self.interactive(["2", "0", "unexpected", "0"]), 0)

@@ -2216,3 +2216,17 @@ No code changed; decisions recorded where they govern.
   read. The menu now waits after an item ("Press Enter to return to the menu, or Q to quit") and
   shows itself again; 0 or Q leaves. Named actions on the command line still run once and return.
   Regression test in `tests/repo/test_setup.py`. Full suite 86/86.
+
+## 2026-11-12 18:53 - user (claude) - Setup walks every layer, with exit points
+- Menu [1] now installs, then walks the layers with "[N] Go  [S] Skip it  [Q] Stop here" before
+  each: This machine (look with LOOK, add libraries with SCAN, where the web view is served), On
+  this desktop (start at login through the .venv Python so the login entry has Qt; the desktop Git
+  client from the clients found; start the tray now), Protection (protected values, whole-word
+  option; installed scanners and where to get the others, never installed), A fleet (start or
+  join with Tailscale and/or a synced folder after JOIN; the fleet key only on request after
+  SHOW; the GitHub state repository withheld until its review). [2] opens any one layer. Each
+  step calls the web Setup page's own actions or the step's command. Install also checks,
+  read-only, whether gh is signed in.
+- Tests: exit points (skip, go, stop) and "This machine" refusing without SCAN on a throwaway
+  profile; the guided-menu tests stop at the first exit point. A real run of all four layers with
+  no-change answers drew each from the live profile. Full suite 86/86.

@@ -285,7 +285,16 @@ def prerequisites_step() -> tuple[str, str, str]:
         return "FAILED", f"missing: {', '.join(missing)}", "\n".join(
             f"{name}: {hint}" for name, required, hint in PREREQUISITES if name in missing)
     optional = [name for name, required, _hint in PREREQUISITES if not required and name not in found]
-    return "ok", ", ".join(found) + (f" (optional {', '.join(optional)} absent)" if optional else ""), ""
+    signed = "gh signed in" if gh_signed_in() else "gh not signed in (`gh auth login` for GitHub work)"
+    return "ok", ", ".join(found) + (f" (optional {', '.join(optional)} absent)" if optional else "") + "; " + signed, ""
+
+
+def gh_signed_in() -> bool:
+    """Read-only: whether the GitHub CLI has a signed-in account."""
+    if shutil.which("gh") is None:
+        return False
+    code, _output = _capture(["gh", "auth", "status"])
+    return code == 0
 
 
 def report_prerequisites() -> None:
@@ -462,6 +471,241 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# --------------------------------------------------------------------------------------
+# The guided layers after Install: this machine, this desktop, protection, a fleet. Each
+# layer shows where things stand, asks its questions, and calls the same code as its command
+# and as the web view's Setup page (App/_web/setup.py), with the same typed words (LOOK,
+# SCAN, JOIN). Before every layer: go, skip it, or stop here with everything so far kept.
+# --------------------------------------------------------------------------------------
+def ask(prompt: str, default: str = "") -> str:
+    """One question; Enter takes the default. End of input or Ctrl-C stops setup cleanly."""
+    return input(f"  {prompt} ").strip() or default
+
+
+def setup_routes():
+    from App._web.setup import SetupRoutes
+    return SetupRoutes()
+
+
+def _act(routes, action: str, payload: dict):
+    """A setup action; a refusal (a wrong typed word, a bad folder) is said, not raised."""
+    try:
+        return routes.act(action, payload)
+    except (ValueError, OSError) as exc:
+        line(f"Not done: {_clean(exc)}", "warning")
+        return None
+
+
+def layer_machine() -> None:
+    from Special._sync.enrollment import inventory_notice
+
+    routes = setup_routes()
+    machine = routes.state()["machine"]
+    menu_header("This machine")
+    say()
+    if machine:
+        line(f"Enrolled as {machine['label']}.", "success")
+        for library in machine["libraries"]:
+            row("Library", library)
+    else:
+        line("Not enrolled yet: gitSpecOps does not know where your repositories are.", "warning")
+    say()
+    found = []
+    if ask(f"Look for folders that hold repositories? [y/n] [{'n' if machine else 'y'}]:", "n" if machine else "y").lower() == "y":
+        where = ask("Where to look: a folder, Enter for your home folder, or * for the whole machine:")
+        payload = {"whole_machine": True} if where == "*" else {"paths": [where or str(Path.home())]}
+        line("Only folder names are read: no file contents, no Git. Nothing is enrolled by looking.", "muted")
+        result = _act(routes, "find", {**payload, "confirm": ask("Type LOOK to allow it:")})
+        found = (result or {}).get("found") or []
+        for number, item in enumerate(found, 1):
+            row(f"[{number}]", f"{item['path']}  ({item['repositories']} repositories)")
+        if result and not found:
+            line("No folders with repositories found there.", "warning")
+    picks = ask("Libraries to add: numbers from the list or folder paths, separated by spaces (Enter for none):")
+    paths = []
+    for pick in picks.split():
+        if pick.isdigit() and 1 <= int(pick) <= len(found):
+            paths.append(found[int(pick) - 1]["path"])
+        elif pick:
+            paths.append(pick)
+    if paths:
+        say()
+        for text in inventory_notice(paths).splitlines():
+            line(text, "muted")
+        if _act(routes, "add", {"paths": paths, "confirm": ask("Type SCAN to allow it:")}):
+            line("Saved. The app reads these libraries when it next starts.", "success")
+    machine = routes.state()["machine"]
+    if not machine:
+        line("This machine stays unenrolled; the other layers need a library first.", "warning")
+        return
+    current = machine["presentation"]["web"]
+    labels = {"l": "loopback", "t": "tailnet", "o": "off"}
+    say()
+    line("The web view (what double-clicking the tray opens) is served:")
+    option("L", "On this machine only")
+    option("T", "Also to my own Tailscale devices (a phone, another computer)")
+    option("O", "Not at all")
+    choice = ask(f"Choose [{next(k for k, v in labels.items() if v == current).upper()}]:", "").lower()
+    if choice in labels and labels[choice] != current:
+        if _act(routes, "presentation", {"face": machine["presentation"]["face"], "web": labels[choice]}):
+            line("Saved. It takes effect when the app restarts.", "success")
+
+
+def _tray_running() -> bool:
+    import urllib.request
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:8760/v1/mark.svg", timeout=1) as response:
+            return response.status == 200
+    except OSError:
+        return False
+
+
+def layer_desktop() -> None:
+    menu_header("On this desktop")
+    say()
+    if not VENV_PYTHON.exists():
+        line("The desktop app needs the Python environment: run Install first.", "warning")
+        return
+    code, output = _capture([str(VENV_PYTHON), "Elaborate/start_at_login.py", "status"])
+    enabled = '"enabled": true' in output
+    row("Start at login", "on" if enabled else "off", "success" if enabled else "text")
+    from Special._sync.git_client import LABELS, discover_clients
+    clients = discover_clients()
+    row("Desktop Git clients", ", ".join(LABELS[c] for c in clients) or "none found", "text")
+    running = _tray_running()
+    row("The tray", "running" if running else "not running", "success" if running else "text")
+    say()
+    want = ask(f"Start the tray when you log in? [y/n] [{'y' if enabled else 'n'}]:", "y" if enabled else "n").lower()
+    if want in ("y", "n") and (want == "y") != enabled:
+        code, output = _capture([str(VENV_PYTHON), "Elaborate/start_at_login.py", "enable" if want == "y" else "disable"])
+        line("Saved." if code == 0 else f"Not changed: {(_clean_lines(output) or ['unknown error'])[-1]}",
+             "success" if code == 0 else "warning")
+    if clients:
+        keys = list(clients)
+        say()
+        line("Open a repository from the web view in:")
+        for number, client in enumerate(keys, 1):
+            option(str(number), LABELS[client])
+        option("0", "Nothing (leave as it is)")
+        pick = ask("Choose [0]:", "0")
+        if pick.isdigit() and 1 <= int(pick) <= len(keys):
+            code, output = _capture([sys.executable, "Elaborate/setup_fleet.py", "git-client", "--client", keys[int(pick) - 1]])
+            line("Saved." if code == 0 else f"Not saved: {(_clean_lines(output) or ['unknown error'])[-1]}",
+                 "success" if code == 0 else "warning")
+    if not running and ask("Start the tray now? [y/n] [y]:", "y").lower() == "y":
+        pythonw = VENV_PYTHON.with_name("pythonw.exe")
+        command = [str(pythonw if WINDOWS and pythonw.exists() else VENV_PYTHON), str(ROOT / "App" / "tray.py")]
+        flags = (subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP) if WINDOWS else 0
+        subprocess.Popen(command, cwd=ROOT, creationflags=flags, start_new_session=not WINDOWS,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        line("Started. Its icon animates while it reads your libraries.", "success")
+
+
+def layer_protection() -> None:
+    from Special._security._audit import engines_status
+    from Special._security._policy_edit import policy_change, policy_view
+
+    menu_header("Protection")
+    say()
+    try:
+        lists = policy_view(None)["lists"]
+    except ValueError as exc:
+        line(f"Protected values are not available yet: {_clean(exc)}", "warning")
+        return
+    count = lambda n, word: f"{n} {word}{'' if n == 1 else 's'}"  # noqa: E731
+    row("Never publish", f"{count(len(lists['never_publish']), 'value')}, "
+                         f"plus {len(lists['never_publish_words'])} whole-word")
+    row("Allowed anyway", count(len(lists["safe_values"]), "value"))
+    for engine in engines_status():
+        row(engine["label"], "installed" if engine["installed"] else "not installed",
+            "success" if engine["installed"] else "detail")
+    say()
+    line("Protected values are what must never be published: your name, your email addresses, "
+         "usernames. A scan treats any of them as a high finding.", "muted")
+    while True:
+        value = ask("Add a value to protect (Enter when done):")
+        if not value:
+            break
+        whole = ask("Match it only as a whole word, for a short value that also occurs inside other words? [y/n] [n]:", "n").lower() == "y"
+        try:
+            policy_change(None, {"list": "never_publish_words" if whole else "never_publish", "add": [value]})
+            line("Added.", "success")
+        except ValueError as exc:
+            line(f"Not added: {_clean(exc)}", "warning")
+    missing = [engine for engine in engines_status() if not engine["installed"]]
+    if missing:
+        say()
+        line("Optional scanners add more rule sets. gitSpecOps never installs them; where to get them:", "muted")
+        for engine in missing:
+            if engine["home_page"]:
+                row(engine["label"], engine["home_page"], "detail")
+    line("The Security tab in the web view audits whole organizations and edits these values too.", "muted")
+
+
+def layer_fleet() -> None:
+    menu_header("A fleet")
+    say()
+    routes = setup_routes()
+    state = routes.state(readiness=True)
+    if not state["machine"]:
+        line("Enroll this machine first (the This machine layer).", "warning")
+        return
+    ready = state["readiness"]
+    if state["fleet"]:
+        line(f"In a fleet, sharing through: {', '.join(state['fleet']['transports'])}.", "success")
+    else:
+        line("Not in a fleet: this machine works on its own.", "text")
+    row("Tailscale", "connected" if ready["tailnet"] else "not connected", "success" if ready["tailnet"] else "detail")
+    row("Synced folders", ", ".join(ready["folders"]) or "none found", "text")
+    say()
+    option("N", "Start a new fleet with this machine")
+    option("J", "Join a fleet another machine started (needs its fleet key)")
+    option("K", "Show this machine's fleet key, to join another machine to it")
+    option("S", "Skip")
+    choice = ask("Choose [S]:", "s").lower()
+    if choice == "k":
+        line("The key is printed in this window only. Anyone (or any program reading this window) "
+             "who has it can join your fleet.", "warning")
+        if ask("Type SHOW to print it:") == "SHOW":
+            subprocess.call([sys.executable, "Elaborate/setup_fleet.py", "fleet-key", "--show"], cwd=ROOT)
+        return
+    if choice not in ("n", "j"):
+        return
+    key = ask("Paste the fleet key from the other machine:") if choice == "j" else None
+    tailnet = False
+    if ready["tailnet"]:
+        tailnet = ask("Talk directly to your machines over Tailscale (recommended)? [y/n] [y]:", "y").lower() == "y"
+    folder = ask("A folder your sync client replicates, to share through (Enter to skip):")
+    if not (tailnet or folder):
+        line("Choose at least one way to share: Tailscale or a synced folder.", "warning")
+        return
+    line("The GitHub state repository is not offered here until its review is done.", "muted")
+    names = ask("Share repository names, branches and commits with your machines? [y/n] [y]:", "y").lower() == "y"
+    payload = {"key": key, "folder": folder or None, "tailnet": tailnet, "share_names": names,
+               "confirm": ask("Type JOIN to allow it:")}
+    if _act(routes, "join", payload):
+        line("Joined. The app shares through the chosen ways when it next starts.", "success")
+
+
+LAYERS = (("This machine", layer_machine), ("On this desktop", layer_desktop),
+          ("Protection", layer_protection), ("A fleet", layer_fleet))
+
+
+def walkthrough(start: int = 0) -> int:
+    """The layers in order, with an exit point before each one."""
+    for title, layer in LAYERS[start:]:
+        say()
+        choice = ask(f"Next: {title}.  [N] Go  [S] Skip it  [Q] Stop here (everything so far is kept)  [N]:", "n").lower()
+        if choice == "q":
+            notice("Stopped here", "Everything done so far is kept. Run setup again to continue.", "success")
+            return 0
+        if choice == "s":
+            continue
+        layer()
+    notice("All layers done", "Double-click the tray to see your map; run setup again any time to change a layer.", "success")
+    return 0
+
+
 def readiness() -> tuple[bool, list[tuple[str, str, str]]]:
     """Lead with the answer: is this folder set up, and what does this machine have?"""
     venv = VENV_PYTHON.exists()
@@ -487,7 +731,7 @@ def choose_action() -> str | None:
         for label, value, tone in rows:
             row(label, value, tone)
         say()
-        option("1", "Set up launchers and Python environment", "Writes launchers here and builds .venv; nothing outside this folder.")
+        option("1", "Set up, layer by layer", "Install, this machine, this desktop, protection, a fleet; stop after any layer.")
         option("2", "Choose one setup item")
         option("3", "Check prerequisites", "Changes nothing.")
         option("4", "Updater preferences (guided)")
@@ -500,7 +744,7 @@ def choose_action() -> str | None:
             if answer in ("0", "q"):
                 return None
             if answer == "1":
-                return "bootstrap"
+                return "everything"
             if answer == "3":
                 return "check"
             if answer == "4":
@@ -517,6 +761,10 @@ def choose_action() -> str | None:
                 option("3", "Updater preferences")
                 option("4", "Preview legacy settings migration")
                 option("5", "Use existing archive/security settings")
+                option("6", "This machine: libraries and the web view")
+                option("7", "On this desktop: start at login, Git client, the tray")
+                option("8", "Protection: protected values and scanners")
+                option("9", "A fleet: start, join or show the key")
                 option("0", "Back")
                 item = input("  Choose [0]: ").strip().lower() or "0"
                 if item in ("0", "b", "q"):
@@ -525,6 +773,8 @@ def choose_action() -> str | None:
                     return {"1": "launchers", "2": "environment"}[item]
                 if item in ("3", "4", "5"):
                     return {"3": "settings", "4": "settings-migration-preview", "5": "settings-existing"}[item]
+                if item in ("6", "7", "8", "9"):
+                    return f"layer-{int(item) - 6}"
             line("Choose one of the listed keys; nothing has been changed.", "warning")
         except (EOFError, KeyboardInterrupt):
             notice("Setup cancelled", "Nothing has been changed.", "warning")
@@ -596,6 +846,13 @@ def perform(parser, args, action: str) -> int:
         return dispatch(args)
     if action == "bootstrap":
         return bootstrap()
+    if action == "everything":
+        code = bootstrap()
+        return walkthrough() if code == 0 else code
+    if action.startswith("layer-"):
+        title, layer = LAYERS[int(action.removeprefix("layer-"))]
+        layer()
+        return 0
     if action == "launchers":
         return launchers()
     if action == "environment":
