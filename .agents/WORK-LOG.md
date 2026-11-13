@@ -2209,3 +2209,10 @@ No code changed; decisions recorded where they govern.
   piped menu with colours on: all four steps ok). Setup now catches any unexpected error with one
   plain notice (what failed; "some steps may have completed"; where the details are, a file in the
   temp folder), and run_setup.bat keeps its window open when setup fails. Waiting for the report.
+
+## 2026-11-12 17:42 - user (claude) - Setup: the "crash" was the window closing
+- No error report was written, so setup had not failed: a double-clicked window closes the moment
+  setup ends, and option 1 finishes in under a second, so the result vanished before it could be
+  read. The menu now waits after an item ("Press Enter to return to the menu, or Q to quit") and
+  shows itself again; 0 or Q leaves. Named actions on the command line still run once and return.
+  Regression test in `tests/repo/test_setup.py`. Full suite 86/86.

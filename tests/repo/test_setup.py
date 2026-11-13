@@ -86,10 +86,19 @@ class SetupTests(unittest.TestCase):
         self.environment.assert_not_called()
 
     def test_guided_selection_runs_only_the_selected_item(self):
-        self.assertEqual(self.interactive(["2", "1"]), 0)
+        self.assertEqual(self.interactive(["2", "1", "q"]), 0)
         self.launchers.assert_called_once()
         self.environment.assert_not_called()
         self.prerequisites.assert_not_called()
+
+    def test_after_an_item_the_menu_waits_and_returns(self):
+        # 2026-11-12: a double-clicked window closed the moment setup finished, which looked
+        # like a crash. Now the result waits for Enter and the menu comes back; 0 leaves.
+        self.assertEqual(self.interactive(["1", "", "0"]), 0)
+        self.environment_step.assert_called_once()
+        out = self.output.getvalue()
+        self.assertIn("Ready", out, "the item's result is on screen")
+        self.assertEqual(out.count("gitSpecOps  /  Setup\n"), 2, "the menu is shown again after the item")
 
     def test_back_and_invalid_selection_then_exit_do_nothing(self):
         self.assertEqual(self.interactive(["2", "0", "unexpected", "0"]), 0)

@@ -542,9 +542,24 @@ def main(argv: list[str] | None = None) -> int:
             parser.print_help(file=sys.stderr)
             print("Name a setup action when there is no interactive terminal.", file=sys.stderr)
             return 2
-        action = choose_action()
-        if action is None:
-            return 0
+        # A person at the menu: run the chosen item, wait so its result can be read (a
+        # double-clicked window closes the moment setup ends), then show the menu again.
+        while True:
+            action = choose_action()
+            if action is None:
+                return 0
+            code = perform(parser, args, action)
+            try:
+                answer = input("\n  Press Enter to return to the menu, or Q to quit: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                return code
+            if answer == "q":
+                return code
+    return perform(parser, args, action)
+
+
+def perform(parser, args, action: str) -> int:
+    """Run one setup action, named on the command line or chosen from the menu."""
     from Special._settings.setup_cli import ACTIONS, EXISTING_ACTIONS, dispatch
 
     preference_fields = ("root", "exclude_path", "output_mode", "saved_format", "output_dir",
