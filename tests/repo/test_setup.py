@@ -85,65 +85,87 @@ class SetupTests(unittest.TestCase):
         self.launchers.assert_not_called()
         self.environment.assert_not_called()
 
-    def test_guided_selection_runs_only_the_selected_item(self):
-        self.assertEqual(self.interactive(["2", "1", "q"]), 0)
-        self.launchers.assert_called_once()
-        self.environment.assert_not_called()
-        self.prerequisites.assert_not_called()
+    # --- the wizard: start, customize, review, apply, done -------------------------------
+    def wizard(self, answers, current, changes=None):
+        """Run the wizard on a made-up computer: nothing real is detected or changed."""
+        from Elaborate._fleet.setup_plan import Change
+        self.applied = []
+        changes = changes if changes is not None else [
+            Change("login", "Start at sign-in", ["one entry"], lambda: self.applied.append("login") or "added")]
+        with patch.object(subject, "detect_current", return_value=current), \
+                patch.object(subject, "plan_for", return_value=changes), \
+                patch.object(subject, "_tray_running", return_value=True), \
+                patch.object(subject, "start_tray") as tray:
+            self.tray = tray
+            return self.interactive(answers)
 
-    def test_after_an_item_the_menu_waits_and_returns(self):
-        # 2026-11-12: a double-clicked window closed the moment setup finished, which looked
-        # like a crash. Now the result waits for Enter and the menu comes back; 0 leaves.
-        # [1] installs, then offers the layers; "q" stops at the first exit point.
-        self.assertEqual(self.interactive(["1", "q", "", "0"]), 0)
-        self.environment_step.assert_called_once()
-        out = self.output.getvalue()
-        self.assertIn("Ready", out, "the item's result is on screen")
-        self.assertIn("Stopped here", out, "stopping at an exit point keeps what was done")
-        self.assertEqual(out.count("gitSpecOps  /  Setup\n"), 2, "the menu is shown again after the item")
+    def fresh_computer(self):
+        from Elaborate._fleet.setup_plan import Current
+        return Current(libraries=["/code"], start_at_login=False)
 
-    def test_exit_points_skip_go_and_stop(self):
-        ran = []
-        layers = tuple((title, lambda title=title: ran.append(title)) for title in ("A", "B", "C"))
-        with patch.object(subject, "LAYERS", layers), patch("builtins.input", side_effect=["s", "", "q"]):
-            self.assertEqual(subject.walkthrough(), 0)
-        self.assertEqual(ran, ["B"], "A skipped, B run (Enter goes), stopped before C")
-        out = self.output.getvalue()
-        self.assertEqual(out.count("It changes"), 3, "every layer says what it changes before the choice")
-        self.assertEqual(out.count("Nothing happens until you answer"), 3)
-
-    def test_this_machine_needs_scan_to_enroll(self):
-        import json
-        import subprocess
-        import tempfile
-
-        from App._web.setup import SetupRoutes
-        from Elaborate._fleet.setup_state import setup_state
-        with tempfile.TemporaryDirectory(prefix="setup-layer-") as temp:
-            home, state_dir, library = Path(temp) / "profile", Path(temp) / "state", Path(temp) / "code"
-            home.mkdir()
-            (home / "settings.json").write_text(json.dumps({"schema_version": 2}), encoding="utf-8")
-            subprocess.run(["git", "init", "-q", str(library / "one")], check=True)
-            routes = lambda: SetupRoutes(home, state_dir)  # noqa: E731
-            with patch.object(subject, "setup_routes", routes):
-                # Do not look; add the folder by path; type the word wrong: nothing is enrolled.
-                with patch("builtins.input", side_effect=["n", str(library), "scan"]):
-                    subject.layer_machine()
-                self.assertIsNone(setup_state(home, state_dir)["machine"])
-                with patch("builtins.input", side_effect=["n", str(library), "SCAN", ""]):
-                    subject.layer_machine()
-            self.assertEqual(setup_state(home, state_dir)["machine"]["libraries"], [str(library.resolve())])
-            self.assertIn("type SCAN", self.output.getvalue())
-
-    def test_back_and_invalid_selection_then_exit_do_nothing(self):
-        self.assertEqual(self.interactive(["2", "0", "unexpected", "0"]), 0)
-        self.assertIn("nothing has been changed", self.output.getvalue())
+    def test_exit_at_the_start_changes_nothing(self):
+        self.assertEqual(self.wizard(["0"], self.fresh_computer()), 0)
+        self.assertEqual(self.applied, [])
         self.assert_no_actions()
+        self.assertIn("Ready to set up", self.output.getvalue())
+
+    def test_review_lists_the_changes_and_cancel_changes_nothing(self):
+        self.assertEqual(self.wizard(["1", "0", "0"], self.fresh_computer()), 0)
+        out = self.output.getvalue()
+        self.assertIn("These changes will be made", out)
+        self.assertIn("Start at sign-in: one entry", out)
+        self.assertIn("Not changed: your repositories", out)
+        self.assertEqual(self.applied, [], "nothing is applied until [I]")
+        self.assert_no_actions()
+
+    def test_apply_installs_then_makes_every_planned_change(self):
+        self.assertEqual(self.wizard(["1", "i", ""], self.fresh_computer()), 0)
+        self.launchers.assert_called_once()
+        self.environment_step.assert_called_once()
+        self.assertEqual(self.applied, ["login"])
+        out = self.output.getvalue()
+        self.assertIn("[4/4] Start at sign-in", out, "install steps and the change, on one run screen")
+        self.assertIn("gitSpecOps is set up.", out)
+
+    def test_a_first_setup_needs_a_library_before_it_can_apply(self):
+        from Elaborate._fleet.setup_plan import Current
+        # No library: [1] opens the library screen first; leaving it empty, review offers no [I].
+        # Then: Back (to Customize), Back without changes, the review again: Cancel, then Exit.
+        self.assertEqual(self.wizard(["1", "0", "b", "0", "0", "0"], Current(start_at_login=False)), 0)
+        out = self.output.getvalue()
+        self.assertIn("Add a library folder", out)
+        self.assertNotIn("[I] Set up", out)
+        self.assertEqual(self.applied, [])
+
+    def test_customize_back_without_changes_keeps_the_old_choices(self):
+        from Elaborate._fleet import setup_plan
+        seen = []
+        real = setup_plan.plan
+
+        def recording(current, choices, *args, **kwargs):
+            seen.append(choices.web)
+            return []
+        with patch.object(subject, "detect_current", return_value=self.fresh_computer()), \
+                patch.object(subject, "plan_for", side_effect=lambda c, ch: recording(c, ch)):
+            # Customize, web view -> Tailscale, then "Back without changes", then exit.
+            self.interactive(["2", "2", "2", "0", "0"])
+        self.assertTrue(seen and set(seen) == {"loopback"}, seen)
+        self.assertIs(real, setup_plan.plan)
 
     def test_end_of_input_cancels_without_setup(self):
-        self.assertEqual(self.interactive([EOFError()]), 0)
+        self.assertEqual(self.wizard([EOFError()], self.fresh_computer()), 0)
         self.assertIn("cancelled", self.output.getvalue())
+        self.assertEqual(self.applied, [])
         self.assert_no_actions()
+
+    def test_a_set_up_computer_offers_repair_and_removal(self):
+        from Elaborate._fleet.setup_plan import Current
+        current = Current(enrolled=True, machine="Box", libraries=["/code"], start_at_login=True)
+        self.assertEqual(self.wizard(["0"], current, changes=[]), 0)
+        out = self.output.getvalue()
+        self.assertIn("gitSpecOps is set up on this computer", out)
+        self.assertIn("[1] Repair", out)
+        self.assertIn("[U] Remove from this computer", out)
 
 
 if __name__ == "__main__":

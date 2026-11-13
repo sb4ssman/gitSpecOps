@@ -2246,3 +2246,20 @@ No code changed; decisions recorded where they govern.
   a read-only git fetch every 15 minutes, Tailscale port 8765 for own devices, a status file
   every 5 minutes in a synced folder) and the network it uses; then "Nothing happens until you
   answer". Values checked against the code. Rows wrap under their value. Test asserts it.
+
+## 2026-11-13 06:06 - user (claude) - Setup rebuilt as a standard installer, on one setup engine
+- At the user's direction ("the best, most complete and correct solution from the beginning"):
+  setup is now the standard installer flow of the station script standard, built new rather
+  than adapted. Start screen leading with readiness; Customize (library folders with Look,
+  web view, start at sign-in, desktop Git app, protected values, fleet: start, join, or show
+  the key), each choice held until [A]; one Review of what will change and what will not; [I]
+  applies everything on one run screen (install steps, then each change); Done offers to start
+  the app. Run again: review and apply changes, Repair, Remove from this computer (sign-in
+  entry, launchers, .venv; repositories and settings kept), Details, More tools (the older
+  settings actions). End of input cancels cleanly.
+- The engine is `Elaborate/_fleet/setup_plan.py` (detect, choices, plan with review words,
+  apply through the existing functions; start at sign-in registered through the project's own
+  Python), for the web Setup page and agents to share next. The layer walk is gone.
+- Tests: `tests/elaborate/test_setup_plan.py` (3, throwaway profile, no network) and the wizard
+  flows in `tests/repo/test_setup.py` (start, review and cancel, apply, first setup needs a
+  library, customize back without changes, cancel, a set-up computer). Full suite 87/87.
