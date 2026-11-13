@@ -96,10 +96,13 @@ function machineBox(svg, x, y, machine, detail, tone, onOpen) {
   group.append(el('text', {x, y: y + 25, class: 'z-detail'}, machine.freshness === 'current' ? 'reporting' : machine.freshness));
   return group;
 }
-function link(svg, x1, y1, x2, y2, width, tone, label, curve = 0) {
-  const mx = (x1 + x2) / 2 + curve, my = (y1 + y2) / 2;
+/** `at` places the label along the line (0 at the start, 1 at the end): links that fan out from
+ *  several clouds would otherwise put every label at the same height, on top of each other. */
+function link(svg, x1, y1, x2, y2, width, tone, label, curve = 0, at = 0.5) {
+  const mx = (x1 + x2) / 2 + curve, my = (y1 + y2) / 2, u = 1 - at;
   svg.append(el('path', {d: `M${x1} ${y1} Q${mx} ${my} ${x2} ${y2}`, class: `z-link ${toneClass(tone)}`, 'stroke-width': width}));
-  if (label) svg.append(el('text', {x: (x1 + 2 * mx + x2) / 4, y: (y1 + 2 * my + y2) / 4 - 6, class: 'z-link-label'}, label));
+  if (label) svg.append(el('text', {x: u * u * x1 + 2 * u * at * mx + at * at * x2,
+                                    y: u * u * y1 + 2 * u * at * my + at * at * y2 - 6, class: 'z-link-label'}, label));
 }
 function frame(container, height, title) {
   const svg = el('svg', {viewBox: `0 0 1000 ${height}`, class: 'zoom-svg', role: 'group', 'aria-label': title});
@@ -130,13 +133,15 @@ function fleetLevel(container, data) {
                     `${shared.shared} shared${shared.differ ? `, ${shared.differ} on different commits` : ''}`));
     }
   }
-  for (const machine of machines) {                         // machine to cloud
-    for (const host of clouds) {
+  for (const [m, machine] of machines.entries()) {          // machine to cloud
+    for (const [c, host] of clouds.entries()) {
       const {count, bad} = onMachine(data, machine.id, row => hostOf(row) === host.host);
       if (!count) continue;
       const [x1, y1] = cloudAt.get(host.host), [x2, y2] = machineAt.get(machine.id);
+      // Each machine's labels at their own height, each cloud's a little apart: never stacked.
+      const at = Math.min(0.8, 0.25 + 0.45 * (m / Math.max(1, machines.length - 1)) + 0.06 * c);
       link(svg, x1, y1 + 34, x2, y2 - 38, Math.min(2 + Math.sqrt(count) * 1.2, 16), bad ? 'warning' : 'success',
-           `${count}${bad ? ` · ${bad} need attention` : ''}`);
+           `${count}${bad ? ` · ${bad} need attention` : ''}`, 0, at);
     }
   }
   for (const host of clouds) {

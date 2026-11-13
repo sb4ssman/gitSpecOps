@@ -38,12 +38,12 @@ one before:
 
 | Layer | Means | For example |
 |---|---|---|
-| **Basic** | one Git or host operation, done carefully | find every repository under a folder |
-| **Special** | this machine, once | what needs attention here; catch up safely; scan before publishing |
+| **Basic** | one Git or host operation, done carefully | commit, push, pull, clone; find every repository under a folder |
+| **Special** | this machine, once | what needs attention here; catch up safely; secure-commit and secure-push |
 | **Elaborate** | other machines, or over time | the fleet map; is this machine safe to wipe; start at sign-in |
 
-Security sits alongside every layer: the same checks run at every exit, whether a commit, a push
-or a publish.
+Security sits alongside: `secure-commit` and `secure-push` check before anything leaves, and so
+does every publish gitSpecOps makes on its own. Basic `commit` and `push` are plain, like git's.
 
 ## What never happens
 
@@ -68,6 +68,8 @@ git clone https://github.com/sb4ssman/gitSpecOps
 cd gitSpecOps
 ./run_setup.sh          # Windows: run_setup.bat
 ```
+
+![Setup's menu in a terminal: the gitSpecOps banner, then "Walk me through everything", "Run one command, without setting anything up", and the individual setup items](docs/images/setup-menu.png)
 
 Setup offers three ways in:
 
@@ -99,10 +101,10 @@ switched off".
 | | **Nothing set up** | **+ This machine** | **+ A fleet** | **+ Tailscale** |
 |---|---|---|---|---|
 | **You add** | nothing | your library folders | a fleet key and a way to share | your own tailnet |
-| **Basic** | find repositories; status, fetch, fast-forward pull, clone, on any you name | | | |
+| **Basic** | find repositories; status, fetch, pull, clone, commit, push, on any you name | | | |
 | **Special** | check what needs attention; catch up; archives; copy an organization | an always-on map of this machine; recovery snapshots of unfinished work | | |
 | **Elaborate** | | start at sign-in | every machine on one map; where work is unpushed; clone what is missing; prove a machine safe to wipe | live status between machines; the map on your phone |
-| **Protect** | scans; checked commit and push; history cleanup | findings on the map, on request | audit every machine *(planned)* | |
+| **Protect** | scans; secure-commit and secure-push; history cleanup | findings on the map, on request | audit every machine *(planned)* | |
 | **Agents can** | work on folders you name | work on this machine | observe the whole fleet | |
 
 Also planned: keeping repositories current automatically under a consent you set; asking
@@ -140,9 +142,10 @@ before anything leaves:
 
 - **Scans** of the working files, the staged bytes, or the full history, with built-in checks
   and, if you have them, Gitleaks, Betterleaks (version 1) or TruffleHog.
-- **Checked commit and push.** A commit carries exactly the files you named; a push sends exactly
-  the planned commits. Both are held by a secret, a value on your never-publish list, or an
-  unreviewed binary.
+- **`secure-commit` and `secure-push`.** A commit carries exactly the files you named; a push
+  sends exactly the planned commits. Both are held by a secret, a value on your never-publish
+  list, or an unreviewed binary. (Basic `commit` and `push` do the same Git work without the
+  checks, as `git` itself would.)
 - **Reviews.** Accept one finding at one exact place, once; it is not a blanket exception.
 - **History cleanup.** Rewrite history into a new private copy, prove what changed, rescan, and
   only then publish; afterwards your clones follow the new history, and the commit ids quoted in
@@ -156,8 +159,8 @@ before anything leaves:
 gitso suggest-sync --json          # this machine: what needs attention
 gitso suggest-fleet-sync           # every machine
 gitso scan-tree <repo> --json      # findings, masked
-gitso commit <repo> <files> -m "…" # a plan with an id; nothing happens yet
-gitso commit <repo> <files> -m "…" --apply --approve <plan id>
+gitso secure-commit <repo> <files> -m "…"   # a plan with an id; nothing happens yet
+gitso secure-commit <repo> <files> -m "…" --apply --approve <plan id>
 gitso docs <command>               # what a command reads, may change, and returns
 ```
 
@@ -165,8 +168,8 @@ gitso docs <command>               # what a command reads, may change, and retur
   where results go.
 - **Plans, then approval.** Anything that changes a repository first returns a plan with an id;
   applying requires that exact plan, and a changed repository invalidates it.
-- **The same gates as you.** An agent's commit and push pass the same security checks, so it
-  cannot publish what must not leave.
+- **The same gates as you.** An agent using `secure-commit` and `secure-push` passes the same
+  security checks, so it cannot publish what must not leave.
 - **Machine-readable** results with `--json`, and no prompts when every choice is a flag.
 
 ## Commands
@@ -177,8 +180,8 @@ command's own description, generated from its source.
 
 | Layer | Commands |
 |---|---|
-| **Basic** | discover, status, fetch, pull, clone, reset-keep |
-| **Special** | enroll-machine, suggest-sync, name-repo, catch-up, audit-repos, materialize, list-live-buffers, duplicate-org, update-archive, archive-manager, sync-archive, export-inventory, restore-inventory, scan-tree, scan-history, review-finding, clean-history, follow-rewrite, commit, push |
+| **Basic** | discover, status, fetch, pull, clone, reset-keep, commit, push |
+| **Special** | enroll-machine, suggest-sync, name-repo, catch-up, audit-repos, materialize, list-live-buffers, duplicate-org, update-archive, archive-manager, sync-archive, export-inventory, restore-inventory, scan-tree, scan-history, review-finding, clean-history, follow-rewrite, secure-commit, secure-push |
 | **Elaborate** | setup-fleet, peer, publish-status, suggest-fleet-sync, converge, check-safe-to-wipe, recovery, doctor, preflight, start-at-login, schedule-archives |
 | **App** | tray, serve-web, setup |
 
@@ -281,11 +284,11 @@ on this machine.
 staged, `scan-tree --staged --out FILE` inspects exactly what would be committed. It never stages
 or commits anything.
 
-**Checked commit.** Preview the files, message and author, then apply that exact plan:
+**`secure-commit`.** Preview the files, message and author, then apply that exact plan:
 
 ```sh
-gitso commit /path/to/repo file.py docs/usage.md -m 'Describe the change' --json
-gitso commit /path/to/repo file.py docs/usage.md -m 'Describe the change' --apply --approve '<plan-id>'
+gitso secure-commit /path/to/repo file.py docs/usage.md -m 'Describe the change' --json
+gitso secure-commit /path/to/repo file.py docs/usage.md -m 'Describe the change' --apply --approve '<plan-id>'
 ```
 
 Only the named files are committed, with their whole working contents; other staged work is
@@ -294,7 +297,7 @@ settings are installed. Requires Git 2.36 or later. Directories, linked files, m
 states need compatibility work. If Git created a commit but final verification fails, the result
 says `partial`; nothing is pushed or undone automatically.
 
-**Checked push.** `gitso push /path/to/repo --json` previews the branch, tip and destination
+**`secure-push`.** `gitso secure-push /path/to/repo --json` previews the branch, tip and destination
 without network access; `--apply --approve '<plan-id>'` fetches, checks the actual outgoing
 history through the same gate as archive publishing, then pushes that fixed snapshot. There is
 no force, extra-tag or bypass option.

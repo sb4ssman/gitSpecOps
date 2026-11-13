@@ -2428,3 +2428,20 @@ No code changed; decisions recorded where they govern.
   gitso lists them now (40 commands). Basic commit and push stay unlisted: their names clash
   with the checked Special commit and push, and listing them would add an unchecked exit;
   put to the user.
+
+## 2026-11-13 14:50 - user (claude) - Plain commit and push under Basic; secure-commit and secure-push
+- On branch wave/basic-and-secure-commands (the user's new rule: each wave on a branch; push and
+  a pull request when he says; he merges when CI is green).
+- gitso `commit` and `push` are now the plain Basic operations (exactly the named files; never a
+  forced push; no security check), like git's own. The checked Special ones are renamed
+  `secure-commit` and `secure-push`. README, SECURITY.md, CHANGELOG (Unreleased) and the two gate
+  tests follow; a test pins which module each name runs. 42 commands.
+- README: the redacted setup-menu screenshot in Get started (docs/images/setup-menu.png). The
+  command-menu screenshot was not used: it shows the old one-command Basic list.
+- Map fix: with two or more clouds, every cloud-to-machine label sat at the same height and
+  overlapped; `link()` takes a position along the line and the fleet level staggers them.
+- Found while redoing the README map (put to the user, not changed): (1) a repository absent
+  from any machine, or on a stale machine, counts as needing attention, so a real fleet whose
+  libraries differ shows nearly everything amber; (2) "Machines together" counts that row-level
+  attention per machine (Desktop 8 of 8) while the zoomable map counts the machine's own
+  copies (2 of 8); (3) no view shows repository names on machines in one picture.

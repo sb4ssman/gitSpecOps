@@ -6,8 +6,8 @@
 Every command runs as `gitso <command>` (or `python gitso.py <command>`), and by its own
 path. `gitso docs <command>` prints the same text in a terminal.
 
-- **Basic: one Git or host operation:** [discover](#discover), [status](#status), [fetch](#fetch), [pull](#pull), [clone](#clone), [reset-keep](#reset-keep)
-- **Special: this machine, once:** [enroll-machine](#enroll-machine), [suggest-sync](#suggest-sync), [name-repo](#name-repo), [catch-up](#catch-up), [audit-repos](#audit-repos), [materialize](#materialize), [list-live-buffers](#list-live-buffers), [duplicate-org](#duplicate-org), [update-archive](#update-archive), [archive-manager](#archive-manager), [sync-archive](#sync-archive), [export-inventory](#export-inventory), [restore-inventory](#restore-inventory), [scan-tree](#scan-tree), [scan-history](#scan-history), [review-finding](#review-finding), [clean-history](#clean-history), [follow-rewrite](#follow-rewrite), [commit](#commit), [push](#push)
+- **Basic: one Git or host operation:** [discover](#discover), [status](#status), [fetch](#fetch), [pull](#pull), [clone](#clone), [reset-keep](#reset-keep), [commit](#commit), [push](#push)
+- **Special: this machine, once:** [enroll-machine](#enroll-machine), [suggest-sync](#suggest-sync), [name-repo](#name-repo), [catch-up](#catch-up), [audit-repos](#audit-repos), [materialize](#materialize), [list-live-buffers](#list-live-buffers), [duplicate-org](#duplicate-org), [update-archive](#update-archive), [archive-manager](#archive-manager), [sync-archive](#sync-archive), [export-inventory](#export-inventory), [restore-inventory](#restore-inventory), [scan-tree](#scan-tree), [scan-history](#scan-history), [review-finding](#review-finding), [clean-history](#clean-history), [follow-rewrite](#follow-rewrite), [secure-commit](#secure-commit), [secure-push](#secure-push)
 - **Elaborate: other machines, or over time:** [setup-fleet](#setup-fleet), [peer](#peer), [publish-status](#publish-status), [suggest-fleet-sync](#suggest-fleet-sync), [converge](#converge), [check-safe-to-wipe](#check-safe-to-wipe), [recovery](#recovery), [doctor](#doctor), [preflight](#preflight), [start-at-login](#start-at-login), [schedule-archives](#schedule-archives)
 - **App: presence and presentation:** [tray](#tray), [serve-web](#serve-web)
 - **Setup:** [setup](#setup)
@@ -137,6 +137,58 @@ What it does **not** protect is commits. A commit on the branch that `target` do
 left on no branch (still in the reflog, until git expires it). Deciding whether that is
 acceptable -- proving nothing unpushed would be hidden, then asking the person -- belongs to the
 caller. This only performs the move.
+```
+
+### commit
+
+`gitso commit`, or `Basic/commit.py`.
+
+```text
+Commit the named files of one repository, and nothing else.
+
+Why:          commits must contain exactly what was chosen, never everything that happens to be staged.
+Reads:        the named paths in the working tree.
+May change:   one new commit of exactly those paths; other staged work stays staged.
+Results:      a JSON result on stdout.
+Layer:        Basic: one Git or host operation.
+Status:       working
+
+    python Basic/commit.py <repo> -m MESSAGE PATH [PATH ...]
+
+Only the paths given are committed -- added, changed or deleted -- even when other changes are
+staged; those stay staged, untouched. There is no option for "everything" (`-a`), for rewriting
+the last commit (`--amend`), for an empty commit, or for skipping the repository's hooks, and
+there must never be one. A detached HEAD is refused: the commit would belong to no branch.
+
+Each named path is committed as it is in the working tree (a partly staged file is committed
+whole). If git refuses the commit -- a hook, a missing identity -- the named paths are left
+staged and the failure is reported; nothing else in the index changes.
+
+The identity on the commit is whatever git would use here (see `_facts.next_commit_identity`);
+deciding whether that identity is the right one belongs to the caller, as does deciding *what*
+to commit. This only performs it.
+```
+
+### push
+
+`gitso push`, or `Basic/push.py`.
+
+```text
+Push one repository's current branch to its upstream. Never forced.
+
+Why:          publishing must never overwrite what is on the remote.
+Reads:        the current branch and its upstream.
+May change:   the remote branch, by fast-forward only; never forced.
+Results:      a JSON result on stdout.
+Layer:        Basic: one Git or host operation.
+Status:       working
+
+    python Basic/push.py <repo>
+
+A push without `--force` is refused by git itself unless it is a fast-forward of the remote:
+the mirror image of `pull --ff-only`. There is no parameter here that could add `--force`,
+`--force-with-lease`, a `+refspec`, or `--mirror`, and there must never be one. Deciding
+*whether* to push (ahead-only, clean, freshly re-checked) belongs to the caller.
 ```
 
 ## Special: this machine, once
@@ -592,9 +644,9 @@ Status:       working
     python Special/follow_rewrite.py relink WORKSPACE [WORKSPACE ...] --checkout PATH [--write]
 ```
 
-### commit
+### secure-commit
 
-`gitso commit`, or `Special/commit_repo.py`.
+`gitso secure-commit`, or `Special/commit_repo.py`.
 
 ```text
 Preview/check and explicitly commit named files using shared security policy.
@@ -616,9 +668,9 @@ persistent hook installation, automatic push or rollback. Source/metadata checks
 against other writers; unsupported Git states fail explicitly. See --help for profile options.
 ```
 
-### push
+### secure-push
 
-`gitso push`, or `Special/push_repo.py`.
+`gitso secure-push`, or `Special/push_repo.py`.
 
 ```text
 Plan a single branch push and check its outgoing history before publishing.

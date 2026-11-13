@@ -51,6 +51,10 @@ COMMANDS = (
     Command("pull", "Basic/pull.py", "Basic.pull"),
     Command("clone", "Basic/clone.py", "Basic.clone"),
     Command("reset-keep", "Basic/reset_keep.py", "Basic.reset_keep"),
+    # Plain, like git's own: exactly the named files; a push that is never forced. No security
+    # check; secure-commit and secure-push (Special) are the checked ones.
+    Command("commit", "Basic/commit.py", "Basic.commit"),
+    Command("push", "Basic/push.py", "Basic.push"),
     # Special: this machine, once.
     Command("enroll-machine", "Special/enroll_machine.py", "Special._sync.commands", "enroll_machine_main"),
     Command("suggest-sync", "Special/suggest_sync.py", "Special._sync.commands", "suggest_sync_main"),
@@ -71,8 +75,8 @@ COMMANDS = (
     Command("review-finding", "Special/review_finding.py", "Special._security._review_cli"),
     Command("clean-history", "Special/clean_history.py", "Special._security._cleanup_cli"),
     Command("follow-rewrite", "Special/follow_rewrite.py", "Special.follow_rewrite"),
-    Command("commit", "Special/commit_repo.py", "Special._security._commit.cli"),
-    Command("push", "Special/push_repo.py", "Special._security._push_cli"),
+    Command("secure-commit", "Special/commit_repo.py", "Special._security._commit.cli"),
+    Command("secure-push", "Special/push_repo.py", "Special._security._push_cli"),
     # Elaborate: other machines, or over time.
     Command("setup-fleet", "Elaborate/setup_fleet.py", "Elaborate.setup_fleet"),
     Command("peer", "Elaborate/peer.py", "Elaborate.peer"),

@@ -5,6 +5,15 @@ while the version starts with 0, gitSpecOps is a development preview and anythin
 
 ## Unreleased
 
+- **Renamed:** the checked `gitso commit` and `gitso push` are now `gitso secure-commit` and
+  `gitso secure-push` (Special). `gitso commit` and `gitso push` are now the plain Basic
+  operations, like `git commit` and `git push`: exactly the named files, never a forced push,
+  no security check. Scripts and agents that relied on the checked behaviour must switch names.
+- **Basic commands listed:** status, fetch, pull, clone, reset-keep, commit and push.
+- **Tests on Windows, macOS and Linux** with GitHub Actions, and a generated command reference
+  (`docs/COMMANDS.md`).
+- **Setup:** running one command returns to the setup menu afterwards.
+
 ## 0.2.0 — 2026-11-13
 
 The first tagged version: a development preview, developed and tested on Windows.
