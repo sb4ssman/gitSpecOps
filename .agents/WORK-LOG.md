@@ -2477,3 +2477,15 @@ No code changed; decisions recorded where they govern.
   commit when built in the same second (its file now differs); tests/_bootstrap.py resolves
   the temp folder (Windows short names, macOS /var), for test comparisons only.
 - Debian 13 added to CI: a container with Debian's own Python and Git, as a non-root user.
+
+## 2026-11-13 17:20 - user (claude) - Second CI run: Ubuntu green; the rest down to five
+- Second run: Ubuntu 3.11 and 3.14 pass; Debian 88/89 (the non-root account name was the
+  privacy test's "home folder" identity: renamed `runner`, a generic name); macOS 88/89 (FSEvents
+  works on a real Mac; the setup-page test waited 5s for the server: now 30s and the thread's
+  error is reported); Windows 86/89.
+- Windows: (1) a real race in the Windows watcher: changes before the first
+  ReadDirectoryChangesW call are never recorded; the constructor now waits until each watch
+  thread is about to make it. (2) the scanner test asserted "no finding at link.txt" but a
+  link's own target text can hold a Windows user path, a fair finding; it now asserts the
+  linked file's contents never appear. (3) capture's churn test: cause unknown (tested and
+  ruled out: ignoring system Git config); the test now prints both Git states when it fails.

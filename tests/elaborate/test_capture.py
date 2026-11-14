@@ -177,15 +177,22 @@ def test_refusals_that_protect_fidelity():
         writes = {"count": 0}
         real_state = capture.repository_state
 
+        states = []
+
         def changing(path):
             writes["count"] += 1
             if writes["count"] == 2:
                 (repository / "tracked.txt").write_text(f"moved {writes['count']}\n")
-            return real_state(path)
+            states.append(real_state(path))
+            return states[-1]
 
         capture.repository_state = changing
         try:
-            refused(lambda: capture.capture(repository, "r1", "machine-a"), "changed while")
+            try:
+                refused(lambda: capture.capture(repository, "r1", "machine-a"), "changed while")
+            except AssertionError:
+                # Say what Git reported before and after, so a failure on another system shows why.
+                raise AssertionError(f"a write between the two reads went unseen: {states!r}") from None
         finally:
             capture.repository_state = real_state
 

@@ -184,15 +184,23 @@ class WindowsEvents:
                 self.close()
                 raise ctypes.WinError(ctypes.get_last_error())
             self._handles.append(handle)
-            thread = threading.Thread(target=self._read, args=(handle, root), daemon=True)
+            ready = threading.Event()
+            thread = threading.Thread(target=self._read, args=(handle, root, ready), daemon=True)
             self._threads.append(thread)
             thread.start()
+            # Windows records changes only once the first ReadDirectoryChangesW call is made; a
+            # file written before that is never reported. Return only when every watch is about
+            # to make that call, plus a moment for it to reach the kernel.
+            ready.wait(5)
+        time.sleep(0.05)
 
-    def _read(self, handle, root: Path) -> None:
+    def _read(self, handle, root: Path, ready: threading.Event | None = None) -> None:
         buffer = ctypes.create_string_buffer(64 * 1024)
         returned = self._wintypes.DWORD()
         filters = 0x00000001 | 0x00000002 | 0x00000004 | 0x00000008 | 0x00000010
         while not self._closed.is_set():
+            if ready is not None:
+                ready.set()
             ok = self._kernel32.ReadDirectoryChangesW(
                 handle, buffer, len(buffer), True, filters, ctypes.byref(returned), None, None)
             if not ok:

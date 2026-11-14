@@ -59,13 +59,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+      # Named "runner", as on GitHub's own machines: the privacy test treats the account and home
+      # folder name as personal unless it is a generic one, and this file names it.
       - name: An ordinary user to run the tests
         run: |
-          useradd --create-home tester
-          chown -R tester "$GITHUB_WORKSPACE"
+          useradd --create-home runner
+          chown -R runner "$GITHUB_WORKSPACE"
       - name: Run the suite
         run: |
-          su tester -c 'git config --global user.name "ci-'"$GITHUB_RUN_ID"'" &&
+          su runner -c 'git config --global user.name "ci-'"$GITHUB_RUN_ID"'" &&
                         git config --global user.email "ci-'"$GITHUB_RUN_ID"'@example.invalid" &&
                         python3 --version &&
                         cd "'"$GITHUB_WORKSPACE"'" && python3 tests/run_all.py --jobs 4'
