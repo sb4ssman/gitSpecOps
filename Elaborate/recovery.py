@@ -7,7 +7,7 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/recovery.py --help
+    gitso recovery --help
 """
 from pathlib import Path
 import sys

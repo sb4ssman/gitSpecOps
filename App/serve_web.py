@@ -37,7 +37,7 @@ def manifests_only(args) -> int:
     transport, label = open_transport(config, None)
     if transport is None:
         raise ValueError("no published status to show; set a transport with "
-                         "gitso publish-status init")
+                         "gitso fleet publish init")
     return serve(transport, config, load_catalog(config_dir), port=args.port or DEFAULT_PORT,
                  open_browser=not args.no_browser,
                  settings={"transport": label, "root_count": len(config.get("roots") or [])})

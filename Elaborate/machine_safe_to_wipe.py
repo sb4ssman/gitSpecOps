@@ -7,7 +7,7 @@ Results:      JSON without a terminal (or with --json); a screen at one. Exit 1 
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/check_safe_to_wipe.py --help
+    gitso machine safe-to-wipe --help
 """
 from pathlib import Path
 import sys

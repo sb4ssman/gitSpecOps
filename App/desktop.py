@@ -8,7 +8,7 @@ Layer:        App: presence and presentation.
 Status:       working
 
 The bundle is also the command line: `GitSpecOpsSync doctor`, `... autostart enable` reach the
-fleet commands, and the tray options that start-at-login registers reach the tray.
+fleet commands, and the tray options that start-at-sign-in registers reach the tray.
 """
 from __future__ import annotations
 

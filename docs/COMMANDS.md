@@ -4,11 +4,12 @@
      hand: change the header, then run `python _build/command_docs.py --write`. -->
 
 Every command runs as `gitso <command>` (or `python gitso.py <command>`), and by its own
-path. `gitso docs <command>` prints the same text in a terminal.
+path. A subject's actions share a section (`archive add`, `archive remove`, ...); `gitso
+<subject>` lists them. `gitso docs <command>` prints the same text in a terminal.
 
 - **Basic: one Git or host operation:** [discover](#discover), [status](#status), [fetch](#fetch), [pull](#pull), [clone](#clone), [reset-keep](#reset-keep), [commit](#commit), [push](#push)
-- **Special: this machine, once:** [enroll-machine](#enroll-machine), [suggest-sync](#suggest-sync), [name-repo](#name-repo), [catch-up](#catch-up), [audit-repos](#audit-repos), [materialize](#materialize), [list-live-buffers](#list-live-buffers), [duplicate-org](#duplicate-org), [update-archive](#update-archive), [archive-manager](#archive-manager), [sync-archive](#sync-archive), [export-inventory](#export-inventory), [restore-inventory](#restore-inventory), [scan-tree](#scan-tree), [scan-history](#scan-history), [review-finding](#review-finding), [clean-history](#clean-history), [follow-rewrite](#follow-rewrite), [secure-commit](#secure-commit), [secure-push](#secure-push)
-- **Elaborate: other machines, or over time:** [setup-fleet](#setup-fleet), [peer](#peer), [publish-status](#publish-status), [suggest-fleet-sync](#suggest-fleet-sync), [converge](#converge), [check-safe-to-wipe](#check-safe-to-wipe), [recovery](#recovery), [doctor](#doctor), [preflight](#preflight), [start-at-login](#start-at-login), [schedule-archives](#schedule-archives)
+- **Special: this machine, once:** [machine show](#machine-show--add--remove--find--presentation), [machine add](#machine-show--add--remove--find--presentation), [machine remove](#machine-show--add--remove--find--presentation), [machine find](#machine-show--add--remove--find--presentation), [machine presentation](#machine-show--add--remove--find--presentation), [machine check](#machine-check), [machine catch-up](#machine-catch-up), [machine audit](#machine-audit), [machine materialize](#machine-materialize), [machine buffers](#machine-buffers), [repo name](#repo-name--list), [repo list](#repo-name--list), [archive add](#archive-add--remove--list--status--refresh--check), [archive remove](#archive-add--remove--list--status--refresh--check), [archive list](#archive-add--remove--list--status--refresh--check), [archive status](#archive-add--remove--list--status--refresh--check), [archive refresh](#archive-add--remove--list--status--refresh--check), [archive check](#archive-add--remove--list--status--refresh--check), [archive update](#archive-update), [archive sync](#archive-sync), [inventory export](#inventory-export), [inventory restore](#inventory-restore), [org copy](#org-copy), [scan](#scan), [review](#review), [history scan](#history-scan), [history clean](#history-clean), [history follow](#history-follow--relink), [history relink](#history-follow--relink), [secure-commit](#secure-commit), [secure-push](#secure-push)
+- **Elaborate: other machines, or over time:** [machine safe-to-wipe](#machine-safe-to-wipe), [archive schedule](#archive-schedule), [fleet setup](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet status](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet transports](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet leave](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet key](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet baskets](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet git-client](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet join](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet doctor](#fleet-doctor), [fleet preflight](#fleet-preflight), [fleet publish](#fleet-publish), [fleet suggest](#fleet-suggest), [fleet converge](#fleet-converge), [peer run](#peer-run--rescan), [peer rescan](#peer-run--rescan), [recovery](#recovery), [start-at-sign-in](#start-at-sign-in)
 - **App: presence and presentation:** [tray](#tray), [serve-web](#serve-web)
 - **Setup:** [setup](#setup)
 
@@ -16,7 +17,7 @@ path. `gitso docs <command>` prints the same text in a terminal.
 
 ### discover
 
-`gitso discover`, or `Basic/discover.py`.
+`gitso discover`; or `Basic/discover.py`.
 
 ```text
 Find Git repositories under a root. Read-only: a filesystem walk, no git, no network.
@@ -34,7 +35,7 @@ Status:       working
 
 ### status
 
-`gitso status`, or `Basic/status.py`.
+`gitso status`; or `Basic/status.py`.
 
 ```text
 Report one repository's facts. Read-only.
@@ -51,7 +52,7 @@ Status:       working
 
 ### fetch
 
-`gitso fetch`, or `Basic/fetch.py`.
+`gitso fetch`; or `Basic/fetch.py`.
 
 ```text
 Fetch a repository's remote. Moves remote-tracking refs only.
@@ -71,7 +72,7 @@ tree -- nothing the user would have to undo. That is why observation may fetch a
 
 ### pull
 
-`gitso pull`, or `Basic/pull.py`.
+`gitso pull`; or `Basic/pull.py`.
 
 ```text
 Fast-forward one repository to its upstream. Never merges, never rebases.
@@ -93,7 +94,7 @@ Callers decide *whether* a repository qualifies (clean, behind-only); this only 
 
 ### clone
 
-`gitso clone`, or `Basic/clone.py`.
+`gitso clone`; or `Basic/clone.py`.
 
 ```text
 Clone one repository into a destination that does not exist yet.
@@ -114,7 +115,7 @@ with prompts disabled, a missing one fails fast instead of waiting on an invisib
 
 ### reset-keep
 
-`gitso reset-keep`, or `Basic/reset_keep.py`.
+`gitso reset-keep`; or `Basic/reset_keep.py`.
 
 ```text
 Move one repository's checked-out branch to another commit, keeping uncommitted edits.
@@ -141,7 +142,7 @@ caller. This only performs the move.
 
 ### commit
 
-`gitso commit`, or `Basic/commit.py`.
+`gitso commit`; or `Basic/commit.py`.
 
 ```text
 Commit the named files of one repository, and nothing else.
@@ -171,7 +172,7 @@ to commit. This only performs it.
 
 ### push
 
-`gitso push`, or `Basic/push.py`.
+`gitso push`; or `Basic/push.py`.
 
 ```text
 Push one repository's current branch to its upstream. Never forced.
@@ -193,34 +194,40 @@ the mirror image of `pull --ff-only`. There is no parameter here that could add 
 
 ## Special: this machine, once
 
-### enroll-machine
+### machine show / add / remove / find / presentation
 
-`gitso enroll-machine`, or `Special/enroll_machine.py`.
+`gitso machine show`, `gitso machine add`, `gitso machine remove`, `gitso machine find`, `gitso machine presentation`; or `Special/machine.py`.
+
+- `machine show`: This machine's enrollment: its libraries and how the app shows itself.
+- `machine add`: Enroll library folders (shows what it will look through, then asks).
+- `machine remove`: Stop watching one library folder; nothing in it is touched.
+- `machine find`: Suggest library folders: folder names only, nothing enrolled.
+- `machine presentation`: What double-clicking the tray opens, and whether the web view is served.
 
 ```text
-Enroll this machine with the app: which library folders it holds, and how the app shows itself.
+Enroll this machine: its library folders, and how the app shows itself.
 
 Why:          the tray and every local command work on this machine's libraries; nothing is
               inventoried until you name them, and a machine may hold several.
 Reads:        the settings profile; `find` reads folder names where you tell it to look
-              (a folder, or --whole-machine), only after you type LOOK.
+              (a folder, or --whole-machine), only after you approve.
 May change:   the profile's machine identity, libraries and presentation choices (what the
               tray opens; the web view off, on this machine, or on your tailnet). Never a
-              repository, and never a fleet: joining one is Elaborate/setup_fleet.py.
+              repository, and never a fleet: joining one is gitso fleet setup.
 Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/enroll_machine.py                       # show
-    python Special/enroll_machine.py find T:/ | --whole-machine
-    python Special/enroll_machine.py add T:/Github [D:/More]   (asks you to type SCAN)
-    python Special/enroll_machine.py remove D:/More
-    python Special/enroll_machine.py presentation --face web --web loopback
+    gitso machine show
+    gitso machine find T:/ | --whole-machine
+    gitso machine add T:/Github [D:/More]   (shows what it will look through, then asks)
+    gitso machine remove D:/More
+    gitso machine presentation --face web --web loopback
 ```
 
-### suggest-sync
+### machine check
 
-`gitso suggest-sync`, or `Special/suggest_sync.py`.
+`gitso machine check`; or `Special/machine_check.py`.
 
 ```text
 Suggest what each of this machine's repositories needs: commit, push, pull, or nothing.
@@ -234,29 +241,12 @@ Results:      JSON without a terminal (or with --json); a screen at one. Nothing
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/suggest_sync.py --help
+    gitso machine check --help
 ```
 
-### name-repo
+### machine catch-up
 
-`gitso name-repo`, or `Special/name_repo.py`.
-
-```text
-Give a repository id a readable name in this machine's local-only catalog.
-
-Why:          fleet rows for repositories never cloned here would otherwise show only an id.
-Reads:        the local catalog.
-May change:   the local catalog only.
-Results:      JSON without a terminal (or with --json); a screen at one.
-Layer:        Special: this machine, once.
-Status:       working
-
-    python Special/name_repo.py --help
-```
-
-### catch-up
-
-`gitso catch-up`, or `Special/catch_up.py`.
+`gitso machine catch-up`; or `Special/machine_catch_up.py`.
 
 ```text
 Fetch this machine's observed repositories and fast-forward the safe ones.
@@ -269,13 +259,13 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso catch-up                    (shows the plan; at a terminal, asks)
-    gitso catch-up --apply PLAN_ID    (applies exactly that plan)
+    gitso machine catch-up                    (shows the plan; at a terminal, asks)
+    gitso machine catch-up --apply PLAN_ID    (applies exactly that plan)
 ```
 
-### audit-repos
+### machine audit
 
-`gitso audit-repos`, or `Special/audit_repos.py`.
+`gitso machine audit`; or `Special/machine_audit.py`.
 
 ```text
 Audit this machine's repositories: missing remotes, unfinished work, oddities.
@@ -287,12 +277,12 @@ Results:      JSON without a terminal (or with --json); a screen at one. Exit 1 
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/audit_repos.py --help
+    gitso machine audit --help
 ```
 
-### materialize
+### machine materialize
 
-`gitso materialize`, or `Special/materialize.py`.
+`gitso machine materialize`; or `Special/machine_materialize.py`.
 
 ```text
 Clone this machine's observed working set into another library folder.
@@ -304,13 +294,13 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso materialize --destination /new/library                   (shows the plan)
-    gitso materialize --destination /new/library --apply PLAN_ID   (clones exactly that plan)
+    gitso machine materialize --destination /new/library                   (shows the plan)
+    gitso machine materialize --destination /new/library --apply PLAN_ID   (clones exactly that plan)
 ```
 
-### list-live-buffers
+### machine buffers
 
-`gitso list-live-buffers`, or `Special/list_live_buffers.py`.
+`gitso machine buffers`; or `Special/machine_buffers.py`.
 
 ```text
 List unsaved VS Code buffers that belong to this machine's repositories.
@@ -322,55 +312,39 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/list_live_buffers.py --help
+    gitso machine buffers --help
 ```
 
-### duplicate-org
+### repo name / list
 
-`gitso duplicate-org`, or `Special/duplicate_org.py`.
+`gitso repo name`, `gitso repo list`; or `Special/repo_name.py`.
 
-```text
-Copy GitHub repositories with explicit mode, scope and confirmation.
-
-Why:          copying a whole GitHub organization by hand is slow and easy to get wrong.
-Reads:        the chosen GitHub namespaces (through gh) and local folders.
-May change:   local clones; in upload or migration modes, GitHub repositories, after confirmation.
-Results:      JSON without a terminal (or with --json); a screen at one. Resume state in its runs folder.
-Layer:        Special: this machine, once.
-Status:       working
-
-    python Special/duplicate_org.py --help
-    python Special/duplicate_org.py
-    python Special/duplicate_org.py --batch --namespaces all --dest /path/to/library
-
-The menu offers download, upload, migration, batch download and single-repository download.
-Git and authenticated gh are required for operations. Importing performs no operation.
-```
-
-### update-archive
-
-`gitso update-archive`, or `Special/update_archive.py`.
+- `repo name`: Give a repository a readable name in this machine's catalog.
+- `repo list`: List this machine's catalog of repositories and their names.
 
 ```text
-Fast-forward the eligible repositories in folders of clones; shows the plan first.
+Give a repository id a readable name in this machine's local-only catalog.
 
-Why:          reference collections fall behind; only safe fast-forwards should catch them up.
-Reads:        the folders' checkouts.
-May change:   once a folder's plan is approved: fast-forward of clean, eligible checkouts.
+Why:          fleet rows for repositories never cloned here would otherwise show only an id.
+Reads:        the local catalog.
+May change:   the local catalog only.
 Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso update-archive --root /path/to/archive                   (shows the plan)
-    gitso update-archive --root /path/to/archive --apply PLAN_ID
-
-It never clones missing repositories (sync-archive --sync does). --save-report also saves the
-run's report as a JSON file; the counts-only log is on unless --no-log. Importing does nothing.
+    gitso repo name --help
 ```
 
-### archive-manager
+### archive add / remove / list / status / refresh / check
 
-`gitso archive-manager`, or `Special/archive_manager.py`.
+`gitso archive add`, `gitso archive remove`, `gitso archive list`, `gitso archive status`, `gitso archive refresh`, `gitso archive check`; or `Special/archive.py`.
+
+- `archive add`: Register a folder of clones and write its launcher (shows the plan first).
+- `archive remove`: Forget a registered archive; its folder and launcher stay.
+- `archive list`: The registered archives and their modes.
+- `archive status`: The registered archives, checked: folders, launchers, last runs.
+- `archive refresh`: Refresh one registered archive, or all, each in its saved mode.
+- `archive check`: Check one registered archive, or all, without changing anything.
 
 ```text
 Register folders of clones (archives) and refresh them, each in its saved mode.
@@ -383,23 +357,44 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso archive-manager                      (a menu, at a terminal)
-    gitso archive-manager --install /path/to/archive --mode update
-    gitso archive-manager --list
-    gitso archive-manager --refresh-all --scan-only --no-log
-    gitso archive-manager --refresh /path/to/archive
+    gitso archive                                    (a menu, at a terminal)
+    gitso archive add /path/to/archive --mode update
+    gitso archive list
+    gitso archive check --no-log                     (every archive, changing nothing)
+    gitso archive refresh /path/to/archive
 
---install and --forget show their plan and act on approval: --apply PLAN_ID, or yes at a
-terminal. --forget removes the registration only; the folder and its launcher stay. A refresh
+add and remove show their plan and act on approval: --apply PLAN_ID, or yes at a
+terminal. remove forgets the registration only; the folder and its launcher stay. A refresh
 runs each archive in its saved mode: registering it was the approval, so the launcher and the
-monthly task (schedule-archives) run unattended. --scan-only checks without changing anything.
+monthly task (archive schedule) run unattended. check looks without changing anything.
 --save-report/--report-dir also save the run's report as a JSON file; --log/--no-log choose the
 counts-only log. Import run_refresh for programmatic use; it prints nothing.
 ```
 
-### sync-archive
+### archive update
 
-`gitso sync-archive`, or `Special/sync_archive.py`.
+`gitso archive update`; or `Special/archive_update.py`.
+
+```text
+Fast-forward the eligible repositories in folders of clones; shows the plan first.
+
+Why:          reference collections fall behind; only safe fast-forwards should catch them up.
+Reads:        the folders' checkouts.
+May change:   once a folder's plan is approved: fast-forward of clean, eligible checkouts.
+Results:      JSON without a terminal (or with --json); a screen at one.
+Layer:        Special: this machine, once.
+Status:       working
+
+    gitso archive update --root /path/to/archive                   (shows the plan)
+    gitso archive update --root /path/to/archive --apply PLAN_ID
+
+It never clones missing repositories (archive sync --sync does). --save-report also saves the
+run's report as a JSON file; the counts-only log is on unless --no-log. Importing does nothing.
+```
+
+### archive sync
+
+`gitso archive sync`; or `Special/archive_sync.py`.
 
 ```text
 Plan, then apply, updates, clones, repairs or publication for folders of clones.
@@ -412,18 +407,18 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso sync-archive --root /path/to/archive                     (inspects only)
-    gitso sync-archive --root /path/to/archive --sync              (plans; at a terminal, asks)
-    gitso sync-archive --root /path/to/archive --sync --apply PLAN_ID
+    gitso archive sync --root /path/to/archive                     (inspects only)
+    gitso archive sync --root /path/to/archive --sync              (plans; at a terminal, asks)
+    gitso archive sync --root /path/to/archive --sync --apply PLAN_ID
 
 Each folder's plan has its own id; repeat --apply for several. Publication is separate:
 exact planned tips pass outgoing-history security checks before any non-forced push. An
 approved plan is no security clearance. Import run_archives for headless use.
 ```
 
-### export-inventory
+### inventory export
 
-`gitso export-inventory`, or `Special/export_inventory.py`.
+`gitso inventory export`; or `Special/inventory_export.py`.
 
 ```text
 Record where every repository came from, so another machine can clone them.
@@ -435,7 +430,7 @@ Results:      the inventory in a JSON record, or in --out; a screen at a termina
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso export-inventory [--root [LABEL=]PATH ...] [--repo PATH ...] [--out FILE]
+    gitso inventory export [--root [LABEL=]PATH ...] [--repo PATH ...] [--out FILE]
         [--max-depth N] [--hidden] [--no-prompt] [--answers FILE]
 
 Where the repositories are:
@@ -459,9 +454,9 @@ says about itself (readme, project files, `.git/description`, URLs found in them
 repositories with no remote. Observation only: git reads, no network, at most the one chosen file.
 ```
 
-### restore-inventory
+### inventory restore
 
-`gitso restore-inventory`, or `Special/restore_inventory.py`.
+`gitso inventory restore`; or `Special/inventory_restore.py`.
 
 ```text
 Clone the repositories in an inventory file onto this machine. Clone-only; never over anything.
@@ -473,7 +468,7 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso restore-inventory [INVENTORY] [--map LABEL=DEST ...] [--dest DIR]
+    gitso inventory restore [INVENTORY] [--map LABEL=DEST ...] [--dest DIR]
         [--layout preserve|canonical] [--only LABEL ...] [--use-candidates]
         [--apply PLAN_ID] [--no-prompt] [--answers FILE]
 
@@ -495,12 +490,34 @@ work, unpushed commits, stashes -- is named per row. Credentials are yours: this
 `git clone` non-interactively with the `gh`/SSH access the machine already has.
 ```
 
-### scan-tree
+### org copy
 
-`gitso scan-tree`, or `Special/scan_tree.py`.
+`gitso org copy`; or `Special/org_copy.py`.
 
 ```text
-Read-only working-tree or staged-byte scan; Python 3.11+, Git, masked stdout.
+Copy GitHub repositories with explicit mode, scope and confirmation.
+
+Why:          copying a whole GitHub organization by hand is slow and easy to get wrong.
+Reads:        the chosen GitHub namespaces (through gh) and local folders.
+May change:   local clones; in upload or migration modes, GitHub repositories, after confirmation.
+Results:      JSON without a terminal (or with --json); a screen at one. Resume state in its runs folder.
+Layer:        Special: this machine, once.
+Status:       working
+
+    gitso org copy --help
+    gitso org copy
+    gitso org copy --batch --namespaces all --dest /path/to/library
+
+The menu offers download, upload, migration, batch download and single-repository download.
+Git and authenticated gh are required for operations. Importing performs no operation.
+```
+
+### scan
+
+`gitso scan`; or `Special/scan.py`.
+
+```text
+Scan a repository's working files (or its staged bytes) for secrets and protected values.
 
 Why:          check what is about to be committed or published before it is.
 Reads:        the working tree, or the staged bytes, and the shared security policy.
@@ -509,8 +526,8 @@ Results:      JSON without a terminal (or with --json); a screen at one. A full 
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/scan_tree.py /path/to/repo --settings-home /path/to/profile --json
-    python Special/scan_tree.py /path/to/repo --staged --out /private/staged.json
+    gitso scan /path/to/repo --settings-home /path/to/profile --json
+    gitso scan /path/to/repo --staged --out /private/staged.json
 
 The settings profile owns the saved policy. --out explicitly creates a full private report; no implicit
 report/log/config is written. See --help. Returns 0 checked, 1 findings, 2 incomplete/failure.
@@ -524,34 +541,9 @@ changed content and coverage gaps still hold actions. No source or Git state is 
 stages, commits or invokes clean filters; use it to review the bytes produced by Git's staging.
 ```
 
-### scan-history
+### review
 
-`gitso scan-history`, or `Special/scan_history.py`.
-
-```text
-Read-only local reachable-history scan; Python 3.11+, Git, no fetch or rewrite.
-
-Why:          anything ever committed stays in history, published or not.
-Reads:        every commit reachable from local refs, and the shared security policy.
-May change:   nothing.
-Results:      JSON without a terminal (or with --json); a screen at one. A full private report only with --out.
-Layer:        Special: this machine, once.
-Status:       working
-
-    python Special/scan_history.py /path/to/repo --settings-home /path/to/profile --json
-
-The settings profile owns the saved policy. Masked stdout is default; --out requests a full private report. --ref narrows
-local reachable refs. No implicit report/log/config. Returns 0 checked, 1 findings, 2 incomplete.
-Optional --engine gitleaks/betterleaks/trufflehog may be repeated; --engine none overrides
-saved selection. Only already selected material is sent to an engine, without provider
-verification. Masked actionable records and explicit report artifacts share the tree contract.
-Full reports may use external private storage; inside Git they must be ignored/untracked.
-Scoped reviews match exact finding content/location; they never clear uninspected material.
-```
-
-### review-finding
-
-`gitso review-finding`, or `Special/review_finding.py`.
+`gitso review`; or `Special/review.py`.
 
 ```text
 Review one exact example finding without allowing its value everywhere.
@@ -563,8 +555,8 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso review-finding /private/scan.json finding-000001 --reason "Reviewed test example"
-    gitso review-finding /private/scan.json finding-000001 --reason "..." --apply PLAN_ID
+    gitso review /private/scan.json finding-000001 --reason "Reviewed test example"
+    gitso review /private/scan.json finding-000001 --reason "..." --apply PLAN_ID
 
 The plan creates no state. Use --revoke REVIEW_ID instead of a finding to revoke a review.
 Changed content, check or location needs review again. Prohibited values, strong credentials
@@ -572,12 +564,37 @@ and coverage gaps cannot be waived. No Git action is performed. Values are alway
 reason is never printed (an apply command shows it as a placeholder).
 ```
 
-### clean-history
+### history scan
 
-`gitso clean-history`, or `Special/clean_history.py`.
+`gitso history scan`; or `Special/history_scan.py`.
 
 ```text
-DANGEROUS HISTORY MAINTENANCE: explicit cleanup into a new private mirror, never publish.
+Scan a repository's reachable history for secrets and protected values; no fetch.
+
+Why:          anything ever committed stays in history, published or not.
+Reads:        every commit reachable from local refs, and the shared security policy.
+May change:   nothing.
+Results:      JSON without a terminal (or with --json); a screen at one. A full private report only with --out.
+Layer:        Special: this machine, once.
+Status:       working
+
+    gitso history scan /path/to/repo --settings-home /path/to/profile --json
+
+The settings profile owns the saved policy. Masked stdout is default; --out requests a full private report. --ref narrows
+local reachable refs. No implicit report/log/config. Returns 0 checked, 1 findings, 2 incomplete.
+Optional --engine gitleaks/betterleaks/trufflehog may be repeated; --engine none overrides
+saved selection. Only already selected material is sent to an engine, without provider
+verification. Masked actionable records and explicit report artifacts share the tree contract.
+Full reports may use external private storage; inside Git they must be ignored/untracked.
+Scoped reviews match exact finding content/location; they never clear uninspected material.
+```
+
+### history clean
+
+`gitso history clean`; or `Special/history_clean.py`.
+
+```text
+Clean history into a new private mirror: dangerous maintenance, never the source, never published.
 
 Why:          personal data published in history stays published until history is rewritten.
 Reads:        a full private scan report and an explicit choices document.
@@ -586,10 +603,10 @@ Results:      a private plan, the rewritten mirror, its proof and rescan; JSON w
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso clean-history plan /private/history.json --choices /private/choices.json --plan-out /private/plan.json
-    gitso clean-history rewrite /private/plan.json --workspace /private/new-run --apply PLAN_ID
+    gitso history clean plan /private/history.json --choices /private/choices.json --plan-out /private/plan.json
+    gitso history clean rewrite /private/plan.json --workspace /private/new-run --apply PLAN_ID
 
-First use scan-history --out for a full private report. Planning rescans and rejects stale
+First use history scan --out for a full private report. Planning rescans and rejects stale
 refs/findings. --include-remote-refs explicitly preserves remote-only history and origin/HEAD;
 without it an ordinary checkout with tracking refs is refused. No fetch or settings change.
 Rewriting always needs a person: an attended terminal, the plan id and the typed word REWRITE.
@@ -614,9 +631,12 @@ back. Every produced artifact is presented. A verified mirror grants no publicat
 and does not rotate credentials, fix other clones or erase external copies. Review before use.
 ```
 
-### follow-rewrite
+### history follow / relink
 
-`gitso follow-rewrite`, or `Special/follow_rewrite.py`.
+`gitso history follow`, `gitso history relink`; or `Special/history_follow.py`.
+
+- `history follow`: Move this machine's clones onto a rewritten history.
+- `history relink`: Update the commit ids a checkout's files quote, after a rewrite.
 
 ```text
 Move this machine's clones onto a rewritten history, and update the commit ids their files quote.
@@ -629,19 +649,19 @@ May change:   `follow`, once its plan is approved: `git reset --keep` of each sa
               `relink`, once its plan is approved: quoted commit ids in tracked text files,
               left uncommitted for review. Nothing is committed or pushed.
 Results:      JSON without a terminal (or with --json); a screen at one.
-Layer:        Special: this machine, once. Other machines: Elaborate/follow_rewrite_fleet.py.
+Layer:        Special: this machine, once. Other machines: Elaborate/history_follow_fleet.py.
 Status:       working
 
-    gitso follow-rewrite follow [PATH ...] [--match TEXT] [--depth N] [--apply PLAN_ID]
-    gitso follow-rewrite relink WORKSPACE [WORKSPACE ...] --checkout PATH [--apply PLAN_ID]
+    gitso history follow [PATH ...] [--match TEXT] [--depth N] [--apply PLAN_ID]
+    gitso history relink WORKSPACE [WORKSPACE ...] --checkout PATH [--apply PLAN_ID]
 ```
 
 ### secure-commit
 
-`gitso secure-commit`, or `Special/commit_repo.py`.
+`gitso secure-commit`; or `Special/secure_commit.py`.
 
 ```text
-secure-commit: check named files, message and identity, then commit only an approved plan.
+Check the named files, message and identity, then commit only an approved plan.
 
 Why:          a commit should never carry a secret or a private value by accident.
 Reads:        the named files and the shared security policy.
@@ -661,10 +681,10 @@ hook installation, automatic push or rollback. See --help for profile options.
 
 ### secure-push
 
-`gitso secure-push`, or `Special/push_repo.py`.
+`gitso secure-push`; or `Special/secure_push.py`.
 
 ```text
-secure-push: plan one branch push, and check its outgoing history before publishing.
+Plan one branch push, and check its outgoing history before publishing.
 
 Why:          publishing should check the outgoing history first, every time.
 Reads:        the branch, its outgoing commits and the shared security policy.
@@ -678,15 +698,65 @@ Status:       working
 
 Python 3.11+ and Git; --settings-home selects a profile. The plan reads only local scope and
 policy, writes no files and is no security clearance. Applying needs the unchanged plan,
-fetches the selected remote and uses the same security gate as sync-archive. One matching
+fetches the selected remote and uses the same security gate as archive sync. One matching
 upstream on an existing remote branch. No force, extra tags, other branches, hooks or commits.
 ```
 
 ## Elaborate: other machines, or over time
 
-### setup-fleet
+### machine safe-to-wipe
 
-`gitso setup-fleet`, or `Elaborate/setup_fleet.py`.
+`gitso machine safe-to-wipe`; or `Elaborate/machine_safe_to_wipe.py`.
+
+```text
+Report whether this machine could be wiped without losing work.
+
+Why:          unknown is never an all-clear: work must exist on a remote or in a recovery snapshot.
+Reads:        every repository under the configured roots, freshly fetched; recovery snapshots.
+May change:   nothing in your repositories (fetch updates remote-tracking refs only).
+Results:      JSON without a terminal (or with --json); a screen at one. Exit 1 unless safe.
+Layer:        Elaborate: other machines, or over time.
+Status:       working
+
+    gitso machine safe-to-wipe --help
+```
+
+### archive schedule
+
+`gitso archive schedule`; or `Elaborate/archive_schedule.py`.
+
+```text
+Run every registered archive's refresh on a monthly schedule.
+
+Why:          archives only stay current if their refresh runs on its own.
+Reads:        registered archives; this user's scheduled tasks.
+May change:   a refresh-all launcher and this user's scheduled task, only when asked.
+Results:      JSON without a terminal (or with --json); a screen at one.
+Layer:        Elaborate: other machines, or over time.
+Status:       working
+
+    gitso archive schedule --write-refresh-all-script
+    gitso archive schedule --install-monthly-task --task-day 1 --task-time 09:00
+    gitso archive schedule --task-status
+    gitso archive schedule --remove-task
+
+Only explicit actions run, each at once (like a setting). Generated launchers run archive
+--refresh-all at the selected profile. Scheduling never enables publication or repairs.
+Importing writes nothing and does not inspect or alter installed tasks.
+```
+
+### fleet setup / status / transports / leave / key / baskets / git-client / join
+
+`gitso fleet setup`, `gitso fleet status`, `gitso fleet transports`, `gitso fleet leave`, `gitso fleet key`, `gitso fleet baskets`, `gitso fleet git-client`, `gitso fleet join`; or `Elaborate/fleet.py`.
+
+- `fleet setup`: Join this enrolled machine to a fleet: a key, then how it shares.
+- `fleet status`: What is set up, and what each next step unlocks.
+- `fleet transports`: Choose how this machine shares status: a folder, Tailscale, a repository.
+- `fleet leave`: Stop sharing with the fleet; the machine stays enrolled.
+- `fleet key`: The fleet key's details; --show prints the key itself.
+- `fleet baskets`: Which namespaces this machine observes, publishes and captures.
+- `fleet git-client`: The desktop Git app the map opens repositories in.
+- `fleet join`: Enroll, join and start in one step, for scripts (shows the plan first).
 
 ```text
 Join this enrolled machine to a fleet, change how it shares, or leave the fleet.
@@ -699,30 +769,46 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/setup_fleet.py --help
+    gitso fleet --help
 ```
 
-### peer
+### fleet doctor
 
-`gitso peer`, or `Elaborate/peer.py`.
+`gitso fleet doctor`; or `Elaborate/fleet_doctor.py`.
 
 ```text
-Run this machine's fleet peer headless: observe, publish, talk to peers, over time.
+Show this machine's fleet configuration and which peers answer; hides the key.
 
-Why:          the fleet only knows what running peers tell it.
-Reads:        the observed repositories, peers' published status, the tailnet when it is up.
-May change:   nothing in your repositories; writes its own state and manifests. Catch-up runs only
-              where a standing consent allows it. `rescan` asks a running peer for one inventory.
-Results:      while running, log lines on stdout; errors as JSON without a terminal. The web view and tray: gitso serve-web, gitso tray.
+Why:          the first question when the fleet looks wrong is what this machine thinks it is.
+Reads:        the fleet configuration; peers on the tailnet.
+May change:   nothing.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/peer.py --help
+    gitso fleet doctor --help
 ```
 
-### publish-status
+### fleet preflight
 
-`gitso publish-status`, or `Elaborate/publish_status.py`.
+`gitso fleet preflight`; or `Elaborate/fleet_preflight.py`.
+
+```text
+Check what fleet setup can use on this machine: Git, GitHub, Tailscale, a port, sync folders.
+
+Why:          setup should offer only what will work.
+Reads:        tool availability and local folders.
+May change:   nothing.
+Results:      JSON without a terminal (or with --json); a screen at one.
+Layer:        Elaborate: other machines, or over time.
+Status:       working
+
+    gitso fleet preflight --help
+```
+
+### fleet publish
+
+`gitso fleet publish`; or `Elaborate/fleet_publish.py`.
 
 ```text
 Publish this machine's repository status for the fleet, and show it.
@@ -736,12 +822,12 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/publish_status.py --help
+    gitso fleet publish --help
 ```
 
-### suggest-fleet-sync
+### fleet suggest
 
-`gitso suggest-fleet-sync`, or `Elaborate/suggest_fleet_sync.py`.
+`gitso fleet suggest`; or `Elaborate/fleet_suggest.py`.
 
 ```text
 Suggest sync across the fleet from every machine's published status.
@@ -753,12 +839,12 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/suggest_fleet_sync.py --help
+    gitso fleet suggest --help
 ```
 
-### converge
+### fleet converge
 
-`gitso converge`, or `Elaborate/converge.py`.
+`gitso fleet converge`; or `Elaborate/fleet_converge.py`.
 
 ```text
 Report repositories other machines have that this machine does not.
@@ -770,29 +856,33 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/converge.py --help
+    gitso fleet converge --help
 ```
 
-### check-safe-to-wipe
+### peer run / rescan
 
-`gitso check-safe-to-wipe`, or `Elaborate/check_safe_to_wipe.py`.
+`gitso peer run`, `gitso peer rescan`; or `Elaborate/peer.py`.
+
+- `peer run`: Run this machine's peer: watch, publish, serve the map.
+- `peer rescan`: Ask the running peer for one fresh look through the libraries.
 
 ```text
-Report whether this machine could be wiped without losing work.
+Run this machine's fleet peer headless: observe, publish, talk to peers, over time.
 
-Why:          unknown is never an all-clear: work must exist on a remote or in a recovery snapshot.
-Reads:        every repository under the configured roots, freshly fetched; recovery snapshots.
-May change:   nothing in your repositories (fetch updates remote-tracking refs only).
-Results:      JSON without a terminal (or with --json); a screen at one. Exit 1 unless safe.
+Why:          the fleet only knows what running peers tell it.
+Reads:        the observed repositories, peers' published status, the tailnet when it is up.
+May change:   nothing in your repositories; writes its own state and manifests. Catch-up runs only
+              where a standing consent allows it. `rescan` asks a running peer for one inventory.
+Results:      while running, log lines on stdout; errors as JSON without a terminal. The web view and tray: gitso serve-web, gitso tray.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/check_safe_to_wipe.py --help
+    gitso peer run --help
 ```
 
 ### recovery
 
-`gitso recovery`, or `Elaborate/recovery.py`.
+`gitso recovery`; or `Elaborate/recovery.py`.
 
 ```text
 Configure and inspect unfinished-work snapshots that another machine can restore.
@@ -804,46 +894,12 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/recovery.py --help
+    gitso recovery --help
 ```
 
-### doctor
+### start-at-sign-in
 
-`gitso doctor`, or `Elaborate/doctor.py`.
-
-```text
-Show this machine's fleet configuration and which peers answer; hides the key.
-
-Why:          the first question when the fleet looks wrong is what this machine thinks it is.
-Reads:        the fleet configuration; peers on the tailnet.
-May change:   nothing.
-Results:      JSON without a terminal (or with --json); a screen at one.
-Layer:        Elaborate: other machines, or over time.
-Status:       working
-
-    python Elaborate/doctor.py --help
-```
-
-### preflight
-
-`gitso preflight`, or `Elaborate/preflight.py`.
-
-```text
-Check what fleet setup can use on this machine: Git, GitHub, Tailscale, a port, sync folders.
-
-Why:          setup should offer only what will work.
-Reads:        tool availability and local folders.
-May change:   nothing.
-Results:      JSON without a terminal (or with --json); a screen at one.
-Layer:        Elaborate: other machines, or over time.
-Status:       working
-
-    python Elaborate/preflight.py --help
-```
-
-### start-at-login
-
-`gitso start-at-login`, or `Elaborate/start_at_login.py`.
+`gitso start-at-sign-in`; or `Elaborate/start_at_sign_in.py`.
 
 ```text
 Inspect or change whether the gitSpecOps tray starts when you log in.
@@ -855,38 +911,14 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/start_at_login.py --help
-```
-
-### schedule-archives
-
-`gitso schedule-archives`, or `Elaborate/schedule_archives.py`.
-
-```text
-Schedule registered archive refreshes; local management lives in Special.
-
-Why:          archives only stay current if their refresh runs on its own.
-Reads:        registered archives; this user's scheduled tasks.
-May change:   a refresh-all launcher and this user's scheduled task, only when asked.
-Results:      JSON without a terminal (or with --json); a screen at one.
-Layer:        Elaborate: other machines, or over time.
-Status:       working
-
-    gitso schedule-archives --write-refresh-all-script
-    gitso schedule-archives --install-monthly-task --task-day 1 --task-time 09:00
-    gitso schedule-archives --task-status
-    gitso schedule-archives --remove-task
-
-Only explicit actions run, each at once (like a setting). Generated launchers run archive-manager
---refresh-all at the selected profile. Scheduling never enables publication or repairs.
-Importing writes nothing and does not inspect or alter installed tasks.
+    gitso start-at-sign-in --help
 ```
 
 ## App: presence and presentation
 
 ### tray
 
-`gitso tray`, or `App/tray.py`.
+`gitso tray`; or `App/tray.py`.
 
 ```text
 Run this machine's fleet peer behind a tray icon, and open its web view from the tray.
@@ -908,7 +940,7 @@ Status:       working; the Qt window is a placeholder (App/window.py).
 
 ### serve-web
 
-`gitso serve-web`, or `App/serve_web.py`.
+`gitso serve-web`; or `App/serve_web.py`.
 
 ```text
 Run this machine's fleet peer with its web view and no tray; or only show published status.
@@ -930,7 +962,7 @@ Status:       working
 
 ### setup
 
-`gitso setup`, or `_build/setup_gitspecops.py`.
+`gitso setup`; or `_build/setup_gitspecops.py`.
 
 ```text
 Setup for gitSpecOps: the walkthrough, or one setup item at a time.

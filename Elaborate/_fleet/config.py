@@ -48,7 +48,7 @@ def save_saved(directory: Path, config: dict, *, home=None, snapshot=None):
     """Save explicit app choices to the settings profile."""
     validate(config)
     if load_fleet_settings(home) is None and not isinstance(config, FleetConfig) and snapshot is None:
-        raise ValueError("this machine has no settings profile; enroll it with: gitso enroll-machine add <library folder>")
+        raise ValueError("this machine has no settings profile; enroll it with: gitso machine add <library folder>")
     return save_fleet_config(config, component="app", home=home, snapshot=snapshot)
 
 
@@ -173,7 +173,7 @@ def policy_record(policy: CapturePolicy) -> dict:
 
 
 def describe(config: dict) -> str:
-    """One human line per configured transport, for setup output and `doctor`."""
+    """One human line per configured transport, for setup output and `fleet doctor`."""
     transports = config.get("transports") or {}
     lines = []
     folder = transports.get("folder")

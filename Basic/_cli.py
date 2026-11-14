@@ -155,7 +155,7 @@ def command_line(command: str, argv, hidden=()) -> str:
             skip = "=" not in argument
             continue
         kept.append(argument)
-    return shlex.join(["gitso", command, *kept])
+    return shlex.join(["gitso", *command.split(), *kept])
 
 
 class Approval:

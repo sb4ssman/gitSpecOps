@@ -303,7 +303,7 @@ def observe_paths(paths: list[Path], secret: str | None = None,
             "head": git_stdout(path, ["rev-parse", "--verify", "-q", "HEAD"]),
         })
         # Local-only: the catalog is never published, so it may hold the full identity.
-        # host/owner are what let `converge` ask a provider to name a peer's hash; `identity`
+        # host/owner are what let `fleet converge` ask a provider to name a peer's hash; `identity`
         # tells it which entries no provider can know (see LOCAL_HOST).
         catalog[repo_id] = {"display_name": name, "path": str(path),
                             "host": host, "owner": owner, "name": name, "identity": kind}

@@ -7,9 +7,9 @@ Results:      JSON without a terminal (or with --json); a screen at one. Resume 
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/duplicate_org.py --help
-    python Special/duplicate_org.py
-    python Special/duplicate_org.py --batch --namespaces all --dest /path/to/library
+    gitso org copy --help
+    gitso org copy
+    gitso org copy --batch --namespaces all --dest /path/to/library
 
 The menu offers download, upload, migration, batch download and single-repository download.
 Git and authenticated gh are required for operations. Importing performs no operation.

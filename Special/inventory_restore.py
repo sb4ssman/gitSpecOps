@@ -7,7 +7,7 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso restore-inventory [INVENTORY] [--map LABEL=DEST ...] [--dest DIR]
+    gitso inventory restore [INVENTORY] [--map LABEL=DEST ...] [--dest DIR]
         [--layout preserve|canonical] [--only LABEL ...] [--use-candidates]
         [--apply PLAN_ID] [--no-prompt] [--answers FILE]
 
@@ -104,7 +104,7 @@ def ask_destinations(roots: list[dict], destinations: dict[str, Path], only: set
 
 def main(argv: list[str]) -> int:
     enable_unicode_output()
-    command = "restore-inventory"
+    command = "inventory restore"
     parser = _cli.parser(command, "Clone an inventory's repositories here; shows the plan first.")
     parser.add_argument("inventory", type=Path, nargs="?", help="inventory file (asked for if omitted)")
     parser.add_argument("--map", action="append", default=[], metavar="LABEL=DEST",
@@ -135,8 +135,8 @@ def main(argv: list[str]) -> int:
     only = {label.lower() for label in args.only} if args.only else None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(data, dict) and data.get("command") == "export-inventory" and "inventory" in data:
-            data = data["inventory"]  # the record export-inventory prints, saved as it was
+        if isinstance(data, dict) and data.get("command") == "inventory export" and "inventory" in data:
+            data = data["inventory"]  # the record inventory export prints, saved as it was
         repos = validate_inventory(data)
         destinations = parse_maps(args.map)
     except (OSError, ValueError) as exc:

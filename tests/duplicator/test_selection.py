@@ -72,7 +72,7 @@ if got_all != WANT:
     FAILS.append(f"choose_orgs: {got_all}")
 
 # ---- module wiring ----
-from Special import duplicate_org as dup  # noqa: E402,F401
+from Special import org_copy as dup  # noqa: E402,F401
 
 for obj, name in ((batch, "run_batch_download"), (batch, "run_single_repo"),
                   (dup, "choose_repo_subset")):

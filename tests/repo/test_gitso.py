@@ -22,7 +22,7 @@ import gitso
 
 class GitsoTests(unittest.TestCase):
     def test_catalog_and_docs_never_import_or_dispatch_operations(self):
-        for arguments in (["commands", "--json"], ["docs"], ["docs", "scan-tree"], ["--help"]):
+        for arguments in (["commands", "--json"], ["docs"], ["docs", "scan"], ["--help"]):
             output = io.StringIO()
             with self.subTest(arguments=arguments), \
                  patch.object(gitso.importlib, "import_module", side_effect=AssertionError("unexpected import")), \
@@ -30,14 +30,14 @@ class GitsoTests(unittest.TestCase):
                 self.assertEqual(gitso.main(arguments), 0)
             self.assertTrue(output.getvalue())
             if arguments == ["commands", "--json"]:
-                self.assertEqual(len(json.loads(output.getvalue())["commands"]), 42)
+                self.assertEqual(len(json.loads(output.getvalue())["commands"]), len(gitso.COMMANDS))
 
     def test_plain_commit_and_push_are_basic_and_the_checked_ones_are_secure(self):
         scripts = {command.name: command.script for command in gitso.COMMANDS}
         self.assertEqual(scripts["commit"], "Basic/commit.py")
         self.assertEqual(scripts["push"], "Basic/push.py")
-        self.assertEqual(scripts["secure-commit"], "Special/commit_repo.py")
-        self.assertEqual(scripts["secure-push"], "Special/push_repo.py")
+        self.assertEqual(scripts["secure-commit"], "Special/secure_commit.py")
+        self.assertEqual(scripts["secure-push"], "Special/secure_push.py")
 
     def test_catalog_is_unique_and_descriptions_come_from_actual_source(self):
         self.assertEqual(len({command.name for command in gitso.COMMANDS}), len(gitso.COMMANDS))
@@ -45,11 +45,13 @@ class GitsoTests(unittest.TestCase):
             with self.subTest(command=command.name):
                 self.assertTrue((ROOT / command.script).is_file())
                 self.assertTrue(command.documentation())
-                self.assertEqual(command.record()["description"], command.documentation().splitlines()[0])
+                # An action of a subject may say what it does in its own words; others use the file's first line.
+                self.assertEqual(command.record()["description"],
+                                 command.summary or command.documentation().splitlines()[0])
 
     def test_dispatch_passes_exact_arguments_and_security_material_without_global_argv(self):
         calls = []
-        command = next(command for command in gitso.COMMANDS if command.name == "scan-history")
+        command = next(command for command in gitso.COMMANDS if command.name == "history scan")
         before = list(sys.argv)
         with patch.object(gitso.importlib, "import_module", return_value=SimpleNamespace(
                 main=lambda *args: calls.append(args) or 1)):
@@ -66,14 +68,17 @@ class GitsoTests(unittest.TestCase):
     def test_unattended_interactive_operations_do_not_prompt(self):
         with patch.object(sys.stdin, "isatty", return_value=False), \
              patch.object(gitso, "dispatch", side_effect=AssertionError("unexpected operation")), redirect_stderr(io.StringIO()):
-            for name in ("duplicate-org", "archive-manager", "inventory-export", "inventory-restore"):
+            for name in ("org copy", "inventory export", "inventory restore"):
                 with self.subTest(name=name):
-                    self.assertEqual(gitso.main([name]), 2)
+                    self.assertEqual(gitso.main(name.split()), 2)
             self.assertEqual(gitso.main(["menu"]), 2)
+            with redirect_stdout(io.StringIO()) as listed:
+                self.assertEqual(gitso.main(["archive"]), 0, "without a terminal, a subject lists its actions")
+            self.assertIn("Register a folder of clones", listed.getvalue())
 
     def test_selected_updater_preserves_its_saved_default_invocation(self):
         with patch.object(sys.stdin, "isatty", return_value=False), patch.object(gitso, "dispatch", return_value=0) as dispatch:
-            self.assertEqual(gitso.main(["update-archive"]), 0)
+            self.assertEqual(gitso.main(["archive", "update"]), 0)
         self.assertEqual(dispatch.call_args.args[1], [])
 
     def test_invalid_command_and_cancelled_menu_do_not_dispatch(self):

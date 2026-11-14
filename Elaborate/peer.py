@@ -8,7 +8,7 @@ Results:      while running, log lines on stdout; errors as JSON without a termi
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/peer.py --help
+    gitso peer run --help
 """
 from pathlib import Path
 import sys

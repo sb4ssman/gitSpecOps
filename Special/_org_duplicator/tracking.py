@@ -17,7 +17,7 @@ from pathlib import Path
 from Basic._console import PRINT_LOCK
 
 #: Preserve the established ignored run directory independently of the helper's new location.
-RUNS_DIR = Path(__file__).resolve().parents[1] / "duplicate_org" / "runs"
+RUNS_DIR = Path(__file__).resolve().parents[1] / "org_copy" / "runs"
 
 
 def log_message(message, log_file):

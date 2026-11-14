@@ -1,4 +1,4 @@
-"""secure-commit: check named files, message and identity, then commit only an approved plan.
+"""Check the named files, message and identity, then commit only an approved plan.
 
 Why:          a commit should never carry a secret or a private value by accident.
 Reads:        the named files and the shared security policy.

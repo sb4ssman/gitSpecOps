@@ -15,7 +15,7 @@ import threading
 import webbrowser
 from pathlib import Path
 
-#: What start-at-login registers: the tray command itself.
+#: What start-at-sign-in registers: the tray command itself.
 TRAY_SCRIPT = Path(__file__).resolve().parents[1] / "tray.py"
 
 from App._mark.geometry import FRAME_MS, FRAMES  # noqa: E402
@@ -110,7 +110,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
         raise TrayUnavailable("this desktop has no system tray")
 
     profile = profile_arguments(config_dir, settings_home)
-    # What start-at-login registers: this tray, with the same choices it was started with.
+    # What start-at-sign-in registers: this tray, with the same choices it was started with.
     login_arguments = [*profile, *(["--view", view] if view else []), *(["--web", web] if web else []),
                        *(["--remote"] if remote else [])]
 
@@ -172,7 +172,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
                 webbrowser.open(context["url"])
             else:
                 tray.showMessage("The Qt window comes later",
-                                 "Until then, turn the web view on: gitso enroll-machine "
+                                 "Until then, turn the web view on: gitso machine "
                                  "presentation --face web --web loopback")
         elif context.get("url"):
             webbrowser.open(context["url"])
@@ -197,7 +197,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
                                "Preview completed.")
                 bridge.notify.emit("Catch-up preview", summary)
             except Exception:  # noqa: BLE001 - a menu action must never take the tray down
-                bridge.notify.emit("Catch-up preview failed", "Run Special/catch_up.py to see why.")
+                bridge.notify.emit("Catch-up preview failed", "Run Special/machine_catch_up.py to see why.")
             finally:
                 bridge.work.emit(-1)
         threading.Thread(target=work, name="tray-catchup-preview", daemon=True).start()
@@ -212,7 +212,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
                 autostart.disable()
                 tray.showMessage("Start at login disabled", "gitSpecOps will not start at login.")
         except (OSError, ValueError):
-            tray.showMessage("Could not change start at login", "Elaborate/start_at_login.py shows why.")
+            tray.showMessage("Could not change start at login", "Elaborate/start_at_sign_in.py shows why.")
 
     menu = QtWidgets.QMenu()
     # The two signals in words, the detail behind the icon without opening a window.

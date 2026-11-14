@@ -3,7 +3,7 @@ test_batch_args
 ===============
 
 Offline tests for the duplicator's non-interactive layer: the CLI parser
-(`duplicate-org`'s `parse_args`), the scripted-answer queue and activation-noise
+(`org copy`'s `parse_args`), the scripted-answer queue and activation-noise
 filter (`Basic/_confirm.py`), and filter resolution (`batch.ask_filters`).
 
 No network, no GitHub, SYNTHETIC values only.
@@ -27,7 +27,7 @@ setup()
 
 from Basic._console import format_size  # noqa: E402
 from Special._org_duplicator import batch, tracking  # noqa: E402
-from Special.duplicate_org import parse_args  # noqa: E402
+from Special.org_copy import parse_args  # noqa: E402
 
 FAILS = []
 
@@ -183,7 +183,7 @@ check("found every known retry loop in operations.py", len(_retry_loops) >= 4)
 
 # Source grouping must not abandon existing resume state or change per-mode filenames.
 check("resume storage retains its established location",
-      tracking.RUNS_DIR == ROOT / "Special" / "duplicate_org" / "runs")
+      tracking.RUNS_DIR == ROOT / "Special" / "org_copy" / "runs")
 check("batch flows share the retained resume location", batch.RUNS_DIR == tracking.RUNS_DIR)
 with tempfile.TemporaryDirectory(prefix="duplicator-resume-") as temporary:
     runs = Path(temporary) / "runs"

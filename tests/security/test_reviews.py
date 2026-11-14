@@ -381,7 +381,7 @@ class ReviewTests(unittest.TestCase):
         destination = self.home / "staged.json"
         output = io.StringIO()
         with redirect_stdout(output):
-            code = gitso.main(["scan-tree", str(self.repo), "--staged", "--json", "--out", str(destination),
+            code = gitso.main(["scan", str(self.repo), "--staged", "--json", "--out", str(destination),
                                "--settings-home", str(self.home)])
         self.assertEqual(code, 1)
         self.assertEqual(json.loads(output.getvalue())["material"], "index")
@@ -447,7 +447,7 @@ class ReviewTests(unittest.TestCase):
         output = io.StringIO()
         reason = "private reason " + self.value
         with redirect_stdout(output):
-            code = gitso.main(["review-finding", str(source[0]), source[1], "--reason", reason,
+            code = gitso.main(["review", str(source[0]), source[1], "--reason", reason,
                                "--settings-home", str(self.home), "--json"])
         self.assertEqual(code, 0, output.getvalue())
         self.assertEqual(json.loads(output.getvalue())["status"], "planned")
@@ -457,7 +457,7 @@ class ReviewTests(unittest.TestCase):
 
     def test_help_from_outside_checkout_never_reads_or_creates_settings(self):
         absent = self.root / "absent"
-        done = subprocess.run([sys.executable, "-B", str(ROOT / "Special/review_finding.py"),
+        done = subprocess.run([sys.executable, "-B", str(ROOT / "Special/review.py"),
                                "--settings-home", str(absent), "--help"], cwd=self.root,
                               capture_output=True, text=True, timeout=30)
         self.assertEqual(done.returncode, 0, done.stderr)

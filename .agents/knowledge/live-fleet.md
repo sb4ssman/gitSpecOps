@@ -3,7 +3,7 @@
 ## Current guidance — 2026-09-11
 
 Every machine is an independent peer. `Elaborate/_fleet/cli.py` supplies `setup`, `peer`, `run`,
-`transports`, `doctor`, `rescan` and `autostart` through the Elaborate commands; the tray is
+`transports`, `fleet doctor`, `rescan` and `autostart` through the Elaborate commands; the tray is
 `App/tray.py` (2026-11-11). The v3 configuration preserves old
 fleet identities on migration. No machine is an authority; peers pull reports and reject POST.
 Each peer serves its own loopback dashboard from local state, its SQLite peer cache, and any
@@ -29,7 +29,7 @@ prerequisite for the new fleet app, and remains user-owned. No gh tokens are rea
 
 ## Implemented boundary
 
-The Elaborate commands route into `Elaborate/_fleet/cli.py`. `Elaborate/setup_fleet.py` is the interactive
+The Elaborate commands route into `Elaborate/_fleet/cli.py`. `Elaborate/fleet.py` is the interactive
 front door; host/connect configure and run; run resumes; doctor hides the fleet secret.
 The host runs in the foreground with an observer and private Tailscale HTTP listener. No
 OS service or scheduled task. It owns a local SQLite database through `fleet_store.py`;
@@ -81,7 +81,7 @@ installed app is the required public onboarding path.
 The pilot's real gap was not a feature but a lifecycle: a foreground-only app meant the host
 was usually not running, and a fleet whose host is down accepts no reports and serves no
 dashboard. `fleet_tray.py` (stdlib ctypes, Windows) and `fleet_autostart.py` (per-user
-start-at-login) close that. The tray consumes the display contract and classifies nothing; it
+start-at-sign-in) close that. The tray consumes the display contract and classifies nothing; it
 exposes no Git mutations. Start-at-login is per-user and never a service, so the app keeps the
 interactive user's gh login, Git ownership and Tailscale identity — the correctness trap
 recorded in the outside review. `App/tray.py` degrades to a foreground run off Windows.

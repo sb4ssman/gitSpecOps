@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import ROOT, setup
 setup()
 
-from Special import archive_manager as command
+from Special import archive as command
 from Special._archive import manager, registry
 from Special._archive import operation
 from Special._archive import sync as sync_engine
@@ -31,7 +31,7 @@ from Special._archive.plan import RepoRef
 from Special._settings import SettingsError
 from Special._settings.archives import load_archive_settings, save_archive_preferences
 from Special._settings import store
-from Elaborate import schedule_archives as scheduled
+from Elaborate import archive_schedule as scheduled
 
 
 class ManagerSettingsTests(unittest.TestCase):
@@ -102,7 +102,7 @@ class ManagerSettingsTests(unittest.TestCase):
             self.put("settings.json", document)
             with self.subTest(document=document), patch.object(manager.launcher, "write_launcher") as write, \
                  patch.object(manager, "inspect_candidate") as inspect:
-                self.assertEqual(command.main(["--settings-home", str(self.home), "--install", str(self.archive)]), 2)
+                self.assertEqual(command.main(["add", str(self.archive), "--settings-home", str(self.home)]), 2)
                 write.assert_not_called()
                 inspect.assert_not_called()
                 with self.assertRaises(SettingsError):
@@ -133,9 +133,9 @@ class ManagerSettingsTests(unittest.TestCase):
         self.assertEqual((self.home / "settings.json").read_bytes(), before)
         text = "\n".join(path.read_text(encoding="utf-8") for path in
                          manager.launcher.launcher_files(self.archive, manager.ARCHIVE_LAUNCHER))
-        for value in ("Special/archive_manager.py", "--refresh", str(self.archive), "--settings-home", str(self.home)):
+        for value in ("Special/archive.py", "refresh", str(self.archive), "--settings-home", str(self.home)):
             self.assertIn(value, text)
-        for value in ("--sync", "--update", "--yes", "--approved-remote-prefix", "example.test"):
+        for value in ("--sync", "--update", "--yes", "--allowed-remote", "example.test"):
             self.assertNotIn(value, text)
         self.assertFalse((self.root / "unused-profile").exists())
         receipt = json.loads(registry.registry_path(self.home).read_text())["installations"][0]
@@ -149,8 +149,8 @@ class ManagerSettingsTests(unittest.TestCase):
         save_archive_preferences(snapshot, [self.choice(mode="sync", prefixes=["https://new.example.test/"])])
         import gitso
         with patch.object(operation, "execute_archive", return_value={"exit_code": 0, "effects_possible": False, "result": {}}) as run:
-            for entry in (command.main, lambda args: gitso.main(["archive-manager", *args])):
-                self.assertEqual(entry(["--refresh", str(self.archive), "--settings-home", str(self.home)]), 0)
+            for entry in (command.main, lambda args: gitso.main(["archive", *args])):
+                self.assertEqual(entry(["refresh", str(self.archive), "--settings-home", str(self.home)]), 0)
         for call in run.call_args_list:
             request = call.args[0]
             self.assertEqual(request["mode"], "sync")
@@ -160,11 +160,11 @@ class ManagerSettingsTests(unittest.TestCase):
     def test_single_refresh_does_not_run_other_archives_and_never_registers_an_unknown_root(self):
         self.profile([self.choice(), self.choice(self.other, "sync")])
         with patch.object(operation, "execute_archive", return_value={"exit_code": 0, "effects_possible": False, "result": {}}) as run:
-            self.assertEqual(command.main(["--refresh", str(self.other), "--settings-home", str(self.home)]), 0)
+            self.assertEqual(command.main(["refresh", str(self.other), "--settings-home", str(self.home)]), 0)
             self.assertEqual(run.call_count, 1)
             self.assertEqual(run.call_args.args[0]["root"], str(self.other))
             run.reset_mock()
-            self.assertEqual(command.main(["--refresh", str(self.root / "unknown"), "--settings-home", str(self.home)]), 2)
+            self.assertEqual(command.main(["refresh", str(self.root / "unknown"), "--settings-home", str(self.home)]), 2)
             run.assert_not_called()
 
     def test_forget_keeps_receipts_and_launcher_but_disables_its_future_dispatch(self):
@@ -177,7 +177,7 @@ class ManagerSettingsTests(unittest.TestCase):
         self.assertTrue(Path(installed.launcher).is_file())
         self.assertEqual(registry.registered_roots(home=self.home), [])
         with patch.object(operation, "execute_archive") as run:
-            self.assertEqual(command.main(["--refresh", str(self.archive), "--settings-home", str(self.home)]), 2)
+            self.assertEqual(command.main(["refresh", str(self.archive), "--settings-home", str(self.home)]), 2)
             run.assert_not_called()
 
     def test_explicit_registration_changes_only_preferences_and_receipt_metadata(self):
@@ -270,7 +270,7 @@ class ManagerSettingsTests(unittest.TestCase):
         self.assertEqual(registry.load_registry(home=self.home)["installations"], [])
         self.assertEqual(registry.registered_roots(home=self.home), [])
         with patch.object(operation, "execute_archive") as run:
-            command.main(["--refresh-all", "--settings-home", str(self.home)])
+            command.main(["refresh", "--settings-home", str(self.home)])
             run.assert_not_called()
 
     def test_first_receipt_format_write_failure_prevents_preference_change(self):
@@ -288,14 +288,14 @@ class ManagerSettingsTests(unittest.TestCase):
                 self.profile(defaults={"scope": {"exclude_paths": [str(exclusion)]}})
                 with patch.object(operation, "execute_archive") as run, patch.object(manager, "inspect_candidate") as inspect, \
                      patch.object(manager.launcher, "write_launcher") as write:
-                    self.assertEqual(command.main(["--refresh", str(self.archive), "--settings-home", str(self.home)]), 2)
-                    self.assertEqual(command.main(["--install", str(self.archive), "--settings-home", str(self.home)]), 2)
+                    self.assertEqual(command.main(["refresh", str(self.archive), "--settings-home", str(self.home)]), 2)
+                    self.assertEqual(command.main(["add", str(self.archive), "--settings-home", str(self.home)]), 2)
                     run.assert_not_called()
                     inspect.assert_not_called()
                     write.assert_not_called()
         self.profile([self.choice(prefixes=[])])
         with patch.object(operation, "execute_archive") as run:
-            self.assertEqual(command.main(["--refresh-all", "--settings-home", str(self.home)]), 2)
+            self.assertEqual(command.main(["refresh", "--settings-home", str(self.home)]), 2)
             run.assert_not_called()
         self.assertFalse(registry.registry_path(self.home).exists())
         self.assertFalse(manager.log_path(self.home).exists())
@@ -304,7 +304,7 @@ class ManagerSettingsTests(unittest.TestCase):
         self.profile()
         (self.archive / "child").mkdir()
         with patch.object(operation, "linked", return_value=True), patch.object(operation, "execute_archive") as run:
-            self.assertEqual(command.main(["--refresh", str(self.archive), "--settings-home", str(self.home)]), 2)
+            self.assertEqual(command.main(["refresh", str(self.archive), "--settings-home", str(self.home)]), 2)
             run.assert_not_called()
         self.assertFalse(manager.log_path(self.home).exists())
 
@@ -316,7 +316,7 @@ class ManagerSettingsTests(unittest.TestCase):
             return {"exit_code": 0, "effects_possible": True, "result": {}}
 
         with patch.object(operation, "execute_archive", side_effect=first_run) as run:
-            self.assertEqual(command.main(["--refresh-all", "--settings-home", str(self.home)]), 2)
+            self.assertEqual(command.main(["refresh", "--settings-home", str(self.home)]), 2)
         self.assertEqual(run.call_count, 1)
         self.assertIn("partial operations", self.output.getvalue())
         self.assertEqual(load_archive_settings(self.home).archives, [])
@@ -325,7 +325,7 @@ class ManagerSettingsTests(unittest.TestCase):
         self.profile()
         with patch.object(operation, "execute_archive", return_value={"exit_code": 0, "effects_possible": True, "result": {}}), \
              patch.object(operation, "save_registry", side_effect=SettingsError("fixture-error")):
-            self.assertEqual(command.main(["--refresh", str(self.archive), "--settings-home", str(self.home)]), 2)
+            self.assertEqual(command.main(["refresh", str(self.archive), "--settings-home", str(self.home)]), 2)
         self.assertIn("operations finished but receipt saving failed", self.output.getvalue())
 
     def test_refresh_all_launcher_pins_the_selected_profile_without_installing_a_task(self):
@@ -336,7 +336,7 @@ class ManagerSettingsTests(unittest.TestCase):
                          scheduled.launcher.launcher_files(self.home, scheduled.REFRESH_ALL_LAUNCHER))
         self.assertIn("--settings-home", text)
         self.assertIn(str(self.home), text)
-        self.assertNotIn("--approved-remote-prefix", text)
+        self.assertNotIn("--allowed-remote", text)
         with patch.object(scheduled, "write_refresh_all_script", return_value=path) as writer, \
              patch.object(scheduled.schedule, "install_monthly", return_value=0) as task:
             self.assertEqual(scheduled.install_monthly_task("fixture", 1, "09:00", home=self.home), 0)
@@ -345,9 +345,9 @@ class ManagerSettingsTests(unittest.TestCase):
 
     def test_help_and_parser_refusals_do_not_read_profiles(self):
         with patch.object(manager, "load_registry", side_effect=AssertionError("unexpected read")):
-            for args in (["--help"], ["--refresh", str(self.archive), "--mode", "sync"],
-                         ["--refresh-all", "--approved-remote-prefix", "https://example.test/"],
-                         ["--scan-only"], ["--refresh-all", "--forget", str(self.archive)]):
+            for args in (["--help"], ["refresh", str(self.archive), "--mode", "sync"],
+                         ["refresh", "--allowed-remote", "https://example.test/"],
+                         ["--scan-only"], ["refresh", "--forget", str(self.archive)]):
                 with self.subTest(args=args), self.assertRaises(SystemExit):
                     command.main(args)
         self.assertFalse(self.home.exists())
@@ -355,10 +355,13 @@ class ManagerSettingsTests(unittest.TestCase):
     def test_unattended_manager_and_scheduler_refuse_ambiguous_actions_without_settings(self):
         with patch.object(sys.stdin, "isatty", return_value=False), \
              patch.object(manager, "load_registry", side_effect=AssertionError("unexpected read")):
-            self.assertEqual(command.main(["--settings-home", str(self.home)]), 2)
+            with redirect_stderr(io.StringIO()):
+                self.assertEqual(command.main([]), 2, "the archives menu needs a terminal")
             with self.assertRaises(SystemExit):
-                command.main(["--refresh", str(self.archive), "--mode", "sync"])
-            for args in (["--settings-home", str(self.home)], ["--refresh-all"], ["--list"]):
+                command.main(["--settings-home", str(self.home)])
+            with self.assertRaises(SystemExit):
+                command.main(["refresh", str(self.archive), "--mode", "sync"])
+            for args in (["--settings-home", str(self.home)], ["refresh"], ["list"]):
                 with self.assertRaises(SystemExit):
                     scheduled.main(args)
         self.assertFalse(self.home.exists())
@@ -375,8 +378,8 @@ class ManagerSettingsTests(unittest.TestCase):
 
     def test_headless_subprocess_reads_only_explicit_profile_from_outside_checkout(self):
         self.profile()
-        done = subprocess.run([sys.executable, "-B", str(ROOT / "Special" / "archive_manager.py"),
-            "--list", "--settings-home", str(self.home)], cwd=self.root, capture_output=True, text=True)
+        done = subprocess.run([sys.executable, "-B", str(ROOT / "Special" / "archive.py"),
+            "list", "--settings-home", str(self.home)], cwd=self.root, capture_output=True, text=True)
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn(str(self.archive), done.stdout)
         self.assertFalse((self.root / "unused-profile").exists())
@@ -386,7 +389,7 @@ class ManagerSettingsTests(unittest.TestCase):
         self.put("settings.json", "{private-broken")
         config = self.root / "sync-profile"
         environment = {**os.environ, "GITSPECOPS_HOME": str(self.home)}
-        done = subprocess.run([sys.executable, "-B", str(ROOT / "Elaborate" / "publish_status.py"),
+        done = subprocess.run([sys.executable, "-B", str(ROOT / "Elaborate" / "fleet_publish.py"),
             "--config-dir", str(config), "init", "--from-archives", "--machine-id", "machine-a",
             "--machine-label", "fixture"], cwd=self.root, env=environment, capture_output=True, text=True)
         self.assertEqual(done.returncode, 2)
@@ -425,7 +428,7 @@ class ManagerSettingsTests(unittest.TestCase):
     def test_blank_remote_prefix_cannot_authorize_every_origin(self):
         from Special._archive import sync_cli
         with patch.object(sync_engine, "detect_plan") as detect, self.assertRaises(SystemExit) as caught:
-            sync_cli.main(["--root", str(self.archive), "--approved-remote-prefix", "", "--yes"])
+            sync_cli.main(["--root", str(self.archive), "--allowed-remote", "", "--yes"])
         self.assertEqual(caught.exception.code, 2)
         detect.assert_not_called()
         with patch.object(sync_engine, "list_child_dirs") as folders, self.assertRaises(ValueError):

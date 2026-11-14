@@ -7,7 +7,7 @@ A user with many repositories across many machines accumulates work that is one 
 gone, and nothing surfaces it — the repository looks perfectly healthy locally.
 
 This is the natural next group operation because the fleet already gathers every fact it needs.
-It is read-only and belongs with `Special/audit_repos.py`.
+It is read-only and belongs with `Special/machine_audit.py`.
 
 ## The risk classes, in severity order
 
@@ -55,21 +55,21 @@ schema, already at v4 — a naming collision worth avoiding in the implementatio
 ## Command shape
 
 ```sh
-python Elaborate/publish_status.py fleet at-risk
+python Elaborate/fleet_publish.py fleet at-risk
 ```
 
 Read-only; no flags required. Same non-mutating guarantees as `audit`. It reports, per risk class,
 which repositories qualify and on which machine, using the local catalog to name what this machine
-can name and leaving the rest as opaque ids (the existing `converge` behavior — do not add a
+can name and leaving the rest as opaque ids (the existing `fleet converge` behavior — do not add a
 guessing fallback).
 
 **Staleness interacts with this directly.** A peer that has not reported recently cannot be used as
 evidence that a copy exists elsewhere. "Only one machine has this" must mean *among current
 reports*, and a stale peer makes the answer `unknown`, never "at risk" and never "safe".
 
-## Why it is not just `converge` inverted
+## Why it is not just `fleet converge` inverted
 
-`converge` answers "what do peers have that I lack?" and resolves names through the provider seam.
+`fleet converge` answers "what do peers have that I lack?" and resolves names through the provider seam.
 This asks "what does the fleet hold in only one place?", which is a property of the whole fleet
 rather than of this machine, includes repositories no provider knows about, and is the direct input
 to two things already built: the capture tier (what most deserves a snapshot) and `safe-to-wipe`

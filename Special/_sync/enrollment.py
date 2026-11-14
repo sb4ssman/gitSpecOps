@@ -7,7 +7,7 @@ Reads:        the common settings profile. `find_libraries` reads folder names u
               places it is told to look, only after its own confirmation (no Git, no contents).
 May change:   the profile's machine identity and the app component's libraries and
               presentation. Never transports, keys of a fleet, or any repository.
-Results:      plain records and plans for Special/enroll_machine.py and the fleet commands.
+Results:      plain records and plans for Special/machine.py and the fleet commands.
 Layer:        Special: this machine, once.
 Status:       working
 """
@@ -21,7 +21,7 @@ from pathlib import Path
 
 from Basic._discovery import find_repos
 from Special._settings import SettingsError
-from Special._settings.fleet import fleet_home, load_fleet_settings, save_fleet_config
+from Special._settings.fleet import ensure_fleet_settings, load_fleet_settings, save_fleet_config
 from Special._sync import baskets
 from Special._sync.config import default_machine_id
 from Special._sync.manifest import new_fleet_secret
@@ -66,17 +66,21 @@ def inventory_notice(roots) -> str:
             "repository that changed. Nothing outside these folders is looked at.")
 
 
-def _snapshot(home):
-    snapshot = load_fleet_settings(home)
+def _snapshot(home, *, create: bool = False):
+    """The settings profile. Enrolling the first library on a new machine creates an empty one
+    (`create`); anything else on a machine with no profile is simply "not enrolled"."""
+    snapshot = ensure_fleet_settings(home) if create else load_fleet_settings(home)
     if snapshot is None:
-        raise ValueError(f"no settings profile at {fleet_home(home)}; create it with "
-                         "_build/setup_gitspecops.py first")
+        raise ValueError("this machine is not enrolled; add a library first: gitso machine add FOLDER")
     return snapshot
 
 
 def enrollment(home=None):
-    """(machine, app record or None) for this profile; reading writes nothing."""
-    snapshot = _snapshot(home)
+    """(machine, app record or None) for this profile; reading writes nothing. A machine with no
+    settings profile yet is (None, None): not enrolled."""
+    snapshot = load_fleet_settings(home)
+    if snapshot is None:
+        return None, None
     return snapshot.document.get("machine"), snapshot.config("app")
 
 
@@ -94,7 +98,7 @@ def add_libraries(paths, *, home=None, label=None, local_port=None) -> list[str]
     missing = [str(path) for path in paths if not path.is_dir()]
     if missing:
         raise ValueError(f"not an existing folder: {', '.join(missing)}")
-    snapshot = _snapshot(home)
+    snapshot = _snapshot(home, create=True)
     config = snapshot.config("app")
     if config is None:
         machine = snapshot.document.get("machine")

@@ -15,11 +15,11 @@ Eligibility comes from `Special/_archive/plan.py`; the fast-forward is `Basic/pu
 file is scan + fast-forward + report.
 
 Usage:
-    python Special/update_archive.py                      # update the current folder
-    python Special/update_archive.py --scan-only          # inventory only
-    python Special/update_archive.py --root /path/to/archive
-    python Special/update_archive.py --root A --root B     # several roots
-    python Special/update_archive.py --output-dir REPORTS  # write a dated result in the selected format
+    python Special/archive_update.py                      # update the current folder
+    python Special/archive_update.py --scan-only          # inventory only
+    python Special/archive_update.py --root /path/to/archive
+    python Special/archive_update.py --root A --root B     # several roots
+    python Special/archive_update.py --output-dir REPORTS  # write a dated result in the selected format
 """
 
 from __future__ import annotations
@@ -173,7 +173,7 @@ def print_summary(report: RootReport, *, stream=None) -> None:
 
 def report_payload(reports: list[RootReport], mode: str, approved_prefixes: list[str]) -> dict:
     return {
-        "command": "update-archive",
+        "command": "archive update",
         "generated": datetime.now().isoformat(timespec="seconds"),
         "mode": mode,
         "approved_remote_prefixes": approved_prefixes,

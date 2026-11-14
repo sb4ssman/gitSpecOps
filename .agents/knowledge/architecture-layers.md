@@ -39,7 +39,7 @@ Clarifications that took several passes to get right, recorded so they are not r
 - **Special is not "many repos."** A loop running `pull` fifty times is not a Special operation.
   What makes `archive_update` special is the logic of the repetition. That judgment is the layer.
 - **Elaborate reaches across machines and across time.** Revised 2026-10-27: plain local archive
-  management belongs in Special/archive_manager.py, including selecting archives and invoking
+  management belongs in Special/archive.py, including selecting archives and invoking
   update or sync once per selected archive. Registry persistence alone does not make it Elaborate.
   Scheduling and fleet coordination remain Elaborate and call that same manager. Scheduled runs
   must not acquire reconciliation/rename/publication authority merely because code moved.
@@ -60,28 +60,28 @@ older trees that mix public operations and private helper files at the layer roo
 intervening suggestion to hide public commands inside capability folders. Basic/Special/
 Elaborate/App responsibilities and dependency direction remain unchanged.
 
-The user also chose the role-oriented public entry point `Special/archive_manager.py` for local
+The user also chose the role-oriented public entry point `Special/archive.py` for local
 archive management. Operation names must describe their actual job; the verb-first preference
 does not prohibit an explicitly chosen manager name.
 
-The user specifically chose `Special/update_archive.py` and a layer-root
-`Special/duplicate_org.py`. A complete current Special entry-point mapping follows; additional
+The user specifically chose `Special/archive_update.py` and a layer-root
+`Special/org_copy.py`. A complete current Special entry-point mapping follows; additional
 verb-first names below remain proposals; the three selected public operations are now in place.
 
 | Previous/current entry point | Destination | Status |
 |---|---|---|
-| Archive updater | Special/update_archive.py | Canonical entry point; no alias |
-| Special/duplicate_org/duplicate_org.py | Special/duplicate_org.py | Implemented; earlier script path is a compatibility wrapper |
-| Special/sync_archive.py | Special/sync_archive.py | Naming proposal |
-| Special/export_inventory.py | Special/export_inventory.py | Naming proposal |
-| Special/restore_inventory.py | Special/restore_inventory.py | Naming proposal |
-| Special/scan_tree.py | Special/scan_tree.py | Layer-root placement follows the rule; review the complete map |
-| Special/scan_history.py | Special/scan_history.py | Layer-root placement follows the rule; review the complete map |
-| Local archive management | Special/archive_manager.py | Shared headless operation; Elaborate handles scheduling only |
+| Archive updater | Special/archive_update.py | Canonical entry point; no alias |
+| Special/duplicate_org/duplicate_org.py | Special/org_copy.py | Implemented; earlier script path is a compatibility wrapper |
+| Special/archive_sync.py | Special/archive_sync.py | Naming proposal |
+| Special/inventory_export.py | Special/inventory_export.py | Naming proposal |
+| Special/inventory_restore.py | Special/inventory_restore.py | Naming proposal |
+| Special/scan.py | Special/scan.py | Layer-root placement follows the rule; review the complete map |
+| Special/history_scan.py | Special/history_scan.py | Layer-root placement follows the rule; review the complete map |
+| Local archive management | Special/archive.py | Shared headless operation; Elaborate handles scheduling only |
 
 ### 2026-10-27 archive responsibility split
 
-Special/archive_manager.py is the real synchronous operation entry point. CLI/menu/GUI pass a
+Special/archive.py is the real synchronous operation entry point. CLI/menu/GUI pass a
 request to its callable function; it selects/configures archives, invokes the explicitly
 selected update or sync operation once per archive and returns structured results. It does
 not need the fleet or a resident process. Keep private manager/updater/sync/plan/registry
@@ -218,7 +218,7 @@ gitSpecOps/
 │   ├── follow_rewrite_fleet request          (placeholders: header and a refusal)
 │   └── _fleet/ (fleet CLI and status CLI, routing, config, peer runtime, display contract
 │       builder, aggregate, convergence, events, tailnet protocol, store, local view,
-│       change fingerprint, start-at-login)  _recovery/  _transport/ (folder, repo)
+│       change fingerprint, start-at-sign-in)  _recovery/  _transport/ (folder, repo)
 ├── App/              presence and presentation; PySide6 is its only dependency
 │   ├── tray serve_web desktop window          (window: placeholder)
 │   └── _launch  _tray/ (model, qt)  _web/ (server, remote, _assets, skins/standard,
@@ -228,9 +228,9 @@ gitSpecOps/
 └── run_setup.*  pyproject.toml (optional extra: app = PySide6)
 ```
 
-The local-versus-fleet split of the old Sync Suggester: `Special/suggest_sync.py` observes,
-classifies and recommends for this machine and publishes nothing; `Elaborate/publish_status.py`
-publishes this machine's status; `Elaborate/suggest_fleet_sync.py` reads every machine's;
+The local-versus-fleet split of the old Sync Suggester: `Special/machine_check.py` observes,
+classifies and recommends for this machine and publishes nothing; `Elaborate/fleet_publish.py`
+publishes this machine's status; `Elaborate/fleet_suggest.py` reads every machine's;
 `Elaborate/peer.py` keeps doing both over time. The peer never imports App: App hands it a
 `serve` function (`run_peer(serve=...)`), which is how the tray and `serve_web` attach the web
 view, and `--remote` adds the tailnet listener for the user's own devices.
@@ -342,7 +342,7 @@ A test collects every declaration by scanning the layer folders and asserts:
 ## Sequencing: this precedes enrolling machines
 
 `autostart` writes an **absolute resolved path** to the peer into the registry Run key, the XDG
-`.desktop` file and the LaunchAgent. Moving files after enrollment breaks start-at-login on every
+`.desktop` file and the LaunchAgent. Moving files after enrollment breaks start-at-sign-in on every
 machine, silently. Migrate first, then enroll onto the final layout.
 
 ## Revisions, 2026-09-21
@@ -382,8 +382,8 @@ Decided by the user after the test audit:
   phase 3c). The tray *opens* it; it does not own it.
 - **`App/` is the tray / menu-bar app** — the live presence: the glance, notifications, the
   menu, and live updates between peers that are online together on the tailnet.
-- **Scheduling and start-at-login are owned below `App/`.** `archive_manage` and the per-OS
-  `_os/*/schedule.py` / `launcher.py` already own the archive refresh; the peer's start-at-login
+- **Scheduling and start-at-sign-in are owned below `App/`.** `archive_manage` and the per-OS
+  `_os/*/schedule.py` / `launcher.py` already own the archive refresh; the peer's start-at-sign-in
   joins them on the same footing. The App only gives controls that call those commands, so
   every schedule can be set, inspected and removed from the terminal too.
 - **Skins: `modern` only, for now.** `lcars` and `retro` are deferred, not dropped; the display
@@ -496,9 +496,9 @@ Decided by the user:
 
 Decided by the user:
 
-- **Machine to app, app to fleet.** Enrolling the machine (`Special/enroll_machine.py`: its
+- **Machine to app, app to fleet.** Enrolling the machine (`Special/machine.py`: its
   library folders and its presentation choice) is this machine, once, and is enough for the
-  tray, the web view and every local command. Joining a fleet (`Elaborate/setup_fleet.py`: a
+  tray, the web view and every local command. Joining a fleet (`Elaborate/fleet.py`: a
   key, then any combination of the synced folder, the private GitHub state repository and
   Tailscale) is the separate, later step; `leave` undoes it and keeps the machine.
 - **Several libraries per machine,** added one or more at a time, never overlapping. Nothing is

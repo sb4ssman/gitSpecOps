@@ -8,9 +8,9 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso sync-archive --root /path/to/archive                     (inspects only)
-    gitso sync-archive --root /path/to/archive --sync              (plans; at a terminal, asks)
-    gitso sync-archive --root /path/to/archive --sync --apply PLAN_ID
+    gitso archive sync --root /path/to/archive                     (inspects only)
+    gitso archive sync --root /path/to/archive --sync              (plans; at a terminal, asks)
+    gitso archive sync --root /path/to/archive --sync --apply PLAN_ID
 
 Each folder's plan has its own id; repeat --apply for several. Publication is separate:
 exact planned tips pass outgoing-history security checks before any non-forced push. An

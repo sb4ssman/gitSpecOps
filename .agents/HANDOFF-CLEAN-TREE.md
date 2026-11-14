@@ -54,15 +54,15 @@ Commands show this text before and during a run (CLI, web view, tray): one sourc
 | `core/manifest.py` | `Special/_sync/manifest.py` | status facts; Elaborate publishes them |
 | `core/config.py` (local part, catalog) | `Special/_sync/catalog.py` | transport parts go to Elaborate |
 | `app/baskets.py` (observe selection) | `Special/_sync/selection.py` | publish selection goes to Elaborate |
-| `sync_suggester.py check` (local part) | `Special/suggest_sync.py` | NEW command: observe, classify, recommend; no fleet |
-| `sync_suggester.py alias` | `Special/name_repo.py` | local-only catalog name |
-| `app/fleet_actions.py` (catchup) | `Special/catch_up.py` + `Special/_sync/actions.py` | fetch, fast-forward clean behind-only |
+| `sync_suggester.py check` (local part) | `Special/machine_check.py` | NEW command: observe, classify, recommend; no fleet |
+| `sync_suggester.py alias` | `Special/repo_name.py` | local-only catalog name |
+| `app/fleet_actions.py` (catchup) | `Special/machine_catch_up.py` + `Special/_sync/actions.py` | fetch, fast-forward clean behind-only |
 | `fleet_app safe-to-wipe` | `Special/check_safe_to_wipe.py` | |
-| `fleet_app audit` | `Special/audit_repos.py` | |
-| `fleet_app materialize` | `Special/materialize.py` | clone this machine's working set elsewhere |
-| `core/vscode_buffers.py` + `live-buffers` | `Special/_sync/vscode_buffers.py` + `Special/list_live_buffers.py` | |
-| `_archive/Security/_rewrite.py` follow, follow_many, relink, commit_map, references, published_before, assess, finish | `Special/follow_rewrite.py` + `Special/_security/follow.py` | PORT: move this machine's clones onto rewritten history and fix quoted commit ids; reconcile with current cleanup plans |
-| `Special/security/` public commands | `Special/scan_tree.py`, `scan_history.py`, `review_finding.py`, `clean_history.py` | layer-root rule; `security/` becomes `_security/` |
+| `fleet_app audit` | `Special/machine_audit.py` | |
+| `fleet_app materialize` | `Special/machine_materialize.py` | clone this machine's working set elsewhere |
+| `core/vscode_buffers.py` + `live-buffers` | `Special/_sync/vscode_buffers.py` + `Special/machine_buffers.py` | |
+| `_archive/Security/_rewrite.py` follow, follow_many, relink, commit_map, references, published_before, assess, finish | `Special/history_follow.py` + `Special/_security/follow.py` | PORT: move this machine's clones onto rewritten history and fix quoted commit ids; reconcile with current cleanup plans |
+| `Special/security/` public commands | `Special/scan.py`, `scan_history.py`, `review_finding.py`, `clean_history.py` | layer-root rule; `security/` becomes `_security/` |
 | `Special/duplicate_org/duplicate_org.py` | deleted | wrapper; `runs/` stays where it is |
 | `Special/archive_sync.py`, `inventory_export.py`, `inventory_restore.py` | `sync_archive.py`, `export_inventory.py`, `restore_inventory.py` | 2026-10-27 action-name rule |
 
@@ -82,15 +82,15 @@ Commands show this text before and during a run (CLI, web view, tray): one sourc
 | `core/config.py` (fleet/transport part), `app/fleet_config.py` | `Elaborate/_fleet/config.py` | one schema; loading never saves (explicit conversion only) |
 | `app/baskets.py` (publish selection) | `Elaborate/_fleet/baskets.py` | |
 | `app/fleet_peer.py`, `fleet_app run/peer/rescan` | `Elaborate/peer.py` + `Elaborate/_fleet/peer.py` | continuous |
-| `sync_suggester.py check` (publish part) | `Elaborate/publish_status.py` | NEW command |
-| `sync_suggester.py dashboard/check` (fleet part) | `Elaborate/suggest_fleet_sync.py` | NEW command |
-| `sync_suggester.py converge` | `Elaborate/converge.py` | |
-| `init`, `fleet-key`, `setup`, `peer` config, `transports`, `baskets` | `Elaborate/setup_fleet.py` | enroll this machine; App guides it |
-| `app/fleet_autostart.py`, `autostart` | `Elaborate/start_at_login.py` | per-user, via `_os/` |
-| `fleet_app doctor`, `preflight` | `Elaborate/doctor.py`, `Elaborate/preflight.py` | |
+| `sync_suggester.py check` (publish part) | `Elaborate/fleet_publish.py` | NEW command |
+| `sync_suggester.py dashboard/check` (fleet part) | `Elaborate/fleet_suggest.py` | NEW command |
+| `sync_suggester.py converge` | `Elaborate/fleet_converge.py` | |
+| `init`, `fleet-key`, `setup`, `peer` config, `transports`, `baskets` | `Elaborate/fleet.py` | enroll this machine; App guides it |
+| `app/fleet_autostart.py`, `autostart` | `Elaborate/start_at_sign_in.py` | per-user, via `_os/` |
+| `fleet_app doctor`, `fleet preflight` | `Elaborate/fleet_doctor.py`, `Elaborate/fleet_preflight.py` | |
 | `core/capture.py`, `patch_parse.py`, `secret_scan.py`, `snapshot_*.py`, `retirement.py`, `app/recovery_runtime.py`, `recovery` | `Elaborate/recovery/` (public ops) + `Elaborate/recovery/_*` | `secret_scan` switches to the shared Special security rules: one rule set |
-| `Elaborate/archive_manage.py` | `Elaborate/schedule_archives.py` | scheduling only; calls Special manager |
-| (new) | `Elaborate/follow_rewrite_fleet.py` | placeholder: ask other machines to follow a rewrite |
+| `Elaborate/archive_manage.py` | `Elaborate/archive_schedule.py` | scheduling only; calls Special manager |
+| (new) | `Elaborate/history_follow_fleet.py` | placeholder: ask other machines to follow a rewrite |
 | (new) | `Elaborate/request.py` | placeholder: attended remote requests between machines |
 
 **App: presence and presentation**
@@ -159,11 +159,11 @@ splits into `tests/special/`, `tests/elaborate/`, `tests/app/`.
   - `git_client.py` sits in `Special/_sync/` (fleet config validates it; it starts only a
     desktop program), not `App/`.
   - The v1 status CLI stays one plumbing module (`Elaborate/_fleet/sync_cli.py`) behind three
-    commands (publish_status, suggest_fleet_sync, converge); `alias` became `Special/name_repo.py`.
+    commands (publish_status, suggest_fleet_sync, converge); `alias` became `Special/repo_name.py`.
   - Local commands take the fleet's configuration lock (`Special/_sync/lock.py`), as before.
   - The hygiene test keeps version 1's exact rules, moved beside it (`tests/repo/_hygiene_*`).
   - Plumbing files keep their own docstrings; commands carry the header template.
-  - Loading never converts settings: `Elaborate/setup_fleet.py convert` is the explicit step.
+  - Loading never converts settings: `Elaborate/fleet.py convert` is the explicit step.
 - Done after the checkpoint: `App/_win_tray_reference.py` deleted (d6cc0c9).
 - Left in phase 9: run the Qt tray and the web view by hand on a desktop and look
   at the map; recovery's `secret_scan` onto the shared security rules; the hygiene test onto

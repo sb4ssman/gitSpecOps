@@ -32,7 +32,7 @@ direction ("there are no users, not even me yet"), every older-format path was r
 settings migration and the existing-settings switch; `--legacy-policy` and the old
 `security/never_publish.txt` / `safe.txt` lists; the resolver's "migration required" refusal
 and its `GITSPECOPS_SYNC_HOME` block (that variable now only moves the fleet's runtime state);
-the fleet's `config.json` / `fleet-app.json`, `setup-fleet convert` and config `migrate()`;
+the fleet's `config.json` / `fleet-app.json`, `fleet convert` and config `migrate()`;
 archive choices kept in the receipts file. Without settings.json nothing is enrolled or
 registered; fleet setup and the first archive registration create an empty profile. Where
 the sections below describe legacy files, adapters or conversions, they are history, not
@@ -437,7 +437,7 @@ both are retired.)
 
 ## Standalone updater: first integrated consumer (2026-10-27)
 
-`Special/update_archive.py` uses component `archive_update`. Public callable
+`Special/archive_update.py` uses component `archive_update`. Public callable
 API: `run_update(resolved_settings, UpdateRequest(...)) -> UpdateResult`. It performs no profile
 lookup and prints nothing. Requested report/log sinks are local; no fleet or gh is required.
 Omitted request roots select saved roots, otherwise cwd; an explicit empty scope is an error.
@@ -532,7 +532,7 @@ readers reject links, duplicate keys, invalid/nonfinite JSON, nonregular/oversiz
 unsupported schema. Saved earlier reports remain readable as JSON but cannot supply a new
 review without current content bindings; regenerate a scan rather than guess missing evidence.
 
-`review-finding` previews accepting one uncertain built-in finding or revoking an active
+`review` previews accepting one uncertain built-in finding or revoking an active
 review. Preview writes nothing; --apply requires --approve with the current whole-plan id.
 Changed report/reason/profile/policy requires a new preview. Reasons are never echoed; full
 reasons, normalized repository binding, exact check/location/line/value/content and UTC time
@@ -566,7 +566,7 @@ records/full reports never enter portable-settings projections or fleet manifest
 Records created under saved common settings require that settings authority to remain present;
 deleting it cannot reactivate accepted examples under fresh defaults.
 
-`scan-tree --staged` selects index material: only staged added/modified/type-changed file bytes,
+`scan --staged` selects index material: only staged added/modified/type-changed file bytes,
 without reading working/untracked contents, invoking filters, changing the index or committing.
 Deleted versions are excluded; history scanning remains separate. Unmerged entries, submodules
 and changed index/selection snapshots yield coverage gaps. It uses the existing bounded blob

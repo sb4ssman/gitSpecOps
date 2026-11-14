@@ -104,11 +104,14 @@ only on approval. [The command reference](docs/COMMANDS.md) has every command's 
 description, generated from its source; [for AI agents](docs/FOR-AI-AGENTS.md) explains plans
 and records.
 
+Commands are `gitso <subject> <action>`; the Git ones keep Git's names. `gitso <subject>` lists
+a subject's actions.
+
 | Layer | Commands |
 |---|---|
 | **Basic** | discover, status, fetch, pull, clone, reset-keep, commit, push |
-| **Special** | enroll-machine, suggest-sync, name-repo, catch-up, audit-repos, materialize, list-live-buffers, duplicate-org, update-archive, archive-manager, sync-archive, export-inventory, restore-inventory, scan-tree, scan-history, review-finding, clean-history, follow-rewrite, secure-commit, secure-push |
-| **Elaborate** | setup-fleet, peer, publish-status, suggest-fleet-sync, converge, check-safe-to-wipe, recovery, doctor, preflight, start-at-login, schedule-archives |
+| **Special** | `machine` show / add / remove / find / presentation / check / catch-up / audit / materialize / buffers; `repo` name / list; `archive` add / remove / list / status / refresh / check / update / sync; `inventory` export / restore; `org copy`; `scan`; `review`; `history` scan / clean / follow / relink; `secure-commit`; `secure-push` |
+| **Elaborate** | `machine safe-to-wipe`; `archive schedule`; `fleet` setup / status / transports / leave / key / baskets / git-client / join / doctor / preflight / publish / suggest / converge; `peer` run / rescan; `recovery`; `start-at-sign-in` |
 | **App** | tray, serve-web, setup |
 
 ## Guides

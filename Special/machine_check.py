@@ -9,7 +9,7 @@ Results:      JSON without a terminal (or with --json); a screen at one. Nothing
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/suggest_sync.py --help
+    gitso machine check --help
 """
 from pathlib import Path
 import sys

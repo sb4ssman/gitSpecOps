@@ -1,13 +1,13 @@
-"""Inspect or change whether the gitSpecOps tray starts when you log in.
+"""Show this machine's fleet configuration and which peers answer; hides the key.
 
-Why:          a fleet whose peers are not running knows nothing.
-Reads:        this user's login items.
-May change:   this user's login items only (never system-wide).
+Why:          the first question when the fleet looks wrong is what this machine thinks it is.
+Reads:        the fleet configuration; peers on the tailnet.
+May change:   nothing.
 Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/start_at_login.py --help
+    gitso fleet doctor --help
 """
 from pathlib import Path
 import sys
@@ -20,10 +20,10 @@ from Elaborate._fleet.commands import fleet  # noqa: E402
 
 
 def main(argv=None):
-    return fleet(argv, ("autostart",))
+    return fleet(argv, ("doctor",))
 
 
-EFFECT = "local"
+EFFECT = "none"
 
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -1,4 +1,4 @@
-"""update-archive integration with invented settings, scopes and temporary Git repos."""
+"""archive update integration with invented settings, scopes and temporary Git repos."""
 from __future__ import annotations
 
 import io
@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import setup
 setup()
 
-from Special import update_archive as public
+from Special import archive_update as public
 from Special._archive import updater, update_cli
 from Special._archive.plan import RepoInfo
 from Special._runtime.files import RuntimeIOError, SOURCE_ROOT

@@ -5,6 +5,24 @@ while the version starts with 0, gitSpecOps is a development preview and anythin
 
 ## Unreleased
 
+- **Commands renamed: `gitso <subject> <action>`.** The Git commands keep Git's names;
+  `gitso <subject>` lists a subject's actions. Old to new: enroll-machine to `machine`
+  (show/add/remove/find/presentation); suggest-sync, catch-up, audit-repos, materialize,
+  list-live-buffers, check-safe-to-wipe to `machine check/catch-up/audit/materialize/buffers/
+  safe-to-wipe`; name-repo to `repo name`/`repo list`; archive-manager to `archive
+  add/remove/list/status/refresh/check` (its --install/--forget/--list/--status/--refresh/
+  --refresh-all/--scan-only flags are now these actions); update-archive, sync-archive,
+  schedule-archives to `archive update/sync/schedule`; export-inventory, restore-inventory to
+  `inventory export/restore`; duplicate-org to `org copy`; scan-tree to `scan`; review-finding
+  to `review`; scan-history, clean-history, follow-rewrite to `history scan/clean/follow` and
+  `history relink`; setup-fleet to `fleet` (fleet-key is `fleet key`, peer is `fleet join`);
+  doctor, preflight, publish-status, suggest-fleet-sync, converge to `fleet
+  doctor/preflight/publish/suggest/converge`; peer to `peer run/rescan`; start-at-login to
+  `start-at-sign-in`. The command files are renamed to match (Special/archive.py, ...).
+  Archive launchers written before this run the old file and must be written again
+  (`archive add` on the same folder).
+- **First run:** on a machine with no settings file, `machine show` says it is not enrolled,
+  and adding the first library creates the settings file instead of refusing.
 - **One output for every command.** Without a terminal (a script, a scheduler, an AI agent)
   every command prints one JSON record, `{"command", "ok", ...}`; at a terminal it draws a
   station screen. `--json` asks for the record at a terminal too. Report `--format` and

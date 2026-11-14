@@ -41,7 +41,7 @@ def load_selection(config_dir=None, *, home=None, roots=None) -> dict:
     config = snapshot.config("app") if snapshot is not None else None
     if config is None:
         raise ValueError("no saved repository roots; pass --root, or enroll with "
-                         "gitso enroll-machine add <library folder>")
+                         "gitso machine add <library folder>")
     if not config.get("roots") or any(not Path(root).is_dir() for root in config["roots"]):
         raise ValueError("every configured repository root must exist")
     if not is_fleet_secret(config.get("fleet_secret")):

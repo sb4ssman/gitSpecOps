@@ -1,4 +1,4 @@
-"""update-archive: fast-forward the eligible repositories in folders of clones.
+"""archive update: fast-forward the eligible repositories in folders of clones.
 
 Without --apply it inspects each folder and shows its plan, changing nothing; a person at a
 terminal is asked about each folder's plan, and a program gets each plan's id and the command
@@ -17,7 +17,7 @@ from Special._archive.plan import DEFAULT_APPROVED_REMOTE_PREFIXES
 from Special._runtime.cli_output import add_output_options, output_overrides
 from Special._settings import SettingsError, resolve_settings, _absolute
 
-COMMAND = "update-archive"
+COMMAND = "archive update"
 
 
 def build_parser():

@@ -7,7 +7,7 @@ Results:      nothing yet.
 Layer:        Elaborate: other machines, or over time.
 Status:       placeholder: needs the attended remote-request protocol (Elaborate/request.py).
 
-    python Elaborate/follow_rewrite_fleet.py --help
+    python Elaborate/history_follow_fleet.py --help
 """
 from pathlib import Path
 import sys
@@ -20,7 +20,7 @@ from Elaborate._fleet.commands import placeholder  # noqa: E402
 
 
 def main(argv=None):
-    return placeholder("follow_rewrite_fleet", "run Special/follow_rewrite.py on each machine")
+    return placeholder("follow_rewrite_fleet", "run Special/history_follow.py on each machine")
 
 
 EFFECT = "none"

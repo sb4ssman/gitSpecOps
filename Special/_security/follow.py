@@ -8,7 +8,7 @@ Reads:        each checkout's branch, upstream, status and remote-tracking reflo
 May change:   with confirmation, `git reset --keep` of a checkout's branch onto its rewritten
               upstream (never --hard: an edit is never overwritten). `relink --write` edits
               quoted ids in tracked text files and leaves them for review: nothing is committed
-              or pushed here (Special/commit_repo.py and push_repo.py do that, checked).
+              or pushed here (Special/secure_commit.py and push_repo.py do that, checked).
 Results:      plans and results on stdout.
 Layer:        Special: this machine, once.
 Status:       working. Ported from version 1 (`_archive/Security/_rewrite.py`), whose `finish`

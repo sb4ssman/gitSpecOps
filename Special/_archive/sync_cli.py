@@ -1,4 +1,4 @@
-"""sync-archive: plan, then apply, update, sync, repairs or publication for folders of clones.
+"""archive sync: plan, then apply, update, sync, repairs or publication for folders of clones.
 
 Choose what to plan with --update, --sync or --publish (and the repairs --reconcile and
 --rename-folders); with none of them it only inspects. Without --apply nothing changes: a person
@@ -22,7 +22,7 @@ from Special._archive.sync import DEFAULT_PUBLISH_PAUSE_SECONDS
 from Special._runtime.cli_output import add_output_options, output_overrides
 from Special._settings import SettingsError, _absolute, resolve_settings
 
-COMMAND = "sync-archive"
+COMMAND = "archive sync"
 
 
 def build_parser():

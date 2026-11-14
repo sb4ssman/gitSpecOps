@@ -61,6 +61,15 @@ class EnrollmentTests(unittest.TestCase):
     def app(self):
         return load_fleet_settings(self.home).config("app")
 
+    def test_a_new_machine_with_no_settings_file_is_simply_not_enrolled_until_it_adds_a_library(self):
+        (self.home / "settings.json").unlink()
+        code, out = self.command("show", "--json")
+        self.assertEqual(code, 0, out)
+        self.assertFalse(json.loads(out)["enrolled"])
+        self.assertFalse((self.home / "settings.json").exists(), "looking writes nothing")
+        self.assertEqual(self.approved("add", str(self.libraries[0]))[0], 0)
+        self.assertEqual(self.app()["roots"], [str(self.libraries[0].resolve())])
+
     def test_nothing_is_enrolled_without_consent(self):
         code, out = self.command("add", str(self.libraries[0]), "--json")
         self.assertEqual(code, 0)
@@ -152,7 +161,7 @@ class EnrollmentTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as said, patch("sys.stderr", new_callable=io.StringIO):
             code = fleet_main(["--settings-home", str(self.home), "--config-dir", str(self.state), "setup"])
         self.assertEqual(code, 2)
-        self.assertIn("gitso enroll-machine add", " ".join(said.getvalue().split()))
+        self.assertIn("gitso machine add", " ".join(said.getvalue().split()))
 
 
 if __name__ == "__main__":

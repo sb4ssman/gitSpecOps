@@ -1,4 +1,4 @@
-"""Schedule registered archive refreshes; local management lives in Special.
+"""Run every registered archive's refresh on a monthly schedule.
 
 Why:          archives only stay current if their refresh runs on its own.
 Reads:        registered archives; this user's scheduled tasks.
@@ -7,12 +7,12 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    gitso schedule-archives --write-refresh-all-script
-    gitso schedule-archives --install-monthly-task --task-day 1 --task-time 09:00
-    gitso schedule-archives --task-status
-    gitso schedule-archives --remove-task
+    gitso archive schedule --write-refresh-all-script
+    gitso archive schedule --install-monthly-task --task-day 1 --task-time 09:00
+    gitso archive schedule --task-status
+    gitso archive schedule --remove-task
 
-Only explicit actions run, each at once (like a setting). Generated launchers run archive-manager
+Only explicit actions run, each at once (like a setting). Generated launchers run archive
 --refresh-all at the selected profile. Scheduling never enables publication or repairs.
 Importing writes nothing and does not inspect or alter installed tasks.
 """
@@ -37,7 +37,7 @@ from Special._archive.registry import load_registry, registry_path
 EFFECT = "local"
 REFRESH_ALL_LAUNCHER = "refresh_managed_archives"
 DEFAULT_TASK_NAME = "gitSpecOps Archive Refresh"
-MANAGE_SCRIPT = "Special/archive_manager.py"
+MANAGE_SCRIPT = "Special/archive.py"
 
 
 def write_refresh_all_script(*, home=None) -> Path:
@@ -47,7 +47,7 @@ def write_refresh_all_script(*, home=None) -> Path:
     data.verify()
     home.mkdir(parents=True, exist_ok=True)
     path = launcher.write_launcher(home, REFRESH_ALL_LAUNCHER, REPO_ROOT, MANAGE_SCRIPT,
-                                   ["--refresh-all", "--settings-home", str(home)])
+                                   ["refresh", "--settings-home", str(home)])
     log_event(f"wrote refresh-all script path={path}", home=home)
     return path
 
@@ -73,7 +73,7 @@ def remove_task(task_name: str, *, home=None) -> int:
 
 def parse_args(argv=None):
     """Reject local management and invalid scheduling choices before any file writes."""
-    parser = _cli.parser("schedule-archives", "Run every registered archive's refresh on a monthly schedule.")
+    parser = _cli.parser("archive schedule", "Run every registered archive's refresh on a monthly schedule.")
     actions = parser.add_mutually_exclusive_group(required=True)
     actions.add_argument("--write-refresh-all-script", action="store_true")
     actions.add_argument("--install-monthly-task", action="store_true")
@@ -96,7 +96,7 @@ def parse_args(argv=None):
 def main(argv=None):
     enable_unicode_output()
     args = parse_args(argv)
-    command = "schedule-archives"
+    command = "archive schedule"
     try:
         if args.write_refresh_all_script:
             path = write_refresh_all_script(home=args.settings_home)

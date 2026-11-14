@@ -106,7 +106,7 @@ tool already knows.
 
 ## Baskets: choosing what a machine syncs
 
-**Built 2026-09-11** (`app/baskets.py`, config v4, `Elaborate/setup_fleet.py baskets`) — at namespace granularity,
+**Built 2026-09-11** (`app/baskets.py`, config v4, `Elaborate/fleet.py baskets`) — at namespace granularity,
 configured from the CLI rather than by editing JSON. Path globs and explicit per-repository
 lists are not implemented. Three scopes stay distinct or the feature becomes dangerous:
 

@@ -1,4 +1,4 @@
-"""clean-history: plan a history cleanup, then rewrite a NEW private mirror. Never the source.
+"""history clean: plan a history cleanup, then rewrite a NEW private mirror. Never the source.
 
 `plan` reads a full private history report and your explicit choices, and can save the exact
 plan (--plan-out). `rewrite` applies a saved plan into a new private folder. Because it rewrites
@@ -13,7 +13,7 @@ from Special._runtime.cli_output import add_output_options, output_overrides
 from Special._settings import SECURITY_ENGINES, SettingsError
 from Special._security._cleanup import render, run_cleanup
 
-COMMAND = "clean-history"
+COMMAND = "history clean"
 
 
 def main(argv=None):
@@ -21,7 +21,7 @@ def main(argv=None):
     parser = _cli.parser(COMMAND, "Plan a history cleanup, then rewrite a new private mirror (never the source).")
     commands = parser.add_subparsers(dest="action", required=True)
     plan = commands.add_parser("plan", help="choose findings and paths to remove, from a full private history report")
-    plan.add_argument("source", type=Path, help="full private scan-history report; raw values stay inside the tool")
+    plan.add_argument("source", type=Path, help="full private history scan report; raw values stay inside the tool")
     plan.add_argument("--choices", required=True, type=Path, help="your cleanup choices (JSON; see the source documentation)")
     plan.add_argument("--plan-out", type=Path, help="save the exact plan here, for rewrite")
     plan.add_argument("--include-remote-refs", action="store_true",

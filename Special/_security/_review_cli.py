@@ -1,4 +1,4 @@
-"""review-finding: accept one scoped finding as reviewed, or revoke a review, by approved plan.
+"""review: accept one scoped finding as reviewed, or revoke a review, by approved plan.
 
 Without --apply it reads the full private report, shows the plan and writes nothing; a person at
 a terminal is asked, and a program gets the plan id. Applying saves one private, unchangeable
@@ -11,7 +11,7 @@ from pathlib import Path
 from Basic import _cli
 from Special._security._review_operation import review_finding
 
-COMMAND = "review-finding"
+COMMAND = "review"
 
 
 def _show(result, banner, report):
@@ -35,7 +35,7 @@ def _show(result, banner, report):
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = _cli.parser(COMMAND, "Accept one finding as reviewed, or revoke a review, by an approved plan.")
-    parser.add_argument("report", type=Path, help="Full private report created by scan-tree/scan-history --out.")
+    parser.add_argument("report", type=Path, help="Full private report created by scan or history scan, with --out.")
     parser.add_argument("finding", nargs="?", help="Report-local finding id; selects scope, never authorizes a save.")
     parser.add_argument("--revoke", help="Revoke one active review id instead of accepting a finding.")
     parser.add_argument("--reason", required=True, help="Private explanation; never echoed to normal output.")

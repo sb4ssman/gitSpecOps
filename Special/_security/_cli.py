@@ -18,7 +18,7 @@ def main(material, argv=None):
     description = ("Inspect indexed and non-ignored untracked working-tree files; does not scan staged-only bytes."
                    if material == "tree" else
                    "Inspect history reachable from every local ref and HEAD; no fetch, reflogs or unreachable objects.")
-    command = "scan-tree" if material == "tree" else "scan-history"
+    command = "scan" if material == "tree" else "history scan"
     parser = _cli.parser(command, description)
     parser.add_argument("repo", type=Path)
     if material == "tree":

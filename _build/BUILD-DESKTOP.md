@@ -39,6 +39,6 @@ Two things in the spec are load-bearing:
   Windows (PyInstaller 6.22.3, 2026-09-19). The current Windows artifact completed the
   configuration-free `GitSpecOpsSync.exe preflight` smoke test.
 
-This is build input, not a public installer. Start-at-login now exists (`Elaborate/start_at_login.py`,
+This is build input, not a public installer. Start-at-login now exists (`Elaborate/start_at_sign_in.py`,
 per-user only, reversible), so the remaining packaging work is copying the one-folder result
 into a durable location, uninstall support, and preserving configuration across upgrades.

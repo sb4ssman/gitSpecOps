@@ -7,7 +7,7 @@ Results:      JSON without a terminal (or with --json); a screen at one. Exit 1 
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/audit_repos.py --help
+    gitso machine audit --help
 """
 from pathlib import Path
 import sys

@@ -7,7 +7,7 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/name_repo.py --help
+    gitso repo name --help
 """
 from pathlib import Path
 import sys
