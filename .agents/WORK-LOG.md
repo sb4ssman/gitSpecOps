@@ -2502,3 +2502,14 @@ No code changed; decisions recorded where they govern.
   (capture runs Git without system config; a local check of that theory came back clean).
 - Local note: test_runtime_logging failed once in a parallel run and passed on every rerun;
   a 1-second log-lock wait under load is a plausible cause, not confirmed, not changed.
+
+## 2026-11-13 18:30 - user (claude) - Every setup item comes back to the menu
+- The user chose item 4 (Check prerequisites): it printed and setup quit. Only item 2 returned.
+  Now every menu item is a visit: it runs, then "Press Enter to go back to the setup menu",
+  until [0] Exit. Ctrl+C or an error inside an item returns to the menu; an item that does not
+  finish says so instead of ending quietly. A named action on the command line still runs once.
+- Checked every item with real, scripted answers (never SAVE): 1 (walkthrough stopped), 4, 5,
+  6, 7 all return. Found, put to the user, not changed: 6 prints raw JSON; 7 stops on this
+  machine with "migration preview has unresolved conflicts" (the profile is already in the
+  current form); 5 uses plain prompts, not the station layout, and its logging question has
+  no default.

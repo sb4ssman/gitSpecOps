@@ -202,21 +202,49 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     action = args.action
-    if action is None:
-        if args.json or args.approve is not None:
-            parser.error("name an explicit settings action for JSON output or approval")
-        if not sys.stdin.isatty():
-            parser.print_help(file=sys.stderr)
-            print("Name a setup action when there is no interactive terminal.", file=sys.stderr)
-            return 2
-        # Running one command is a visit: when it finishes, or is cancelled, the menu comes back.
-        while True:
-            action = choose_action()
-            if action is None:
-                return 0
-            if action != "run":
-                break
+    if action is not None:
+        return perform(parser, args, action)
+    if args.json or args.approve is not None:
+        parser.error("name an explicit settings action for JSON output or approval")
+    if not sys.stdin.isatty():
+        parser.print_help(file=sys.stderr)
+        print("Name a setup action when there is no interactive terminal.", file=sys.stderr)
+        return 2
+    return menu_loop(parser, args)
+
+
+def menu_loop(parser, args) -> int:
+    """Every item is a visit: when it finishes, is stopped or fails, the menu comes back. Only
+    [0] Exit (or the end of input) leaves setup."""
+    while True:
+        action = choose_action()
+        if action is None:
+            return 0
+        if action == "run":
             run_one_command(back=True)
+            continue
+        code = 0
+        try:
+            code = perform(parser, args, action)
+        except (KeyboardInterrupt, EOFError):
+            say()
+            line("Stopped.", "warning")
+        except SystemExit as stop:  # an item that ends with exit still comes back here
+            code = stop.code if isinstance(stop.code, int) else (1 if stop.code else 0)
+        if code:
+            say()
+            line("That item did not finish; what it said is above. Nothing else was changed.",
+                 "warning")
+        say()
+        try:
+            input("  Press Enter to go back to the setup menu: ")
+        except (EOFError, KeyboardInterrupt):
+            print("\nSetup closed.")
+            return 0
+
+
+def perform(parser, args, action) -> int:
+    """One setup action, from the menu or named on the command line."""
     from Special._settings.setup_cli import ACTIONS, EXISTING_ACTIONS, dispatch
 
     preference_fields = ("root", "exclude_path", "output_mode", "saved_format", "output_dir",
