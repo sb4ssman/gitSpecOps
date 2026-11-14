@@ -1,5 +1,18 @@
 # Local settings: schemas, resolver and writer
 
+> **Current (2026-11-13): one output, one approval.** Every command answers through
+> `Basic/_cli.py`: one JSON record without a terminal (or with `--json`), a station screen at
+> one. Anything that changes things plans first and applies on `--apply PLAN_ID` (or yes at a
+> terminal). `--yes`, `--approve`, `--dry-run`, `--output-mode`, `--no-report`, `--format`,
+> `--acknowledge-initial-scan`, `--confirm-*`, `--approved-remote-prefix` (now `--allowed-remote`)
+> and setup's settings actions are gone; older passages below that name them are history.
+> See docs/ARCHITECTURE.md (Safety model, Output) and docs/FOR-AI-AGENTS.md.
+>
+> Settings now: format 2 only (format 1 is refused). `output` is `{save, directory}`: save each
+> run's report as a JSON file, or not; `mode` and `format` are gone. The per-user folder is
+> `gitSpecOps` (macOS: `~/Library/Application Support/gitSpecOps`); the fleet's runtime folder
+> inside it is `fleet/`.
+
 Status: common v1 plus typed enrollment v2 and the explicit writer, implemented 2026-10-26;
 private archive preference/receipt adapters added 2026-10-27. Product requirements are in
 [product-contract.md](product-contract.md). Resolution itself neither enrolls machines nor

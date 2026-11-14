@@ -19,8 +19,8 @@ Setup offers three ways in:
 
 1. **Walk me through everything.** It finds what this computer already has (Git, the GitHub
    CLI and its sign-in, the desktop app, library folders, start at sign-in, a desktop Git app,
-   protected values, secret scanners, Tailscale, a fleet), asks about each part, and changes
-   nothing until you have reviewed the whole list.
+   protected values, secret scanners, archives, Tailscale, a fleet), asks about each part, and
+   changes nothing until you have reviewed the whole list.
 2. **Run one command, without setting anything up.** Any Basic, Special or Elaborate command,
    straight from the folder, installing nothing: registering archive folders to keep updated, say.
 3. **The `gitso` command.** A command of its own, beside `git` and `gh`, in any terminal. The
@@ -55,18 +55,23 @@ to run; they never ask you for a secret.
 
 ## Setup without the walkthrough
 
-Updater preferences can be configured without enrolling this machine:
+Every part of the walkthrough is also a command, for scripts and for agents:
 
-```sh
-python3 _build/setup_gitspecops.py settings
-python3 _build/setup_gitspecops.py settings-preview --root /path/to/archive --no-log --json
-python3 _build/setup_gitspecops.py settings-save --root /path/to/archive --no-log --json --approve '<review-id>'
-```
+| Part | Command |
+|---|---|
+| This machine's library folders | `gitso enroll-machine add FOLDER` (`find` suggests some) |
+| Archives | `gitso archive-manager --install FOLDER --mode update` |
+| A monthly archive refresh | `gitso schedule-archives --install-monthly-task` |
+| Start at sign-in | `gitso start-at-login enable` |
+| A fleet | `gitso setup-fleet` (guided), or `setup-fleet transports ...` |
 
-Guided setup reviews changes and requires typed `SAVE`. For assisted use, copy the preview id
-and keep the same target and options when saving; a changed settings file invalidates it. Paths
-are hidden unless `--show-paths` is given. Add `--settings-home /path/to/profile` to select a
-profile.
+A command that changes things shows its plan first: at a terminal it asks, and a script runs
+it again with `--apply PLAN_ID` (see [For AI agents](FOR-AI-AGENTS.md)).
+
+Settings live in one file, `settings.json`, in your per-user gitSpecOps folder:
+`%APPDATA%\gitSpecOps` on Windows, `~/Library/Application Support/gitSpecOps` on macOS,
+`~/.config/gitSpecOps` on Linux. `GITSPECOPS_HOME` (or `--settings-home`) points a run at
+another folder instead, for a scratch profile or a first-run test; nothing else is changed.
 
 ## Updates
 

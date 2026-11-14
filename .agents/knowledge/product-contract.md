@@ -1,5 +1,13 @@
 # gitSpecOps: one application, useful individual operations
 
+> **Current (2026-11-13): one output, one approval.** Every command answers through
+> `Basic/_cli.py`: one JSON record without a terminal (or with `--json`), a station screen at
+> one. Anything that changes things plans first and applies on `--apply PLAN_ID` (or yes at a
+> terminal). `--yes`, `--approve`, `--dry-run`, `--output-mode`, `--no-report`, `--format`,
+> `--acknowledge-initial-scan`, `--confirm-*`, `--approved-remote-prefix` (now `--allowed-remote`)
+> and setup's settings actions are gone; older passages below that name them are history.
+> See docs/ARCHITECTURE.md (Safety model, Output) and docs/FOR-AI-AGENTS.md.
+
 Status: product direction agreed with the user, 2026-10-26. This is the canonical contract
 connecting the existing [layer architecture](architecture-layers.md),
 [security design](security-design.md) and executable work in [working notes](../WORKING-NOTES.md).

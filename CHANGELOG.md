@@ -5,6 +5,29 @@ while the version starts with 0, gitSpecOps is a development preview and anythin
 
 ## Unreleased
 
+- **One output for every command.** Without a terminal (a script, a scheduler, an AI agent)
+  every command prints one JSON record, `{"command", "ok", ...}`; at a terminal it draws a
+  station screen. `--json` asks for the record at a terminal too. Report `--format` and
+  `--output-mode`/`--no-report` are gone.
+- **One approval for every command that changes things.** It shows its plan with an id and
+  changes nothing; at a terminal it asks, and a script applies exactly that plan with
+  `--apply PLAN_ID` (exit 3 if the plan changed). Gone: `--yes`, `--approve`,
+  `--dry-run`, `update-archive --scan-only`, `--acknowledge-initial-scan`,
+  `--confirm-private-location`, `--confirm-relaxed-policy`. `--approved-remote-prefix` is now
+  `--allowed-remote`. `clean-history apply` is now `clean-history rewrite`, and still needs a
+  person who types REWRITE. Basic commands and single explicit settings act at once, like git.
+- **Reports:** one choice, also save each run's report as a JSON file (`--save-report`,
+  setting `output.save`). The counts-only log stays on unless `--no-log`.
+- **Setup:** the "standalone updater preferences" item and its settings actions are gone. The
+  walkthrough gains an Archives part (register folders of clones, optional monthly refresh);
+  the menu and the command list speak plainly, in the station style.
+- **Removed:** `archive-manager --force-sync`; the archive tools' own version numbers (one
+  product, one version); settings format 1; old internal names on screens and folders (Sync
+  Suggester, standalone updater, Archive Manager, org duplicator).
+- **Moved:** the per-user folder is now `gitSpecOps` (Linux: rename `~/.config/gitspecops`);
+  on macOS it is `~/Library/Application Support/gitSpecOps`. The fleet's runtime folder inside
+  it is `fleet/`. The start-at-sign-in entry is named `gitSpecOps`.
+- **Help** names the command as typed: `usage: gitso archive-manager ...`.
 - **Renamed:** the checked `gitso commit` and `gitso push` are now `gitso secure-commit` and
   `gitso secure-push` (Special). `gitso commit` and `gitso push` are now the plain Basic
   operations, like `git commit` and `git push`: exactly the named files, never a forced push,

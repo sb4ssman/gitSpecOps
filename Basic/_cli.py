@@ -283,7 +283,15 @@ def run_plan(args, command: str, argv, operation, *, ready, show, record, code,
 
     given = getattr(args, "apply", None)
     if given is not None:
-        return finish(operation(True, given), True)
+        result = operation(True, given)
+        current = identity(result)
+        if current and current != given:
+            # The plan worked out now is a different one: nothing was done, and the record says so.
+            fields = record(result)
+            fields["apply"] = apply_line(command, argv, current, hidden)
+            emit(args, document(command, False, applied=False, **fields), lambda: show(result, True))
+            return PLAN_CHANGED
+        return finish(result, True)
     preview = operation(False, None)
     if not (ready(preview) and interactive(args)):
         return finish(preview, False)
