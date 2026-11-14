@@ -344,9 +344,9 @@ launchers need reviewed regeneration before real migration. Manager refresh and 
 and native/multimachine acceptance remain open.
 
 ```text
-<per-user config>/gitspecops/gitspecops_managed_archives.json   # GITSPECOPS_HOME overrides
-<per-user config>/gitspecops/archive_manage.log
-<per-user config>/gitspecops/refresh_managed_archives.{bat,ps1 | sh}
+<per-user config>/gitSpecOps/gitspecops_managed_archives.json   # GITSPECOPS_HOME overrides
+<per-user config>/gitSpecOps/archive_manage.log
+<per-user config>/gitSpecOps/refresh_managed_archives.{bat,ps1 | sh}
 ```
 
 ### The push direction ("publish") — shipped 2026-09-03, first slice
@@ -617,7 +617,7 @@ Four rules hold this design together; do not quietly relax any of them:
   cloner here — that is a de-duplication argument, not a safety boundary.
 
 Local state lives outside the repo — `GITSPECOPS_SYNC_HOME`, else XDG on POSIX / `%APPDATA%` on
-Windows, under `gitspecops/sync-suggester/`. `config.json` and `catalog.json` are per-machine and
+Windows, under `gitSpecOps/sync-suggester/`. `config.json` and `catalog.json` are per-machine and
 never enter the state directory.
 
 ### Transports

@@ -29,7 +29,7 @@ Identity is by stable provider id, never by folder name or URL.
 
 `archive-manager` registers archives, refreshes them in their saved mode, and installs
 per-archive launchers; `schedule-archives` sets up a monthly refresh. Registrations live in your
-per-user gitSpecOps folder (`%APPDATA%\gitspecops` on Windows, `~/.config/gitspecops` elsewhere;
+per-user gitSpecOps folder (`%APPDATA%\gitSpecOps` on Windows, `~/.config/gitSpecOps` elsewhere;
 `GITSPECOPS_HOME` overrides), never in the checkout, so a scheduled refresh keeps working when
 the code moves. Output goes to the terminal by default; reports and counts-only logs are opt-in.
 Use `--scan-only` to look without changing anything.

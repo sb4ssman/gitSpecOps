@@ -12,11 +12,11 @@ from pathlib import Path
 
 from _os.current import paths as _os_paths
 
-APP_DIR_NAME = "gitspecops"
+APP_DIR_NAME = "gitSpecOps"
 
 
 def config_home() -> Path:
-    """The per-user gitSpecOps folder: `<OS config base>/gitspecops`.
+    """The per-user gitSpecOps folder: `<OS config base>/gitSpecOps`.
 
     `GITSPECOPS_HOME` overrides it (tests, scratch runs), so nothing needs to touch the real one.
     """
