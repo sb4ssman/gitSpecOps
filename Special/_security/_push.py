@@ -115,7 +115,7 @@ class PushResult:
                 "plan_id": self.plan_id, "artifacts": []}
 
 
-def push_checked(repo, *, settings_home=None, legacy_policy=False, apply=False, approve=None):
+def push_checked(repo, *, settings_home=None, apply=False, approve=None):
     """Preview one local push mapping; apply its exact plan through publish_checked.
 
     Preview reads local scope/policy only, with no fetch, network, file writes or security
@@ -128,11 +128,11 @@ def push_checked(repo, *, settings_home=None, legacy_policy=False, apply=False, 
         top = Path(git_output(repo, ["rev-parse", "--show-toplevel"]).strip())
         if repo.resolve() != top.resolve():
             raise SettingsError("select the repository root explicitly")
-        policy = load_policy(repo, home=home, legacy_policy=legacy_policy)
+        policy = load_policy(repo, home=home)
         snapshot = read_push_snapshot(repo)
         if policy.gaps:
             return PushResult("incomplete", "Security policy is incomplete; no push plan approved.")
-        binding = {"scope": asdict(snapshot), "home": str(home), "legacy_policy": legacy_policy,
+        binding = {"scope": asdict(snapshot), "home": str(home),
                    "policy": {name: getattr(policy, name) for name in
                               ("identities", "safe", "logins", "engines", "exclude_paths", "sources")}}
         plan_id = hashlib.sha256(json.dumps(binding, sort_keys=True, default=str).encode()).hexdigest()
@@ -141,7 +141,7 @@ def push_checked(repo, *, settings_home=None, legacy_policy=False, apply=False, 
                               plan_id=plan_id)
         if approve != plan_id:
             return PushResult("approval-required", "No push: approve the exact current local plan.", plan_id=plan_id)
-        result = publish_checked(snapshot, settings_home=home, legacy_policy=legacy_policy, expected_policy=policy)
+        result = publish_checked(snapshot, settings_home=home, expected_policy=policy)
         return PushResult(result.status, result.message, result.report, plan_id)
     except SettingsError as exc:
         return PushResult("incomplete", str(exc))
@@ -149,7 +149,7 @@ def push_checked(repo, *, settings_home=None, legacy_policy=False, apply=False, 
         return PushResult("incomplete", "Push scope or security settings could not be read; no push performed.")
 
 
-def publish_checked(snapshot: PushSnapshot, *, settings_home=None, legacy_policy=False, expected_policy=None) -> PushResult:
+def publish_checked(snapshot: PushSnapshot, *, settings_home=None, expected_policy=None) -> PushResult:
     """Execute the approved snapshot only after current selected checks pass.
 
     Uncertain findings hold the push for review; resolve scoped policy and rerun. There is no
@@ -158,7 +158,7 @@ def publish_checked(snapshot: PushSnapshot, *, settings_home=None, legacy_policy
     """
     report = None
     try:
-        policy = load_policy(snapshot.repo, home=settings_home, legacy_policy=legacy_policy)
+        policy = load_policy(snapshot.repo, home=settings_home)
         if expected_policy is not None and not _same_policy(expected_policy, policy):
             return PushResult("stale", "Security policy changed after plan approval; preview again.")
         if policy.gaps:
@@ -181,7 +181,7 @@ def publish_checked(snapshot: PushSnapshot, *, settings_home=None, legacy_policy
             return PushResult(report.check_status,
                               "failed: security findings block push" if report.check_status == "blocked" else
                               "failed: security findings require review before push", report)
-        current_policy = load_policy(snapshot.repo, home=settings_home, legacy_policy=legacy_policy)
+        current_policy = load_policy(snapshot.repo, home=settings_home)
         if (not _same_policy(policy, current_policy) or read_push_snapshot(snapshot.repo) != snapshot or
                 _remote_tip(snapshot) != base):
             report.gap("publication", "source, destination or policy changed after checking; rerun required")

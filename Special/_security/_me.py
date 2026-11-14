@@ -1,9 +1,8 @@
-"""Identity/watch/safe policy over common settings or an explicitly selected legacy profile.
+"""Identity/watch/safe policy over the settings profile.
 
-load_policy accepts a selected home or caller-resolved settings. Common blocks accumulate
+load_policy accepts a selected home or caller-resolved settings. Saved blocks accumulate
 with explicit watch files; explicit safe values supplement saved allowances, with exact
-block/safe conflicts refused. Legacy text defaults require legacy_policy=True and cannot
-bypass an existing common profile. Reads discover local identity; they never save policy.
+block/safe conflicts refused. Reads discover local identity; they never save policy.
 Raw values stay in trusted code; summary()/repr do not disclose them.
 """
 from __future__ import annotations
@@ -105,45 +104,29 @@ def _values(policy, path, label, *, explicit):
 
 
 def load_policy(repo: Path, *, home=None, settings: ResolvedSettings | None = None,
-                legacy_policy=False, never_file=None, safe_file=None, safe=(), login=()):
-    """Load one effective policy; malformed common settings never yield legacy/default policy.
+                never_file=None, safe_file=None, safe=(), login=()):
+    """Load one effective policy; malformed settings never yield a default policy.
 
-    A fresh unconfigured profile uses resolver defaults without writing. Known legacy state
-    requires migration or explicit legacy_policy selection. Explicit files supplement common
-    lists; in legacy mode they select the corresponding text sources. Missing/unreadable
-    explicit files retain incomplete coverage. The caller-resolved seam reads no config files.
+    A fresh unconfigured profile uses resolver defaults without writing. Explicit files
+    supplement the saved lists; missing/unreadable explicit files retain incomplete coverage.
+    The caller-resolved seam reads no config files.
     """
-    if settings is not None and (home is not None or legacy_policy):
-        raise SettingsError("select resolved settings or a profile mode, not both")
-    if not isinstance(legacy_policy, bool):
-        raise SettingsError("legacy policy selection must be explicit")
+    if settings is not None and home is not None:
+        raise SettingsError("select resolved settings or a profile, not both")
     if settings is None:
         selected, home_source = select_home(home, component="security")
         try:
-            target = checked_path(selected / SETTINGS_NAME)
+            checked_path(selected / SETTINGS_NAME)
         except (RuntimeIOError, OSError):
             raise SettingsError("security settings require unlinked storage outside the checkout") from None
-        if legacy_policy:
-            try:
-                target.lstat()
-            except FileNotFoundError:
-                pass
-            except OSError:
-                raise SettingsError("security settings could not be checked") from None
-            else:
-                raise SettingsError("legacy policy mode cannot bypass an existing common settings file")
-        else:
-            settings = replace(resolve_settings("security", home=selected), home_source=home_source)
+        settings = replace(resolve_settings("security", home=selected), home_source=home_source)
     elif not isinstance(settings, ResolvedSettings):
         raise SettingsError("security policy needs caller-resolved settings")
 
-    if settings is not None:
-        values = copy.deepcopy(settings.values["security"])
-        exclusions = tuple(settings.values["scope"]["exclude_paths"])
-        _part({"security": values})
-        _policy_conflicts({"security": values})
-    else:
-        values, exclusions = {"never_publish": [], "safe_values": []}, ()
+    values = copy.deepcopy(settings.values["security"])
+    exclusions = tuple(settings.values["scope"]["exclude_paths"])
+    _part({"security": values})
+    _policy_conflicts({"security": values})
     if isinstance(safe, str) or isinstance(login, str):
         raise SettingsError("safe values and public handles must be lists, not scalar text")
     try:
@@ -158,36 +141,31 @@ def load_policy(repo: Path, *, home=None, settings: ResolvedSettings | None = No
     policy.identities["never-publish"] = list(dict.fromkeys(
         [*values["never_publish"], *values.get("local_never_publish", ())]))
     policy.identities["never-publish-word"] = list(dict.fromkeys(values.get("never_publish_words", ())))
-    if settings is not None:
-        # A repository exception lifts saved never-publish values for one repository path only
-        # (a site that publishes a name on purpose). Explicit --never-publish files still apply.
-        from Special._security._reviews import repository_scope
-        scope = repository_scope(repo)
-        lifted = {value.casefold() for path, listed in values.get("repository_exceptions", {}).items()
-                  if repository_scope(path) == scope for value in listed}
-        for kind in ("never-publish", "never-publish-word"):
-            policy.identities[kind] = [value for value in policy.identities[kind]
-                                       if value.casefold() not in lifted]
-        policy.sources["repository-exceptions"] = len(lifted)
-    policy.sources["settings"] = "legacy-explicit" if legacy_policy else settings.summary()
-    defaults = selected / "security" if legacy_policy else None
-    for explicit, name, label in ((never_file, "never_publish.txt", "never-publish"),
-                                   (safe_file, "safe.txt", "safe-list")):
-        if explicit is None and not legacy_policy:
+    # A repository exception lifts saved never-publish values for one repository path only
+    # (a site that publishes a name on purpose). Explicit --never-publish files still apply.
+    from Special._security._reviews import repository_scope
+    scope = repository_scope(repo)
+    lifted = {value.casefold() for path, listed in values.get("repository_exceptions", {}).items()
+              if repository_scope(path) == scope for value in listed}
+    for kind in ("never-publish", "never-publish-word"):
+        policy.identities[kind] = [value for value in policy.identities[kind]
+                                   if value.casefold() not in lifted]
+    policy.sources["repository-exceptions"] = len(lifted)
+    policy.sources["settings"] = settings.summary()
+    for explicit, label in ((never_file, "never-publish"), (safe_file, "safe-list")):
+        if explicit is None:
             policy.sources[label] = ({"saved_values": len(values["safe_values" if label == "safe-list" else "never_publish"])}
                                      if settings.configured else "not-configured")
             continue
-        listed = _values(policy, Path(explicit) if explicit is not None else defaults / name,
-                         label, explicit=explicit is not None)
+        listed = _values(policy, Path(explicit), label, explicit=True)
         if label == "safe-list":
             policy.safe.extend(listed)
         else:
             policy.identities["never-publish"].extend(listed)
-    if not legacy_policy:
-        combined = {"never_publish": policy.identities["never-publish"],
-                    "never_publish_words": policy.identities["never-publish-word"], "safe_values": policy.safe}
-        _part({"security": combined})
-        _policy_conflicts({"security": combined})
+    combined = {"never_publish": policy.identities["never-publish"],
+                "never_publish_words": policy.identities["never-publish-word"], "safe_values": policy.safe}
+    _part({"security": combined})
+    _policy_conflicts({"security": combined})
 
     for key, label in (("user.email", "configured email"), ("user.name", "configured name")):
         result = run(["git", "-C", str(repo), "config", "--get", key], timeout=30)
@@ -211,20 +189,19 @@ def load_policy(repo: Path, *, home=None, settings: ResolvedSettings | None = No
             policy.safe.append(name)
     policy.identities["machine name"] = [socket.gethostname()]
     policy.identities["home-folder name"] = [Path.home().name]
-    if not legacy_policy:
-        _policy_conflicts({"security": {"never_publish": policy.identities["never-publish"],
-                                        "never_publish_words": policy.identities["never-publish-word"],
-                                        "safe_values": [*policy.safe, *policy.logins]}})
+    _policy_conflicts({"security": {"never_publish": policy.identities["never-publish"],
+                                    "never_publish_words": policy.identities["never-publish-word"],
+                                    "safe_values": [*policy.safe, *policy.logins]}})
     policy.logins = sorted(set(policy.logins))
     policy.safe = sorted(set(policy.safe))
     from Special._security import _reviews
     try:
-        review_home = settings.home if settings is not None else selected
+        review_home = settings.home
         if excluded(_reviews.directory(review_home, repo), policy.exclude_paths, contains=True):
             policy.review_revision = "excluded"
         else:
             policy.reviewed_examples, policy.review_revision = _reviews.load(review_home, repo,
-                                                                            configured=settings is not None and settings.configured)
+                                                                            configured=settings.configured)
     except (OSError, ValueError):
         policy.gaps.append({"where": "review records", "reason": "private example reviews could not be verified"})
         policy.review_revision = "unreadable"

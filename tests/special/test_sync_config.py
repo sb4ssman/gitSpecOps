@@ -19,7 +19,6 @@ setup()
 from Special._sync.config import (  # noqa: E402
     CONFIG_SCHEMA_VERSION,
     catalog_path,
-    config_path,
     default_config,
     default_machine_id,
     display_name_for,
@@ -65,9 +64,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check(bool(SAFE_MACHINE_ID.fullmatch(default_machine_id())),
           "default_machine_id produced an id the transport would reject")
 
-    # --- round trip -----------------------------------------------------------------
-    # A throwaway profile: without one, saving reads the person's real settings home, and a
-    # migrated profile (common settings present) refuses this legacy-style save.
+    # --- configuration lives only in the settings profile ----------------------------
     os.environ["GITSPECOPS_HOME"] = str(tmp / "profile")
     config_dir = tmp / "cfg"
     original = default_config("alpha-machine")
@@ -75,17 +72,13 @@ with tempfile.TemporaryDirectory() as tmp:
     original["state_dir"] = str(tmp / "state")
     original["roots"] = [{"path": str(tmp / "one"), "recursive": False},
                          {"path": str(tmp / "two"), "recursive": True}]
-    save_config(config_dir, original)
-    check(load_config(config_dir) == original, "config did not survive a save/load round trip")
-    check(load_config(tmp / "never-written") is None, "missing config should read as None")
-
-    config_path(config_dir).write_text("{not json", encoding="utf-8")
+    check(load_config(config_dir) is None, "no settings profile reads as not enrolled")
     try:
-        load_config(config_dir)
-        failures.append("corrupt config did not raise")
+        save_config(config_dir, original)
+        failures.append("saving without a settings profile wrote somewhere else")
     except ValueError:
         pass
-    save_config(config_dir, original)
+    check(not (config_dir / "config.json").exists(), "no older-style config.json is ever written")
 
     # --- validation -----------------------------------------------------------------
     rejects("nope", "a non-object config")
@@ -146,8 +139,8 @@ with tempfile.TemporaryDirectory() as tmp:
         {"root": ""},
         {"root": "/archives/two"},
     ]}), encoding="utf-8")
-    check(registered_roots(registry) == ["/archives/one", "/archives/two"],
-          "registry import did not skip records without a usable root")
+    check(registered_roots(registry) == [],
+          "an old-format registry with no settings.json beside it registers nothing")
 
     # --- atomic write ---------------------------------------------------------------
     target = tmp / "atomic.json"

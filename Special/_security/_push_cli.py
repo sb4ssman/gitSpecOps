@@ -16,14 +16,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Plan one branch push, then check outgoing history before publishing.")
     parser.add_argument("repo", type=Path)
     parser.add_argument("--settings-home", type=Path)
-    parser.add_argument("--legacy-policy", action="store_true")
     parser.add_argument("--json", action="store_true", help="masked structured result")
     parser.add_argument("--apply", action="store_true", help="fetch/check/push only the approved current plan")
     parser.add_argument("--approve", help="exact plan id from the local preview")
     args = parser.parse_args(argv)
     if args.approve is not None and not args.apply:
         parser.error("--approve requires --apply")
-    result = push_checked(args.repo, settings_home=args.settings_home, legacy_policy=args.legacy_policy,
+    result = push_checked(args.repo, settings_home=args.settings_home,
                           apply=args.apply, approve=args.approve)
     if args.json:
         print(json.dumps(result.record(), indent=2))

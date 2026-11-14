@@ -216,12 +216,13 @@ class ManagerSettingsTests(unittest.TestCase):
         self.assertEqual(lock.read_text(), "existing")
         self.assertEqual(json.loads(path.read_text()), changed)
 
-    def test_legacy_snapshot_cannot_write_after_common_authority_appears(self):
+    def test_a_snapshot_taken_without_settings_cannot_write_receipts(self):
         path = self.receipts()
         before = path.read_bytes()
         data = registry.load_registry(home=self.home)
+        self.assertEqual(data["installations"], [], "no settings.json: nothing is registered")
         self.profile([])
-        with self.assertRaisesRegex(SettingsError, "authority changed"):
+        with self.assertRaisesRegex(SettingsError, "no archive is registered"):
             registry.save_registry(data)
         self.assertEqual(path.read_bytes(), before)
 
@@ -260,18 +261,16 @@ class ManagerSettingsTests(unittest.TestCase):
         self.assertEqual(json.loads(path.read_text()), retained)
         self.assertEqual((self.home / "settings.json").read_bytes(), before[1])
 
-    def test_missing_common_settings_cannot_reactivate_historical_receipt_choices(self):
+    def test_receipts_without_settings_register_nothing(self):
         self.profile()
         path = self.receipts()
         registry.save_registry(registry.load_registry(home=self.home))
         self.assertEqual(json.loads(path.read_text())["version"], 2)
         (self.home / "settings.json").unlink()  # Deliberate loss of this test's temporary profile.
-        with self.assertRaisesRegex(SettingsError, "settings are missing"):
-            registry.load_registry(home=self.home)
-        with self.assertRaisesRegex(SettingsError, "settings are missing"):
-            registry.registered_roots(home=self.home)
+        self.assertEqual(registry.load_registry(home=self.home)["installations"], [])
+        self.assertEqual(registry.registered_roots(home=self.home), [])
         with patch.object(operation, "execute_archive") as run:
-            self.assertEqual(command.main(["--refresh-all", "--settings-home", str(self.home)]), 2)
+            command.main(["--refresh-all", "--settings-home", str(self.home)])
             run.assert_not_called()
 
     def test_first_receipt_format_write_failure_prevents_preference_change(self):

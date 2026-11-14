@@ -3,24 +3,21 @@
 Why:          Special operations (catch up, audit, materialize, live buffers, safe-to-wipe's
               local half) act on the repositories this machine observes. They must work with
               no fleet running and without the fleet's full configuration rules.
-Reads:        the common settings profile's app enrollment, else the legacy fleet-app.json in
-              the fleet directory; or only the roots given on the command line.
-May change:   nothing. Loading never converts or saves settings (conversion is explicit, in
-              Elaborate/setup_fleet.py).
+Reads:        the settings profile's app enrollment, or only the roots given on the
+              command line.
+May change:   nothing.
 Results:      a plain dict for Special._sync.inventory.IncrementalObserver.
 Layer:        Special: this machine, once.
 Status:       working
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
-from Special._settings.fleet import fleet_directory, load_fleet_settings
+from Special._settings.fleet import load_fleet_settings
 from Special._sync import baskets
 from Special._sync.manifest import is_fleet_secret, new_fleet_secret
 
-APP_CONFIG = "fleet-app.json"
 LOCAL_ID = "this-machine"
 
 
@@ -41,20 +38,10 @@ def load_selection(config_dir=None, *, home=None, roots=None) -> dict:
             raise ValueError(f"not an existing folder: {', '.join(missing)}")
         return _local(roots)
     snapshot = load_fleet_settings(home)
-    if snapshot is not None:
-        config = snapshot.config("app")
-        if config is None:
-            raise ValueError("no saved repository roots; pass --root, or enroll with "
-                             "Elaborate/setup_fleet.py")
-    else:
-        path = fleet_directory(config_dir, home=home) / APP_CONFIG
-        if not path.is_file():
-            raise ValueError("no saved repository roots; pass --root, or enroll with "
-                             "Elaborate/setup_fleet.py")
-        config = json.loads(path.read_text(encoding="utf-8"))
-        if config.get("mode") != "peer":
-            raise ValueError("the saved configuration is in an older format; convert it with "
-                             "Elaborate/setup_fleet.py convert")
+    config = snapshot.config("app") if snapshot is not None else None
+    if config is None:
+        raise ValueError("no saved repository roots; pass --root, or enroll with "
+                         "gitso enroll-machine add <library folder>")
     if not config.get("roots") or any(not Path(root).is_dir() for root in config["roots"]):
         raise ValueError("every configured repository root must exist")
     if not is_fleet_secret(config.get("fleet_secret")):

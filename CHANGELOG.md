@@ -16,6 +16,11 @@ while the version starts with 0, gitSpecOps is a development preview and anythin
   shows whether the GitHub CLI is signed in and what each tool is for.
 - **Removed:** settings migration and the existing-settings switch (`settings-migration-preview`,
   `settings-existing*`): there are no users with older settings to convert.
+- **Removed:** every other older-settings path. `settings.json` is the only place settings live:
+  no `--legacy-policy` or `security/never_publish.txt`; no fleet `config.json`, `fleet-app.json`
+  or `setup-fleet convert`; no archive choices in the receipts file. `GITSPECOPS_SYNC_HOME`
+  now only moves the fleet's runtime state. Fleet setup and the first archive registration on a
+  machine with no settings file create an empty profile.
 - **The map:** under each machine, its library (every organization and repository it holds,
   coloured by that copy's own state). A repository is flagged only for unfinished work: being
   absent from a machine is normal, and a clean copy on an old report is "unknown" but not

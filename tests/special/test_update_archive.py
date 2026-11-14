@@ -228,18 +228,12 @@ class UpdateTests(unittest.TestCase):
         self.assertNotIn("private-marker", public.render_result(result, "text"))
         self.assertEqual(list((self.home / "reports").iterdir()), [])
 
-    def test_malformed_or_legacy_settings_error_instead_of_profile_fallback(self):
+    def test_malformed_settings_are_an_error_instead_of_profile_fallback(self):
         self.home.mkdir()
         source = self.home / "settings.json"
         source.write_text("{broken")
         code, out, err = self.cli("--root", str(self.archive), "--no-log")
         self.assertEqual((code, out), (2, ""))
-        source.unlink()
-        (self.home / "security").mkdir()
-        (self.home / "security" / "never_publish.txt").write_text("private-marker")
-        code, out, err = self.cli("--root", str(self.archive), "--no-log")
-        self.assertEqual((code, out), (2, ""))
-        self.assertIn("migration", err)
         self.assertFalse((self.home / "logs").exists())
 
     def test_conflicting_flags_and_source_runtime_destinations_are_errors(self):

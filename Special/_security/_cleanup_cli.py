@@ -23,7 +23,6 @@ def main(argv=None):
     apply.add_argument("--approve", required=True, help="Exact saved plan id from preview.")
     for command in (plan, apply):
         command.add_argument("--settings-home", type=Path, help="Selected profile; apply must use the same home as planning.")
-        command.add_argument("--legacy-policy", action="store_true", help="Explicit existing text policy; cannot bypass common settings.")
         add_output_options(command)
     args = parser.parse_args(argv)
     engines = getattr(args, "engine", None)
@@ -49,7 +48,7 @@ def main(argv=None):
         parser.error("conflicting output options; no operation started")
     result = run_cleanup(args.action, args.source, choices=getattr(args, "choices", None),
                          plan_out=getattr(args, "plan_out", None), workspace=getattr(args, "workspace", None),
-                         home=getattr(args, "settings_home", None), legacy_policy=getattr(args, "legacy_policy", False),
+                         home=getattr(args, "settings_home", None),
                          include_remote_refs=getattr(args, "include_remote_refs", False),
                          engines=None if engines is None else [] if engines == ["none"] else engines,
                          approve=getattr(args, "approve", None), confirmation=confirmation,

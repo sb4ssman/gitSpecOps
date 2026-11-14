@@ -150,8 +150,7 @@ def render_record(record):
     """Render an already masked scan record, including records returned by a hook worker."""
     policy = record["policy"]
     settings = policy.get("sources", {}).get("settings")
-    origin = ("legacy-explicit" if settings == "legacy-explicit" else
-              "saved" if isinstance(settings, dict) and settings.get("configured") else "built-in")
+    origin = "saved" if isinstance(settings, dict) and settings.get("configured") else "built-in"
     actionable = [item for item in record["findings"] if item["classification"] != "quiet" and not item.get("review_id")]
     reviewed = [item for item in record["findings"] if item.get("review_id")]
     quiet = sum(item["classification"] == "quiet" for item in record["findings"])

@@ -3,7 +3,7 @@
 load_security_settings requires an existing common profile. save_security_settings replaces
 only the supplied defaults.security fields after the invoking interface obtains approval.
 Omitted fields and component policies remain intact; inherited blocks cannot be cleared by
-changing another owner. No identity discovery, legacy-file edits, enrollment or migration.
+changing another owner. No identity discovery or enrollment.
 
 Raw records are for trusted code. summary()/repr hide policy values and local identifiers.
 """
@@ -51,7 +51,7 @@ class SecuritySettings:
         return {"component": "security", "owned_values": {name: len(owned[name]) for name in ("never_publish", "safe_values")},
                 "local_values": {name: len(owned[name]) for name in ("local_never_publish", "local_safe_values")},
                 "engines": list(owned["engines"]),
-                "effective": self.resolved().summary(), "runs_operations": False, "changes_legacy_files": False}
+                "effective": self.resolved().summary(), "runs_operations": False}
 
     def verify(self) -> None:
         """Refuse stale files or mutated snapshots before an explicit save."""

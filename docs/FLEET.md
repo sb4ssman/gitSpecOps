@@ -8,8 +8,7 @@ retain its last published state. Stale unfinished work remains visible.
 ## Local security advice
 
 `gitso sync check` includes current working-file and cached-outgoing security advice using
-common policy and selected optional engines. `--legacy-policy` explicitly selects old security
-lists and cannot bypass common settings. No fetch occurs unless `--fetch` was selected.
+the saved policy and selected optional engines. No fetch occurs unless `--fetch` was selected.
 Alerts and incomplete checking do not discard sync facts or authorize an action.
 
 `check --json` now returns a local result envelope: `schema_version`, `manifest`,
@@ -35,8 +34,8 @@ These commands save no report/log and change no settings. Keep keys out of share
 The native Windows tray now uses common `app.logging` preferences and the shared event/counter
 logger, not a console tee. The default file is `<user-data>/logs/app_tray.log`; a configured
 logging directory overrides it. Disabled logging writes nothing; an unavailable required sink
-stops startup instead of silently choosing another file. Legacy-only enrollment remains intact
-and uses logging defaults in the selected user-data home; malformed common settings fail.
+stops startup instead of silently choosing another file. Before enrollment the tray uses
+logging defaults in the selected user-data home; malformed settings fail.
 Console diagnostics and deliberately shown keys never enter this log or notification text.
 Full foreground/app logging adoption and native lifecycle acceptance remain unfinished.
 
@@ -95,9 +94,8 @@ Starting another peer does not require any other machine to be online.
 
 The dashboard is normally `http://127.0.0.1:8760/` on each machine. It combines local status,
 cached peer reports, and readable manifests from configured transports, newest per machine.
-`dashboard --serve` is also available for legacy `init`/`check` configurations, independently
-of the fleet runtime. Existing common settings own each component's enrollment. Without a
-common document, legacy commands use `config.json` and the peer app uses `fleet-app.json`.
+`dashboard --serve` is also available for `init`/`check` configurations, independently of the
+fleet runtime. The settings profile owns each component's enrollment; there is no other place.
 
 ## Choose complementary transports
 
@@ -156,21 +154,17 @@ report's observation time can age even while its process remains reachable.
 
 Common configuration lives in the selected user-data home's `settings.json`. Use
 `fleet --settings-home /path/to/profile ...` to select it. `fleet --config-dir /path/to/state ...`
-selects local state/legacy inputs independently: the database, latest report, locks and catalog
+selects local state independently: the database, latest report, locks and catalog
 remain there. The default state directory is that profile's `sync-suggester` child;
 `GITSPECOPS_SYNC_HOME` can override it without selecting another common profile. The app's
 multiple transports and the CLI's single transport remain separately selected. Shared machine
 identity cannot be changed by per-component setup, and a transport selected by both components
 needs a coordinated change. Clearing a selection retains its shared definition.
 
-Invalid common settings fail; a missing component enrollment never falls back to legacy files.
-Explicit edits use the shared revision-checked writer and preserve unrelated settings. No common
-migration runs on startup; activation remains unavailable pending a reviewed legacy transition.
-Without common settings, legacy-only profiles retain their existing files. An OS lock prevents
-concurrent peers using the same state directory. Old v1/v2/v3/v4 legacy app configurations
-convert to peer v5 on resume, preserving the fleet key and taking
-the default baskets (observe and publish everything, capture nothing). `host`,
-`connect`, and `replicas` are retired; use `setup`/`peer` and `transports`.
+Invalid settings fail; a machine without enrollment is simply not enrolled. Explicit edits use
+the shared revision-checked writer and preserve unrelated settings. Setting up the fleet on a
+machine with no settings file starts an empty profile first. An OS lock prevents concurrent
+peers using the same state directory.
 
 ## Catch up a machine safely
 

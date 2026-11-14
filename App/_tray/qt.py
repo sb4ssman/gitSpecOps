@@ -52,7 +52,7 @@ class ErrorChannel:
 
 
 def _logging(settings_home):
-    """Counts-only operational events, as the common app settings choose (legacy: defaults)."""
+    """Counts-only operational events, as the app settings choose (defaults before enrollment)."""
     from Special._runtime.files import RuntimeIOError, excluded
     from Special._runtime.logger import configure_logging
     from Special._settings import resolve_document
@@ -62,7 +62,7 @@ def _logging(settings_home):
     snapshot = load_fleet_settings(home)
     document = snapshot.document if snapshot is not None else {"schema_version": 2}
     settings = resolve_document(document, "app", home=home, configured=snapshot is not None,
-                                home_source="common" if snapshot is not None else "legacy-runtime-default")
+                                home_source="common" if snapshot is not None else "runtime-default")
     values = settings.values
     if values["logging"]["enabled"] and excluded(values["logging"]["directory"],
                                                  values["scope"]["exclude_paths"]):
@@ -334,7 +334,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="tray", description=__doc__.split("\n", 1)[0])
-    parser.add_argument("--config-dir", type=Path, help="local fleet state and legacy input directory")
+    parser.add_argument("--config-dir", type=Path, help="local fleet state directory")
     parser.add_argument("--settings-home", type=Path, help="common profile; defaults to the user-data home")
     parser.add_argument("--view", choices=("web", "window"),
                         help="what double-clicking the icon opens (default: the saved choice)")

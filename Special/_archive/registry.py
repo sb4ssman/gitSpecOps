@@ -1,8 +1,8 @@
 """Archive choices and receipts at one selected user-data home, never in the checkout.
 
-An existing common settings.json is authoritative; invalid common settings never fall back.
-Without it, retain the legacy registry. No automatic migration or enrollment occurs. Common
-receipt saves cannot change choices; explicit install/forget changes use the common writer.
+settings.json holds the archive choices; invalid settings never fall back. Without it, no
+archive is registered, and registering the first one creates it. Receipt saves cannot change
+choices; explicit install/forget changes use the settings writer.
 Cooperating registry writers lock and reject stale snapshots. Preference/receipt writes are
 separate atomic files: partial success is reported, never hidden by rollback or a fallback.
 Raw returned records are trusted local data, not a log/agent-summary channel.
@@ -18,10 +18,10 @@ from pathlib import Path
 
 from Basic._files import atomic_write_bytes
 from Special._runtime.files import RuntimeIOError, checked_path, excluded
-from Special._settings import SETTINGS_NAME, SettingsError, _unique_object, select_home
+from Special._settings import SCHEMA_VERSION, SETTINGS_NAME, SettingsError, _unique_object, select_home
 from Special._settings.archives import (PREFERENCE_FIELDS, _key, _receipt_registry,
     load_archive_settings, manager_view, merge_archive_receipts, save_archive_preferences)
-from Special._settings.store import fingerprint, revision
+from Special._settings.store import fingerprint, revision, write_settings
 
 REGISTRY_NAME = "gitspecops_managed_archives.json"
 
@@ -82,7 +82,7 @@ class InstallRecord:
 
 
 def load_registry(path: Path | None = None, *, home=None) -> RegistryData:
-    """Read the selected authority and receipts; missing legacy state is empty, corruption errors."""
+    """Read the archive choices and their receipts; a missing profile is empty, corruption errors."""
     if path is not None and home is not None:
         raise SettingsError("select an archive registry path or a settings home, not both")
     path = _checked(Path(path) if path is not None else registry_path(home))
@@ -100,9 +100,9 @@ def load_registry(path: Path | None = None, *, home=None) -> RegistryData:
             raise SettingsError("archive receipts are not valid unambiguous JSON") from None
         raw_revision = fingerprint(payload)
     raw, _ = _receipt_registry(raw)
-    if raw["version"] == 2 and preferences is None:
-        raise SettingsError("common archive settings are missing; receipt-only state cannot supply preferences")
-    data = manager_view(preferences, raw) if preferences is not None else copy.deepcopy(raw)
+    # Choices live only in settings.json: without it nothing is registered, whatever the
+    # receipts file holds.
+    data = manager_view(preferences, raw) if preferences is not None else {"version": 1, "installations": []}
     result = RegistryData(data, path, raw, raw_revision, preferences)
     result.verify()
     return result
@@ -165,10 +165,11 @@ def save_registry(data: dict, path: Path | None = None, *, home=None) -> Path:
     else:
         source = load_registry(path, home=home)
         if source.preferences is not None:
-            raise SettingsError("common receipt writes require the original revision-checked registry snapshot")
+            raise SettingsError("receipt writes require the original revision-checked registry snapshot")
+    if source.preferences is None:
+        raise SettingsError("no archive is registered in the settings profile; there is nothing to record")
     with _writer(source) as state:
-        raw = (merge_archive_receipts(source.preferences, source.raw, data["installations"])
-               if source.preferences is not None else _receipt_registry(data)[0])
+        raw = merge_archive_receipts(source.preferences, source.raw, data["installations"])
         _write_raw(source, raw, state)
     return source.path
 
@@ -179,19 +180,12 @@ def upsert_record(record: InstallRecord, path: Path | None = None, *, home=None,
     if expected is not None and (path is not None or home is not None):
         raise SettingsError("select an archive snapshot or a storage location, not both")
     data = expected if expected is not None else load_registry(path, home=home)
+    if data.preferences is None:
+        # The first archive on a machine with no settings file: start the profile.
+        write_settings({"schema_version": SCHEMA_VERSION}, home=data.path.parent)
+        data = load_registry(data.path)
     payload = asdict(record)
     with _writer(data) as state:
-        if data.preferences is None:
-            raw = copy.deepcopy(data.raw)
-            for item in raw["installations"]:
-                if _key(item["root"]) == _key(record.root):
-                    payload["installed_at"] = item.get("installed_at", record.installed_at)
-                    item.update(payload)
-                    break
-            else:
-                raw["installations"].append(payload)
-            _write_raw(data, raw, state)
-            return
         archives = data.preferences.archives
         choice = {key: payload[key] for key in PREFERENCE_FIELDS}
         for index, item in enumerate(archives):
@@ -228,20 +222,15 @@ def forget_installation(root: Path, path: Path | None = None, *, home=None) -> b
         data.verify()
         return False
     with _writer(data) as state:
-        if data.preferences is not None:
-            _require_common_settings(data, state)
-            save_archive_preferences(data.preferences,
-                [{name: item[name] for name in PREFERENCE_FIELDS} for item in kept], check_sources=data.verify)
-            state["saved"] = True
-        else:
-            raw = copy.deepcopy(data.raw)
-            raw["installations"] = kept
-            _write_raw(data, raw, state)
+        _require_common_settings(data, state)
+        save_archive_preferences(data.preferences,
+            [{name: item[name] for name in PREFERENCE_FIELDS} for item in kept], check_sources=data.verify)
+        state["saved"] = True
     return True
 
 
 def registered_roots(path: Path | None = None, *, home=None) -> list[str]:
-    """Common choices are strict and authoritative; only the legacy optional hint is tolerant."""
+    """The registered archive roots, from settings.json only; none without it."""
     if path is not None and home is not None:
         raise SettingsError("select an archive registry path or a settings home, not both")
     path = _checked(Path(path) if path is not None else registry_path(home))
@@ -254,16 +243,4 @@ def registered_roots(path: Path | None = None, *, home=None) -> list[str]:
             if excluded(Path(root), exclusions, contains=True):
                 raise SettingsError("managed archive conflicts with effective scope exclusions")
         return roots
-    if not path.is_file():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return []
-    installations = data.get("installations") if isinstance(data, dict) else None
-    if isinstance(data, dict) and data.get("version") == 2:
-        raise SettingsError("common archive settings are missing; receipt-only state cannot supply root hints")
-    if not isinstance(installations, list):
-        return []
-    return [item["root"] for item in installations
-            if isinstance(item, dict) and isinstance(item.get("root"), str) and item["root"]]
+    return []

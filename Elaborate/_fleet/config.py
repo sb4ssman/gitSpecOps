@@ -20,13 +20,11 @@ v5 adds a separately confirmed recovery location and local-only repository polic
 never inherits the status transport: snapshots contain source content and filenames.
 
 The v5 runtime shape is also projected from common settings by Special._settings.fleet.
-save_saved/save_client_choice persist to that loaded authority; legacy-only profiles retain
-fleet-app.json. No common migration, enrollment or I/O occurs on import.
+save_saved/save_client_choice persist to that profile. No enrollment or I/O occurs on import.
 """
 from __future__ import annotations
 
 import copy
-import json
 from pathlib import Path
 
 import Special._sync.baskets as baskets
@@ -34,30 +32,24 @@ from Special._sync.manifest import is_fleet_secret
 from Special._sync.git_client import validate_choice
 from Elaborate._recovery.capture import CapturePolicy, CaptureRefused
 from Elaborate._recovery.snapshot_store import REPO_ID, StoreRefused, validate_location
-from Basic._files import atomic_write_bytes
-from Special._settings.fleet import (FleetConfig, fleet_directory, load_fleet_settings,
+from Special._settings.fleet import (FleetConfig, load_fleet_settings,
                                     save_fleet_config)
 
 # The record and its defaults are the machine enrollment's (Special); the fleet adds transports.
 from Special._sync.enrollment import (CONFIG_VERSION, DEFAULT_FETCH_MINUTES,  # noqa: E402,F401
                                       DEFAULT_LOCAL_PORT, new_config)
 
-APP_CONFIG = "fleet-app.json"
 DEFAULT_TAILNET_PORT = 8765
 DEFAULT_FOLDER_SECONDS = 300
 DEFAULT_REPO_SECONDS = 1800
 
 
 def save_saved(directory: Path, config: dict, *, home=None, snapshot=None):
-    """Save explicit app choices to their loaded authority, never a stale legacy copy."""
+    """Save explicit app choices to the settings profile."""
     validate(config)
-    common = load_fleet_settings(home)
-    if common is not None or isinstance(config, FleetConfig) or snapshot is not None:
-        return save_fleet_config(config, component="app", home=home, snapshot=snapshot)
-    path = fleet_directory(directory, home=home) / APP_CONFIG
-    path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_bytes(path, (json.dumps(config, indent=2) + "\n").encode())
-    return path
+    if load_fleet_settings(home) is None and not isinstance(config, FleetConfig) and snapshot is None:
+        raise ValueError("this machine has no settings profile; enroll it with: gitso enroll-machine add <library folder>")
+    return save_fleet_config(config, component="app", home=home, snapshot=snapshot)
 
 
 def save_client_choice(directory: Path, config: dict, choice):
@@ -72,55 +64,6 @@ def save_client_choice(directory: Path, config: dict, choice):
     if isinstance(config, FleetConfig):
         config.snapshot, config.original = updated.snapshot, updated.original
     config["git_client"] = choice
-
-
-def migrate(config: dict) -> dict:
-    """v1 -> v2 -> v3. A saved configuration is never silently discarded."""
-    if config.get("version") == 1:
-        config = dict(config)
-        config["version"] = 2
-        config["inventory_notice_acknowledged"] = bool(
-            config.pop("scan_notice_acknowledged", False))
-        config["observation_mode"] = "filesystem-events"
-        config["debounce_seconds"] = 0.75
-        config.pop("interval", None)
-    if config.get("version") == 2:
-        config = dict(config)
-        was_host = config.get("mode") == "host"
-        transports = {}
-        if config.get("replica_folder"):
-            transports["folder"] = {"path": config["replica_folder"],
-                                    "seconds": int(config.get("folder_seconds")
-                                                   or DEFAULT_FOLDER_SECONDS)}
-        if config.get("replica_repo"):
-            transports["repo"] = {"name": config["replica_repo"],
-                                  "seconds": int(config.get("github_seconds")
-                                                 or DEFAULT_REPO_SECONDS)}
-        # Both old modes used the tailnet, so both keep it — as one transport among several
-        # rather than as the thing the machine's identity depended on. `allowed_login` is
-        # resolved at startup for a former client, which never stored one.
-        transports["tailnet"] = {
-            "port": int(config.get("port") or DEFAULT_TAILNET_PORT) if was_host
-            else DEFAULT_TAILNET_PORT,
-            "allowed_login": config.get("allowed_login"),
-        }
-        for key in ("replica_folder", "folder_seconds", "replica_repo", "github_seconds",
-                    "port", "allowed_login", "server"):
-            config.pop(key, None)
-        config.update(version=3, mode="peer", transports=transports,
-                      local_port=int(config.get("local_port") or DEFAULT_LOCAL_PORT))
-    if config.get("version") == 3:
-        # Defaults reproduce v3 behavior exactly: observe and publish everything the roots
-        # find. Capture is 'none' and stays there until the medium tier can actually capture.
-        config = {**config, "version": 4,
-                  "baskets": config.get("baskets") or copy.deepcopy(baskets.DEFAULT_SCOPES)}
-    if config.get("version") == 4:
-        prior = config.get("recovery") or {}
-        config = {**config, "version": 5,
-                  "recovery": {"location": prior.get("location"),
-                               "confirmed": bool(prior.get("confirmed", False)),
-                               "policies": prior.get("policies") or {}}}
-    return config
 
 
 def validate(config: dict) -> dict:
