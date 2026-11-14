@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from Special._settings import SettingsError, validate_document
 
 PORTABLE_FIELDS = {
-    "output": {"mode", "format"},
+    "output": {"save"},
     "logging": {"enabled", "level", "max_bytes", "backup_count"},
     "security": {"never_publish", "safe_values", "engines"},
 }

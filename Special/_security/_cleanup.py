@@ -42,7 +42,7 @@ class CleanupResult:
     effects_possible: bool = False
     stage: str = "inputs"
     error_code: str | None = None
-    delivery: dict = field(default_factory=lambda: {"mode": "stdout", "format": "text"}, repr=False)
+    delivery: dict = field(default_factory=lambda: {"save": False}, repr=False)
 
     @property
     def exit_code(self):
@@ -202,15 +202,15 @@ Optional common reports/logs are reserved before effects; failures never select 
             raise SettingsError("selected workspace is excluded")
         if action == "apply" and excluded(Path(source).expanduser().absolute(), exclusions):
             raise SettingsError("selected saved plan is excluded")
-        for section, enabled in (("output", result.delivery["mode"] != "stdout"),
+        for section, enabled in (("output", result.delivery["save"]),
                                  ("logging", settings.values["logging"]["enabled"])):
             directory = settings.values[section]["directory"]
             if enabled and excluded(directory, exclusions):
                 raise SettingsError("selected output or log destination is excluded")
         if settings.values["logging"]["enabled"]:
             private_path(settings.values["logging"]["directory"] / "security_cleanup.log")
-        if result.delivery["mode"] != "stdout":
-            sink = ReportSink(result.delivery["directory"], result.delivery["format"], prefix="security-cleanup")
+        if result.delivery["save"]:
+            sink = ReportSink(result.delivery["directory"], "json", prefix="security-cleanup")
             try:
                 private_path(sink.path)
             except (OSError, ValueError):
@@ -309,7 +309,7 @@ Optional common reports/logs are reserved before effects; failures never select 
             _artifact(result, path)
         if sink is not None:
             try:
-                sink.write(render(result, result.delivery["format"]))
+                sink.write(render(result, "json"))
             except (OSError, RuntimeIOError):
                 result.artifacts = [item for item in result.artifacts if item["path"] != str(sink.path)]
                 result.status, result.message = "incomplete", "The requested operation report failed; inspect private operational artifacts."

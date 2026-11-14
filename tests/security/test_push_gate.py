@@ -410,13 +410,17 @@ class PushGateTests(unittest.TestCase):
         self.assertNotIn("private-marker", json.dumps(records))
         self.assertEqual(self.tip(self.bare), self.base)
 
-    def test_gitso_publish_yes_does_not_bypass_the_security_gate(self):
+    def test_an_approved_publish_plan_does_not_bypass_the_security_gate(self):
         self.commit("data.txt", "private-marker")
+        command = ["sync-archive", "--root", str(self.archive), "--publish", "--no-save-report",
+                   "--allowed-remote", str(self.root), "--settings-home", str(self.home), "--json"]
         output = io.StringIO()
         with redirect_stdout(output):
-            result = gitso.main(["sync-archive", "--root", str(self.archive), "--publish", "--yes",
-                                 "--no-report", "--approved-remote-prefix", str(self.root),
-                                 "--settings-home", str(self.home)])
+            self.assertEqual(gitso.main(command), 0)
+        plan = json.loads(output.getvalue())["plans"][0]["plan_id"]
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = gitso.main([*command, "--apply", plan])
         self.assertEqual(result, 1)
         self.assertEqual(self.tip(self.bare), self.base)
         self.assertNotIn("private-marker", output.getvalue())
@@ -468,7 +472,7 @@ class PushGateTests(unittest.TestCase):
             self.assertEqual(gitso.main(args), 0)
         preview = json.loads(preview_output.getvalue())
         with redirect_stdout(applied_output):
-            self.assertEqual(gitso.main([*args, "--apply", "--approve", preview["plan_id"]]), 0)
+            self.assertEqual(gitso.main([*args, "--apply", preview["plan_id"]]), 0)
         self.assertEqual(json.loads(applied_output.getvalue())["status"], "pushed")
         self.assertEqual(self.tip(self.bare), self.tip())
 

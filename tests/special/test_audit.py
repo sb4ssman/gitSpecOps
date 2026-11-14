@@ -63,7 +63,7 @@ def test_the_command_audits_what_the_observer_skips():
         out = io.StringIO()
         with redirect_stdout(out):
             code = audit_repos(Namespace(json=True, config_dir=None, settings_home=None, root=[library]))
-        rows = {row["name"]: row["findings"] for row in json.loads(out.getvalue())}
+        rows = {row["name"]: row["findings"] for row in json.loads(out.getvalue())["repositories"]}
         assert code == 1, "findings must make the audit exit non-zero"
         assert set(rows) == {"only-here", ".hidden-notes"}, rows
         assert "no origin" in rows["only-here"] and "1 stash(es)" in rows["only-here"], rows

@@ -1,45 +1,56 @@
-"""CLI adapter for one scoped example review; masked output and exact-plan approval.
+"""review-finding: accept one scoped finding as reviewed, or revoke a review, by approved plan.
 
-Preview reads a full private report and writes nothing. --apply --approve PLAN_ID saves one
-private immutable decision; --revoke REVIEW_ID previews its revocation. No raw reason/value
-is printed, no settings are edited and no Git action is performed.
+Without --apply it reads the full private report, shows the plan and writes nothing; a person at
+a terminal is asked, and a program gets the plan id. Applying saves one private, unchangeable
+decision (or its revocation). No raw reason or value is printed, no settings are edited and no
+Git action is performed.
 """
-import argparse
-import json
+import sys
 from pathlib import Path
 
+from Basic import _cli
 from Special._security._review_operation import review_finding
+
+COMMAND = "review-finding"
+
+
+def _show(result, banner, report):
+    from Basic._station import banner as draw, notice, row, say
+    if banner:
+        draw("Review a finding", str(report))
+    if result.scope:
+        scope = result.scope
+        say()
+        row("Finding", f"{scope['finding_id']} [{scope['severity']}] {scope['check']}")
+        row("Where", f"{scope['where']}:{scope['line']}")
+        row("Value", scope["value"])
+    if result.review_id:
+        row("Review", result.review_id)
+    for artifact in result.artifacts:
+        row(f"Produced {artifact['kind']}", f"{artifact['path']} ({artifact['disclosure']})")
+    ok = result.status in ("planned", "accepted", "revoked", "already-reviewed")
+    notice(result.status.replace("-", " ").capitalize(), result.message, "success" if ok else "warning")
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Preview and explicitly save/revoke a content-bound example review.")
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = _cli.parser(COMMAND, "Accept one finding as reviewed, or revoke a review, by an approved plan.")
     parser.add_argument("report", type=Path, help="Full private report created by scan-tree/scan-history --out.")
     parser.add_argument("finding", nargs="?", help="Report-local finding id; selects scope, never authorizes a save.")
     parser.add_argument("--revoke", help="Revoke one active review id instead of accepting a finding.")
     parser.add_argument("--reason", required=True, help="Private explanation; never echoed to normal output.")
     parser.add_argument("--settings-home", type=Path)
-    parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--approve", help="Exact current review-plan id from preview.")
-    parser.add_argument("--json", action="store_true")
+    _cli.add_apply(parser)
     args = parser.parse_args(argv)
     if bool(args.finding) == bool(args.revoke):
         parser.error("select a finding or --revoke, not both")
-    if args.approve is not None and not args.apply:
-        parser.error("--approve requires --apply")
-    result = review_finding(args.report, args.finding, args.reason, home=args.settings_home,
-                            apply=args.apply,
-                            approve=args.approve, revoke=args.revoke)
-    if args.json:
-        print(json.dumps(result.record(), indent=2))
-    else:
-        print(result.message)
-        if result.scope:
-            scope = result.scope
-            print(f"{scope['finding_id']} [{scope['severity']}] {scope['check']} at {scope['where']}:{scope['line']}: {scope['value']}")
-        if result.plan_id:
-            print("Plan: " + result.plan_id)
-        if result.review_id:
-            print("Review: " + result.review_id)
-        for artifact in result.artifacts:
-            print(f"Produced {artifact['kind']}: {artifact['path']} ({artifact['disclosure']})")
-    return 0 if result.status in ("planned", "accepted", "revoked", "already-reviewed") else 2
+
+    def operation(apply, approve):
+        return review_finding(args.report, args.finding, args.reason, home=args.settings_home,
+                              apply=apply, approve=approve, revoke=args.revoke)
+
+    return _cli.run_plan(
+        args, COMMAND, argv, operation, ready=lambda r: r.status == "planned",
+        show=lambda r, b: _show(r, b, args.report), record=lambda r: r.record(),
+        code=lambda r: _cli.OK if r.status in ("planned", "accepted", "revoked", "already-reviewed") else _cli.USAGE,
+        question="Save this review?", hidden=("--reason",))

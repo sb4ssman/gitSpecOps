@@ -44,7 +44,6 @@ from Special._archive.manager import (
     registry_path,
     installation_status,
     print_registry,
-    print_dashboard,
     refresh_all,
     run_refresh,
     refresh_archive,

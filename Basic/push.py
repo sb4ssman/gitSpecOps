@@ -3,11 +3,11 @@
 Why:          publishing must never overwrite what is on the remote.
 Reads:        the current branch and its upstream.
 May change:   the remote branch, by fast-forward only; never forced.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/push.py <repo>
+    gitso push <repo>
 
 A push without `--force` is refused by git itself unless it is a fast-forward of the remote:
 the mirror image of `pull --ff-only`. There is no parameter here that could add `--force`,
@@ -25,6 +25,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from Basic._console import enable_unicode_output  # noqa: E402
+from Basic import _cli  # noqa: E402
 from Basic._run import Result, run_git  # noqa: E402
 
 EFFECT = "remote"
@@ -59,13 +60,14 @@ def push_snapshot(repo: Path | str, repository: str, tip: str, destination: str)
 
 def main(argv: list[str]) -> int:
     enable_unicode_output()
-    if len(argv) != 1 or argv[0] in ("-h", "--help"):
-        print(__doc__)
-        return 0 if argv and argv[0] in ("-h", "--help") else 2
-    result = push(Path(argv[0]))
-    sys.stdout.write(result.stdout)
-    sys.stderr.write(result.stderr)
-    return result.returncode
+    parser = _cli.parser("push", "Push the current branch to its upstream, fast-forward only.")
+    parser.add_argument("repo", type=Path)
+    args = parser.parse_args(argv)
+    result = push(args.repo)
+    ok = result.returncode == 0
+    return _cli.report(args, "push", ok=ok, page="Push", context=(str(args.repo),),
+                       output=result.stdout + result.stderr, repository=str(args.repo),
+                       message="Pushed." if ok else "git push did not finish; its own words are above.")
 
 
 if __name__ == "__main__":

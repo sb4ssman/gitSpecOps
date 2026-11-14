@@ -40,7 +40,7 @@ MAC = sys.platform == "darwin"
 VENV_DIR = ROOT / ".venv"
 VENV_PYTHON = VENV_DIR / ("Scripts/python.exe" if WINDOWS else "bin/python")
 AREAS = ("Requirements", "Python environment", "The gitso command", "This machine", "The app",
-         "Desktop Git app", "Protection", "Scanners", "Fleet")
+         "Desktop Git app", "Protection", "Scanners", "Archives", "Fleet")
 
 from Special._security._audit import INSTALL_PACKAGES  # noqa: E402  the Security tab suggests the same
 
@@ -189,6 +189,7 @@ def detect() -> dict:
     found["powershell_profiles_run"] = gitso_command.powershell_runs_profiles() if WINDOWS else None
     for name in SCANNERS:
         found[name] = shutil.which(name)
+    found["archives"] = _archives()
     return found
 
 
@@ -619,13 +620,88 @@ def _select_engines(chosen) -> str:
     return ", ".join(chosen) or "own checks only"
 
 
+def _archives() -> list:
+    try:
+        from Special._archive.manager import registry_record
+        return registry_record(False)["archives"]
+    except (OSError, ValueError, KeyError):
+        return []
+
+
+def area_archives(found: dict, plan: Plan) -> None:
+    from Special._archive.manager import registration_plan
+    screen(9, "Archives")
+    for item in found["archives"]:
+        row("Archive", f"{item['root']}  ({'update' if item['mode'] == 'update' else 'update and clone missing'})")
+    if not found["archives"]:
+        row("Archives", "none yet")
+    line("An archive is a folder full of clones you want kept current: a copy of every repository "
+         "of a GitHub organization, say. gitSpecOps fast-forwards each clone (it never merges, "
+         "resets or deletes) and, if you choose, clones repositories that are new on GitHub. Each "
+         "archive gets a small launcher in its folder; a monthly task can run them all.", "muted")
+    added = []
+    while True:
+        say()
+        option("P", "Add a folder of clones by its path")
+        option("N", "Done" if (added or found["archives"]) else "No archives now")
+        option("0", "Stop the walkthrough", "Nothing has been changed.")
+        answer = choose("pn0", "n")
+        if answer == "0":
+            raise Stop
+        if answer == "n":
+            break
+        path = ask("Folder of clones:")
+        if not path:
+            continue
+        folder = Path(path).expanduser()
+        if not folder.is_dir():
+            line("That folder does not exist.", "warning")
+            continue
+        say()
+        option("1", "Keep the clones already there current", "Fast-forward only.")
+        option("2", "Also clone repositories that are missing", "Compared with the GitHub owner of the clones.")
+        mode = "sync" if choose("12", "1") == "2" else "update"
+        line("Reading the folder (nothing changes)...", "detail")
+        try:
+            proposal = registration_plan(folder, None, mode)
+        except (ValueError, OSError) as exc:
+            line(f"Not added: {exc}.", "warning")
+            continue
+        count = len(proposal["repositories"])
+        added.append(proposal["root"])
+        line(f"Will add {proposal['root']}: {count} repositories it can keep current.", "success")
+        plan.add("Archive", f"Archive: register {proposal['root']} "
+                 f"({'update' if mode == 'update' else 'update and clone missing'}; {count} repositories) "
+                 "and write its launcher there. Nothing is pulled or cloned now.",
+                 lambda folder=folder, mode=mode, repos=proposal["repositories"]: _register_archive(folder, mode, repos))
+    if (added or found["archives"]) and yes_no(
+            "Refresh every archive once a month?", "n",
+            "A scheduled task for your account, on the 1st of each month at 09:00, each archive in its "
+            "own mode. Remove it any time: schedule-archives --remove-task."):
+        plan.add("Monthly refresh", "Monthly refresh: a scheduled task for your account runs every archive "
+                 "on the 1st of each month at 09:00.", _schedule_archives)
+
+
+def _register_archive(folder, mode, repos) -> str:
+    from Special._archive.manager import install_launchers
+    record = install_launchers(folder, None, prevalidated_repos=repos, mode=mode)
+    return f"{record.root} ({record.mode})"
+
+
+def _schedule_archives() -> str:
+    from Elaborate.schedule_archives import DEFAULT_TASK_NAME, install_monthly_task
+    if install_monthly_task(DEFAULT_TASK_NAME, 1, "09:00"):
+        raise RuntimeError("the scheduled task was not created")
+    return "1st of each month, 09:00"
+
+
 TAILSCALE_WHY = ("Your machines exchange repository status directly over your own tailnet, "
                  "and every machine's map shows the whole fleet. Nothing passes through anyone else.")
 
 
 def area_fleet(found: dict, plan: Plan) -> None:
     from Elaborate._fleet.setup_state import join_fleet, leave_fleet
-    screen(9, "Fleet")
+    screen(10, "Fleet")
     has_tailscale = bool(found["tailscale"] or found["tailnet"])
     over_tailscale = "tailnet" in found["fleet"]
     row("Tailscale", "connected" if found["tailnet"] else "installed, not connected" if found["tailscale"]
@@ -799,7 +875,7 @@ def walkthrough(detector=detect) -> int:
         plan = Plan()
         try:
             for area in (area_requirements, area_environment, area_gitso, area_machine, area_app,
-                         area_client, area_protection, area_scanners, area_fleet):
+                         area_client, area_protection, area_scanners, area_archives, area_fleet):
                 area(found, plan)
         except Stop:
             notice("Walkthrough stopped", "Nothing has been changed.", "warning")

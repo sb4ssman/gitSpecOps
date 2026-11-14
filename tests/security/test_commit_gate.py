@@ -347,7 +347,7 @@ class CommitGateTests(unittest.TestCase):
         self.assertEqual(preview["status"], "ready")
         output = io.StringIO()
         with redirect_stdout(output):
-            self.assertEqual(gitso.main([*arguments, "--apply", "--approve", preview["plan_id"]]), 0)
+            self.assertEqual(gitso.main([*arguments, "--apply", preview["plan_id"]]), 0)
         self.assertEqual(json.loads(output.getvalue())["status"], "committed")
 
     def test_message_whitespace_is_preserved_verbatim(self):

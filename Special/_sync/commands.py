@@ -4,19 +4,18 @@ Why:          the public files in Special/ stay thin (a header, EFFECT and `main
               parsing and printing live here, the work itself in the sibling plumbing.
 Reads:        see each command's own header.
 May change:   see each command's own header and EFFECT.
-Results:      printed text, or JSON where a command offers --json.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 """
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
+from Basic import _cli
 from Basic._console import enable_unicode_output
-from Basic._station import banner
 from Special._settings.fleet import fleet_directory, load_fleet_settings
 
 
@@ -28,14 +27,13 @@ def _profile(parser: argparse.ArgumentParser, roots: bool = True) -> None:
                             help="observe this folder instead of the saved roots (repeatable)")
 
 
-def _run(handler, parser, argv) -> int:
+def _run(command, handler, parser, argv) -> int:
     enable_unicode_output()
     args = parser.parse_args(argv)
     try:
         return handler(args)
     except (OSError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+        return _cli.fail(args, command, f"{exc}.")
 
 
 def _locked(args):
@@ -83,14 +81,14 @@ def suggest_sync(args) -> int:
     if snapshot is not None:
         snapshot.check_roots("sync", [spec.path for spec in specs])
     if not specs:
-        raise ValueError("no roots to observe; pass --root, or save roots with "
-                         "Elaborate/publish_status.py init")
-    stream = sys.stderr if args.json else sys.stdout
-    if not args.json and sys.stdout.isatty():
-        banner("Suggest sync", f"{len(specs)} root(s) from {source}")
-    if args.fetch:
-        print(f"Fetching remote refs for repositories in {len(specs)} root(s): the only network "
-              "activity, and it never touches your working tree.", file=stream)
+        raise ValueError("no folders to look at; pass --root, or enroll this machine's library folders")
+    screen = not _cli.machine(args)
+    if screen:
+        from Basic._station import banner, line
+        banner("Suggest sync", f"{len(specs)} folder(s) from the {source}")
+        if args.fetch:
+            line(f"Fetching remote refs for the repositories in {len(specs)} folder(s): the only network "
+                 "activity, and it never touches your working tree.", "detail")
     # Repository ids only need a salt inside this run; nothing here leaves the machine.
     secret = (config or {}).get("fleet_secret") or new_fleet_secret()
     observation = observe_roots(specs, secret, fetch=args.fetch, fetch_workers=args.fetch_workers,
@@ -105,109 +103,123 @@ def suggest_sync(args) -> int:
     branches = {**load_branches(config_dir), **observation.branches}
     if config and not args.no_catalog:
         save_catalog(config_dir, merged, branches)
-    if args.json:
-        print(json.dumps({"schema_version": 1, "manifest": manifest, "local_security": security,
-                          "artifacts": []}, indent=2, sort_keys=True))
-    else:
-        print(render_table(manifest, merged, branches, security=security))
-        print("\n" + render_advice(security))
-    print(f"\nObserved {len(observation.repositories)} repositor(ies) from {source}. "
-          "Nothing was published.", file=stream)
-    for issue in observation.issues:
-        print(f"warning: {issue}", file=sys.stderr)
-    return 0
+    message = f"Looked at {len(observation.repositories)} repositories from the {source}. Nothing was published."
+    record = _cli.document("suggest-sync", manifest=manifest, local_security=security, message=message,
+                           warnings=list(observation.issues), artifacts=[])
+
+    def show():
+        from Basic._station import line, notice, say
+        say()
+        for text in render_table(manifest, merged, branches, security=security).splitlines():
+            line(text)
+        say()
+        for text in render_advice(security).splitlines():
+            line(text)
+        for issue in observation.issues:
+            line(f"warning: {issue}", "warning")
+        notice("Done", message, "success")
+
+    _cli.emit(args, record, show)
+    return _cli.OK
 
 
 def suggest_sync_main(argv=None) -> int:
     from Special._sync.observer import DEFAULT_FETCH_TIMEOUT_SECONDS, DEFAULT_FETCH_WORKERS
 
-    parser = argparse.ArgumentParser(prog="gitso suggest-sync",
-                                     description="Suggest what this machine's repositories need.")
+    parser = _cli.parser("suggest-sync", "Suggest what this machine's repositories need.")
     _profile(parser, roots=False)
-    parser.add_argument("--root", action="append", help="root to inspect (overrides saved roots)")
-    parser.add_argument("--recursive-root", action="append", help="recursive root (overrides saved)")
-    parser.add_argument("--recursive", action="store_true", help="scan every --root recursively")
+    parser.add_argument("--root", action="append", help="folder to look at (instead of the saved ones)")
+    parser.add_argument("--recursive-root", action="append", help="folder to look through recursively")
+    parser.add_argument("--recursive", action="store_true", help="look through every --root recursively")
     parser.add_argument("--fetch", action="store_true",
                         help="refresh remote-tracking refs first so ahead/behind are current")
     parser.add_argument("--fetch-workers", type=int, default=DEFAULT_FETCH_WORKERS)
     parser.add_argument("--fetch-timeout", type=int, default=DEFAULT_FETCH_TIMEOUT_SECONDS)
-    parser.add_argument("--json", action="store_true", help="machine-readable result")
     parser.add_argument("--no-catalog", action="store_true", help="do not update the local catalog")
-    return _run(suggest_sync, parser, argv)
+    return _run("suggest-sync", suggest_sync, parser, argv)
 
 
 # --------------------------------------------------------------------------- name_repo
 
 def name_repo(args) -> int:
+    """One explicit change, made at once (like git config): a readable name for one repository."""
     from Special._sync.config import load_catalog, save_catalog
 
     config_dir = fleet_directory(args.config_dir, home=args.settings_home)
     catalog = load_catalog(config_dir)
     if args.list or not args.repo_id:
-        for repo_id, entry in sorted(catalog.items(), key=lambda item: item[0]):
-            name = entry.get("alias") or entry.get("display_name") or "(unnamed)"
-            marker = " (alias)" if entry.get("alias") else ""
-            print(f"{repo_id[:12]}  {name}{marker}")
-        if not catalog:
-            print("Catalog is empty. Run suggest_sync first.")
-        return 0
+        entries = [{"repo_id": repo_id, "name": entry.get("alias") or entry.get("display_name"),
+                    "alias": bool(entry.get("alias"))}
+                   for repo_id, entry in sorted(catalog.items(), key=lambda item: item[0])]
+        return _cli.report(args, "name-repo", ok=True, page="Repository names",
+                           rows=[(entry["repo_id"][:12], f"{entry['name'] or '(unnamed)'}"
+                                  + (" (your name)" if entry["alias"] else "")) for entry in entries],
+                           message=f"{len(entries)} repositories in this machine's catalog." if entries
+                           else "The catalog is empty. Run suggest-sync first.", repositories=entries)
     if not args.name:
-        raise ValueError("name_repo needs both a repo id and a name (or use --list)")
+        raise ValueError("name-repo needs both a repository id and a name (or --list)")
     matches = [repo_id for repo_id in catalog if repo_id.startswith(args.repo_id)]
     if len(matches) != 1:
-        raise ValueError(f"{'no' if not matches else 'ambiguous'} repo id for {args.repo_id!r}")
+        raise ValueError(f"{'no' if not matches else 'more than one'} repository id starts with {args.repo_id!r}")
     catalog[matches[0]] = {**catalog[matches[0]], "alias": args.name}
     save_catalog(config_dir, catalog)
-    print(f"{matches[0][:12]} -> {args.name}")
-    return 0
+    return _cli.report(args, "name-repo", ok=True, page="Repository names", rows=[(matches[0][:12], args.name)],
+                       message="Named. The name stays on this machine.", repo_id=matches[0], name=args.name)
 
 
 def name_repo_main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="gitso name-repo",
-                                     description="Name a repository in the local-only catalog.")
+    parser = _cli.parser("name-repo", "Name a repository in this machine's local catalog.")
     _profile(parser, roots=False)
-    parser.add_argument("repo_id", nargs="?", help="repo id or unique prefix")
+    parser.add_argument("repo_id", nargs="?", help="repository id, or the start of one")
     parser.add_argument("name", nargs="?", help="readable name to show for it")
-    parser.add_argument("--list", action="store_true", help="list catalog entries")
-    return _run(name_repo, parser, argv)
+    parser.add_argument("--list", action="store_true", help="list the catalog")
+    return _run("name-repo", name_repo, parser, argv)
 
 
 # --------------------------------------------------------------------------- catch_up
 
-def catch_up(args) -> int:
-    from Special._sync.actions import apply_catchup, plan_catchup, render_catchup
-
-    if args.apply and not args.yes:
-        raise ValueError("--apply requires --yes after you review the plan")
+def catch_up(args, argv) -> int:
     with _locked(args):
-        return _catch_up(args)
+        return _catch_up(args, argv)
 
 
-def _catch_up(args) -> int:
+def _catch_up(args, argv) -> int:
     from Special._sync.actions import apply_catchup, plan_catchup, render_catchup
 
     _selection, observer = _observer(args)
     count = observer.inventory()
-    print(f"Inventory found {count} observed repository(ies). Fetching their remotes without "
-          "changing branches, indexes, or files.")
+    if not _cli.machine(args):
+        from Basic._station import banner, line
+        banner("Catch up", f"{count} repositories")
+        line("Fetching their remotes; branches, indexes and files are not changed.", "detail")
     plan = plan_catchup(observer.paths)
-    print(render_catchup(plan))
-    if not args.apply:
-        return 0
+    approval = _cli.Approval(args, "catch-up", argv)
+
+    def show():
+        from Basic._station import line, say
+        say()
+        for text in render_catchup(plan).splitlines():
+            line(text)
+
+    safe = [item for item in plan if item["action"] == "pull"]
+    if not approval.decide(plan, show, nothing_to_do=not safe,
+                           question=f"Fast-forward these {len(safe)} checkouts?"):
+        return approval.code
     results = apply_catchup(plan)
-    print("\n" + render_catchup(results, applied=True))
-    return 1 if any(item["action"] in {"fetch_failed", "pull_failed", "pull_needs_review"}
-                    for item in results) else 0
+    failed = any(item["action"] in {"fetch_failed", "pull_failed", "pull_needs_review"} for item in results)
+    return _cli.report(args, "catch-up", ok=not failed, page="Catch up  /  Done",
+                       output=render_catchup(results, applied=True),
+                       message="Some checkouts need a look; see above." if failed else "Caught up.",
+                       results=[{**item, "path": str(item["path"])} for item in results])
 
 
 def catch_up_main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="gitso catch-up", description=(
-        "Fetch every observed repository and preview safe fast-forwards; --apply --yes pulls "
-        "only clean, behind-only checkouts."))
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = _cli.parser("catch-up", "Fetch every observed repository, then fast-forward the clean, "
+                                     "behind-only checkouts; shows the plan first.")
     _profile(parser)
-    parser.add_argument("--apply", action="store_true", help="fast-forward the safe checkouts")
-    parser.add_argument("--yes", action="store_true", help="confirm --apply after review")
-    return _run(catch_up, parser, argv)
+    _cli.add_apply(parser)
+    return _run("catch-up", lambda args: catch_up(args, argv), parser, argv)
 
 
 # --------------------------------------------------------------------------- audit_repos
@@ -225,57 +237,67 @@ def audit_repos(args) -> int:
     rows += [{"path": Path(hit.path), "name": Path(hit.path).name, "origin": None,
               "findings": ["bare repository (not audited)"]} for hit in hits if hit.kind == "bare"]
     rows += audit_repositories([hit.path for hit in hits if hit.kind != "bare"])
-    if args.json:
-        print(json.dumps([{**row, "path": str(row["path"])} for row in rows], indent=2))
-    else:
-        print(f"Found {len(hits)} repository(ies) under the configured roots.")
-        print(render_audit(rows))
-    return 1 if any(item["findings"] != ["no audited issue"] for item in rows) else 0
+    attention = any(item["findings"] != ["no audited issue"] for item in rows)
+    _cli.report(args, "audit-repos", ok=not attention, page="Audit repositories",
+                output=render_audit(rows),
+                message=f"Looked at {len(hits)} repositories; " +
+                        ("some need attention." if attention else "nothing needs attention."),
+                repositories=[{**row, "path": str(row["path"])} for row in rows])
+    return 1 if attention else 0
 
 
 def audit_repos_main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="gitso audit-repos", description=(
-        "Read-only audit of this machine's repositories: remotes and unfinished work."))
+    parser = _cli.parser("audit-repos", "Read-only audit of this machine's repositories: remotes and "
+                                        "unfinished work.")
     _profile(parser)
-    parser.add_argument("--json", action="store_true", help="machine-readable result")
-    return _run(audit_repos, parser, argv)
+    return _run("audit-repos", audit_repos, parser, argv)
 
 
 # --------------------------------------------------------------------------- materialize
 
-def materialize(args) -> int:
-    from Special._sync.actions import apply_materialize, plan_materialize, render_materialize
-
-    if args.apply and not args.yes:
-        raise ValueError("--apply requires --yes after you review the plan")
+def materialize(args, argv) -> int:
     if not args.destination.is_dir():
         raise ValueError("--destination must already be an existing folder")
     with _locked(args):
-        return _materialize(args)
+        return _materialize(args, argv)
 
 
-def _materialize(args) -> int:
+def _materialize(args, argv) -> int:
     from Special._sync.actions import apply_materialize, plan_materialize, render_materialize
 
     _selection, observer = _observer(args)
-    count = observer.inventory()
+    observer.inventory()
     plan = plan_materialize(observer.paths, args.destination)
-    print(f"Inventory found {count} observed repository(ies).\n{render_materialize(plan)}")
-    if not args.apply:
-        return 0
+    approval = _cli.Approval(args, "materialize", argv)
+
+    def show():
+        from Basic._station import banner, line, say
+        banner("Materialize", str(args.destination))
+        say()
+        for text in render_materialize(plan).splitlines():
+            line(text)
+
+    clones = [row for row in plan if row["action"] == "clone"]
+    if not approval.decide(plan, show, nothing_to_do=not clones,
+                           question=f"Clone these {len(clones)} repositories?"):
+        return approval.code
     results = apply_materialize(plan)
-    print("\n" + render_materialize(results, applied=True))
-    return 1 if any(row["action"] == "clone_failed" for row in results) else 0
+    failed = any(row["action"] == "clone_failed" for row in results)
+    return _cli.report(args, "materialize", ok=not failed, page="Materialize  /  Done",
+                       context=(str(args.destination),), output=render_materialize(results, applied=True),
+                       message="Some clones failed; see above." if failed else "Cloned.",
+                       results=[{key: str(value) if isinstance(value, Path) else value
+                                 for key, value in row.items()} for row in results])
 
 
 def materialize_main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="gitso materialize", description=(
-        "Clone this machine's observed working set into a new library folder."))
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = _cli.parser("materialize", "Clone this machine's observed working set into a new library "
+                                        "folder; shows the plan first.")
     _profile(parser)
-    parser.add_argument("--destination", type=Path, required=True, help="existing empty library folder")
-    parser.add_argument("--apply", action="store_true", help="clone the planned repositories")
-    parser.add_argument("--yes", action="store_true", help="confirm --apply after review")
-    return _run(materialize, parser, argv)
+    parser.add_argument("--destination", type=Path, required=True, help="an existing, empty library folder")
+    _cli.add_apply(parser)
+    return _run("materialize", lambda args: materialize(args, argv), parser, argv)
 
 
 # --------------------------------------------------------------------------- list_live_buffers
@@ -289,103 +311,116 @@ def list_live_buffers(args) -> int:
     if root is None or not root.is_dir():
         raise ValueError("select an existing VS Code Backups folder with --backup-root")
     items = inspect(selection["roots"], root)
-    print(json.dumps({"buffers": items, "note": "Explicit local metadata only; no editor buffer "
-                      "content was sent or stored."}, indent=2))
-    return 0
+    return _cli.report(args, "list-live-buffers", ok=True, page="Unsaved editor buffers", context=(str(root),),
+                       rows=[(Path(str(item.get("path", ""))).name or "buffer", item.get("path", ""))
+                             for item in items],
+                       message="Local metadata only; no editor buffer content was read out, sent or stored.",
+                       buffers=items)
 
 
 def list_live_buffers_main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="gitso list-live-buffers", description=(
-        "List VS Code unsaved-buffer metadata for files under this machine's repositories."))
+    parser = _cli.parser("list-live-buffers", "List VS Code unsaved-buffer metadata for files under "
+                                              "this machine's repositories.")
     _profile(parser)
     parser.add_argument("--backup-root", type=Path, help="VS Code Backups folder")
-    return _run(list_live_buffers, parser, argv)
+    return _run("list-live-buffers", list_live_buffers, parser, argv)
 
 
 # --------------------------------------------------------------------------- enroll_machine
 
-def _confirm(prompt_word: str, assume_yes: bool) -> bool:
-    if assume_yes:
-        return True
-    if not sys.stdin.isatty():
-        raise ValueError(f"confirm with --yes (no terminal to type {prompt_word})")
-    return input(f"Type {prompt_word} to allow it: ").strip() == prompt_word
-
-
-def enroll_machine(args) -> int:
+def enroll_machine(args, argv) -> int:
     from Special._sync import enrollment
 
     home = args.settings_home
+    approval = _cli.Approval(args, "enroll-machine", argv)
     if args.action == "add":
         paths = args.paths
         if not paths:
-            if not sys.stdin.isatty():
+            if not _cli.interactive(args):
                 raise ValueError("name at least one library folder")
-            answer = input("Library folder (a folder that holds your repositories): ").strip().strip('"')
-            paths = [answer] if answer else []
+            from Basic._station import ask
+            answer = ask("Library folder (a folder that holds your repositories):").strip('"')
+            paths = [Path(answer)] if answer else []
             if not paths:
                 raise ValueError("no library folder given; nothing was enrolled")
-        print(enrollment.inventory_notice(paths))
-        if not _confirm("SCAN", args.yes):
-            print("Nothing was enrolled.")
-            return 1
+        plan = {"action": "add", "libraries": [str(Path(path).expanduser().resolve()) for path in paths],
+                "label": args.label, "port": args.port}
+
+        def show():
+            from Basic._station import banner, line, say
+            banner("Enroll this machine  /  Add libraries")
+            say()
+            for text in enrollment.inventory_notice(paths).splitlines():
+                line(text)
+
+        if not approval.decide(plan, show, question="Enroll these library folders?"):
+            return approval.code
         roots = enrollment.add_libraries(paths, home=home, label=args.label, local_port=args.port)
-        print("Libraries:\n" + "\n".join(f"  {root}" for root in roots))
-        print("Start the app with App/tray.py; it inventories new libraries when it starts.")
-        return 0
+        return _cli.report(args, "enroll-machine", ok=True, page="Enroll this machine",
+                           rows=[("Library", root) for root in roots],
+                           message="Enrolled. Start the app (gitso tray); it looks through new libraries "
+                                   "when it starts.", libraries=roots)
     if args.action == "remove":
         if len(args.paths) != 1:
             raise ValueError("remove one library at a time")
         roots = enrollment.remove_library(args.paths[0], home=home)
-        print("Libraries:\n" + "\n".join(f"  {root}" for root in roots))
-        return 0
+        return _cli.report(args, "enroll-machine", ok=True, page="Enroll this machine",
+                           rows=[("Library", root) for root in roots],
+                           message="Removed. Nothing in that folder was touched.", libraries=roots)
     if args.action == "find":
         starts = args.paths or (enrollment.whole_machine_starts() if args.whole_machine else [])
         if not starts:
             raise ValueError("say where to look (folders), or pass --whole-machine")
-        print("To suggest libraries, folder names (no file contents, no Git) are read under:\n"
-              + "\n".join(f"  {start}" for start in starts)
-              + f"\nup to {args.depth} levels deep. Nothing is enrolled by looking.")
-        if not _confirm("LOOK", args.yes):
-            print("Nothing was looked at.")
-            return 1
+        plan = {"action": "find", "look_under": [str(start) for start in starts], "depth": args.depth}
+
+        def show_look():
+            from Basic._station import banner, line, row, say
+            banner("Enroll this machine  /  Find libraries")
+            say()
+            line("To suggest library folders, gitSpecOps reads folder names (no file contents, no Git) "
+                 f"under these, up to {args.depth} levels deep. Nothing is enrolled by looking.")
+            for start in starts:
+                row("Look under", start)
+
+        if not approval.decide(plan, show_look, question="Look there?"):
+            return approval.code
         found = enrollment.find_libraries(starts, max_depth=args.depth)
-        if not found:
-            print("No repositories found there.")
-            return 0
-        print("Folders holding repositories (add the ones that are libraries):")
-        for item in found[:40]:
-            print(f"  {item['repositories']:5}  {item['path']}")
-        print("Then: python Special/enroll_machine.py add <folder> [<folder> ...]")
-        return 0
+        return _cli.report(args, "enroll-machine", ok=True, page="Enroll this machine  /  Found",
+                           rows=[(f"{item['repositories']} repos", item["path"]) for item in found[:40]],
+                           message=("Add the ones that are libraries: gitso enroll-machine add FOLDER ..."
+                                    if found else "No repositories found there."),
+                           found=[{**item, "path": str(item["path"])} for item in found])
     if args.action == "presentation":
         chosen = enrollment.set_presentation(face=args.face, web=args.web, home=home)
-        print(f"Double-clicking the tray opens: {chosen['face']}. Web view: {chosen['web']}.")
-        return 0
+        return _cli.report(args, "enroll-machine", ok=True, page="Enroll this machine",
+                           rows=[("Tray opens", chosen["face"]), ("Web view", chosen["web"])],
+                           message="Saved.", presentation=chosen)
     machine, config = enrollment.enrollment(home)
     if config is None:
-        print("This machine is not enrolled. Add a library folder:\n"
-              "  python Special/enroll_machine.py add <folder>\n"
-              "or let it suggest some first:\n"
-              "  python Special/enroll_machine.py find <folder> | --whole-machine")
-        return 0
+        return _cli.report(args, "enroll-machine", ok=True, page="Enroll this machine",
+                           message="This machine is not enrolled. Add a library folder: "
+                                   "gitso enroll-machine add FOLDER (or find FOLDER to get suggestions).",
+                           enrolled=False)
     presentation = {**enrollment.DEFAULT_PRESENTATION, **(config.get("presentation") or {})}
     shared = "joined" if config.get("transports") else "not joined (this machine only)"
-    print(f"Machine: {config['label']} ({config['machine_id']})\nLibraries:\n"
-          + "\n".join(f"  {root}" for root in config["roots"])
-          + f"\nTray opens: {presentation['face']}. Web view: {presentation['web']}."
-          + f"\nFleet: {shared}.")
-    return 0
+    return _cli.report(args, "enroll-machine", ok=True, page="Enroll this machine",
+                       rows=[("Machine", f"{config['label']} ({config['machine_id']})"),
+                             *(("Library", root) for root in config["roots"]),
+                             ("Tray opens", presentation["face"]), ("Web view", presentation["web"]),
+                             ("Fleet", shared)],
+                       message="Enrolled.", enrolled=True, machine=config["label"],
+                       machine_id=config["machine_id"], libraries=list(config["roots"]),
+                       presentation=presentation, fleet=shared)
 
 
 def enroll_machine_main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="gitso enroll-machine", description=(
-        "Enroll this machine with the app: its library folders and how the app shows itself."))
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = _cli.parser("enroll-machine", "Enroll this machine: its library folders and how the app "
+                                           "shows itself.")
     _profile(parser, roots=False)
     parser.add_argument("action", nargs="?", default="show",
                         choices=("show", "add", "remove", "find", "presentation"))
     parser.add_argument("paths", nargs="*", type=Path, help="library folders, or where to look")
-    parser.add_argument("--yes", action="store_true", help="confirm without typing SCAN or LOOK")
     parser.add_argument("--whole-machine", action="store_true", help="find: look on every drive")
     parser.add_argument("--depth", type=int, default=4, help="find: folder levels to look through")
     parser.add_argument("--label", help="add: this machine's readable name")
@@ -393,4 +428,5 @@ def enroll_machine_main(argv=None) -> int:
     parser.add_argument("--face", choices=("web", "window"), help="what double-clicking the tray opens")
     parser.add_argument("--web", choices=("off", "loopback", "tailnet"),
                         help="serve the web view: off, this machine only, or also your tailnet devices")
-    return _run(enroll_machine, parser, argv)
+    _cli.add_apply(parser)
+    return _run("enroll-machine", lambda args: enroll_machine(args, argv), parser, argv)

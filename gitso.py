@@ -17,6 +17,7 @@ from __future__ import annotations
 import ast
 import importlib
 import json
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -120,36 +121,51 @@ def _help():
         print(f"  {command.name:18} {command.record()['description']}")
 
 
+def _arguments(text: str) -> list[str]:
+    """One line of arguments, split as a shell would. On Windows backslashes stay as typed."""
+    import shlex
+    if os.name != "nt":
+        return shlex.split(text)
+    return [part[1:-1] if len(part) > 1 and part[0] == part[-1] and part[0] in "\"'" else part
+            for part in shlex.split(text, posix=False)]
+
+
 def menu(cancel: str = "cancel"):
     """Interactive selection only; cancellation/invalid selection never invokes an operation.
     `cancel` names what a blank answer does (setup says "go back to setup")."""
     if not sys.stdin.isatty():
         print("The menu requires a terminal; use commands or an explicit command.", file=sys.stderr)
         return 2
-    from Basic._station import banner, section
+    from Basic._station import ask, banner, line, option, say, section
     banner("Commands", tagline=True)
     layer = None
     for number, command in enumerate(COMMANDS, 1):
         if command.script.split("/")[0] != layer:
             layer = command.script.split("/")[0]
             section(LAYERS.get(layer, layer))
-        print(f"  {number:2}. {command.name}: {command.record()['description']}")
+        option(str(number), command.name, command.record()["description"])
+    say()
     while True:
-        selected = input(f"Choose a command number, or leave blank to {cancel}: ").strip()
+        selected = ask(f"Choose a command number, or press Enter to {cancel}:")
         if not selected:
             return 0
         if selected.isdigit() and 1 <= int(selected) <= len(COMMANDS):
             break
-        print(f"Choose a number from 1 to {len(COMMANDS)}.", file=sys.stderr)
+        line(f"Choose a number from 1 to {len(COMMANDS)}; nothing has been run.", "warning")
     command = COMMANDS[int(selected) - 1]
-    print(command.documentation())
-    print("Enter arguments one per line, without shell quotes. A blank line starts the command; Ctrl+C cancels.")
-    arguments = []
-    while True:
-        argument = input("argument: ")
-        if not argument:
-            break
-        arguments.append(argument)
+    banner(f"Commands  /  {command.name}")
+    say()
+    for text in command.documentation().splitlines():
+        line(text, "muted") if text.strip() else say()
+    say()
+    line("Type its arguments as you would after the command name, on one line. Commands that "
+         "change things show their plan first and ask. Enter alone runs it with none; Ctrl+C cancels.")
+    try:
+        arguments = _arguments(ask(f"gitso {command.name}"))
+    except ValueError:
+        line("Those arguments have an unmatched quote; nothing has been run.", "warning")
+        return 2
+    say()
     return dispatch(command, arguments)
 
 

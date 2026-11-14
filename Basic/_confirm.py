@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from typing import NoReturn
 
 # Substrings, not just suffixes: the injected line may carry `source `, `. `, `& `, or a path.
@@ -67,7 +68,7 @@ def prompt_input(prompt: str) -> str:
     while True:
         if _SCRIPTED_ANSWERS:
             value = _SCRIPTED_ANSWERS.pop(0).strip()
-            print(f"{prompt}{value}")
+            print(f"{prompt}{value}", file=sys.stderr)  # stdout stays the command's own
         elif _SCRIPTED_STRICT:
             _no_answer_available(prompt)
         else:

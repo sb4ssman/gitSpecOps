@@ -3,11 +3,11 @@
 Why:          another machine can only rebuild a library it has a record of.
 Reads:        the repositories under the given roots and their remotes.
 May change:   nothing.
-Results:      one JSON inventory on stdout or --out; progress on stderr.
+Results:      the inventory in a JSON record, or in --out; a screen at a terminal.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/export_inventory.py [--root [LABEL=]PATH ...] [--repo PATH ...] [--out FILE]
+    gitso export-inventory [--root [LABEL=]PATH ...] [--repo PATH ...] [--out FILE]
         [--max-depth N] [--hidden] [--no-prompt] [--answers FILE]
 
 Where the repositories are:
@@ -43,6 +43,7 @@ if _ROOT not in sys.path:
 
 from Basic._confirm import prompt_yes_no, use_scripted_answers  # noqa: E402
 from Basic._console import enable_unicode_output  # noqa: E402
+from Basic import _cli  # noqa: E402
 from Basic._pick import can_ask, pick_directory, pick_save_file  # noqa: E402
 from Special._inventory import LOOSE, build_roots, collect_inventory  # noqa: E402
 from Special._security._private_files import private_path, write_private_json  # noqa: E402
@@ -88,41 +89,39 @@ def check_destination(out: Path) -> None:
 
 def main(argv: list[str]) -> int:
     enable_unicode_output()
-    parser = argparse.ArgumentParser(description="Record a library of repositories for cloning elsewhere (read-only).")
+    parser = _cli.parser("export-inventory", "Record a library of repositories for cloning elsewhere (read-only).")
     parser.add_argument("--root", action="append", default=[], metavar="[LABEL=]PATH",
                         help="a folder containing repositories; repeat for several")
     parser.add_argument("--repo", action="append", default=[], metavar="PATH",
                         help="a single repository living on its own; repeat as needed")
     parser.add_argument("--out", type=Path, default=None,
-                        help="write the inventory to this new file instead of stdout")
+                        help="write the inventory to this new file (otherwise it is in the printed record)")
     parser.add_argument("--max-depth", type=int, default=None, help="limit walk depth below each root")
-    parser.add_argument("--hidden", action="store_true", help="also scan dotted directories")
+    parser.add_argument("--hidden", action="store_true", help="also look inside hidden (dotted) folders")
     parser.add_argument("--no-prompt", action="store_true", help="never ask; use defaults or fail")
     parser.add_argument("--answers", type=Path, help="file of answers, one per prompt")
     args = parser.parse_args(argv)
+    command = "export-inventory"
     if args.answers:
         try:
             use_scripted_answers(args.answers.read_text(encoding="utf-8").splitlines(), strict=True)
         except OSError as exc:
-            print(f"ERROR: {exc}", file=sys.stderr)
-            return 2
+            return _cli.fail(args, command, f"{exc}.")
     ask = can_ask() and not args.no_prompt
     root_specs, repo_specs = list(args.root), list(args.repo)
     out = args.out
     if not root_specs and not repo_specs:
         if not ask:
-            print("ERROR: give at least one --root or --repo (there is no terminal to ask).", file=sys.stderr)
-            return 2
+            return _cli.fail(args, command, "Give at least one --root or --repo (there is no terminal to ask).")
         root_specs = ask_for_folders()
         if not root_specs:
-            print("No folder chosen; nothing was done.", file=sys.stderr)
-            return 1
+            return _cli.fail(args, command, "No folder chosen; nothing was done.", _cli.FAILED)
         if out is None:
             out = pick_save_file("Save the repository inventory as", initial_dir=Path.home(),
                                  initial_name=DEFAULT_NAME, default_ext=".json")
             if out is None:
-                print("No save location chosen; nothing was written.", file=sys.stderr)
-                return 1
+                return _cli.fail(args, command, "No save location chosen; nothing was written.", _cli.FAILED)
+    screen = not _cli.machine(args)
     try:
         if out is not None:
             check_destination(out)
@@ -130,24 +129,36 @@ def main(argv: list[str]) -> int:
         for _label, path in roots:
             if not path.is_dir():
                 raise ValueError(f"not a directory: {path}")
+        if screen:
+            from Basic._station import banner
+            banner("Export inventory", str(out) if out else "printed below")
         inventory = collect_inventory(
             roots, loose=[Path(p) for p in repo_specs], max_depth=args.max_depth,
             include_hidden=args.hidden,
-            progress=lambda label, path: print(f"  [{label}] {path}", file=sys.stderr))
+            progress=(lambda label, path: print(f"  [{label}] {path}", file=sys.stderr)) if screen else None)
         if out is not None:
             write_private_json(out, inventory)
     except (OSError, ValueError, RuntimeError) as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
-    if out is None:
-        print(json.dumps(inventory, indent=2, ensure_ascii=False))
-    print(summarize(inventory), file=sys.stderr)
+        return _cli.fail(args, command, f"{exc}.")
+    notes = [summarize(inventory)]
     if any(r["label"] == LOOSE for r in inventory["roots"]):
-        print(f"  ('{LOOSE}' = repositories that live on their own; restore asks where to put them)", file=sys.stderr)
-    if out is not None:
-        print(f"Wrote {out}", file=sys.stderr)
-    print("This record names every repository, private ones included. Do not commit it.", file=sys.stderr)
-    return 0
+        notes.append(f"'{LOOSE}' = repositories that live on their own; restore asks where to put them.")
+    notes.append("This record names every repository, private ones included. Do not commit it.")
+    record = _cli.document(command, written=str(out) if out else None, notes=notes,
+                           **({} if out else {"inventory": inventory}))
+
+    def show():
+        from Basic._station import line, notice, say
+        say()
+        if out is None:
+            for text in json.dumps(inventory, indent=2, ensure_ascii=False).splitlines():
+                print(text)
+        for text in notes:
+            line(text)
+        notice("Written" if out else "Done", str(out) if out else "", "success")
+
+    _cli.emit(args, record, show)
+    return _cli.OK
 
 
 if __name__ == "__main__":

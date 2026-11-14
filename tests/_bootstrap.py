@@ -27,6 +27,10 @@ tempfile.tempdir = _TEMP
 for _name in ("TMPDIR", "TEMP", "TMP"):
     os.environ[_name] = _TEMP
 
+# Commands answer in JSON when no terminal is attached, which is always the case here. Tests
+# read what a person would see unless they ask for JSON (`--json`) or test the detection itself.
+os.environ.setdefault("GITSPECOPS_OUTPUT", "screen")
+
 AREAS = {
 }
 

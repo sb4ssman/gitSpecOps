@@ -3,11 +3,11 @@
 Why:          commits must contain exactly what was chosen, never everything that happens to be staged.
 Reads:        the named paths in the working tree.
 May change:   one new commit of exactly those paths; other staged work stays staged.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/commit.py <repo> -m MESSAGE PATH [PATH ...]
+    gitso commit <repo> -m MESSAGE PATH [PATH ...]
 
 Only the paths given are committed -- added, changed or deleted -- even when other changes are
 staged; those stay staged, untouched. There is no option for "everything" (`-a`), for rewriting
@@ -34,6 +34,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from Basic._console import enable_unicode_output  # noqa: E402
+from Basic import _cli  # noqa: E402
 from Basic._run import run_git  # noqa: E402
 
 EFFECT = "local"
@@ -89,14 +90,16 @@ def commit(repo: Path | str, paths: list[str], message: str, *, env: dict | None
 
 def main(argv: list[str]) -> int:
     enable_unicode_output()
-    parser = argparse.ArgumentParser(description="Commit the named files, and nothing else.")
+    parser = _cli.parser("commit", "Commit the named files, and nothing else.")
     parser.add_argument("repo", type=Path)
     parser.add_argument("-m", "--message", required=True)
     parser.add_argument("paths", nargs="+", metavar="PATH")
     args = parser.parse_args(argv)
     result = commit(args.repo, args.paths, args.message)
-    print(result)
-    return 1 if result.startswith("failed:") else 0
+    ok = not result.startswith("failed:")
+    return _cli.report(args, "commit", ok=ok, page="Commit", context=(str(args.repo),),
+                       repository=str(args.repo), result=result,
+                       message=result[0].upper() + result[1:] + ("." if ok else ""))
 
 
 if __name__ == "__main__":

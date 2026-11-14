@@ -24,11 +24,11 @@ Find Git repositories under a root. Read-only: a filesystem walk, no git, no net
 Why:          every larger operation starts by knowing which repositories exist.
 Reads:        the folders under the root (no Git, no network).
 May change:   nothing.
-Results:      a list, or --json.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/discover.py <root> [--json] [--max-depth N] [--hidden]
+    gitso discover <root> [--json] [--max-depth N] [--hidden]
         [--cross-filesystems] [--no-skip]
 ```
 
@@ -37,16 +37,16 @@ Status:       working
 `gitso status`, or `Basic/status.py`.
 
 ```text
-Report one repository's facts as JSON. Read-only.
+Report one repository's facts. Read-only.
 
 Why:          every judgment above starts from one repository's plain facts.
 Reads:        one repository.
 May change:   nothing.
-Results:      JSON on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/status.py <repo-path>
+    gitso status <repo-path>
 ```
 
 ### fetch
@@ -59,11 +59,11 @@ Fetch a repository's remote. Moves remote-tracking refs only.
 Why:          "behind" must mean behind the remote now, not at the last fetch.
 Reads:        the remote.
 May change:   remote-tracking refs only; never a branch or a file.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/fetch.py <repo> [--remote origin] [--dry-run]
+    gitso fetch <repo> [--remote origin] [--dry-run]
 
 With no refspec, `git fetch` updates `refs/remotes/*` and never a local branch or the working
 tree -- nothing the user would have to undo. That is why observation may fetch at all.
@@ -79,11 +79,11 @@ Fast-forward one repository to its upstream. Never merges, never rebases.
 Why:          a fast-forward cannot lose work, so it is the one pull that needs no decision.
 Reads:        the repository and its upstream.
 May change:   the checked-out branch and its files, by fast-forward only.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/pull.py <repo>
+    gitso pull <repo>
 
 `--ff-only` is the whole safety argument: a fast-forward cannot destroy data and never asks
 for a choice, so when git cannot fast-forward it refuses, and the refusal is reported as a
@@ -101,11 +101,11 @@ Clone one repository into a destination that does not exist yet.
 Why:          a clone may only ever add a folder.
 Reads:        the remote URL; the user's own Git credentials.
 May change:   creates the destination folder; refuses one that exists.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/clone.py <url> <destination> [--mirror] [--no-local]
+    gitso clone <url> <destination> [--mirror] [--no-local]
 
 Never clones over anything: an existing destination is refused before git runs, so a clone can
 only ever add a folder. Credentials are the user's own (`gh auth setup-git`, an SSH agent);
@@ -122,11 +122,11 @@ Move one repository's checked-out branch to another commit, keeping uncommitted 
 Why:          following a rewritten history needs a branch move that never overwrites an edit.
 Reads:        the repository and the target commit.
 May change:   the checked-out branch and the files that differ; refuses over any uncommitted edit.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/reset_keep.py <repo> <target>
+    gitso reset-keep <repo> <target>
 
 `git reset --keep` moves the branch and updates the files that differ between the two commits,
 and refuses outright if any of those files has an uncommitted change -- so an edit is never
@@ -149,11 +149,11 @@ Commit the named files of one repository, and nothing else.
 Why:          commits must contain exactly what was chosen, never everything that happens to be staged.
 Reads:        the named paths in the working tree.
 May change:   one new commit of exactly those paths; other staged work stays staged.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/commit.py <repo> -m MESSAGE PATH [PATH ...]
+    gitso commit <repo> -m MESSAGE PATH [PATH ...]
 
 Only the paths given are committed -- added, changed or deleted -- even when other changes are
 staged; those stay staged, untouched. There is no option for "everything" (`-a`), for rewriting
@@ -179,11 +179,11 @@ Push one repository's current branch to its upstream. Never forced.
 Why:          publishing must never overwrite what is on the remote.
 Reads:        the current branch and its upstream.
 May change:   the remote branch, by fast-forward only; never forced.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/push.py <repo>
+    gitso push <repo>
 
 A push without `--force` is refused by git itself unless it is a fast-forward of the remote:
 the mirror image of `pull --ff-only`. There is no parameter here that could add `--force`,
@@ -436,11 +436,11 @@ Record where every repository came from, so another machine can clone them.
 Why:          another machine can only rebuild a library it has a record of.
 Reads:        the repositories under the given roots and their remotes.
 May change:   nothing.
-Results:      one JSON inventory on stdout or --out; progress on stderr.
+Results:      the inventory in a JSON record, or in --out; a screen at a terminal.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/export_inventory.py [--root [LABEL=]PATH ...] [--repo PATH ...] [--out FILE]
+    gitso export-inventory [--root [LABEL=]PATH ...] [--repo PATH ...] [--out FILE]
         [--max-depth N] [--hidden] [--no-prompt] [--answers FILE]
 
 Where the repositories are:
@@ -474,13 +474,13 @@ Clone the repositories in an inventory file onto this machine. Clone-only; never
 Why:          rebuilding a library from an inventory should never clone over anything.
 Reads:        an inventory file.
 May change:   with --apply: new clones only, into the chosen folders.
-Results:      the plan, then the results, on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one. Plan first, then --apply.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/restore_inventory.py [INVENTORY] [--map LABEL=DEST ...] [--dest DIR]
+    gitso restore-inventory [INVENTORY] [--map LABEL=DEST ...] [--dest DIR]
         [--layout preserve|canonical] [--only LABEL ...] [--use-candidates]
-        [--apply] [--yes] [--no-prompt] [--answers FILE]
+        [--apply PLAN_ID] [--no-prompt] [--answers FILE]
 
 The inventory: the path given, else a file dialog (or terminal prompt) asks for it.
 
@@ -630,16 +630,16 @@ Move this machine's clones onto a rewritten history, and update the commit ids t
 Why:          after clean_history rewrites a repository and the forced push is made, every
               older clone must follow, or a push from it publishes the old history again.
 Reads:        the checkouts under the given folders; the rewrite workspace's commit map.
-May change:   `follow`: after one confirmation, `git reset --keep` of each safe checkout onto
+May change:   `follow`, once its plan is approved: `git reset --keep` of each safe checkout onto
               its rewritten upstream; a checkout with unpushed or uncommitted work is refused.
-              `relink --write`: quoted commit ids in tracked text files, left for review.
-              Nothing is committed or pushed (use commit_repo.py and push_repo.py).
-Results:      plans and results on stdout.
+              `relink`, once its plan is approved: quoted commit ids in tracked text files,
+              left uncommitted for review. Nothing is committed or pushed.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once. Other machines: Elaborate/follow_rewrite_fleet.py.
 Status:       working
 
-    python Special/follow_rewrite.py follow [PATH ...] [--match TEXT] [--depth N] [--yes]
-    python Special/follow_rewrite.py relink WORKSPACE [WORKSPACE ...] --checkout PATH [--write]
+    gitso follow-rewrite follow [PATH ...] [--match TEXT] [--depth N] [--apply PLAN_ID]
+    gitso follow-rewrite relink WORKSPACE [WORKSPACE ...] --checkout PATH [--apply PLAN_ID]
 ```
 
 ### secure-commit
@@ -942,26 +942,20 @@ Status:       working
 `gitso setup`, or `_build/setup_gitspecops.py`.
 
 ```text
-Optional guided setup for gitSpecOps's command-line tools.
+Setup for gitSpecOps: the walkthrough, or one setup item at a time.
 
 Run from this repository:
 
-    python _build/setup_gitspecops.py     (or: run_setup.bat / run_setup.ps1 / run_setup.sh)
+    run_setup.bat / run_setup.ps1 / run_setup.sh     (or: python _build/setup_gitspecops.py)
 
-With no arguments, choose the walkthrough or an individual setup item.
-Non-interactive callers must name an action; --help never performs setup.
-Use settings for guided updater preferences, and settings-preview/settings-save for reviewed
-noninteractive changes. The `bootstrap` action does two things:
+With no arguments, a person at a terminal gets the setup menu. Named actions:
 
-  1. Creates a local virtual environment (.venv) with a predictable interpreter
-     (and the desktop app's Qt). It prefers `uv sync` and falls back to the
-     stdlib `venv` module. The project is NOT installed into .venv -- the tools
-     run as scripts and there are no dependencies; an editable install would only
-     add a startup-time `.pth` hook (see the note in pyproject.toml).
+    walkthrough   the guided setup (needs a person at a terminal)
+    run           choose one command from a list and run it, without setting anything up
+    environment   build this folder's .venv (with uv when it is installed), then check
+    check         show what this computer has: Git, the GitHub CLI, uv. Changes nothing.
 
-  2. Reports whether the runtime prerequisites (git, gh, uv) are available.
-
-No shortcuts or launchers are written. Every command runs through `gitso.py`, e.g.
-`python gitso.py commands`, or directly by its path, e.g. `python Special/update_archive.py --help`.
-Auth is never touched here: users authenticate their own host CLI (`gh auth login`, ...).
+gitSpecOps needs no setup to run: every command works straight from this folder through
+`gitso`, e.g. `python gitso.py commands`. Sign-ins are never touched here: you sign in to your
+own tools (`gh auth login`).
 ```

@@ -60,6 +60,7 @@ class UpdateResult:
     reports: list = field(default_factory=list, repr=False)
     errors: list[str] = field(default_factory=list)
     completed_roots: int = 0
+    declined: int = 0
     effects_possible: bool = False
     elapsed_seconds: float = 0.0
     report_path: Path | None = field(default=None, repr=False)
@@ -141,13 +142,13 @@ subtree. Required sink failures stop further work and never trigger another dest
         roots = updater.resolve_roots([Path(root) for root in raw_roots])
         if any(excluded(root, exclusions) for root in roots):
             raise RuntimeIOError("excluded_root")
-        for section, active in (("output", settings.values["output"]["mode"] != "stdout"),
+        for section, active in (("output", settings.values["output"]["save"]),
                                 ("logging", settings.values["logging"]["enabled"])):
             if active and excluded(settings.values[section]["directory"], exclusions, contains=True):
                 raise RuntimeIOError("excluded_destination")
         phase = "report_setup"
-        if settings.values["output"]["mode"] != "stdout":
-            sink = ReportSink(settings.values["output"]["directory"], settings.values["output"]["format"])
+        if settings.values["output"]["save"]:
+            sink = ReportSink(settings.values["output"]["directory"], "json")
             result.report_path = sink.path
         phase = "logging_setup"
         log = configure_logging(settings, "archive_update")
@@ -164,10 +165,12 @@ subtree. Required sink failures stop further work and never trigger another dest
             if request.scan_only:
                 for repo in report.repos:
                     repo.result = repo.action if not repo.eligible else "not run (scan only)"
+            elif approve is not None and not approve(conceal(updater.report_payload([report], "update", list(request.approved_prefixes)), result.protected)):
+                # Not approved: this folder's plan is shown, nothing in it changes, the run goes on.
+                result.declined += 1
+                for repo in report.repos:
+                    repo.result = repo.action if not repo.eligible else "not applied (not approved)"
             else:
-                if approve is not None and not approve(conceal(updater.report_payload([report], "update", list(request.approved_prefixes)), result.protected)):
-                    result.errors.append("approval_required")
-                    break
                 result.effects_possible |= any(repo.eligible for repo in report.repos)
                 emit = ((lambda text: progress(conceal(text, result.protected))) if progress is not None else None)
                 updater.run_updates(report, emit=emit, log=log, before_action=before_action)
@@ -193,7 +196,7 @@ subtree. Required sink failures stop further work and never trigger another dest
             result.report_path = None
         else:
             try:
-                sink.write(render_result(result, settings.values["output"]["format"],
+                sink.write(render_result(result, "json",
                                          show_remote_urls=show_remote_urls))
             except (RuntimeIOError, OSError):
                 sink.abort()

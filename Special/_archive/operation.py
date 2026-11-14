@@ -136,7 +136,7 @@ def execute_archive(item, settings, before_action, *, scan_only=False, progress=
     root, mode, prefixes = Path(item["root"]), item["mode"], item["approved_remote_prefixes"]
     if mode == "update" and not (item.get("reconcile") or item.get("rename_folders")):
         child = replace(copy.deepcopy(settings), component="archive_update")
-        child.values["output"]["mode"], child.values["logging"]["enabled"] = "stdout", False
+        child.values["output"]["save"], child.values["logging"]["enabled"] = False, False
         def verify():
             before_action()
             _scope(root, settings)
@@ -171,7 +171,8 @@ def execute_archive(item, settings, before_action, *, scan_only=False, progress=
         if not scan_only:
             preview = conceal(sync.build_report(detected, applied, issues, mode), _protected(settings))
             if approve is None or not approve(mode, preview):
-                return {"exit_code": 2, "effects_possible": False, "result": {"error": error_message("approval_required")}}
+                # Not approved: the plan is the result; nothing changed.
+                return {"exit_code": 0, "effects_possible": False, "approved": False, "result": preview}
             for local in detected.plan.to_pull:
                 if mode not in ("update", "sync"):
                     break
@@ -251,8 +252,8 @@ def _publish(item, settings, before_action, *, scan_only, progress, approve):
     if scan_only or not plan.to_push:
         return {"exit_code": 0, "effects_possible": False, "result": payload}
     if approve is None or not approve("publish", conceal(payload, _protected(settings))):
-        payload["error"] = error_message("approval_required")
-        return {"exit_code": 2, "effects_possible": False, "result": payload}
+        # Not approved: the plan is the result; nothing was pushed.
+        return {"exit_code": 0, "effects_possible": False, "approved": False, "result": conceal(payload, _protected(settings))}
     issues, effects = [], False
     def verify():
         nonlocal effects
@@ -316,13 +317,13 @@ def run_archives(settings, selected, *, scan_only=True, before_action=lambda: No
             _scope(Path(item["root"]), settings)
         phase = "stale"
         before_action()
-        for section, active in (("output", settings.values["output"]["mode"] != "stdout"),
+        for section, active in (("output", settings.values["output"]["save"]),
                                 ("logging", settings.values["logging"]["enabled"])):
             if active and excluded(settings.values[section]["directory"], settings.values["scope"]["exclude_paths"], contains=True):
                 raise RuntimeIOError("excluded_destination")
         phase = "report_setup"
-        if settings.values["output"]["mode"] != "stdout":
-            sink = ReportSink(settings.values["output"]["directory"], settings.values["output"]["format"],
+        if settings.values["output"]["save"]:
+            sink = ReportSink(settings.values["output"]["directory"], "json",
                               prefix=settings.component.replace("_", "-"))
             result.report_path = sink.path
         phase = "logging_setup"
@@ -381,7 +382,7 @@ def run_archives(settings, selected, *, scan_only=True, before_action=lambda: No
             result.report_path = None
         else:
             try:
-                sink.write(render_result(result, result.settings.values["output"]["format"]))
+                sink.write(render_result(result, "json"))
             except (RuntimeIOError, OSError):
                 sink.abort()
                 result.errors.append("report_write")
