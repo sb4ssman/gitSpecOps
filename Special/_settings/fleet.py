@@ -1,12 +1,12 @@
 """Common fleet settings adapters; no enrollment, network, inventory or implicit writes.
 
-load_fleet_settings returns an existing common snapshot, or None for a legacy-only home.
+load_fleet_settings returns an existing settings snapshot, or None when there is none.
 Its config(component) projects the saved sync/app selection into the existing runtime shape.
 save_fleet_config requires that snapshot (or its bound mutable view), preserves other owners,
 and rejects shared identity/transport changes affecting another enrolled component.
 
 Fleet state/catalogs remain in a separately selected directory. --config-dir never selects
-a common profile: --settings-home / GITSPECOPS_HOME do. Legacy files are never imported here.
+a settings profile: --settings-home / GITSPECOPS_HOME do.
 Raw dict contents are trusted local data; repr/summary omit secrets, paths and identities.
 """
 from __future__ import annotations
@@ -28,18 +28,19 @@ APP_OPTIONS = APP_REQUIRED | {"fetch_minutes", "share_names", "git_client", "pre
 
 
 def fleet_home(home=None):
-    """Choose common settings independently of the legacy fleet-state override."""
-    return select_home(home, component="sync", allow_legacy_sync_home=True)[0]
+    """Choose the settings profile; the fleet-state override does not move it."""
+    return select_home(home, component="sync")[0]
 
 
 def fleet_directory(directory=None, *, home=None):
-    """Select runtime/legacy state without creating it; explicit directory wins."""
+    """Select the fleet's runtime state folder without creating it; explicit directory wins,
+    then GITSPECOPS_SYNC_HOME, then sync-suggester/ in the settings profile."""
     if directory is None:
         directory = os.environ.get("GITSPECOPS_SYNC_HOME")
         if directory is None:
             directory = fleet_home(home) / "sync-suggester"
         elif not directory.strip() or not Path(directory).expanduser().is_absolute():
-            raise SettingsError("legacy sync directory must be an absolute nonempty path")
+            raise SettingsError("GITSPECOPS_SYNC_HOME must be an absolute nonempty path")
     if not str(directory).strip():
         raise SettingsError("fleet state directory must not be empty")
     return checked_path(Path(directory))

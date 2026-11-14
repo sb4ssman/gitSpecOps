@@ -74,12 +74,10 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(result.home_source, "environment")
         self.assertFalse(environment_home.exists())
 
-    def test_legacy_sync_home_is_not_silently_ignored_or_applied_to_other_components(self):
-        os.environ["GITSPECOPS_SYNC_HOME"] = str(self.root / "old-sync-home")
-        with self.assertRaises(subject.SettingsError):
-            subject.resolve_settings("sync")
-        self.assertEqual(subject.resolve_settings("sync", home=self.home).home, self.home)
-        self.assertEqual(subject.resolve_settings("archive_update").home, self.home)
+    def test_the_fleet_state_override_never_moves_the_settings_profile(self):
+        os.environ["GITSPECOPS_SYNC_HOME"] = str(self.root / "fleet-state")
+        for component in ("sync", "app", "archive_update"):
+            self.assertEqual(subject.resolve_settings(component).home, self.home)
         self.assertFalse(self.home.exists())
 
     def test_invalid_environment_is_an_error_without_default_fallback(self):
@@ -161,15 +159,13 @@ class SettingsTests(unittest.TestCase):
                 subject.resolve_settings()
         self.assertNotIn("private-marker", str(error.exception))
 
-    def test_legacy_settings_require_migration_instead_of_fresh_defaults(self):
-        legacy = self.home / "sync-suggester" / "fleet-app.json"
-        legacy.parent.mkdir(parents=True)
-        legacy.write_text("private-marker", encoding="utf-8")
-        with self.assertRaises(subject.SettingsError) as error:
-            subject.resolve_settings()
-        self.assertIn("migration", str(error.exception))
-        self.assertNotIn("private-marker", str(error.exception))
-        self.assertEqual(legacy.read_text(), "private-marker")
+    def test_files_from_older_versions_are_ignored(self):
+        old = self.home / "sync-suggester" / "fleet-app.json"
+        old.parent.mkdir(parents=True)
+        old.write_text("private-marker", encoding="utf-8")
+        resolved = subject.resolve_settings()
+        self.assertFalse(resolved.configured, "no settings.json: fresh defaults, nothing imported")
+        self.assertEqual(old.read_text(), "private-marker")
         self.assertFalse((self.home / subject.SETTINGS_NAME).exists())
 
     def test_summary_and_repr_do_not_disclose_paths_or_policy_values(self):
