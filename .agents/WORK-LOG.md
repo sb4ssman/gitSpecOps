@@ -2513,3 +2513,15 @@ No code changed; decisions recorded where they govern.
   machine with "migration preview has unresolved conflicts" (the profile is already in the
   current form); 5 uses plain prompts, not the station layout, and its logging question has
   no default.
+
+## 2026-11-13 19:10 - user (claude) - Settings migration removed; the prerequisite check rewritten
+- At the user's direction ("there are no users, not even me yet"): removed settings migration
+  and the existing-settings switch: Special/_settings/migration.py and existing.py, their tests,
+  the settings-migration-preview and settings-existing* actions with their flags, setup items 6
+  and 7, and updater setup's legacy-file detection (it refused a fresh profile beside older
+  files). README and the agent knowledge follow.
+- The prerequisite check named the org duplicator as gh's only user (stale) and printed bare
+  [ok] lines: now station rows, whether gh is actually signed in, and what each tool is for.
+- Not yet removed: older-format reading elsewhere (security --legacy-policy text lists, the
+  fleet's GITSPECOPS_SYNC_HOME config and `setup-fleet convert`, archive registry receipts,
+  the resolver's "migration required" refusal); inventoried for the user.

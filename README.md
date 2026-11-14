@@ -225,24 +225,9 @@ python3 _build/setup_gitspecops.py settings-save --root /path/to/archive --no-lo
 ```
 
 Guided setup reviews changes and requires typed `SAVE`. For assisted use, copy the preview id
-and keep the same target and options when saving; changed files invalidate it. Paths are hidden
-unless `--show-paths` is given. `settings-migration-preview` inspects an older profile's
-mapping. For an archive and security profile from an older version, use the reviewed
-existing-settings setup:
-
-```sh
-python3 _build/setup_gitspecops.py settings-existing
-python3 _build/setup_gitspecops.py settings-existing-plan --json
-```
-
-The plan changes nothing. Guided saving requires separate confirmation that older writers are
-stopped and the launcher plan was reviewed, then typed `SAVE`; assisted use has
-`settings-existing-save --approve '<review-id>' --legacy-writers-stopped --launcher-plan-reviewed`.
-The original bytes are kept under the selected user-data folder before shared settings are
-created. `settings-existing-status --switch-id '<review-id>'` inspects an interrupted switch, and
-`settings-existing-resume` finishes it. Add `--settings-home /path/to/profile` to select a
-profile. Profiles with existing fleet configuration need a separately reviewed conversion
-(`gitso setup-fleet convert`).
+and keep the same target and options when saving; a changed settings file invalidates it. Paths
+are hidden unless `--show-paths` is given. Add `--settings-home /path/to/profile` to select a
+profile.
 
 ## Security in detail
 

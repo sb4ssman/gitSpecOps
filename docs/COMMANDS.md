@@ -950,12 +950,10 @@ Run from this repository:
 
     python _build/setup_gitspecops.py     (or: run_setup.bat / run_setup.ps1 / run_setup.sh)
 
-With no arguments, choose the command-line bootstrap or an individual setup item.
+With no arguments, choose the walkthrough or an individual setup item.
 Non-interactive callers must name an action; --help never performs setup.
-Use settings for guided updater preferences, settings-preview/settings-save for reviewed
-noninteractive changes, and settings-migration-preview for read-only legacy mapping/readiness.
-settings-existing-plan/save/status/resume implement the reviewed archive/policy-only switch.
-The `bootstrap` action does two things:
+Use settings for guided updater preferences, and settings-preview/settings-save for reviewed
+noninteractive changes. The `bootstrap` action does two things:
 
   1. Creates a local virtual environment (.venv) with a predictable interpreter
      (and the desktop app's Qt). It prefers `uv sync` and falls back to the

@@ -12,7 +12,10 @@ while the version starts with 0, gitSpecOps is a development preview and anythin
 - **Basic commands listed:** status, fetch, pull, clone, reset-keep, commit and push.
 - **Tests on Windows, macOS and Linux** with GitHub Actions, and a generated command reference
   (`docs/COMMANDS.md`).
-- **Setup:** running one command returns to the setup menu afterwards.
+- **Setup:** every menu item returns to the setup menu afterwards. The prerequisite check
+  shows whether the GitHub CLI is signed in and what each tool is for.
+- **Removed:** settings migration and the existing-settings switch (`settings-migration-preview`,
+  `settings-existing*`): there are no users with older settings to convert.
 - **The map:** under each machine, its library (every organization and repository it holds,
   coloured by that copy's own state). A repository is flagged only for unfinished work: being
   absent from a machine is normal, and a clean copy on an old report is "unknown" but not
