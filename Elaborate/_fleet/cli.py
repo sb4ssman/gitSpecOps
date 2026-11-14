@@ -24,10 +24,11 @@ from pathlib import Path
 
 from Basic._console import enable_unicode_output  # noqa: E402
 from Basic._providers.github import GhError, run_gh  # noqa: E402
-from Special._settings.fleet import (fleet_directory, fleet_home, load_fleet_settings)  # noqa: E402
+from Special._settings.fleet import (ensure_fleet_settings, fleet_directory, fleet_home,  # noqa: E402
+                                    load_fleet_settings)
 from Special._sync.config import default_machine_id  # noqa: E402
-from Elaborate._fleet.config import (APP_CONFIG, DEFAULT_FOLDER_SECONDS, DEFAULT_LOCAL_PORT,  # noqa: E402
-                          DEFAULT_REPO_SECONDS, DEFAULT_TAILNET_PORT, describe, migrate,
+from Elaborate._fleet.config import (DEFAULT_FOLDER_SECONDS, DEFAULT_LOCAL_PORT,  # noqa: E402
+                          DEFAULT_REPO_SECONDS, DEFAULT_TAILNET_PORT, describe,
                           new_config, policy_record, recovery_policy, save_saved, validate)
 from Elaborate._fleet.peer import run_peer  # noqa: E402
 from Special._sync.lock import app_lock  # noqa: E402
@@ -40,39 +41,12 @@ from Elaborate._transport.repo import RepoTransport, create_state_repo  # noqa: 
 
 
 def load_saved(directory: Path, *, home=None) -> dict:
-    """Read the common app enrollment, otherwise the legacy-only app configuration.
-
-    Loading never writes. An older legacy format is converted in memory for this run only;
-    saving that conversion is the explicit `convert` command."""
+    """Read this machine's app enrollment from the settings profile. Loading never writes."""
     snapshot = load_fleet_settings(home)
-    if snapshot is not None:
-        config = snapshot.config("app")
-        if config is None:
-            raise ValueError("this machine is not enrolled; enroll it with: python Special/enroll_machine.py add <library folder>")
-        return validate(config)
-    directory = fleet_directory(directory, home=home)
-    path = directory / APP_CONFIG
-    if not path.exists():
-        raise ValueError("this machine is not enrolled; enroll it with: python Special/enroll_machine.py add <library folder>")
-    return validate(migrate(json.loads(path.read_text(encoding="utf-8"))))
-
-
-def command_convert(directory: Path, *, home=None) -> int:
-    """The deliberate conversion: rewrite an older legacy configuration in the current format."""
-    if load_fleet_settings(home) is not None:
-        print("This profile uses common settings; there is no legacy configuration to convert.")
-        return 0
-    path = fleet_directory(directory, home=home) / APP_CONFIG
-    if not path.exists():
-        raise ValueError("no saved configuration; run setup first")
-    saved = json.loads(path.read_text(encoding="utf-8"))
-    config = validate(migrate(saved))
-    if config == saved:
-        print("The saved configuration is already in the current format.")
-        return 0
-    save_saved(fleet_directory(directory, home=home), config, home=home)
-    print("Converted the saved configuration to the current format.")
-    return 0
+    config = snapshot.config("app") if snapshot is not None else None
+    if config is None:
+        raise ValueError("this machine is not enrolled; enroll it with: gitso enroll-machine add <library folder>")
+    return validate(config)
 
 
 def profile_arguments(directory, home=None):
@@ -129,7 +103,7 @@ def resolve_machine_identity(want_tailnet: bool) -> tuple[str, str]:
 
 def configure(args, directory: Path) -> dict:
     home = getattr(args, "settings_home", None)
-    snapshot = load_fleet_settings(home)
+    snapshot = ensure_fleet_settings(home)
     if snapshot is not None:
         if snapshot.config("app") is not None:
             raise ValueError("app enrollment already exists; resume it or select a settings command")
@@ -145,9 +119,6 @@ def configure(args, directory: Path) -> dict:
         if not args.no_tailnet:
             definitions["tailnet"] = {"port": args.tailnet_port, "allowed_login": None}
         snapshot.transport_changes("app", definitions)
-    path = directory / APP_CONFIG
-    if snapshot is None and path.exists():
-        raise ValueError(f"configuration exists at {path}; use 'run' to resume, or edit it")
     if not args.root:
         raise ValueError("select your repository library with --root PATH (repeatable)")
     if any(not Path(root).expanduser().is_dir() for root in args.root):
@@ -197,7 +168,7 @@ def configure(args, directory: Path) -> dict:
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--config-dir", type=Path, help="local fleet state and legacy input directory")
+    parser.add_argument("--config-dir", type=Path, help="local fleet state directory")
     parser.add_argument("--settings-home", type=Path, help="common profile; defaults to the user-data home")
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -237,7 +208,6 @@ def build_parser():
     commands.add_parser("rescan", help="request one deliberate local inventory refresh")
     commands.add_parser("safe-to-wipe",
                         help="fresh-fetch every observed checkout and report whether this machine is replaceable")
-    commands.add_parser("convert", help="save an older legacy configuration in the current format")
     commands.add_parser("leave", help="stop sharing with the fleet; the machine stays enrolled")
     status = commands.add_parser("status", help="what is set up, and what each next tier unlocks")
     status.add_argument("--json", action="store_true", help="the whole setup state, for agents and apps")
@@ -836,8 +806,6 @@ def _main(argv=None, stopping=None, on_ready=None, serve=None):
             atomic_write_bytes(directory / "fleet-rescan.request", b"inventory requested\n")
             print("Requested one local inventory refresh; the running peer will perform it.")
             return 0
-        if args.command == "convert":
-            return command_convert(directory, home=args.settings_home)
         if args.command == "transports":
             return command_transports(args, directory)
         if args.command == "baskets":

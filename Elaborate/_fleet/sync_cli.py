@@ -55,7 +55,7 @@ from Special._sync.observer import (DEFAULT_FETCH_TIMEOUT_SECONDS, DEFAULT_FETCH
 from Basic._console import enable_unicode_output  # noqa: E402
 from Basic._paths import sync_home  # noqa: E402
 from Special._archive.registry import registered_roots  # noqa: E402
-from Special._settings.fleet import fleet_directory, load_fleet_settings  # noqa: E402
+from Special._settings.fleet import ensure_fleet_settings, fleet_directory, load_fleet_settings  # noqa: E402
 from Special._settings import SettingsError  # noqa: E402
 from Basic._version import VERSION, check_for_update, version_line  # noqa: E402
 from Basic._providers._registry import provider_for_host, registered_hosts  # noqa: E402
@@ -116,7 +116,7 @@ def command_init(args: argparse.Namespace) -> int:
     config_dir = _config_dir(args)
     existing = None
     try:
-        snapshot = load_fleet_settings(getattr(args, "settings_home", None))
+        snapshot = ensure_fleet_settings(getattr(args, "settings_home", None))
         existing = load_config(config_dir, home=getattr(args, "settings_home", None))
         if snapshot is not None:
             if snapshot.document["schema_version"] != 2:

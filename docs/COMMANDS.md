@@ -517,8 +517,7 @@ Status:       working
     python Special/scan_tree.py /path/to/repo --settings-home /path/to/profile --json
     python Special/scan_tree.py /path/to/repo --staged --out /private/staged.json
 
-Common settings own saved policy; explicit --legacy-policy selects old text lists only when
-no common settings file exists. --out explicitly creates a full private report; no implicit
+The settings profile owns the saved policy. --out explicitly creates a full private report; no implicit
 report/log/config is written. See --help. Returns 0 checked, 1 findings, 2 incomplete/failure.
 Optional --engine gitleaks/betterleaks/trufflehog may be repeated; --engine none overrides
 saved selection. Engines are never installed automatically. Findings include masked location,
@@ -546,8 +545,7 @@ Status:       working
 
     python Special/scan_history.py /path/to/repo --settings-home /path/to/profile --json
 
-Common settings own saved policy; --legacy-policy explicitly selects old text lists without
-a common profile. Masked stdout is default; --out requests a full private report. --ref narrows
+The settings profile owns the saved policy. Masked stdout is default; --out requests a full private report. --ref narrows
 local reachable refs. No implicit report/log/config. Returns 0 checked, 1 findings, 2 incomplete.
 Optional --engine gitleaks/betterleaks/trufflehog may be repeated; --engine none overrides
 saved selection. Only already selected material is sent to an engine, without provider
@@ -685,7 +683,7 @@ Status:       working
     python Special/push_repo.py /path/to/repo --json
     python Special/push_repo.py /path/to/repo --apply --approve PLAN_ID
 
-Python 3.11+ and Git; --settings-home selects a profile, --legacy-policy is explicit. Preview
+Python 3.11+ and Git; --settings-home selects a profile. Preview
 reads only local scope/policy, writes no files and provides no outgoing security clearance.
 Apply needs the unchanged plan, fetches the selected remote and uses the same security gate as
 Archive Sync. Supports one matching upstream/push destination on an existing remote branch.
@@ -703,7 +701,7 @@ stdout, no report/log unless a later common output integration explicitly reques
 Join this enrolled machine to a fleet, change how it shares, or leave the fleet.
 
 Why:          joining the fleet is what lets machines see each other.
-Reads:        the common settings profile, or the legacy fleet configuration.
+Reads:        the settings profile.
 May change:   this machine's fleet settings; `transports` may create a private GitHub state repository;
               `peer` without --configure-only also starts the peer.
 Results:      messages on stdout.

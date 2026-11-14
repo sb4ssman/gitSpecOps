@@ -18,7 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from Special._runtime.files import checked_path, excluded, traverses_link
-from Special._settings import SETTINGS_NAME, SettingsError, _absolute, resolve_document, select_home, validate_document
+from Special._settings import (SCHEMA_VERSION, SETTINGS_NAME, SettingsError, _absolute, resolve_document,
+                               select_home, validate_document)
 from Special._settings.store import fingerprint, read_settings_document, write_settings
 
 SYNC_OPTIONS = {"root_recursion", "transport_names", "stale_hours", "expired_days", "compress_manifests"}
@@ -163,6 +164,16 @@ class FleetSettings:
             value.setdefault("fetch_minutes", 15)
             value.setdefault("share_names", True)
         return FleetConfig(value, self, component)
+
+
+def ensure_fleet_settings(home=None):
+    """The settings snapshot; on a machine with no settings file yet, an empty one is created
+    first, so fleet setup always saves to the profile and nowhere else."""
+    snapshot = load_fleet_settings(home)
+    if snapshot is None:
+        write_settings({"schema_version": SCHEMA_VERSION}, home=fleet_home(home))
+        snapshot = load_fleet_settings(home)
+    return snapshot
 
 
 def load_fleet_settings(home=None):
