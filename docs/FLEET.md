@@ -5,6 +5,68 @@ through its configured transports. It can also pull from other peers over Tailsc
 no central host. Closing a peer stops that machine's observation; other peers keep working and
 retain its last published state. Stale unfinished work remains visible.
 
+## The tray and the map
+
+One tray icon, one colour, one meaning:
+
+| Colour | Means |
+|---|---|
+| Green | This machine and the fleet are in order. |
+| Amber | Something waits for one decision from you. |
+| Red | Something is wrong; the tooltip says what. |
+
+Double-click opens the map in your browser, served only on this computer. Right-click to rescan,
+preview a catch-up, start at sign-in, or quit.
+
+The map shows your machines and the copies they hold. Copies of the same repository line up
+across machines, so "ahead here, behind there, missing on that one" is visible at a glance.
+Switch views: a zoomable map of clouds and machines; machines together; libraries; one
+organization across machines; one repository across machines. Choose any machine as the point
+of view. The **Security** tab scans the repositories you tick, and shows each scanner you could
+add with the command that installs it on your system.
+
+## How the fleet shares
+
+Every machine observes itself and writes **one file that it alone owns**; no machine is in charge
+of another. That single-writer rule is why there is no conflict-resolution code anywhere here.
+
+| Way to share | What carries the status | Needs | Gives you |
+|---|---|---|---|
+| **Tailscale** | your machines, directly | Tailscale | near-real-time; readable machine names |
+| **A synced folder** | a folder your sync client already replicates | any sync client | fast; no account |
+| **A managed repository** (experimental, untested) | a private GitHub repository, never cloned | your `gh` sign-in | status kept while every machine is off |
+
+Use as many as you can: each is another place a machine leaves its last report.
+
+```sh
+gitso enroll-machine          # this machine's library folders
+gitso setup-fleet             # join or start a fleet; choose how to share
+gitso suggest-fleet-sync      # every machine, as text
+gitso tray                    # the peer behind a tray icon, with the map
+gitso serve-web               # the map without a tray
+```
+
+**The map is local and needs nothing else running.** It is served on this computer only, from
+whatever status files it can read. A laptop shut for a week still appears, with its last known
+state and an honest "three days old". With your consent, the map can also be opened from your own
+Tailscale devices, and only those.
+
+**What crosses the wire.** Repositories are identified by `HMAC-SHA256(fleet key,
+host/owner/name)`, or for one with no usable remote, an HMAC of its root commit, so the only copy
+of something is still on the map. By default each record also names the repository, its branch
+and its commit, so every machine can show what the others hold. One setting (`--withhold-names`,
+or "no" during setup) turns that off. Never shared, either way: local paths, URLs, file names,
+diffs, commit messages or contents. A synced folder's provider can read whatever the status
+carries; setup says so beside the question. Details:
+[`.agents/knowledge/manifest-privacy.md`](../.agents/knowledge/manifest-privacy.md).
+
+- **Silence is never good news.** A report too old to trust never produces an "all clear"; stale
+  unfinished work keeps its warning.
+- **Machine freshness and remote freshness are separate clocks**, and the map says which is which.
+
+The fleet key is shown only when you ask: `gitso setup-fleet fleet-key --show`. Anyone, or any
+program, that reads it can join your fleet.
+
 ## Local security advice
 
 `gitso sync check` includes current working-file and cached-outgoing security advice using
@@ -295,7 +357,7 @@ dashboard on a worker thread. It offers no Git mutations. Off Windows, `tray` fa
 back to a foreground run. Linux also supports `Elaborate/start_at_login.py --systemd enable` as a user
 unit. Run as the interactive user so Git ownership, credentials, and sync-folder access match.
 Use a durable installation location before enabling startup for a packaged build.
-See [BUILD-DESKTOP.md](../packaging/BUILD-DESKTOP.md).
+See [BUILD-DESKTOP.md](../_build/BUILD-DESKTOP.md).
 
 ## Boundaries
 
@@ -316,3 +378,5 @@ dashboard is local to the machine, not an authentication boundary between its OS
 All skins consume `gitspecops.fleet.display`; they must not reclassify Git facts. See
 [DISPLAY-CONTRACT.md](DISPLAY-CONTRACT.md). Validate with `python tests/run_all.py` using a
 supported interpreter on the claimed platform; synthetic tests do not prove actual deployment.
+
+[Back to the README](../README.md)

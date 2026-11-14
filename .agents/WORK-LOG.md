@@ -2540,3 +2540,12 @@ No code changed; decisions recorded where they govern.
   fleet-app.json readers and writers, convert and migrate(); archive choices from the receipts
   file; legacy wording. Fleet setup and the first archive registration create an empty
   settings.json when none exists. Tests rewritten to the new behaviour; full suite 87/87.
+
+## 2026-11-13 21:10 - user (claude) - A short README; the detail lives in docs/
+- At the user's request (branch wave/readme-docs, on top of #2): README.md from 467 lines to
+  129 (pitch, map, how it works, what never happens, getting started, the grow-as-you-go
+  table, commands, a list of guides, license). The rest moved word for word into docs/: SETUP,
+  PROTECT, ARCHIVES, FOR-AI-AGENTS, ARCHITECTURE (safety model, layout, tests, contributing),
+  and FLEET (gained the tray-and-map and how-machines-share overview; its own catch-up section
+  replaces the README's duplicate). Every relative link checked; fixed a stale
+  ../packaging/BUILD-DESKTOP.md link in FLEET.md.
