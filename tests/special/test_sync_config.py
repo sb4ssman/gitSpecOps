@@ -139,8 +139,8 @@ with tempfile.TemporaryDirectory() as tmp:
         {"root": ""},
         {"root": "/archives/two"},
     ]}), encoding="utf-8")
-    check(registered_roots(registry) == ["/archives/one", "/archives/two"],
-          "registry import did not skip records without a usable root")
+    check(registered_roots(registry) == [],
+          "an old-format registry with no settings.json beside it registers nothing")
 
     # --- atomic write ---------------------------------------------------------------
     target = tmp / "atomic.json"

@@ -82,8 +82,7 @@ class FleetSettings:
 
     def summary(self):
         return {"common_settings": True, "enrolled_components": [name for name in ("sync", "app")
-                if self.document.get("components", {}).get(name, {}).get("options")],
-                "changes_legacy_files": False}
+                if self.document.get("components", {}).get(name, {}).get("options")]}
 
     def check_identity(self, machine_id=None, label=None, secret=None):
         """Per-component setup cannot replace an existing shared machine identity."""
@@ -177,7 +176,7 @@ def ensure_fleet_settings(home=None):
 
 
 def load_fleet_settings(home=None):
-    """Guard an existing common document; an absent one alone permits legacy readers."""
+    """Guard an existing settings document."""
     selected = fleet_home(home)
     path = checked_path(selected / SETTINGS_NAME)
     if not path.exists() and not path.is_symlink():
@@ -187,7 +186,7 @@ def load_fleet_settings(home=None):
 
 
 def save_fleet_config(config, *, component, home=None, snapshot=None):
-    """Save an approved component choice to an existing common profile, never a legacy copy.
+    """Save an approved component choice to an existing settings profile.
 
     Shared identity cannot be replaced by per-component setup. A selected transport used by
     another enrolled component cannot be changed here. Removing a selection retains its shared

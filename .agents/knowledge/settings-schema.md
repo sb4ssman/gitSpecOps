@@ -14,11 +14,16 @@ Importing these modules performs no settings I/O.
 
 ## Location and read behavior
 
-Retired 2026-11-13, at the user's direction: settings migration (`migration.py`, the
-`settings-migration-preview` action) and the archive/policy existing-settings switch
-(`existing.py`, the `settings-existing*` actions). gitSpecOps has no users with older
-settings, so nothing is converted. What remains below on older-format reading is still in
-the code and is listed for removal separately.
+**Authoritative, 2026-11-13: settings.json is the only place settings live.** At the user's
+direction ("there are no users, not even me yet"), every older-format path was removed:
+settings migration and the existing-settings switch; `--legacy-policy` and the old
+`security/never_publish.txt` / `safe.txt` lists; the resolver's "migration required" refusal
+and its `GITSPECOPS_SYNC_HOME` block (that variable now only moves the fleet's runtime state);
+the fleet's `config.json` / `fleet-app.json`, `setup-fleet convert` and config `migrate()`;
+archive choices kept in the receipts file. Without settings.json nothing is enrolled or
+registered; fleet setup and the first archive registration create an empty profile. Where
+the sections below describe legacy files, adapters or conversions, they are history, not
+current behaviour.
 
 One `settings.json` lives under the selected gitSpecOps user-data home, outside the source
 checkout. Selection is explicit caller `home`, then `GITSPECOPS_HOME`, then the established

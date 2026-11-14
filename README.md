@@ -248,8 +248,6 @@ gitso scan-history /path/to/repo --json
   (a personal site that names a project); every other repository still blocks them.
 - **Reports.** `--out` writes a full private JSON report, only where you say: outside Git, storage
   you control; inside Git, an ignored and untracked path. Existing files and links are refused.
-- **Older profiles.** `--legacy-policy` reads an unmigrated profile's text lists without changing
-  them.
 
 **Reviews.** For a documented example or a test fixture, review that exact finding:
 
