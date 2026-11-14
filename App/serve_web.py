@@ -37,10 +37,20 @@ def manifests_only(args) -> int:
     transport, label = open_transport(config, None)
     if transport is None:
         raise ValueError("no published status to show; set a transport with "
-                         "Elaborate/publish_status.py init")
+                         "gitso publish-status init")
     return serve(transport, config, load_catalog(config_dir), port=args.port or DEFAULT_PORT,
                  open_browser=not args.no_browser,
                  settings={"transport": label, "root_count": len(config.get("roots") or [])})
+
+
+def _setup_needed(args, url) -> None:
+    """Said once, while the page keeps serving: a record for a program, a line for a person."""
+    from Basic import _cli
+    if _cli.machine(args):
+        _cli.print_json(_cli.document("serve-web", True, setup_needed=True, url=url))
+    else:
+        from Basic._station import notice
+        notice("Not set up yet", f"Open {url} to set this machine up.", "warning")
 
 
 def with_peer(args) -> int:
@@ -53,11 +63,12 @@ def with_peer(args) -> int:
         signal.signal(getattr(signal, name), lambda *_: stopping.set())
     return run_app(args.config_dir, args.settings_home, stopping=stopping, remote=args.remote,
                    web="tailnet" if args.remote else "loopback",
-                   on_setup=lambda url: print(f"This machine is not set up yet. Open {url}", flush=True))
+                   on_setup=lambda url: _setup_needed(args, url))
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="gitso serve-web", description=__doc__.split("\n", 1)[0])
+    from Basic import _cli
+    parser = _cli.parser("serve-web", __doc__.split("\n", 1)[0])
     parser.add_argument("--config-dir", type=Path, help="local fleet state directory")
     parser.add_argument("--settings-home", type=Path, help="common profile; defaults to the user-data home")
     parser.add_argument("--remote", action="store_true",
@@ -70,8 +81,7 @@ def main(argv=None) -> int:
     try:
         return manifests_only(args) if args.manifests_only else with_peer(args)
     except (OSError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+        return _cli.fail(args, "serve-web", f"{exc}.")
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ STATE_COLOURS = {
     "error": (225, 60, 60),
 }
 
-SETUP_HINT = "Enroll it: python Special/enroll_machine.py add <library folder>."
+SETUP_HINT = "Enroll it: gitso enroll-machine add <library folder>, or run setup."
 #: (what the peer said, what the person reads). The peer's own text can carry paths, so it is
 #: never shown; a known cause gets a fixed sentence, anything else the generic one.
 KNOWN_FAILURES = (
@@ -37,12 +37,12 @@ KNOWN_FAILURES = (
      "Another gitSpecOps peer is already running for this profile."),
     (("address already in use", "only one usage of each socket address", "10048", "errno 98"),
      "The dashboard port is in use by another program. Choose another port with "
-     "Elaborate/setup_fleet.py peer --configure-only."),
+     "gitso enroll-machine add --port PORT."),
     (("unsupported fleet app configuration", "invalid", " must ", "older format"),
-     "The saved fleet settings are not valid. Elaborate/doctor.py shows them; "
-     "Elaborate/setup_fleet.py fixes them."),
+     "The saved fleet settings are not valid. gitso doctor shows them; "
+     "gitso setup-fleet fixes them."),
 )
-GENERIC_FAILURE = ("gitSpecOps stopped unexpectedly. Run Elaborate/peer.py in a terminal to "
+GENERIC_FAILURE = ("gitSpecOps stopped unexpectedly. Run gitso peer run in a terminal to "
                    "see why.")
 
 

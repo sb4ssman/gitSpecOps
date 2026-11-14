@@ -38,11 +38,14 @@ def check(label, cond):
         FAILS.append(label)
 
 
+NO_TERMINAL = patch.object(sys, "stdin", type("NoTerminal", (), {"isatty": staticmethod(lambda: False)})())
+
+
 def expect_parse_error(argv):
     """parse_args should exit(2) for a bad flag combination."""
     err = io.StringIO()
     try:
-        with redirect_stderr(err), redirect_stdout(io.StringIO()):
+        with redirect_stderr(err), redirect_stdout(io.StringIO()), NO_TERMINAL:
             parse_args(argv)
     except SystemExit as exc:
         return exc.code == 2
@@ -51,7 +54,7 @@ def expect_parse_error(argv):
 
 def expect_ok(argv):
     try:
-        with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
+        with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()), NO_TERMINAL:
             return parse_args(argv)
     except SystemExit:
         return None
@@ -61,20 +64,23 @@ def expect_ok(argv):
 check("--batch + --single rejected", expect_parse_error(["--batch", "--single", "a/b"]))
 check("--parallel 0 rejected", expect_parse_error(["--batch", "--parallel", "0"]))
 check("--parallel 9 rejected", expect_parse_error(["--batch", "--parallel", "9"]))
-check("--yes --batch without --namespaces rejected",
-      expect_parse_error(["--batch", "--yes", "--dest", "/tmp/x"]))
-check("--yes --batch without --dest rejected",
-      expect_parse_error(["--batch", "--yes", "--namespaces", "all"]))
-check("--yes --single without --dest rejected",
-      expect_parse_error(["--single", "a/b", "--yes"]))
-check("--yes with no batch/single flag rejected", expect_parse_error(["--yes"]))
+# These run without a terminal, as a program would: nobody can be asked.
+check("--batch without a terminal and without --namespaces rejected",
+      expect_parse_error(["--batch", "--dest", "/tmp/x"]))
+check("--batch without a terminal and without --dest rejected",
+      expect_parse_error(["--batch", "--namespaces", "all"]))
+check("--single without a terminal and without --dest rejected",
+      expect_parse_error(["--single", "a/b"]))
+check("--apply with no batch/single flag rejected", expect_parse_error(["--apply", "0123456789ab"]))
+check("--yes is gone", expect_parse_error(["--batch", "--namespaces", "all", "--dest", "/tmp/x", "--yes"]))
 
 # ---- parser: accepted ----
-a = expect_ok(["--batch", "--namespaces", "all", "--dest", "/tmp/x", "--yes"])
-check("full batch line parses", a is not None and a.yes and a.namespaces == "all")
+a = expect_ok(["--batch", "--namespaces", "all", "--dest", "/tmp/x"])
+check("full batch line parses and takes defaults", a is not None and a.yes and a.namespaces == "all")
 check("no flags -> nothing set", (lambda n: not n.batch and n.namespaces is None
-                                  and n.dest is None and not n.yes)(expect_ok([])))
-b = expect_ok(["--batch", "--no-private", "--forks", "--format", "mirror", "--parallel", "5"])
+                                  and n.dest is None and n.apply is None)(expect_ok([])))
+b = expect_ok(["--batch", "--namespaces", "all", "--dest", "/tmp/x", "--no-private", "--forks",
+               "--format", "mirror", "--parallel", "5"])
 check("--no-private -> False", b is not None and b.private is False)
 check("--forks -> True", b is not None and b.forks is True)
 check("--format mirror kept", b is not None and b.format == "mirror")

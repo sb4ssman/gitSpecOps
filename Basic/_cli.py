@@ -224,7 +224,7 @@ def report(args, command: str, *, ok: bool, page: str, message: str, context=(),
         record["output"] = output.strip()
 
     def screen():
-        from Basic._station import banner, line, notice, row, say
+        from Basic._station import banner, clean, notice, row, say
         banner(page, *context)
         if rows:
             say()
@@ -233,7 +233,7 @@ def report(args, command: str, *, ok: bool, page: str, message: str, context=(),
         if output.strip():
             say()
             for text in output.strip().splitlines():
-                line(text, "detail")
+                say("  " + clean(text), "detail")
         notice("Done" if ok else "Failed", message, "success" if ok else "error")
 
     emit(args, record, screen)
@@ -396,11 +396,11 @@ class Out:
             record["lines"] = list(self.lines)
 
         def screen():
-            from Basic._station import banner, line, notice, say
+            from Basic._station import banner, clean, notice, say
             banner(self.page, *self.context)
             say()
             for text in self.lines:
-                line(text) if text.strip() else say()
+                say("  " + clean(text))
             if rows:
                 outline("Details", self.fields)
             if message:

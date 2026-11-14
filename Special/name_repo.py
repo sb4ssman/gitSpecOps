@@ -3,7 +3,7 @@
 Why:          fleet rows for repositories never cloned here would otherwise show only an id.
 Reads:        the local catalog.
 May change:   the local catalog only.
-Results:      the new name, or the catalog listing.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 

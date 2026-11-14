@@ -33,6 +33,31 @@ from Basic._confirm import (
 )
 from Basic._console import PRINT_LOCK, format_size
 from Basic._station import banner
+
+#: What the last batch or single run planned, for its one JSON record (command.py reads it).
+RESULT: dict = {}
+
+
+def _approved(args, plan, question) -> bool:
+    """The shared approval (Basic/_cli.py): --apply PLAN_ID, or yes at a terminal."""
+    from Basic import _cli
+    identity = _cli.plan_id(plan)
+    given = getattr(args, "apply", None)
+    RESULT.update(plan=plan, plan_id=identity)
+    if given is not None:
+        if given == identity:
+            return True
+        RESULT["code"] = _cli.PLAN_CHANGED
+        print(f"The plan changed since that id was given; nothing was downloaded. Its new id: {identity}")
+        return False
+    if args is None or _cli.interactive(args):
+        if _cli.confirm(question):
+            return True
+        print("Nothing was downloaded.")
+        return False
+    RESULT["apply"] = _cli.apply_line("duplicate-org", getattr(args, "argv", []), identity)
+    print(f"Nothing was downloaded. To start this plan: {RESULT['apply']}")
+    return False
 from Basic._providers.github import (
     check_repo_for_lfs,
     list_my_orgs,
@@ -97,8 +122,8 @@ def _prompt_parallel():
 
 
 def ask_filters(args=None, assume_yes=False):
-    """Resolve the batch filters/options: a flag value wins, then (with --yes) a default,
-    otherwise the interactive prompt. Applies to every org in the batch."""
+    """Resolve the batch filters/options: a flag value wins, then (with nobody to ask) a
+    default, otherwise the interactive prompt. Applies to every org in the batch."""
     def resolved(attr, default, prompter):
         value = getattr(args, attr, None)
         if value is not None:
@@ -316,11 +341,10 @@ def run_batch_download(args=None):
     if total_repos == 0:
         print("Nothing to download (check your filter answers). No changes made.")
         return
-    print()
-    if assume_yes:
-        print('Starting the batch download (--yes).')
-    elif prompt_input('Type "YES" to start the batch download: ') != "YES":
-        print("Aborted. Nothing was downloaded.")
+    plan = {"action": "batch", "destination": str(root), "format": getattr(args, "format", None),
+            "namespaces": [{"org": item["org"], "error": item["error"],
+                            "repos": sorted(repo["name"] for repo in item["repos"])} for item in inventory]}
+    if not _approved(args, plan, f"Download {total_repos} repositories?"):
         return
 
     # ---- Download pass ----
@@ -463,7 +487,7 @@ def run_single_repo(spec, root, args=None):
 
     if root is None:
         if assume_yes:
-            print("✗ --yes with --single requires --dest.")
+            print("✗ --single without a terminal needs --dest.")
             return
         root = prompt_for_directory(
             "Parent directory (an <owner>/<repo> subfolder will be created inside): ",
@@ -491,11 +515,8 @@ def run_single_repo(spec, root, args=None):
         use_mirror = False
     else:
         use_mirror = prompt_clone_format()
-    print()
-    if assume_yes:
-        print(f"Downloading {owner}/{repo['name']} into {org_dir} (--yes).")
-    elif prompt_input(f'Type "YES" to download {owner}/{repo["name"]} into {org_dir}: ') != "YES":
-        print("Aborted. Nothing was downloaded.")
+    plan = {"action": "single", "repository": f"{owner}/{repo['name']}", "into": org_dir, "mirror": use_mirror}
+    if not _approved(args, plan, f"Download {owner}/{repo['name']} into {org_dir}?"):
         return
     try:
         os.makedirs(org_dir, exist_ok=True)

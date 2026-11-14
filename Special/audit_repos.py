@@ -3,7 +3,7 @@
 Why:          the repositories with no origin are exactly the ones an inventory forgets.
 Reads:        every repository under the saved or given roots.
 May change:   nothing.
-Results:      a report on stdout, or --json; exit 1 when something needs a look.
+Results:      JSON without a terminal (or with --json); a screen at one. Exit 1 when something needs a look.
 Layer:        Special: this machine, once.
 Status:       working
 

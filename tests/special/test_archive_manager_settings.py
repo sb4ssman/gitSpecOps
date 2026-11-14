@@ -390,7 +390,7 @@ class ManagerSettingsTests(unittest.TestCase):
             "--config-dir", str(config), "init", "--from-archives", "--machine-id", "machine-a",
             "--machine-label", "fixture"], cwd=self.root, env=environment, capture_output=True, text=True)
         self.assertEqual(done.returncode, 2)
-        self.assertIn("no initialization was performed", done.stderr)
+        self.assertIn("no initialization was performed", " ".join(done.stdout.split()))  # one result, wrapped on a screen
         self.assertNotIn("private-broken", done.stderr)
         self.assertNotIn("Traceback", done.stderr)
         self.assertFalse(config.exists())

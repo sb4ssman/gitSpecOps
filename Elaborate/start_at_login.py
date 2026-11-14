@@ -3,7 +3,7 @@
 Why:          a fleet whose peers are not running knows nothing.
 Reads:        this user's login items.
 May change:   this user's login items only (never system-wide).
-Results:      JSON on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 

@@ -1,19 +1,17 @@
-"""Fast-forward eligible existing repositories in one or more local archives.
+"""Fast-forward the eligible repositories in folders of clones; shows the plan first.
 
 Why:          reference collections fall behind; only safe fast-forwards should catch them up.
-Reads:        the archive's checkouts.
-May change:   without --scan-only: fast-forward of clean, eligible checkouts.
-Results:      a result on stdout, or --json; reports and logs as settings choose.
+Reads:        the folders' checkouts.
+May change:   once a folder's plan is approved: fast-forward of clean, eligible checkouts.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/update_archive.py --help
-    python Special/update_archive.py --root /path/to/archive --scan-only
+    gitso update-archive --root /path/to/archive                   (shows the plan)
+    gitso update-archive --root /path/to/archive --apply PLAN_ID
 
-Without --scan-only this updates clean eligible checkouts. It does not clone missing repos.
-Saved roots/output/logging preferences are optional. --json gives a machine-readable result;
---no-report forces stdout only and --no-log disables operational logging. Reports are off by
-default; local counts-only logs default on. Importing performs no operation.
+It never clones missing repositories (sync-archive --sync does). --save-report also saves the
+run's report as a JSON file; the counts-only log is on unless --no-log. Importing does nothing.
 """
 from pathlib import Path
 import sys

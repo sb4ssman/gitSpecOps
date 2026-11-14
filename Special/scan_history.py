@@ -3,7 +3,7 @@
 Why:          anything ever committed stays in history, published or not.
 Reads:        every commit reachable from local refs, and the shared security policy.
 May change:   nothing.
-Results:      masked findings on stdout, or --json; a full private report only with --out.
+Results:      JSON without a terminal (or with --json); a screen at one. A full private report only with --out.
 Layer:        Special: this machine, once.
 Status:       working
 

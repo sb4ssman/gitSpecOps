@@ -3,7 +3,7 @@
 Why:          the first question when the fleet looks wrong is what this machine thinks it is.
 Reads:        the fleet configuration; peers on the tailnet.
 May change:   nothing.
-Results:      text on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 

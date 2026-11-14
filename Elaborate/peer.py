@@ -4,7 +4,7 @@ Why:          the fleet only knows what running peers tell it.
 Reads:        the observed repositories, peers' published status, the tailnet when it is up.
 May change:   nothing in your repositories; writes its own state and manifests. Catch-up runs only
               where a standing consent allows it. `rescan` asks a running peer for one inventory.
-Results:      log lines on stdout. The web view and tray are App's: App/serve_web.py, App/tray.py.
+Results:      while running, log lines on stdout; errors as JSON without a terminal. The web view and tray: gitso serve-web, gitso tray.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 

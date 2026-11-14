@@ -149,10 +149,10 @@ class EnrollmentTests(unittest.TestCase):
                          "joining a fleet never changes the machine's libraries")
 
     def test_fleet_setup_requires_an_enrolled_machine(self):
-        with redirect_stdout(io.StringIO()), patch("sys.stderr", new_callable=io.StringIO) as errors:
+        with redirect_stdout(io.StringIO()) as said, patch("sys.stderr", new_callable=io.StringIO):
             code = fleet_main(["--settings-home", str(self.home), "--config-dir", str(self.state), "setup"])
         self.assertEqual(code, 2)
-        self.assertIn("enroll_machine.py add", errors.getvalue())
+        self.assertIn("gitso enroll-machine add", " ".join(said.getvalue().split()))
 
 
 if __name__ == "__main__":

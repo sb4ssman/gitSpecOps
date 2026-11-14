@@ -3,7 +3,7 @@
 Why:          a fleet converges only when each machine knows what it is missing.
 Reads:        published manifests; the local catalog.
 May change:   the local catalog's names, unless --no-record.
-Results:      a report on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 

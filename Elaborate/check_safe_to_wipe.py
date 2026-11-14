@@ -3,7 +3,7 @@
 Why:          unknown is never an all-clear: work must exist on a remote or in a recovery snapshot.
 Reads:        every repository under the configured roots, freshly fetched; recovery snapshots.
 May change:   nothing in your repositories (fetch updates remote-tracking refs only).
-Results:      a report on stdout; exit 1 unless safe.
+Results:      JSON without a terminal (or with --json); a screen at one. Exit 1 unless safe.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 

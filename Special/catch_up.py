@@ -2,13 +2,14 @@
 
 Why:          behind-only checkouts are the one change that is always safe to make for you.
 Reads:        the observed repositories (saved roots and baskets, or --root).
-May change:   with --apply --yes: fast-forward of clean, behind-only checkouts. Fetch updates
-              remote-tracking refs only. Never commits, merges, rebases or resets.
-Results:      the plan, then the results, on stdout.
+May change:   once its plan is approved: fast-forward of clean, behind-only checkouts. Fetch
+              updates remote-tracking refs only. Never commits, merges, rebases or resets.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/catch_up.py --help
+    gitso catch-up                    (shows the plan; at a terminal, asks)
+    gitso catch-up --apply PLAN_ID    (applies exactly that plan)
 """
 from pathlib import Path
 import sys

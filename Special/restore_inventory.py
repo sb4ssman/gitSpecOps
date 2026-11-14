@@ -3,7 +3,7 @@
 Why:          rebuilding a library from an inventory should never clone over anything.
 Reads:        an inventory file.
 May change:   with --apply: new clones only, into the chosen folders.
-Results:      JSON without a terminal (or with --json); a screen at one. Plan first, then --apply.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 

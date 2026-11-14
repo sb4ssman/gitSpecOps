@@ -9,7 +9,7 @@
 import io
 import os
 import sys
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -274,10 +274,10 @@ def test_without_a_system_tray_the_command_steps_aside():
     if QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
         print("skip: a real system tray is available; not starting a peer from a test")
         return
-    errors = io.StringIO()
-    with redirect_stderr(errors):
+    said = io.StringIO()
+    with redirect_stdout(said):
         code = qt.main([])
-    check(code == 2 and "serve_web" in errors.getvalue(), errors.getvalue())
+    check(code == 2 and "serve-web" in said.getvalue(), said.getvalue())
     del app
 
 

@@ -9,14 +9,16 @@ this module also delegates to the app/fleet command interface. Run --help for th
 Importing does not authorize enrollment, watching, capture or repository changes.
 
 `check` also reads local working files and cached outgoing history with shared security policy.
-`check --json` returns {schema_version, manifest, local_security, artifacts}; only manifest is
-published. Findings are masked/local-only and do not suppress sync facts or authorize actions.
+Without a terminal (or with --json) each run prints one record; `check` holds {manifest,
+local_security}; only the manifest is published. Findings are masked/local-only and do not
+suppress sync facts or authorize actions.
 Watch and stored-manifest views do not perform this security checking.
 """
 
 from __future__ import annotations
 
 import argparse
+import builtins
 import json
 import signal
 import sys
@@ -52,6 +54,7 @@ from Special._sync.manifest import build_manifest, fleet_id_for, is_fleet_secret
 from Special._sync.observer import (DEFAULT_FETCH_TIMEOUT_SECONDS, DEFAULT_FETCH_WORKERS, RootSpec,
                       observe_roots)
 
+from Basic import _cli  # noqa: E402
 from Basic._console import enable_unicode_output  # noqa: E402
 from Basic._paths import sync_home  # noqa: E402
 from Special._archive.registry import registered_roots  # noqa: E402
@@ -60,6 +63,16 @@ from Special._settings import SettingsError  # noqa: E402
 from Basic._version import VERSION, check_for_update, version_line  # noqa: E402
 from Basic._providers._registry import provider_for_host, registered_hosts  # noqa: E402
 PREVIEW_MACHINE_ID = "local-preview"
+
+#: The run's collector (Basic/_cli.Out): what a subcommand prints becomes part of its one result.
+_OUT = None
+
+
+def print(*parts, file=None, **options):  # noqa: A001  (this module's prints go to the one result)
+    if _OUT is not None:
+        _OUT.say(*parts)
+    else:
+        builtins.print(*parts, file=file, **options)
 
 
 def command_version(args: argparse.Namespace) -> int:
@@ -230,8 +243,8 @@ def command_init(args: argparse.Namespace) -> int:
         return 2
     print(f"Configuration written: {written}")
     shown = {**config, "fleet_secret": "(hidden)"}
-    print(json.dumps(shown, indent=2, sort_keys=True))
-    print()
+    if _OUT is not None:
+        _OUT.data(config=shown)
     if args.fleet_secret or machine:
         print(f"Joined fleet {fleet_id_for(config['fleet_secret'])}.")
     else:
@@ -246,7 +259,7 @@ def command_fleet_key(args):
     config = load_config(_config_dir(args), home=getattr(args, "settings_home", None))
     if config is None:
         raise SettingsError("no configured fleet key")
-    print(json.dumps(fleet_key_record(config["fleet_secret"], show=args.show), indent=2))
+    _OUT.data(**fleet_key_record(config["fleet_secret"], show=args.show))
     return 0
 
 
@@ -319,7 +332,8 @@ def command_check(args: argparse.Namespace) -> int:
     specs, source = resolved.specs, resolved.source
     transport, machine_id, machine_label = (resolved.transport, resolved.machine_id,
                                             resolved.machine_label)
-    status_stream = sys.stderr if args.json else sys.stdout
+    machine_readable = _cli.machine(args)
+    status_stream = sys.stderr if machine_readable else sys.stdout
 
     if args.fetch:
         print(f"Fetching remote refs for repositories in {len(specs)} root(s) — this is the "
@@ -351,14 +365,14 @@ def command_check(args: argparse.Namespace) -> int:
         published = transport.write_own_manifest(
             machine_id, manifest, compress=bool((config or {}).get("compress_manifests")))
 
-    if args.json:
-        print(json.dumps({"schema_version": 1, "manifest": manifest, "local_security": security,
-                          "artifacts": []}, indent=2, sort_keys=True))
+    _OUT.data(manifest=manifest, local_security=security, artifacts=[])
+    if machine_readable:
+        pass
     elif transport is not None and not args.local_only:
         print(_dashboard_text(transport, config, merged, own=manifest, show_all=args.all, local_security=security))
     else:
         print(render_table(manifest, merged, branches, security=security))
-    if not args.json:
+    if not machine_readable:
         print("\n" + render_advice(security))
 
     print(f"\nObserved {len(observation.repositories)} repositor(ies) from {source}.",
@@ -505,13 +519,16 @@ def command_doctor(args: argparse.Namespace) -> int:
             m["machine_id"] for m in manifests
             if report.get("fleet_id") and m.get("fleet_id") != report["fleet_id"])
         report["manifest_issues"] = issues
-    print(json.dumps(report, indent=2, sort_keys=True))
+    _OUT.data(**report)
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__,
+    public = sys.argv[0] if sys.argv[0].startswith("gitso ") else "gitso publish-status"
+    parser = argparse.ArgumentParser(prog="gitso" if public.split(" ", 1)[1] in PAGES else public,
+                                     description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
+    _cli.add_json(parser)
     parser.add_argument("--config-dir", help="override the local state directory "
                                              f"(default: {sync_home()})")
     parser.add_argument("--settings-home", type=Path, help="select common settings independently of local fleet state")
@@ -571,7 +588,6 @@ def build_parser() -> argparse.ArgumentParser:
                        help=f"parallel fetches (default {DEFAULT_FETCH_WORKERS})")
     check.add_argument("--fetch-timeout", type=int, default=DEFAULT_FETCH_TIMEOUT_SECONDS,
                        help=f"seconds per fetch (default {DEFAULT_FETCH_TIMEOUT_SECONDS})")
-    check.add_argument("--json", action="store_true", help="local result with manifest and masked local_security; only manifest is shared")
     check.set_defaults(handler=command_check)
 
     key = subparsers.add_parser("fleet-key", help="inspect configured key metadata; no logs or writes")
@@ -604,8 +620,15 @@ def build_parser() -> argparse.ArgumentParser:
     converge.add_argument("--no-catalog", action="store_true",
                           help="do not record newly identified names locally")
     converge.set_defaults(handler=command_converge)
-
+    for sub in subparsers.choices.values():
+        _cli.add_json(sub, sub=True)
     return parser
+
+
+#: Each subcommand's page title on a screen.
+PAGES = {"version": "Version", "init": "Publish status  /  Set up", "check": "Publish status",
+         "fleet-key": "Fleet key", "dashboard": "Fleet dashboard", "doctor": "Doctor",
+         "converge": "Suggest fleet sync"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -613,13 +636,25 @@ def main(argv: list[str] | None = None) -> int:
     # anything prints; otherwise a successful scan dies on its own output. See Basic/_console.py.
     enable_unicode_output()
     argv = list(sys.argv[1:] if argv is None else argv)
-    args = build_parser().parse_args(argv)
+    return run(build_parser().parse_args(argv))
+
+
+def run(args) -> int:
+    """One parsed subcommand, finished as one result: a JSON record or a screen."""
+    global _OUT
+    program = sys.argv[0] if sys.argv and sys.argv[0].startswith("gitso ") else ""
+    name = program.split(" ", 1)[1] if program else f"publish-status {args.command}"
+    out = _cli.Out(args, name, PAGES.get(args.command, "Fleet"))
+    _OUT = out
     try:
-        return args.handler(args)
+        code = args.handler(args)
     except (OSError, ValueError) as exc:
+        _OUT = None
         message = str(exc) if isinstance(exc, SettingsError) else "operation failed; no alternate settings profile was used"
-        print(f"error: {message}", file=sys.stderr)
-        return 2
+        return _cli.fail(args, name, message[0].upper() + message[1:] + ".")
+    finally:
+        _OUT = None
+    return out.finish(code == 0, code, rows=args.command in ("doctor", "fleet-key"))
 
 
 if __name__ == "__main__":

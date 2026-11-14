@@ -5,7 +5,7 @@ Reads:        the repositories under the saved roots; the configured transport (
               private GitHub state repository).
 May change:   the transport's copy of this machine's manifest (status facts and salted ids only).
               `init` saves settings and may create the private state repository.
-Results:      a table on stdout, or --json.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 

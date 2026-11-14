@@ -19,7 +19,7 @@ Modes (CLI):
   --sync            + clone repos missing locally (update implied)
   --reconcile       + rewrite stale origin URLs to the canonical upstream
   --rename-folders  + rename local folders to match the upstream name (guarded)
-  --yes             approve explicit actions outside a terminal; otherwise review a masked plan
+  --apply PLAN_ID   carry out a plan; otherwise each folder's masked plan is shown (asked at a terminal)
 
 Updating existing repos is host-agnostic and works with no provider. Discovery/clone/reconcile
 require a provider for the repos' host; where none exists the archive degrades to update-only.

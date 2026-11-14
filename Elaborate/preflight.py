@@ -3,7 +3,7 @@
 Why:          setup should offer only what will work.
 Reads:        tool availability and local folders.
 May change:   nothing.
-Results:      text on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 

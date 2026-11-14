@@ -7,7 +7,7 @@ Reads:        the settings profile; `find` reads folder names where you tell it 
 May change:   the profile's machine identity, libraries and presentation choices (what the
               tray opens; the web view off, on this machine, or on your tailnet). Never a
               repository, and never a fleet: joining one is Elaborate/setup_fleet.py.
-Results:      text on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 

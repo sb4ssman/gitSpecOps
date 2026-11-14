@@ -1,21 +1,20 @@
-"""Plan archives or explicitly update, sync, repair or publish them.
+"""Plan, then apply, updates, clones, repairs or publication for folders of clones.
 
 Why:          an archive should match what its host says should be there.
 Reads:        the archive's checkouts and the host's repository list (through gh).
-May change:   with the chosen action: clones, fast-forwards, origin repairs; with --publish, checked non-forced pushes.
-Results:      a plan or result on stdout, or JSON; reports and logs as settings choose.
+May change:   once each plan is approved: clones, fast-forwards, origin repairs; with
+              --publish, checked non-forced pushes.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/sync_archive.py --help
-    python Special/sync_archive.py --root /path/to/archive --json --no-log
-    python Special/sync_archive.py --root /path/to/archive --sync --yes
+    gitso sync-archive --root /path/to/archive                     (inspects only)
+    gitso sync-archive --root /path/to/archive --sync              (plans; at a terminal, asks)
+    gitso sync-archive --root /path/to/archive --sync --apply PLAN_ID
 
-Default use plans to stdout; saved output/log preferences and explicit flags select channels.
-Publication is a separate action: exact planned tips/targets pass outgoing-history security
-checks before any non-force push. Masked findings are included in the shared result.
---dry-run never approves security. No registration, enrollment or setup is implied.
-Import run_archives for headless use with explicit settings, requests and approval callback.
+Each folder's plan has its own id; repeat --apply for several. Publication is separate:
+exact planned tips pass outgoing-history security checks before any non-forced push. An
+approved plan is no security clearance. Import run_archives for headless use.
 """
 from pathlib import Path
 import sys

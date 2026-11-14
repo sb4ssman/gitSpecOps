@@ -2,12 +2,13 @@
 
 Why:          rebuilding a library on a new disk or machine from what this one has.
 Reads:        the observed repositories and their origins.
-May change:   with --apply --yes: clones into the existing --destination folder; nothing else.
-Results:      the plan, then the results, on stdout.
+May change:   once its plan is approved: clones into the existing --destination folder; nothing else.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/materialize.py --help
+    gitso materialize --destination /new/library                   (shows the plan)
+    gitso materialize --destination /new/library --apply PLAN_ID   (clones exactly that plan)
 """
 from pathlib import Path
 import sys
