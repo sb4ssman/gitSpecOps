@@ -1,85 +1,24 @@
-# Local settings: schemas, resolver, migration preview and writer
+# Local settings: schemas, resolver and writer
 
-Status: common v1 plus typed enrollment v2, read-only migration preview and explicit writer
-implemented, 2026-10-26; private archive preference/receipt adapters added 2026-10-27.
-Product requirements are in
-[product-contract.md](product-contract.md). The standalone updater consumes this reader;
-the manager/registry adopt archive choices, and active scanners adopt common security policy.
-Fleet CLI/app readers and savers adopt existing common enrollment as of 2026-10-28;
-an explicit archive/policy-only existing-settings switch is now implemented and tested on temporary
-profiles. Broader conversion, remaining output/logging adoption and actual settings switching remain
-open. Resolution itself neither enrolls
-machines nor configures log handlers. No actual settings migration has run.
+Status: common v1 plus typed enrollment v2 and the explicit writer, implemented 2026-10-26;
+private archive preference/receipt adapters added 2026-10-27. Product requirements are in
+[product-contract.md](product-contract.md). Resolution itself neither enrolls machines nor
+configures log handlers.
 
 Implementation: [`Special/_settings/__init__.py`](../../Special/_settings/__init__.py).
 Typed enrollment records: [`records.py`](../../Special/_settings/records.py).
-Preview and writer: [`migration.py`](../../Special/_settings/migration.py),
-[`store.py`](../../Special/_settings/store.py).
-Focused tests: [`test_settings.py`](../../tests/special/test_settings.py),
-[`test_settings_migration.py`](../../tests/special/test_settings_migration.py).
+Writer: [`store.py`](../../Special/_settings/store.py).
+Focused tests: [`test_settings.py`](../../tests/special/test_settings.py).
 
-The helpers are grouped under `Special/_settings/` as of 2026-10-27. Resolver/schema imports
-remain `from Special._settings import ...`; migration and writer imports use
-`Special._settings.migration` and `Special._settings.store`. Grouping does not adopt settings,
-change their format or move user data. Importing these modules performs no settings I/O.
+Importing these modules performs no settings I/O.
 
 ## Location and read behavior
 
-### Use existing archive/security settings
-
-`Special/_settings/existing.py` and setup provide a deliberately scoped switch for legacy archive
-choices and protected/allowed-value lists. Profiles with CLI/app configuration or an alternate
-sync-home override are refused here; the broad mapping preview remains read-only. No actual
-user profile has been switched by this implementation.
-
-```sh
-python3 _build/setup_gitspecops.py settings-existing
-python3 _build/setup_gitspecops.py settings-existing-plan --json
-python3 _build/setup_gitspecops.py settings-existing-save --approve '<review-id>' --legacy-writers-stopped --launcher-plan-reviewed --json
-python3 _build/setup_gitspecops.py settings-existing-status --switch-id '<review-id>' --json
-python3 _build/setup_gitspecops.py settings-existing-resume --switch-id '<review-id>' --legacy-writers-stopped --launcher-plan-reviewed --json
-```
-
-All accept a selected `--settings-home`. Plan and status create nothing. Default results expose
-counts, modes, requirements and launcher classifications only. Plan's explicit `--show-paths`
-also reveals the target, preserved-original location and numbered artifacts; it never reveals
-policy contents or copied remote allowances. Guided setup requires a terminal and separately
-typed STOPPED, REVIEWED and SAVE; cancellation before save creates nothing. Headless saves require
-the exact plan id plus the same two attestations. Independent old writers/jobs must actually be
-stopped; flags are the caller's attestation, not a process scan or an OS enforcement mechanism.
-
-The plan id binds selected home, candidate settings, exact input bytes including absent sources,
-and named launcher revisions. Changed inputs, new settings or changed launchers invalidate approval.
-No preference edits, source upgrades, unknown legacy versions or unrelated setup actions are mixed
-into this switch. Duplicate archive roots, source destinations, links and unencodable receipt
-metadata are refused before writes. Named launchers outside their recorded archive require a
-separate review rather than unrestricted filesystem inspection.
-
-An approved save holds cooperating switch/archive locks and uses the shared settings writer:
-
-1. Preserve original file bytes in `settings-switches/<review-id>/originals/` under the selected
-   external user-data home. Candidate and manifest are separate operational recovery records.
-   Files are exclusively created and flushed before any active change; a preexisting bundle is
-   never replaced. These private copies are not runtime configuration or a settings sync export.
-2. Mark an existing archive registry as receipt format v2, retaining every original record/field.
-   This prevents a missing shared file from reviving old archive preference copies.
-3. Create shared settings atomically only if its destination remains absent and all source checks
-   still match. Policy text files remain unchanged. Other tools read the shared settings normally.
-
-The files do not form an OS-wide transaction. Failure is explicit and retains the bundle; there
-is no silent rollback or automatic deletion. Status validates originals/candidate/manifest against
-the approval and reports saved, interrupted/resumable or needs-review. Explicit resume finishes
-only unchanged original/receipt-only state with an absent target, or reports an exact completed
-switch unchanged. It refuses newer settings, changed sources/artifacts or damaged backups. A
-bundle interrupted before its manifest exists requires manual review; it is never reclaimed.
-
-Launchers are a separate plan: each named artifact has leave/review/repair/retirement choices,
-format, role and the existing command to prepare a repair. Per-archive repair goes through
-`Special/archive_manager.py --install`; refresh-all through
-`Elaborate/schedule_archives.py --write-refresh-all-script`, using the selected profile. Neither
-command is executed by the switch. Retirement needs ownership/caller review and separate consent;
-archives and settings remain outside that artifact choice. Native launcher rollout, scheduling
-review, general fleet conversion and global enrolled-profile settings-loss ownership remain work.
+Retired 2026-11-13, at the user's direction: settings migration (`migration.py`, the
+`settings-migration-preview` action) and the archive/policy existing-settings switch
+(`existing.py`, the `settings-existing*` actions). gitSpecOps has no users with older
+settings, so nothing is converted. What remains below on older-format reading is still in
+the code and is listed for removal separately.
 
 One `settings.json` lives under the selected gitSpecOps user-data home, outside the source
 checkout. Selection is explicit caller `home`, then `GITSPECOPS_HOME`, then the established
@@ -239,28 +178,6 @@ roots remain in scope.roots, with CLI recursion retained in options.root_recursi
 retain their existing recursive-observation meaning. No enrollment is inferred or activated.
 Path availability, storage topology, authentication and host privacy must still be checked
 when a component is actually started; schema validation is not permission to execute.
-
-## Migration preview
-
-`preview_migration(home, *, sync_directory=None)` reads only the explicitly located legacy
-settings/policy files. It produces a private candidate, original byte fingerprints, a summary
-and named conflicts. It never writes. An existing target settings.json blocks rather than
-being merged or overwritten. A legacy sync-home environment override requires an explicit
-sync_directory choice. Older/unknown source formats block; they are not silently truncated.
-
-| Existing source | Required treatment |
-|---|---|
-| sync-suggester/config.json, version 1 | Identity into machine; transport definition plus sync selection; roots/recursion, freshness and compression into sync component |
-| sync-suggester/fleet-app.json, version 5 | Identity into machine; multiple transport definitions plus app selection; roots, baskets, recovery, sharing, observation and UI preferences into app component |
-| gitspecops_managed_archives.json, version 1 | Copy only archive preferences into archive_manage options; retain original installation receipts and last-run state untouched |
-| security/never_publish.txt and safe.txt | Nonempty non-comment lines into common security policy; exact case-insensitive block/safe overlap is a conflict |
-| catalog.json, fleet.sqlite3, manifests, snapshots, logs | Keep as operational state, not fields copied into settings.json |
-
-Matching machine/transport records combine; disagreements block with field names but no raw
-values. Distinct CLI/app roots and transport selections remain distinct; neither is silently
-widened. Relative enrollment paths require review rather than being reinterpreted at a new cwd.
-All source files remain unchanged. preview.verify() rejects changed/missing/new inputs, a changed
-target or a modified candidate. Summary/repr omit candidate values and source paths.
 
 ## Explicit writer and remaining cutover
 
@@ -473,39 +390,32 @@ switch above has its own approvals/recovery; archived scanner code is frozen.
 ## Reviewed updater setup (2026-10-27)
 
 The root setup menu offers guided updater preferences plus settings-preview/settings-save for
-noninteractive use and settings-migration-preview for read-only legacy mapping. Existing
-bootstrap, launcher/environment and prerequisite actions remain separate. Settings actions
+noninteractive use. Bootstrap, environment and prerequisite actions remain separate. Settings actions
 perform no repository operation, enrollment, installation or runtime report/log creation.
 
 Special/_settings/setup.py prepares a private SetupPlan and safe summary. Only archive_update
 scope/output/logging fields may change; other fields/components are preserved. Roots replace;
 exclusions add unless explicitly cleared at component level, with common exclusions retained.
 Empty stored roots keep the documented cwd behavior, explained by the preview. Candidate
-resolution reuses resolve_document; readers/previews/setup share legacy_locations.
+resolution reuses resolve_document.
 
-Preview writes nothing. Its review id binds candidate, selected home and source revisions;
+Preview writes nothing. Its review id binds candidate, selected home and the settings file's revision;
 this is freshness checking, not authentication. Headless saving requires that exact id and
 the same options; guided save requires typed SAVE. Cancellation/EOF before saving writes
 nothing. The existing atomic writer checks revisions and SetupPlan.verify under its lock.
-Changed/new sources, changed targets and altered candidates invalidate review. A semantic
+A changed settings file and altered candidates invalidate review. A semantic
 no-op preserves exact original bytes. Post-save lock cleanup failure remains explicitly
 reported as saved-but-needing-review. User authorization is separate from the review id.
 
 Summaries contain counts and field names only. --show-paths explicitly reveals target/root/
-exclusion/runtime paths, or legacy source paths for migration preview; it never prints policy,
+exclusion/runtime paths; it never prints policy,
 identity, transport or fleet-key values. JSON requires an explicit action and contains no menu
 or prompts. Wrappers preserve caller-relative paths and invoke setup by absolute script path;
 bootstrap still uses explicit checkout paths. Native POSIX wrapper evidence remains pending.
 
-Fresh-profile saving refuses legacy sources in that selected profile. Migration preview
-distinguishes mapping_ready from activation_ready; general activation remains unavailable and
-the summary now points archive/policy-only users to settings-existing-plan. The scoped action
-above has its own explicit approvals and recovery path; this broad preview still never saves.
-Existing common profiles may edit their already-adopted updater component without adopting
-legacy-owned fields. Known legacy-file snapshots are checked for freshness; operational
-receipt changes can require a new preview until adapters separate their ownership. Fresh
-profiles use schema v2 and supported existing versions are preserved. Actual user profiles
-were not changed or migrated during implementation.
+Fresh profiles use schema v2 and supported existing versions are preserved. (Until 2026-11-13
+setup also refused a fresh profile beside older-format files and offered a migration preview;
+both are retired.)
 
 ## Standalone updater: first integrated consumer (2026-10-27)
 

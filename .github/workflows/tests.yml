@@ -1,0 +1,73 @@
+# The whole test suite on Windows, macOS, Ubuntu and Debian, on the oldest and newest supported
+# Python (Debian: its own).
+# Runs on every push to main, on pull requests, and by hand from the Actions tab.
+# Read-only: no secrets, no write permission. Each third-party action is pinned to an exact
+# commit (its release tag is in the comment), so a moved tag cannot change what runs here.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }}, Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false   # one system failing must not hide how the others did
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+        python: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+      # The tests make throwaway commits in temporary repositories; Git needs a name for them.
+      # Made from the run number at run time: the privacy test treats the runner's own Git
+      # identity as personal and looks for it in every tracked file, including this one.
+      - name: Git identity for test commits
+        shell: bash
+        run: |
+          git config --global user.name "ci-$GITHUB_RUN_ID"
+          git config --global user.email "ci-$GITHUB_RUN_ID@example.invalid"
+      # Hosted runners have about 4 processors, which the local default would turn into 1 job.
+      - name: Run the suite
+        run: python tests/run_all.py --jobs 4
+
+  # GitHub has no Debian machines, so Debian runs as a container on a Linux runner, with
+  # Debian's own Python and Git (what a Debian user gets from apt), as an ordinary user: root
+  # ignores file permissions and would hide permission bugs.
+  debian:
+    name: debian-13, Debian's Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: debian:trixie
+    steps:
+      - name: Python and Git from Debian
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends python3 git ca-certificates
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      # Named "runner", as on GitHub's own machines: the privacy test treats the account and home
+      # folder name as personal unless it is a generic one, and this file names it.
+      - name: An ordinary user to run the tests
+        run: |
+          useradd --create-home runner
+          chown -R runner "$GITHUB_WORKSPACE"
+      - name: Run the suite
+        run: |
+          su runner -c 'git config --global user.name "ci-'"$GITHUB_RUN_ID"'" &&
+                        git config --global user.email "ci-'"$GITHUB_RUN_ID"'@example.invalid" &&
+                        python3 --version &&
+                        cd "'"$GITHUB_WORKSPACE"'" && python3 tests/run_all.py --jobs 4'

@@ -11,10 +11,21 @@ what it actually imports.
 """
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# Temporary folders in their resolved form. A test compares a path it made with the same path
+# after the code resolved it; on a CI runner the temp folder is a Windows short name
+# (C:\Users\<user>~1\...) and on macOS it sits behind the /var -> /private/var link, so the two
+# spellings of one folder would differ. Children the tests start inherit the same folder.
+_TEMP = os.path.realpath(tempfile.gettempdir())
+tempfile.tempdir = _TEMP
+for _name in ("TMPDIR", "TEMP", "TMP"):
+    os.environ[_name] = _TEMP
 
 AREAS = {
 }

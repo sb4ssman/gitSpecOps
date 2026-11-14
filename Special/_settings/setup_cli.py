@@ -2,7 +2,7 @@
 
 settings is guided/TTY-only. settings-preview and settings-save are noninteractive; saving
 requires the exact preview id. Default summaries omit paths/keys/policy values. --show-paths
-is a separate local-review channel showing paths only. Migration is preview-only for now.
+is a separate local-review channel showing paths only.
 """
 from __future__ import annotations
 
@@ -13,10 +13,9 @@ from dataclasses import replace
 from pathlib import Path
 
 from Special._settings import SettingsError, resolve_document
-from Special._settings.setup import COMPONENT, migration_status, prepare_setup, save_setup
+from Special._settings.setup import COMPONENT, prepare_setup, save_setup
 
-EXISTING_ACTIONS = ("settings-existing", "settings-existing-plan", "settings-existing-save", "settings-existing-status", "settings-existing-resume")
-ACTIONS = ("settings", "settings-preview", "settings-save", "settings-migration-preview", *EXISTING_ACTIONS)
+ACTIONS = ("settings", "settings-preview", "settings-save")
 MATRIX = ("Participation choices:\n"
           "  One-off tools: Python/Git; GitHub operations also use your authenticated gh.\n"
           "  Saved updater preferences: roots, exclusions, reports and local logs; no fleet.\n"
@@ -42,12 +41,8 @@ def add_arguments(parser):
     parser.add_argument("--log-max-bytes", type=int)
     parser.add_argument("--log-backups", type=int)
     parser.add_argument("--approve", metavar="REVIEW_ID", help="Exact id from settings-preview, required to save headlessly.")
-    parser.add_argument("--legacy-sync-dir", type=Path, help="Explicit source location for migration preview.")
     parser.add_argument("--json", action="store_true", help="Machine-readable setup result (not a saved output preference).")
     parser.add_argument("--show-paths", action="store_true", help="Explicitly reveal reviewed paths; never keys or policy values.")
-    parser.add_argument("--switch-id", help="Saved existing-settings review id for status/resume.")
-    parser.add_argument("--legacy-writers-stopped", action="store_true", help="Confirm independent legacy settings writers/jobs are stopped.")
-    parser.add_argument("--launcher-plan-reviewed", action="store_true", help="Confirm the separate launcher plan was reviewed; no launcher is changed.")
 
 
 def patch_from_args(args):
@@ -75,7 +70,7 @@ def print_plan(plan, *, json_output=False, show_paths=False):
     if json_output:
         print(json.dumps(record, indent=2))
         return
-    print(f"Updater settings: {record['target']} profile; {'ready for review' if plan.ready else 'not ready to save'}")
+    print(f"Updater settings: {record['target']} profile; ready for review")
     print(f"Review id: {plan.review_id}")
     print("Changes: " + (", ".join(plan.changes) or "none"))
     candidate = record["candidate"]
@@ -86,9 +81,6 @@ def print_plan(plan, *, json_output=False, show_paths=False):
         print("No roots saved: the updater uses its current folder unless --root is supplied.")
     if show_paths:
         print(json.dumps(record["paths"], indent=2))
-    if plan.blockers:
-        print("Legacy files were found. Their readers/writers must finish common-settings cutover before migration activation.")
-        print("Mapping preview: " + json.dumps(plan.migration, sort_keys=True))
     print("Saving preferences performs no repository operation, enrollment or installation.")
 
 
@@ -121,11 +113,7 @@ def guided(args):
             selected = input("Settings home (blank uses the default user folder): ").strip()
             home = Path(selected) if selected else None
         changes = patch_from_args(args)
-        initial = prepare_setup(home, changes, clear_exclusions=args.clear_exclusions,
-                                sync_directory=args.legacy_sync_dir)
-        if not initial.ready:
-            print_plan(initial, show_paths=args.show_paths)
-            return 2
+        initial = prepare_setup(home, changes, clear_exclusions=args.clear_exclusions)
         effective = resolve_document(initial.document, COMPONENT, home=initial.home).values
         if args.root is None and not args.clear_roots:
             if initial.expected_revision is None or _choice("Replace saved updater roots? [y/N]: ", ("y", "n"), "n") == "y":
@@ -141,16 +129,15 @@ def guided(args):
             value = input("Report directory (blank keeps the selected default): ").strip()
             if value:
                 changes["output"]["directory"] = str(Path(value).expanduser().resolve())
-        enabled = _choice("Local counts-only logging? [y/n]: ", ("y", "n"),
-                          "y" if effective["logging"]["enabled"] else "n") == "y"
+        logging_now = "y" if effective["logging"]["enabled"] else "n"
+        enabled = _choice(f"Local counts-only logging? [y/n] ({logging_now}): ", ("y", "n"), logging_now) == "y"
         changes.setdefault("logging", {})["enabled"] = enabled
         if enabled:
             value = input("Log directory (blank keeps the selected default): ").strip()
             if value:
                 changes["logging"]["directory"] = str(Path(value).expanduser().resolve())
         initial.verify()
-        plan = prepare_setup(initial.home, changes, clear_exclusions=args.clear_exclusions,
-                             sync_directory=args.legacy_sync_dir)
+        plan = prepare_setup(initial.home, changes, clear_exclusions=args.clear_exclusions)
         plan = replace(plan, home_source=initial.home_source)
         print_plan(plan, show_paths=args.show_paths)
         if input('Type SAVE to write these preferences, or anything else to cancel: ').strip() != "SAVE":
@@ -169,25 +156,17 @@ def guided(args):
 def dispatch(args):
     """Return an exit code; no setup action grants repository-operation authority."""
     try:
-        if args.action in EXISTING_ACTIONS:
-            return existing_dispatch(args)
         if args.action == "settings":
             return guided(args)
-        if args.action == "settings-migration-preview":
-            record = migration_status(args.settings_home, sync_directory=args.legacy_sync_dir,
-                                      show_paths=args.show_paths)
-            print(json.dumps(record, indent=2))
-            return 2 if not record["mapping_ready"] else 0
         if args.action == "settings-save" and args.approve is None:
             raise SettingsError("settings-save requires --approve with an id from settings-preview")
-        plan = prepare_setup(args.settings_home, patch_from_args(args), clear_exclusions=args.clear_exclusions,
-                             sync_directory=args.legacy_sync_dir)
+        plan = prepare_setup(args.settings_home, patch_from_args(args), clear_exclusions=args.clear_exclusions)
         if args.action == "settings-preview":
             print_plan(plan, json_output=args.json, show_paths=args.show_paths)
-            return 0 if plan.ready else 2
+            return 0
         save_setup(plan, args.approve)
         record = {"status": "saved" if plan.changes else "unchanged", "component": COMPONENT,
-                  "runs_operations": False, "changes_legacy_files": False}
+                  "runs_operations": False}
         if args.show_paths:
             record["paths"] = plan.paths()
         print(json.dumps(record) if args.json else
@@ -211,59 +190,3 @@ def dispatch(args):
         print(json.dumps({"status": "interrupted", "message": message}) if args.json else message,
               file=sys.stdout if args.json else sys.stderr)
         return 130
-
-
-def existing_dispatch(args):
-    """Explicit archive/policy switch and recovery; masked stdout unless paths are requested."""
-    from Special._settings.existing import (inspect_existing, prepare_existing, resume_existing, save_existing)
-
-    if args.action == "settings-existing":
-        return guided_existing(args)
-    if args.action in ("settings-existing-status", "settings-existing-resume"):
-        if not args.switch_id:
-            raise SettingsError("status/resume requires --switch-id from the reviewed switch")
-        record = (inspect_existing(args.settings_home, args.switch_id) if args.action == "settings-existing-status" else
-                  resume_existing(args.settings_home, args.switch_id, writers_stopped=args.legacy_writers_stopped,
-                                  launchers_reviewed=args.launcher_plan_reviewed))
-    else:
-        plan = prepare_existing(args.settings_home)
-        record = plan.summary()
-        if args.action == "settings-existing-save":
-            record = save_existing(plan, args.approve, writers_stopped=args.legacy_writers_stopped,
-                                   launchers_reviewed=args.launcher_plan_reviewed)
-        if args.show_paths:
-            record["paths"] = plan.paths()
-    print(json.dumps(record, indent=2))
-    return 2 if record.get("status") == "needs-review" else 0
-
-
-def guided_existing(args):
-    """Review the exact archive/policy plan, obtain separate attestations, then typed SAVE."""
-    from Special._settings.existing import prepare_existing, save_existing
-
-    if not sys.stdin.isatty():
-        raise SettingsError("guided existing-settings setup needs a terminal; use settings-existing-plan/save for assisted use")
-    plan = prepare_existing(args.settings_home)
-    print("Use existing archive and security settings in the shared file.\n"
-          "Original bytes are preserved before saving. This does not change launchers or run repositories.")
-    record = plan.summary()
-    if args.show_paths:
-        record["paths"] = plan.paths()
-    print(json.dumps(record, indent=2))
-    try:
-        print("Pause earlier archive jobs/launchers and independent settings editors before saving.")
-        if input('Type STOPPED to confirm those writers are stopped, or anything else to cancel: ').strip() != "STOPPED":
-            print("Cancelled; no settings were written.")
-            return 0
-        if input('Type REVIEWED to acknowledge the separate launcher plan: ').strip() != "REVIEWED":
-            print("Cancelled; no settings were written.")
-            return 0
-        if input('Type SAVE to apply this exact settings plan: ').strip() != "SAVE":
-            print("Cancelled; no settings were written.")
-            return 0
-    except (EOFError, KeyboardInterrupt):
-        print("Cancelled; no settings were written.")
-        return 0
-    result = save_existing(plan, plan.review_id, writers_stopped=True, launchers_reviewed=True)
-    print(json.dumps(result, indent=2))
-    return 0

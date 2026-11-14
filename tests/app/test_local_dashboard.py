@@ -101,6 +101,35 @@ def test_catalog_names_are_used_when_known():
           f"a locally known repository must render readably: {identity}")
 
 
+def test_absence_and_old_clean_reports_are_not_attention():
+    """Libraries differ by design: a repository missing from a machine is normal, and a clean
+    copy on an old report is unknown (never an all-clear) without demanding attention."""
+    now = datetime.now(timezone.utc)
+    old = (now - timedelta(days=3)).isoformat()
+    with tempfile.TemporaryDirectory() as temp:
+        transport = FolderTransport(temp)
+        transport.write_own_manifest("desk", manifest_for("desk", observed=now.isoformat(), repo_id="a" * 32))
+        transport.write_own_manifest("shelf", manifest_for("shelf", observed=old, repo_id="b" * 32))
+        document = display_from_transport(transport, {"fleet_id": FLEET}, {}, now=now)
+    check(document["summary"]["attention"] == 0, f"nothing unfinished anywhere: {document['summary']}")
+    stale = next(row for row in document["rows"] if "shelf" in row["cells"] and row["cells"]["shelf"]["present"])
+    check(stale["cells"]["shelf"]["state"] == "unknown", "an old clean report stays unknown, not clean")
+    check(stale["cells"]["desk"]["needs_attention"] is False, "an absent copy carries false")
+
+
+def test_a_machine_counts_only_its_own_unfinished_work():
+    now = datetime.now(timezone.utc)
+    with tempfile.TemporaryDirectory() as temp:
+        transport = FolderTransport(temp)
+        transport.write_own_manifest("desk", manifest_for("desk", observed=now.isoformat()))
+        transport.write_own_manifest("laptop", manifest_for("laptop", dirty=2, observed=now.isoformat()))
+        document = display_from_transport(transport, {"fleet_id": FLEET}, {}, now=now)
+    row = document["rows"][0]
+    check(row["needs_attention"], "uncommitted work on the laptop needs attention")
+    check(row["cells"]["laptop"]["needs_attention"] and not row["cells"]["desk"]["needs_attention"],
+          f"only the laptop's copy is the problem: {row['cells']}")
+
+
 def test_empty_transport_is_a_valid_empty_fleet():
     with tempfile.TemporaryDirectory() as temp:
         document = display_from_transport(FolderTransport(temp), {"fleet_id": FLEET}, {})

@@ -5,6 +5,22 @@ while the version starts with 0, gitSpecOps is a development preview and anythin
 
 ## Unreleased
 
+- **Renamed:** the checked `gitso commit` and `gitso push` are now `gitso secure-commit` and
+  `gitso secure-push` (Special). `gitso commit` and `gitso push` are now the plain Basic
+  operations, like `git commit` and `git push`: exactly the named files, never a forced push,
+  no security check. Scripts and agents that relied on the checked behaviour must switch names.
+- **Basic commands listed:** status, fetch, pull, clone, reset-keep, commit and push.
+- **Tests on Windows, macOS and Linux** with GitHub Actions, and a generated command reference
+  (`docs/COMMANDS.md`).
+- **Setup:** every menu item returns to the setup menu afterwards. The prerequisite check
+  shows whether the GitHub CLI is signed in and what each tool is for.
+- **Removed:** settings migration and the existing-settings switch (`settings-migration-preview`,
+  `settings-existing*`): there are no users with older settings to convert.
+- **The map:** under each machine, its library (every organization and repository it holds,
+  coloured by that copy's own state). A repository is flagged only for unfinished work: being
+  absent from a machine is normal, and a clean copy on an old report is "unknown" but not
+  flagged. Every view now counts a machine's flags from its own copies.
+
 ## 0.2.0 — 2026-11-13
 
 The first tagged version: a development preview, developed and tested on Windows.

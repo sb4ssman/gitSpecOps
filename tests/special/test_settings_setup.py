@@ -60,7 +60,6 @@ class SetupSettingsTests(unittest.TestCase):
 
     def test_preview_creates_nothing_and_summaries_hide_values(self):
         plan = subject.prepare_setup(self.home, {"scope": {"roots": [str(self.archive)]}})
-        self.assertTrue(plan.ready)
         self.assertFalse(self.home.exists())
         for value in (str(self.home), str(self.archive), "private-marker"):
             self.assertNotIn(value, (json.dumps(plan.summary()) + repr(plan)).replace("\\\\", "\\"))
@@ -92,19 +91,15 @@ class SetupSettingsTests(unittest.TestCase):
             self.assertEqual(saved[key], original[key])
         self.assertEqual(saved["components"]["sync"], original["components"]["sync"])
 
-    def test_target_and_new_legacy_source_changes_invalidate_review(self):
-        for change in ("target", "legacy"):
-            with self.subTest(change=change):
-                home = self.root / change
-                plan = subject.prepare_setup(home)
-                home.mkdir()
-                changed = home / "settings.json" if change == "target" else home / "gitspecops_managed_archives.json"
-                changed.write_text("external change")
-                with self.assertRaises(SettingsError):
-                    subject.save_setup(plan, plan.review_id)
-                self.assertEqual(changed.read_text(), "external change")
-                if change == "legacy":
-                    self.assertFalse((home / "settings.json").exists())
+    def test_a_settings_file_changed_after_review_invalidates_it(self):
+        home = self.root / "target"
+        plan = subject.prepare_setup(home)
+        home.mkdir()
+        changed = home / "settings.json"
+        changed.write_text("external change")
+        with self.assertRaises(SettingsError):
+            subject.save_setup(plan, plan.review_id)
+        self.assertEqual(changed.read_text(), "external change")
 
     def test_modified_candidate_cannot_be_saved(self):
         plan = subject.prepare_setup(self.home)
@@ -116,12 +111,14 @@ class SetupSettingsTests(unittest.TestCase):
     def test_last_input_check_runs_under_the_existing_writer(self):
         plan = subject.prepare_setup(self.home)
         def changed_before_lock(document, **kwargs):
+            # Another writer creates the settings file just before this one takes the lock.
             self.home.mkdir()
-            (self.home / "gitspecops_managed_archives.json").write_text("changed")
+            (self.home / "settings.json").write_text('{"schema_version": 2}')
             return store.write_settings(document, **kwargs)
         with patch.object(subject, "write_settings", side_effect=changed_before_lock), self.assertRaises(SettingsError):
             subject.save_setup(plan, plan.review_id)
-        self.assertFalse((self.home / "settings.json").exists())
+        self.assertEqual((self.home / "settings.json").read_text(), '{"schema_version": 2}',
+                         "the other writer's file is never overwritten")
         self.assertFalse((self.home / ".settings.lock").exists())
 
     def test_noop_edit_preserves_exact_original_bytes(self):
@@ -131,19 +128,6 @@ class SetupSettingsTests(unittest.TestCase):
         with patch.object(subject, "write_settings", side_effect=AssertionError("unnecessary write")):
             subject.save_setup(plan, plan.review_id)
         self.assertEqual(path.read_bytes(), before)
-
-    def test_legacy_mapping_can_be_ready_while_activation_is_refused(self):
-        policy = self.home / "security" / "never_publish.txt"
-        policy.parent.mkdir(parents=True)
-        policy.write_text("private-marker\n")
-        plan = subject.prepare_setup(self.home)
-        self.assertFalse(plan.ready)
-        self.assertTrue(plan.summary()["migration"]["mapping_ready"])
-        self.assertFalse(plan.summary()["migration"]["activation_ready"])
-        with self.assertRaises(SettingsError):
-            subject.save_setup(plan, plan.review_id)
-        self.assertFalse((self.home / "settings.json").exists())
-        self.assertEqual(policy.read_text(), "private-marker\n")
 
     def test_unreadable_or_invalid_configuration_never_becomes_fresh_defaults(self):
         path = self.save({"schema_version": 2})
@@ -210,19 +194,8 @@ class SetupSettingsTests(unittest.TestCase):
         self.assertEqual(self.invoke("settings", "--settings-home", str(self.home))[0], 2)
         self.assertFalse(self.home.exists())
 
-    def test_migration_preview_never_activates_or_echoes_policy_values(self):
-        policy = self.home / "security" / "never_publish.txt"
-        policy.parent.mkdir(parents=True)
-        policy.write_text("private-marker\n")
-        code, out, _ = self.invoke("settings-migration-preview", "--settings-home", str(self.home), "--json")
-        self.assertEqual(code, 0)
-        self.assertFalse(json.loads(out)["activation_ready"])
-        self.assertNotIn("private-marker", out)
-        self.assertFalse((self.home / "settings.json").exists())
-
     def test_settings_flags_cannot_be_silently_ignored_by_other_actions(self):
-        for args in (("bootstrap", "--root", str(self.archive)), ("settings-preview", "--approve", "wrong"),
-                     ("settings-migration-preview", "--root", str(self.archive))):
+        for args in (("bootstrap", "--root", str(self.archive)), ("settings-preview", "--approve", "wrong")):
             with self.subTest(args=args), self.assertRaises(SystemExit) as stopped:
                 self.invoke(*args)
             self.assertEqual(stopped.exception.code, 2)
