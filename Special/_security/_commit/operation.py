@@ -72,7 +72,7 @@ def _relay(directory):
         path.chmod(0o700)
 
 
-def _execute(repo, selected, message, policy, snapshot, home, legacy_policy, plan_id, initial):
+def _execute(repo, selected, message, policy, snapshot, home, plan_id, initial):
     context = {}
     native_output = ""
     with tempfile.TemporaryDirectory(prefix="gitso-commit-") as temporary:
@@ -86,7 +86,7 @@ def _execute(repo, selected, message, policy, snapshot, home, legacy_policy, pla
             env[f"GIT_{role.upper()}_NAME"], env[f"GIT_{role.upper()}_EMAIL"] = name, email
 
         def before_commit():
-            current = load_policy(repo, home=home, legacy_policy=legacy_policy)
+            current = load_policy(repo, home=home)
             state.constraints(repo)
             if (state.head(repo) != snapshot["head"] or state.file_revisions(repo, selected) != snapshot["files"] or
                     state.policy_revision(current) != snapshot["policy"] or
@@ -99,7 +99,7 @@ def _execute(repo, selected, message, policy, snapshot, home, legacy_policy, pla
             report = _check(repo, current, state.index_files(repo, selected, entries), message, snapshot["identities"])
             _hold(report)
             if (state.index(repo) != entries or state.head(repo) != snapshot["head"] or
-                    state.policy_revision(load_policy(repo, home=home, legacy_policy=legacy_policy)) != snapshot["policy"]):
+                    state.policy_revision(load_policy(repo, home=home)) != snapshot["policy"]):
                 report.gap("proposal", "staged inputs or policy changed while checking")
                 raise Held("stale", "Commit held: staged inputs or policy changed.", report.record())
             expected = state.tree(repo, snapshot["head"][1])
@@ -109,7 +109,7 @@ def _execute(repo, selected, message, policy, snapshot, home, legacy_policy, pla
                     expected[name] = entries[name]
             if expected == state.tree(repo, snapshot["head"][1]):
                 raise Held("nothing-to-commit", "No selected changes to commit.", report.record())
-            context.update(schema_version=1, state=snapshot, home=str(home), legacy_policy=legacy_policy,
+            context.update(schema_version=1, state=snapshot, home=str(home),
                            expected_index=expected, expected_message=state.digest(message if message.endswith("\n") else message + "\n"),
                            guard_seen=False, failure=None, report=report.record())
             state.write_context(context_path, context)
@@ -178,7 +178,7 @@ def _execute(repo, selected, message, policy, snapshot, home, legacy_policy, pla
                             private_native_output=native_output)
 
 
-def commit_checked(repo, paths, message, *, settings_home=None, legacy_policy=False,
+def commit_checked(repo, paths, message, *, settings_home=None,
                    apply=False, approve=None) -> CommitResult:
     """Preview/execute only explicit files with content-bound approval and shared checks.
 
@@ -194,7 +194,7 @@ def commit_checked(repo, paths, message, *, settings_home=None, legacy_policy=Fa
             raise SettingsError("custom Git index/object/pathspec/history environments require compatibility review")
         home = select_home(settings_home, component="security")[0]
         repo = Path(repo).absolute()
-        policy = load_policy(repo, home=home, legacy_policy=legacy_policy)
+        policy = load_policy(repo, home=home)
         top = Path(state.git(repo, ["rev-parse", "--show-toplevel"]).strip())
         if top.resolve() != repo.resolve():
             raise SettingsError("select the repository root explicitly")
@@ -204,7 +204,7 @@ def commit_checked(repo, paths, message, *, settings_home=None, legacy_policy=Fa
         snapshot = state.proposal_state(repo, selected, message, policy)
         report = _check(repo, policy, state.raw_files(repo, selected), message, snapshot["identities"])
         _hold(report)
-        if state.proposal_state(repo, selected, message, load_policy(repo, home=home, legacy_policy=legacy_policy)) != snapshot:
+        if state.proposal_state(repo, selected, message, load_policy(repo, home=home)) != snapshot:
             report.gap("proposal", "state changed during checking; preview again")
             return CommitResult("stale", "Commit held: proposal changed during checking.", security=report.record())
         plan_id = state.digest(snapshot)
@@ -212,7 +212,7 @@ def commit_checked(repo, paths, message, *, settings_home=None, legacy_policy=Fa
             return CommitResult("ready", "Selected proposal passed checking; no commit created.", plan_id, security=report.record())
         if approve != plan_id:
             return CommitResult("approval-required", "No commit created: approve this exact current plan.", plan_id, security=report.record())
-        return _execute(repo, selected, message, policy, snapshot, home, legacy_policy, plan_id, report)
+        return _execute(repo, selected, message, policy, snapshot, home, plan_id, report)
     except Held as held:
         return CommitResult(held.status, held.message, security=held.report)
     except SettingsError as exc:

@@ -27,7 +27,7 @@ def _revision(repo):
     return head.stdout, git_output(repo, ["ls-files", "--stage", "-z"])
 
 
-def inspect_advice(repo, *, settings_home=None, legacy_policy=False, expected_settings=None):
+def inspect_advice(repo, *, settings_home=None, expected_settings=None):
     """Return a safe local record; failures leave useful available findings, never clearance.
 
     Policy/root exclusions are checked before inspecting files. Outgoing comparison uses the
@@ -44,7 +44,7 @@ def inspect_advice(repo, *, settings_home=None, legacy_policy=False, expected_se
             if home.resolve() != expected_settings.home.resolve():
                 raise SettingsError("selected common profile changed")
         repo = Path(repo).absolute()
-        policy = load_policy(repo, home=home, legacy_policy=legacy_policy)
+        policy = load_policy(repo, home=home)
         if Path(git_output(repo, ["rev-parse", "--show-toplevel"]).strip()).resolve() != repo.resolve():
             raise ValueError("select root")
         before = _revision(repo)
@@ -66,7 +66,7 @@ def inspect_advice(repo, *, settings_home=None, legacy_policy=False, expected_se
             statuses.append(outgoing.check_status)
             if read_push_snapshot(repo) != snapshot or git_output(repo, ["rev-parse", "--verify", "@{upstream}"]).strip() != upstream:
                 result["gaps"].append({"where": "advice", "reason": "Local outgoing scope changed during checking; rerun."})
-        if before != _revision(repo) or not _same_policy(policy, load_policy(repo, home=home, legacy_policy=legacy_policy)):
+        if before != _revision(repo) or not _same_policy(policy, load_policy(repo, home=home)):
             result["gaps"].append({"where": "advice", "reason": "HEAD, index or policy changed during checking; rerun."})
         if expected_settings is not None:
             expected_settings.verify()
@@ -80,10 +80,10 @@ def inspect_advice(repo, *, settings_home=None, legacy_policy=False, expected_se
     return result
 
 
-def inspect_paths(entries, *, settings_home=None, legacy_policy=False, expected_settings=None):
+def inspect_paths(entries, *, settings_home=None, expected_settings=None):
     """Check explicit (repo id, checkout path) pairs, retaining duplicate checkouts separately."""
     return [{"repo_id": repo_id, "checkout": number,
-             "security": inspect_advice(path, settings_home=settings_home, legacy_policy=legacy_policy,
+             "security": inspect_advice(path, settings_home=settings_home,
                                          expected_settings=expected_settings)}
             for number, (repo_id, path) in enumerate(entries, 1)]
 

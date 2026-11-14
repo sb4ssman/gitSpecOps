@@ -336,7 +336,6 @@ def command_check(args: argparse.Namespace) -> int:
     from Special._security._advice import inspect_paths, render_advice
     security = inspect_paths(zip((repo["repo_id"] for repo in observation.repositories), observation.locations),
                              settings_home=getattr(args, "settings_home", None),
-                             legacy_policy=getattr(args, "legacy_policy", False),
                              expected_settings=getattr(config, "snapshot", None))
     manifest = build_manifest(resolved.fleet_id or "preview", machine_id, machine_label,
                               observation.repositories)
@@ -572,7 +571,6 @@ def build_parser() -> argparse.ArgumentParser:
                        help=f"parallel fetches (default {DEFAULT_FETCH_WORKERS})")
     check.add_argument("--fetch-timeout", type=int, default=DEFAULT_FETCH_TIMEOUT_SECONDS,
                        help=f"seconds per fetch (default {DEFAULT_FETCH_TIMEOUT_SECONDS})")
-    check.add_argument("--legacy-policy", action="store_true", help="explicitly use legacy security lists; never bypass common settings")
     check.add_argument("--json", action="store_true", help="local result with manifest and masked local_security; only manifest is shared")
     check.set_defaults(handler=command_check)
 

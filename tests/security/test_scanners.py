@@ -357,24 +357,6 @@ class Scanners(unittest.TestCase):
         self.assertFalse((home / "logs").exists())
         self.assertFalse((home / "reports").exists())
 
-    def test_legacy_cli_selection_is_explicit_read_only_and_never_migrates(self):
-        self.write("new.txt", "private-marker\n")
-        home = self.root / "config"
-        (home / "security").mkdir(parents=True)
-        watch = home / "security" / "never_publish.txt"
-        watch.write_text("private-marker\n", encoding="utf-8")
-        (home / "security" / "safe.txt").write_text("", encoding="utf-8")
-        before = watch.read_bytes()
-        argv = [sys.executable, "-B", str(ROOT / "Special/scan_tree.py"), str(self.repo), "--json"]
-        refused = subprocess.run(argv, cwd=self.root, capture_output=True, text=True)
-        self.assertEqual(refused.returncode, 2)
-        self.assertEqual(json.loads(refused.stdout)["coverage"], "incomplete")
-        explicit = subprocess.run(argv + ["--legacy-policy"], cwd=self.root, capture_output=True, text=True)
-        self.assertEqual(explicit.returncode, 1, explicit.stderr)
-        self.assertEqual(json.loads(explicit.stdout)["policy"]["sources"]["settings"], "legacy-explicit")
-        self.assertNotIn("private-marker", explicit.stdout)
-        self.assertEqual(watch.read_bytes(), before)
-        self.assertFalse((home / "settings.json").exists())
 
 
 if __name__ == "__main__":

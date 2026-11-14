@@ -14,7 +14,7 @@ import re
 from uuid import uuid4
 
 from Basic._run import CommandFailed
-from Special._settings import SETTINGS_NAME, SettingsError, resolve_settings, select_home
+from Special._settings import SettingsError, resolve_settings, select_home
 from Special._runtime.files import excluded
 from Special._security._checks import inspect
 from Special._security._findings import Finding, Report
@@ -64,7 +64,7 @@ def _report(raw, policy):
     return report
 
 
-def review_finding(source, finding_id=None, reason="", *, home=None, legacy_policy=False,
+def review_finding(source, finding_id=None, reason="", *, home=None,
                    apply=False, approve=None, revoke=None):
     """Return a masked plan; save only after exact approval. A report is evidence, not clearance."""
     try:
@@ -72,21 +72,13 @@ def review_finding(source, finding_id=None, reason="", *, home=None, legacy_poli
                 bool(finding_id) == bool(revoke) or (approve is not None and not apply)):
             raise ValueError("select one finding or revocation and supply a private reason")
         selected = select_home(home, component="security")[0]
-        try:
-            (selected / SETTINGS_NAME).lstat()
-            common = True
-        except FileNotFoundError:
-            common = False
-        if legacy_policy and common:
-            return ReviewResult("incomplete", "Explicit legacy mode cannot bypass common settings; no report was read.")
-        if not legacy_policy:
-            preferences = resolve_settings("security", home=selected)
-            if excluded(Path(source).expanduser().absolute(), preferences.values["scope"]["exclude_paths"]):
-                return ReviewResult("refused", "The requested report is excluded by the selected policy; it was not read.")
+        preferences = resolve_settings("security", home=selected)
+        if excluded(Path(source).expanduser().absolute(), preferences.values["scope"]["exclude_paths"]):
+            return ReviewResult("refused", "The requested report is excluded by the selected policy; it was not read.")
         raw = read_private_json(source)
         if not isinstance(raw, dict) or not isinstance(raw.get("repository"), str) or not Path(raw["repository"]).is_absolute():
             raise ValueError("a current full private scan report is required")
-        policy = load_policy(Path(raw["repository"]), home=selected, legacy_policy=legacy_policy)
+        policy = load_policy(Path(raw["repository"]), home=selected)
         if policy.gaps:
             return ReviewResult("incomplete", "Review state or policy could not be verified; no decision saved.")
         report = _report(raw, policy)
@@ -128,7 +120,7 @@ def review_finding(source, finding_id=None, reason="", *, home=None, legacy_poli
                                 plan_id=plan_id, scope=scope)
         # Re-read every ownership/input binding before the one explicit private write.
         if (read_private_json(source) != raw or
-                policy_revision(load_policy(Path(report.repository), home=selected, legacy_policy=legacy_policy)) != policy_revision(policy)):
+                policy_revision(load_policy(Path(report.repository), home=selected)) != policy_revision(policy)):
             return ReviewResult("stale", "Report or policy changed; create a new review plan.")
         review_id = revoke or "review-" + uuid4().hex
         record = {"schema_version": 1, "repository": _reviews.repository_scope(report.repository),

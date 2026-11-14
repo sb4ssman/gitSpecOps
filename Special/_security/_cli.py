@@ -23,15 +23,13 @@ def main(material, argv=None):
     parser.add_argument("repo", type=Path)
     if material == "tree":
         parser.add_argument("--staged", action="store_true", help="Inspect staged changed-file bytes instead of working/untracked files; no staging or commit.")
-    parser.add_argument("--settings-home", type=Path, help="selected user-data profile; no creation or migration")
-    parser.add_argument("--legacy-policy", action="store_true",
-                        help="explicitly read legacy text policy; refuses any existing common settings file")
+    parser.add_argument("--settings-home", type=Path, help="selected user-data profile; nothing is created")
     parser.add_argument("--out", type=Path, help="exclusive-create a full private JSON report; inside Git it must be ignored/untracked")
     parser.add_argument("--json", action="store_true", help="masked JSON on stdout")
     parser.add_argument("--engine", action="append", choices=("none", *SECURITY_ENGINES),
                         help="optional engine; repeat to combine, or none to override saved engines; no installation")
-    parser.add_argument("--never-publish", type=Path, help="additional protected values (legacy: selected watch file); absence is incomplete")
-    parser.add_argument("--safe-file", type=Path, help="additional safe values (legacy: selected safe file); absence is incomplete")
+    parser.add_argument("--never-publish", type=Path, help="a file of additional protected values, one per line; absence is incomplete")
+    parser.add_argument("--safe-file", type=Path, help="a file of additional safe values, one per line; absence is incomplete")
     parser.add_argument("--safe", action="append", default=[], metavar="VALUE")
     parser.add_argument("--public-login", action="append", default=[], metavar="HANDLE")
     if material == "history":
@@ -43,8 +41,7 @@ def main(material, argv=None):
         parser.error("select none alone, or select engines without none")
     try:
         policy = load_policy(args.repo, never_file=args.never_publish, safe_file=args.safe_file,
-                             safe=args.safe, login=args.public_login, home=args.settings_home,
-                             legacy_policy=args.legacy_policy)
+                             safe=args.safe, login=args.public_login, home=args.settings_home)
         if args.out is not None and excluded(Path(os.path.abspath(args.out.expanduser())), policy.exclude_paths):
             raise SettingsError("requested report destination is excluded; no scan was started")
         options = {} if args.engine is None else {"engines": [] if args.engine == ["none"] else args.engine}
