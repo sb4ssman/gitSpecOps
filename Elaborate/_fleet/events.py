@@ -1,7 +1,8 @@
 """Native, read-only filesystem change notifications for fleet observation.
 
-There is deliberately no timer-based directory scan here. Linux uses inotify and Windows
-uses ReadDirectoryChangesW. Both block in the kernel while the configured library is quiet.
+There is deliberately no timer-based directory scan here. Linux uses inotify, Windows uses
+ReadDirectoryChangesW and macOS uses FSEvents. All wait in the kernel while the configured
+library is quiet.
 The caller debounces returned paths and decides which known repository needs a Git status
 refresh. New repository discovery remains an explicit inventory rescan.
 
@@ -249,6 +250,115 @@ class WindowsEvents:
         self._handles.clear()
 
 
+class MacEvents:
+    """FSEvents: one recursive kernel stream for every selected root, delivered on a private
+    dispatch queue. No polling and no handle per folder. Paths arrive canonical (/private/var
+    for /var), which is why NativeEvents resolves the roots first."""
+    _SINCE_NOW = 0xFFFFFFFFFFFFFFFF          # kFSEventStreamEventIdSinceNow
+    _FILE_EVENTS = 0x00000010                 # kFSEventStreamCreateFlagFileEvents
+    _NO_DEFER = 0x00000002                    # kFSEventStreamCreateFlagNoDefer
+    _MUST_SCAN = 0x00000001                   # kFSEventStreamEventFlagMustScanSubDirs
+    _DROPPED = 0x00000002 | 0x00000004        # kFSEventStreamEventFlag{User,Kernel}Dropped
+    _UTF8 = 0x08000100                        # kCFStringEncodingUTF8
+    _CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t,
+                                 ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_uint32),
+                                 ctypes.POINTER(ctypes.c_uint64))
+
+    def __init__(self, roots: list[Path]):
+        cf = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
+        cs = ctypes.CDLL("/System/Library/Frameworks/CoreServices.framework/CoreServices")
+        system = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+        cf.CFStringCreateWithCString.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32)
+        cf.CFStringCreateWithCString.restype = ctypes.c_void_p
+        cf.CFArrayCreate.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p), ctypes.c_long,
+                                     ctypes.c_void_p)
+        cf.CFArrayCreate.restype = ctypes.c_void_p
+        cf.CFRelease.argtypes = (ctypes.c_void_p,)
+        cf.CFRelease.restype = None
+        cs.FSEventStreamCreate.argtypes = (ctypes.c_void_p, self._CALLBACK, ctypes.c_void_p,
+                                           ctypes.c_void_p, ctypes.c_uint64, ctypes.c_double,
+                                           ctypes.c_uint32)
+        cs.FSEventStreamCreate.restype = ctypes.c_void_p
+        for name in ("FSEventStreamStop", "FSEventStreamInvalidate", "FSEventStreamRelease"):
+            getattr(cs, name).argtypes = (ctypes.c_void_p,)
+            getattr(cs, name).restype = None
+        cs.FSEventStreamSetDispatchQueue.argtypes = (ctypes.c_void_p, ctypes.c_void_p)
+        cs.FSEventStreamSetDispatchQueue.restype = None
+        cs.FSEventStreamStart.argtypes = (ctypes.c_void_p,)
+        cs.FSEventStreamStart.restype = ctypes.c_ubyte
+        system.dispatch_queue_create.argtypes = (ctypes.c_char_p, ctypes.c_void_p)
+        system.dispatch_queue_create.restype = ctypes.c_void_p
+        system.dispatch_release.argtypes = (ctypes.c_void_p,)
+        system.dispatch_release.restype = None
+        self._cf, self._cs, self._system = cf, cs, system
+        self._roots = roots
+        self._queue: queue.Queue[Path] = queue.Queue()
+        self._overflow = False
+        self._stream = self._dispatch = None
+        self._callback = self._CALLBACK(self._on_events)   # kept alive as long as the stream
+
+        strings = [cf.CFStringCreateWithCString(None, os.fsencode(root), self._UTF8) for root in roots]
+        callbacks = ctypes.c_void_p.in_dll(cf, "kCFTypeArrayCallBacks")
+        paths = cf.CFArrayCreate(None, (ctypes.c_void_p * len(strings))(*strings), len(strings),
+                                 ctypes.byref(callbacks))
+        for item in strings:
+            cf.CFRelease(item)          # the array holds its own reference
+        try:
+            self._stream = cs.FSEventStreamCreate(None, self._callback, None, paths, self._SINCE_NOW,
+                                                  0.05, self._FILE_EVENTS | self._NO_DEFER)
+        finally:
+            cf.CFRelease(paths)         # the stream keeps its own copy
+        if not self._stream:
+            raise OSError("FSEventStreamCreate failed")
+        self._dispatch = system.dispatch_queue_create(b"gitspecops.fsevents", None)
+        cs.FSEventStreamSetDispatchQueue(self._stream, self._dispatch)
+        if not cs.FSEventStreamStart(self._stream):
+            self.close()
+            raise OSError("FSEventStreamStart failed")
+
+    def _relative(self, path: Path) -> str | None:
+        for root in self._roots:
+            if path == root or root in path.parents:
+                return str(path.relative_to(root))
+        return None
+
+    def _on_events(self, _stream, _info, count, paths, flags, _ids):
+        for index in range(count):
+            if flags[index] & (self._MUST_SCAN | self._DROPPED):
+                self._overflow = True
+                continue
+            path = Path(os.fsdecode(paths[index]))
+            relative = self._relative(path)
+            if relative is None or not ignored_relative(relative):
+                self._queue.put(path)
+
+    def wait(self, timeout: float) -> set[Path]:
+        try:
+            first = self._queue.get(timeout=max(0.0, timeout))
+        except queue.Empty:
+            return set()
+        changed = {first}
+        while True:
+            try:
+                changed.add(self._queue.get_nowait())
+            except queue.Empty:
+                return changed
+
+    def take_overflow(self) -> bool:
+        overflow, self._overflow = self._overflow, False
+        return overflow
+
+    def close(self) -> None:
+        if self._stream:
+            self._cs.FSEventStreamStop(self._stream)
+            self._cs.FSEventStreamInvalidate(self._stream)
+            self._cs.FSEventStreamRelease(self._stream)
+            self._stream = None
+        if self._dispatch:
+            self._system.dispatch_release(self._dispatch)
+            self._dispatch = None
+
+
 class NativeEvents:
     """Small cross-platform boundary used by the observer loop and synthetic tests."""
     def __init__(self, roots: list[Path], backend=None):
@@ -259,6 +369,8 @@ class NativeEvents:
             self.backend = LinuxEvents(roots)
         elif sys.platform == "win32":
             self.backend = WindowsEvents(roots)
+        elif sys.platform == "darwin":
+            self.backend = MacEvents(roots)
         else:
             raise OSError("native filesystem events are not implemented on this OS yet")
 

@@ -62,7 +62,11 @@ def commit(repo: Path, name: str) -> None:
 def local_only(where: Path) -> Path:
     where.mkdir(parents=True)
     git(where, "init", "-q")
-    commit(where, "only-copy.txt")
+    # The file records where it was made: two of these built in the same second would otherwise
+    # be the same commit -- the same history, honestly matched -- and "unrelated" would be false.
+    (where / "only-copy.txt").write_text(str(where), encoding="utf-8")
+    git(where, "add", "only-copy.txt")
+    git(where, "commit", "-qm", "add only-copy.txt")
     return where
 
 

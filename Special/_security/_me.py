@@ -18,7 +18,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from Basic._run import run
-from Special._runtime.files import checked_path, excluded, linked, RuntimeIOError
+from Special._runtime.files import checked_path, excluded, RuntimeIOError, traverses_link
 from Special._settings import (SETTINGS_NAME, SettingsError, ResolvedSettings, _part,
                                _policy_conflicts, resolve_settings, select_home)
 
@@ -73,7 +73,7 @@ def _scope(repo, exclusions):
     """Check requested read scope before Git identity or material access, allowing source scans."""
     path = Path(os.path.abspath(Path(repo).expanduser()))
     try:
-        if any(linked(part) for part in (path, *path.parents)):
+        if traverses_link(path):
             raise SettingsError("scan roots must not traverse filesystem links")
         if excluded(path, exclusions, contains=True):
             raise SettingsError("requested repository or a subtree is excluded; no scan was started")
@@ -85,7 +85,7 @@ def _values(policy, path, label, *, explicit):
     """Read one chosen list without following links; inaccessible inputs become coverage gaps."""
     try:
         path = Path(os.path.abspath(Path(path).expanduser()))
-        if any(linked(part) for part in (path, *path.parents)):
+        if traverses_link(path):
             raise OSError("linked input")
         if excluded(path, policy.exclude_paths):
             raise OSError("excluded input")

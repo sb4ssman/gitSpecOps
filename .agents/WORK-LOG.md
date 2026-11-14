@@ -2458,3 +2458,22 @@ No code changed; decisions recorded where they govern.
   first), at most 16 lines then "+ N more"; everything clickable to zoom in.
 - README map redone from the real web view with a made-up fleet (two clouds, four machines,
   13 repositories), clipped to the map.
+
+## 2026-11-13 16:40 - user (claude) - First CI run: what failed off this machine, and the fixes
+- First run (PR #1): Ubuntu 85-86/88, macOS 64/88, Windows (GitHub) 79/88; all pass here.
+- Real product bugs: (1) every ancestor-walking link check refused the operating system's own
+  links, so on macOS nothing under /var (/private/var) could hold settings, reports or
+  scans. One shared `traverses_link` in Special/_runtime/files.py now trusts a link only when
+  root owns it and its root-owned folder no one else can change; a user-made link is still
+  refused. checked_path, _me, _private_files, settings/store and settings/fleet use it.
+  (2) macOS had no filesystem events, so the fleet peer could not start: MacEvents uses
+  FSEvents (one recursive stream, a private dispatch queue), untested until CI runs it.
+  (3) a private report inside a repository crashed when its path and Git's spelled the same
+  folder differently (8.3 short names); both sides are resolved now. (4) archive refresh by
+  root compared the typed path with the resolved stored one; it resolves the same way now.
+  (5) `_is_git` did not split a Windows path on POSIX.
+- Test-side: the CI git identity was written in the workflow and the privacy test found it
+  (now built from the run id); an "unrelated" no-remote repository could be the identical
+  commit when built in the same second (its file now differs); tests/_bootstrap.py resolves
+  the temp folder (Windows short names, macOS /var), for test comparisons only.
+- Debian 13 added to CI: a container with Debian's own Python and Git, as a non-root user.

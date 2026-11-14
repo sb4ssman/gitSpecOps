@@ -399,7 +399,9 @@ def run_refresh(*, home=None, only_root=None, scan_only=False, force_sync=False,
                                     configured=preferences is not None)
         selected = data["installations"]
         if only_root is not None:
-            key = _key(os.path.abspath(Path(only_root).expanduser()))
+            # Registration stores the resolved root (manager.py), so look it up the same way: a
+            # short Windows name (RUNNER~1) or the long one must find the same archive.
+            key = _key(os.path.realpath(Path(only_root).expanduser()))
             selected = [item for item in selected if _key(item["root"]) == key]
             if not selected:
                 raise RuntimeIOError("not_registered")
