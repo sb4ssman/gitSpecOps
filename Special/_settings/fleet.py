@@ -210,8 +210,6 @@ def save_fleet_config(config, *, component, home=None, snapshot=None):
     if baseline is not None and dict(config) == dict(baseline):
         return snapshot.home / SETTINGS_NAME
     candidate = copy.deepcopy(snapshot.document)
-    if candidate["schema_version"] != 2:
-        raise SettingsError("fleet enrollment requires common settings v2; no upgrade was performed")
     machine = {"id": config["machine_id"], "label": config["machine_label" if component == "sync" else "label"],
                "fleet_secret": config["fleet_secret"]}
     snapshot.check_identity(machine["id"], machine["label"], machine["fleet_secret"])

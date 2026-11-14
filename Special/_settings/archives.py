@@ -120,8 +120,6 @@ or created beyond checking the selected profile's path ancestry and reading sett
         document = validate_document(json.loads(payload.decode("utf-8"), object_pairs_hook=_unique_object))
     except (ValueError, UnicodeError, RecursionError):
         raise SettingsError("archive settings are not valid unambiguous configuration") from None
-    if document["schema_version"] != 2:
-        raise SettingsError("archive preferences require common schema v2; review an explicit upgrade")
     snapshot = ArchiveSettings(selected, source, document, fingerprint(payload), fingerprint(_encoded(document)))
     _ = snapshot.archives  # Validate adapter-level root uniqueness, even for a read-only caller.
     return snapshot

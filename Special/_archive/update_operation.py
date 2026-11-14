@@ -74,9 +74,9 @@ class UpdateResult:
         return int(any(repo.result.startswith("failed:") for report in self.reports for repo in report.repos))
 
     def record(self, *, redacted: bool = True, show_remote_urls: bool = False) -> dict:
-        """Schema-v1 presentation record. Raw records are only for explicitly trusted callers."""
+        """The presentation record. Raw records are only for explicitly trusted callers."""
         record = updater.report_payload(self.reports, self.mode, list(self.approved_prefixes))
-        record.update(schema_version=1, operation="archive_update", generated=self.generated, exit_code=self.exit_code,
+        record.update(operation="archive_update", generated=self.generated, exit_code=self.exit_code,
                       status=("partial" if self.errors and (self.effects_possible or self.completed_roots)
                               else ("failed" if self.exit_code else "ok")), errors=list(self.errors),
                       completed_roots=self.completed_roots, effects_possible=self.effects_possible,

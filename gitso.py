@@ -184,7 +184,7 @@ def main(argv=None):
             return 0
         if name == "commands" and rest in ([], ["--json"]):
             if rest:
-                print(json.dumps({"schema_version": 1, "commands": [command.record() for command in COMMANDS]}, indent=2))
+                print(json.dumps({"command": "commands", "ok": True, "commands": [command.record() for command in COMMANDS]}, indent=2))
             else:
                 _help()
             return 0

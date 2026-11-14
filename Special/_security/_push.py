@@ -110,7 +110,7 @@ class PushResult:
     plan_id: str | None = None
 
     def record(self):
-        return {"schema_version": 1, "status": self.status, "message": self.message,
+        return {"status": self.status, "message": self.message,
                 "security": self.report.record() if self.report is not None else None,
                 "plan_id": self.plan_id, "artifacts": []}
 

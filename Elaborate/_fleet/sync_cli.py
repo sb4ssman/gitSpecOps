@@ -132,8 +132,6 @@ def command_init(args: argparse.Namespace) -> int:
         snapshot = ensure_fleet_settings(getattr(args, "settings_home", None))
         existing = load_config(config_dir, home=getattr(args, "settings_home", None))
         if snapshot is not None:
-            if snapshot.document["schema_version"] != 2:
-                raise ValueError("common fleet enrollment requires v2; no upgrade was performed")
             snapshot.check_roots("sync", [*(args.root or []), *(args.recursive_root or []), *imported_archives])
             snapshot.check_identity(args.machine_id, args.machine_label, args.fleet_secret)
             definitions = {}

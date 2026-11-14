@@ -38,7 +38,7 @@ class CommitResult:
     failed_hook: str | None = None
 
     def record(self):
-        return {"schema_version": 1, "status": self.status, "message": self.message,
+        return {"status": self.status, "message": self.message,
                 "plan_id": self.plan_id, "committed": self.committed, "security": self.security,
                 "failed_hook": self.failed_hook, "artifacts": []}
 

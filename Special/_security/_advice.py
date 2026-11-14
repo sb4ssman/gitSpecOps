@@ -34,7 +34,7 @@ def inspect_advice(repo, *, settings_home=None, expected_settings=None):
     current local upstream ref, whose freshness is separate from this check's timestamp.
     Missing mappings do not prevent working-tree advice and cannot imply a clean outgoing scan.
     """
-    result = {"schema_version": 1, "scope": "local-advisory", "action_clearance": False,
+    result = {"scope": "local-advisory", "action_clearance": False,
               "observed_at": datetime.now(timezone.utc).isoformat(), "check_status": "incomplete",
               "working_tree": None, "outgoing": None, "gaps": [], "artifacts": []}
     try:

@@ -60,7 +60,7 @@ class ArchiveResult:
     def record(self):
         artifacts = [{"kind": kind, "path": str(path)} for kind, path in
                      (("report", self.report_path), ("operational-log", self.log_path)) if path is not None]
-        return conceal({"schema_version": 1, "operation": self.settings.component if self.settings else "archive",
+        return conceal({"operation": self.settings.component if self.settings else "archive",
                         "scan_only": self.scan_only,
                         "status": "partial" if self.exit_code and self.effects_possible else "failed" if self.exit_code else "ok",
                         "exit_code": self.exit_code, "effects_possible": self.effects_possible,
