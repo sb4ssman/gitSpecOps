@@ -196,6 +196,24 @@ def test_refusals_that_protect_fidelity():
         finally:
             capture.repository_state = real_state
 
+        # A file already modified reads " M" before and after another edit: the status alone
+        # cannot see an editor still writing to it. Its size and time can.
+        (repository / "tracked.txt").write_text("already modified\n")
+        writes["count"] = 0
+
+        def editing_again(path):
+            writes["count"] += 1
+            if writes["count"] == 2:
+                (repository / "tracked.txt").write_text("edited once more while capturing\n")
+            return real_state(path)
+
+        capture.repository_state = editing_again
+        try:
+            refused(lambda: capture.capture(repository, "r1", "machine-a"), "changed while")
+        finally:
+            capture.repository_state = real_state
+        (repository / "tracked.txt").write_text("original\n")
+
 
 def test_bundle_is_json_serialisable_and_names_nothing_extra():
     with tempfile.TemporaryDirectory() as temp:

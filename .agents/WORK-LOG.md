@@ -2489,3 +2489,16 @@ No code changed; decisions recorded where they govern.
   link's own target text can hold a Windows user path, a fair finding; it now asserts the
   linked file's contents never appear. (3) capture's churn test: cause unknown (tested and
   ruled out: ignoring system Git config); the test now prints both Git states when it fails.
+
+## 2026-11-13 17:50 - user (claude) - Third CI run: six of seven green; a real capture bug
+- Third run: Ubuntu, Debian, macOS (both) and Windows 3.14 pass. Windows 3.11 failed capture's
+  churn test; the new diagnostics showed Git status " M tracked.txt" before and after the write.
+- Real bug, every OS: capture compared status lines only, and a file already modified reads
+  " M" however often it is edited again, so a capture during active editing could bundle two
+  moments. repository_state now also records each listed file's size and modification time
+  (compared before/after only; the bundle still carries commit and branch). New test: an
+  already-modified file edited mid-capture is refused.
+- Still unexplained: why that file read as modified before the edit on the Windows runner
+  (capture runs Git without system config; a local check of that theory came back clean).
+- Local note: test_runtime_logging failed once in a parallel run and passed on every rerun;
+  a 1-second log-lock wait under load is a plausible cause, not confirmed, not changed.
