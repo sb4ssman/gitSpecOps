@@ -19,10 +19,7 @@ from __future__ import annotations
 
 import argparse
 import builtins
-import json
-import signal
 import sys
-import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -60,7 +57,7 @@ from Basic._paths import sync_home  # noqa: E402
 from Special._archive.registry import registered_roots  # noqa: E402
 from Special._settings.fleet import ensure_fleet_settings, fleet_directory, load_fleet_settings  # noqa: E402
 from Special._settings import SettingsError  # noqa: E402
-from Basic._version import VERSION, check_for_update, version_line  # noqa: E402
+from Basic._version import check_for_update, version_line  # noqa: E402
 from Basic._providers._registry import provider_for_host, registered_hosts  # noqa: E402
 PREVIEW_MACHINE_ID = "local-preview"
 

@@ -24,7 +24,6 @@ from Special._archive.update_cli import main
 
 EFFECT = "local"
 
-from Special._archive.update_operation import UpdateRequest, UpdateResult, run_update, render_result
 
 if __name__ == "__main__":
     raise SystemExit(main())

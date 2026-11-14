@@ -19,7 +19,7 @@ from _bootstrap import ROOT, setup  # noqa: E402
 
 setup()
 
-from Special._archive.plan import PublishCandidate, build_publish_plan  # noqa: E402
+from Special._archive.plan import build_publish_plan  # noqa: E402
 from Special._archive.sync import (  # noqa: E402
     apply_publish,
     collect_publish_candidates,

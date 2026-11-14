@@ -13,7 +13,7 @@ from _bootstrap import setup
 setup()
 
 from Special._settings import SettingsError, resolve_document
-from Special._settings.portable import PortableSettings, merge_portable, portable_settings
+from Special._settings.portable import merge_portable, portable_settings
 
 
 class PortableTests(unittest.TestCase):

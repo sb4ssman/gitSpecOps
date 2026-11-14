@@ -149,7 +149,7 @@ _real_run_git = pull_module.run_git
 for moved, label in ((False, "already current"), (True, "updated")):
     heads = iter(["a" * 40, ("b" if moved else "a") * 40])
 
-    def translated(repo, args, **_kwargs):
+    def translated(repo, args, *, heads=heads, **_kwargs):
         if args[:1] == ["rev-parse"]:
             return Result(args, 0, next(heads) + "\n", "")
         # A translated "Already up to date." on a no-op, and on a real update, alike.

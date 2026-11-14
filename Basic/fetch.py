@@ -14,7 +14,6 @@ tree -- nothing the user would have to undo. That is why observation may fetch a
 """
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 

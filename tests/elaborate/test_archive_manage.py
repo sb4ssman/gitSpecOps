@@ -49,10 +49,9 @@ with tempfile.TemporaryDirectory(prefix="archive-manage-") as tmp:
     tmp = Path(tmp)
     os.environ["GITSPECOPS_HOME"] = str(tmp / "home")
 
-    from Special import archive as manage  # noqa: E402  (after GITSPECOPS_HOME is set)
-    from Special._archive import manager as engine  # noqa: E402
+    from Special._archive import manager as manage  # noqa: E402  (after GITSPECOPS_HOME is set)
     from Elaborate import archive_schedule as scheduled  # noqa: E402
-    from Special._archive.registry import load_registry, registered_roots, registry_path  # noqa: E402
+    from Special._archive.registry import registered_roots, registry_path  # noqa: E402
 
     check("scheduling exposes no duplicate local-management API",
           not hasattr(scheduled, "refresh_all") and not hasattr(scheduled, "install_launchers"))

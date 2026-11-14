@@ -21,19 +21,7 @@ _ROOT = str(Path(__file__).resolve().parents[1])
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from Special._org_duplicator.command import (
-    non_repo_entries,
-    choose_repo_subset,
-    display_repo_table,
-    check_prerequisites,
-    setup_operation,
-    validate_operation,
-    show_summary,
-    parse_args,
-    main,
-    cli_main,
-    EFFECT,
-)
+from Special._org_duplicator.command import cli_main
 
 EFFECT = "remote"
 

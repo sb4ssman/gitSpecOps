@@ -18,7 +18,6 @@ Importing writes nothing and does not inspect or alter installed tasks.
 """
 from __future__ import annotations
 
-import argparse
 import re
 import sys
 from pathlib import Path

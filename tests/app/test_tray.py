@@ -9,7 +9,7 @@
 import io
 import os
 import sys
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import redirect_stdout
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -265,7 +265,7 @@ def test_without_a_system_tray_the_command_steps_aside():
         print("skip: PySide6 not installed")
         return
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6 import QtGui, QtWidgets
+    from PySide6 import QtWidgets
 
     from App._tray import qt
 

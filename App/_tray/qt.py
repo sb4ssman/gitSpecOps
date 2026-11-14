@@ -9,7 +9,6 @@ Status:       working
 """
 from __future__ import annotations
 
-import argparse
 import sys
 import threading
 import webbrowser
@@ -96,13 +95,12 @@ def missing_qt_message() -> str:
 def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_on_start=False,
              remote=False, poll_seconds=POLL_SECONDS) -> int:
     try:
-        from PySide6 import QtCore, QtGui, QtWidgets
+        from PySide6 import QtCore, QtWidgets
     except ImportError as exc:
         raise TrayUnavailable(missing_qt_message()) from exc
     from App._launch import profile_arguments, run_app
     from Basic._version import check_for_update, version_line
     from Elaborate._fleet import autostart
-    from Elaborate._fleet.cli import main as fleet_main
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([sys.argv[0]])
     app.setQuitOnLastWindowClosed(False)

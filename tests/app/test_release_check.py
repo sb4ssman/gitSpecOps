@@ -1,6 +1,5 @@
 """The release readiness gate is read-only and checks recipe assets without a build tool."""
 import sys
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 

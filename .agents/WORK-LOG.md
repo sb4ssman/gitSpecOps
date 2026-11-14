@@ -2588,3 +2588,50 @@ No code changed; decisions recorded where they govern.
   file ("create it with setup first"), which the walkthrough's library step would also hit.
   Reading now says "not enrolled"; the first `machine add` creates the profile. Test added.
 - Not changed: the web setup page still asks for typed LOOK/SCAN/JOIN (a person in a browser).
+
+## 2026-11-14 12:10 - user (claude) - The web setup page approves like the commands (branch wave/command-names)
+- App/_web/setup.py: find, add, join and leave first return their plan and its id and change
+  nothing; the page shows the plan with "Yes, do it" and "Cancel", and Yes sends `apply` with
+  that id. A plan that changed in between is refused and the new one shown. A pasted fleet key
+  is covered by the id and never echoed back. Remove and presentation stay one-click settings.
+  The typed LOOK/SCAN/JOIN/LEAVE words are gone. Not yet seen in a browser.
+
+## 2026-11-14 13:20 - user (claude) - Waves pushed; Ruff in CI; a Windows logging race; notes pruned (branch wave/cleanup)
+- At the user's go: wave/readme-docs, wave/polish and wave/command-names pushed, PRs #3, #4, #5,
+  each stacked on the one before (#1 and #2 were already open; #1's CI is green on all seven).
+- **A real Windows bug, found by chasing the intermittent logging test:** two processes logging
+  at once could fail with `logging_write`. While one writer deletes its lock file, Windows
+  reports "permission denied" (not "already exists") to another creating it. The logger now
+  waits that out like a busy lock; a denial that outlasts the wait is still an error.
+  Reproduced (1 in 40 runs; a three-writer repro failed by attempt 22), fixed, then 60 attempts
+  clean; a test pins it.
+- **Ruff, a development check in CI** (`lint` job, ruff 0.17.3, pinned): the rules that find
+  mistakes (F, E9, B023), not style; E402 is how the scripts are built. It found:
+  test_archive_refresh calling `update_archive` (renamed; the test only runs where symlinks can
+  be made, so Windows never saw it); `EFFECT` defined twice in archive.py and org_copy.py; the
+  launch loop's relay thread reading the loop's variables (now bound per pass); ~80 unused
+  imports. The public command files are thin again (header, EFFECT, main); tests reach the
+  engines. Removing a re-export broke `operation.py`, which called `sync.build_publish_plan`;
+  the suite caught it, and it now imports from plan.py.
+- Setup's environment question said "Refresh this folder's Python environment with the desktop
+  app?". It now says what it does: install the desktop app (Qt into this folder's .venv), or,
+  when installed, update Qt after updating gitSpecOps.
+- The intermittent commit-gate test: 36 of 36 under stress (12 runs 6 at a time, 24 runs 8 at a
+  time); it failed once more inside a full run with 12 test processes at once, output not kept.
+- **Notes pruned** at the user's direction. WORKING-NOTES now holds open work only. Done and
+  dropped from it (verified): the machine/fleet enrollment split; setup in the app; the mark;
+  the zoomable map; state-repository writes only on change (2026-11-12); the Security tab's
+  first version; the README rebuild; CI on three systems; the clean-tree handoff's phases 1-8
+  and its "one configuration" item (2026-11-13); the 16-command catalog (now subjects and
+  actions). The 2026-10-28 acceptance comparison (tables A-G) was retired: its still-open items
+  are summarized in the notes; the full text is in git history before this commit.
+- Removed as absorbed or resolved: HANDOFF.md (historical, self-declared), HANDOFF-CLEAN-TREE.md
+  (its leftovers moved to the notes), new-tool-sync-suggester.md (the 2026-08-06 concept for a
+  tool now built; the brief keeps its goal) and knowledge/shared-layer.md (superseded). The
+  unbuilt handoff design moved to knowledge/handoff-design.md. Links fixed.
+- Found, not changed: the folder mapper's URL (sb4ssman/PythonTools) now redirects to a
+  private repository, so a fresh machine cannot fetch it. One-command install (pipx) is not a
+  small change: pyproject says `package = false` on purpose (an editable install broke
+  interpreter startup), and installing as a package would put Basic, Special, Elaborate and App
+  into site-packages as top-level names. It needs one `gitspecops` package (or a zipapp) first.
+  The user's second Windows machine has no SSH server, so it cannot be inspected from here.

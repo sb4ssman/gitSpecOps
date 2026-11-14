@@ -1,5 +1,4 @@
 """Desktop handoff stays local, explicit, and separate from remote Git actions."""
-import io
 import json
 from pathlib import Path
 import subprocess

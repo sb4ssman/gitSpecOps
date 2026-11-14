@@ -14,7 +14,6 @@ from _bootstrap import setup  # noqa: E402
 setup()
 
 from Elaborate._fleet.cli import app_lock, guided_durable_arguments, require_gh
-from Elaborate._fleet.config import validate
 from Elaborate._fleet.peer import TransportPublisher
 from App._web._assets import load_ui_assets
 from Elaborate._fleet.display import CONTRACT_NAME, CONTRACT_VERSION, PRODUCT_NAME, build_display

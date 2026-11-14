@@ -305,10 +305,16 @@ def area_environment(found: dict, plan: Plan) -> None:
     if not plan.uv_after:
         line("Without uv the desktop app cannot be installed; the command-line tools still work.", "warning")
         return
-    verb = "Refresh" if found["venv"] else "Build"
-    if yes_no(f"{verb} this folder's Python environment with the desktop app?", "n" if found["desktop"] else "y",
-              "Runs: uv sync --extra app, in this folder only."):
-        plan.add("Python environment", "Python environment: uv sync --extra app (in this folder)", _build_env)
+    # `uv sync --extra app`: make this folder's .venv exactly what uv.lock lists, plus the "app"
+    # extra (Qt). Without --extra app, a sync would remove Qt.
+    if found["desktop"]:
+        question = "The desktop app is installed. Update Qt to the version this gitSpecOps expects?"
+        hint = "Only needed after updating gitSpecOps. Changes this folder's .venv only (uv sync --extra app)."
+    else:
+        question = "Install the desktop app?"
+        hint = "Installs Qt into a .venv in this folder only; nothing system-wide (uv sync --extra app)."
+    if yes_no(question, "n" if found["desktop"] else "y", hint):
+        plan.add("Python environment", "Desktop app: Qt in this folder's .venv (uv sync --extra app)", _build_env)
         plan.venv_after = True
     else:
         plan.venv_after = found["venv"]

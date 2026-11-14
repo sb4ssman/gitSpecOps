@@ -24,7 +24,7 @@ That last row is the whole reason this gets its own document.
 
 Today the state folder is a set of manifests with hashed identities, no names, no paths, no
 content. Someone who obtains it learns very little (see
-[`knowledge/manifest-privacy.md`](knowledge/manifest-privacy.md)).
+[`manifest-privacy.md`](manifest-privacy.md)).
 
 **Handoff would put real source code in that folder.** A patch of your working tree is your
 working tree. Whatever the cloud provider, the shared drive, or an old backup can see, they would
@@ -47,7 +47,7 @@ Not one thing — five, with sharply different risk:
 1. **Committed but unpushed commits.** The easy case, and it is not really handoff at all: the
    answer is *publish*, i.e. a non-force push. Git already refuses a non-fast-forward. This
    should be the first and possibly only thing built, and it belongs with the archive tools'
-   push direction (see the "publish" notes in [`README.md`](README.md)), not here.
+   push direction (see the "publish" notes in [`../README.md`](../README.md)), not here.
 2. **Staged and unstaged changes to tracked files.** A `git diff` / `git diff --cached` pair, or
    one `git stash create` object. Self-describing, reviewable, and applies cleanly or refuses.
 3. **Untracked files.** The dangerous one. Untracked means git was never told what these are, so
@@ -69,7 +69,7 @@ the state folder; history is preserved; nothing is destroyed.
 
 Costs: requires write access to the remote, and pushes work-in-progress to a server — which for a
 **public** repository means publishing it to the world. The fork-visibility constraint already
-recorded in [`new-tool-sync-suggester.md`](new-tool-sync-suggester.md) applies directly: there is
+recorded in the original Sync Suggester design record (removed 2026-11-14; in git history before that day) applies directly: there is
 no such thing as a private branch in a public repository. The tool must check repository
 visibility and refuse, loudly, rather than assume a WIP branch is private.
 

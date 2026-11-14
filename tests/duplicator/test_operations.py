@@ -76,7 +76,7 @@ try:
             (folder / "config").mkdir(parents=True)  # an ordinary project, not a repository
             (folder / "precious.txt").write_text("exists nowhere else\n", encoding="utf-8")
             fake = ops.run_checked = FakeGit()
-            result = run_quietly(lambda: ops.download_single_repo(
+            result = run_quietly(lambda dest=dest, mirror=mirror: ops.download_single_repo(
                 {"name": "tool"}, 1, 1, "example-org", str(dest), mirror, *logs))
             check(f"download ({label}) over an existing folder fails",
                   result["status"] == "failed")
@@ -92,7 +92,7 @@ try:
             empty = dest / ("tool.git" if mirror else "tool")
             empty.mkdir(parents=True)
             ops.run_checked = FakeGit()
-            result = run_quietly(lambda: ops.download_single_repo(
+            result = run_quietly(lambda dest=dest, mirror=mirror: ops.download_single_repo(
                 {"name": "tool"}, 1, 1, "example-org", str(dest), mirror, *logs))
             check(f"download ({label}) into an empty folder the user made succeeds",
                   result["status"] == "success" and any(empty.iterdir()))
@@ -100,7 +100,7 @@ try:
             empty = dest / ("tool.git" if mirror else "tool")
             empty.mkdir(parents=True)
             ops.run_checked = FakeGit(fail_first=ops.RETRY_ATTEMPTS)
-            result = run_quietly(lambda: ops.download_single_repo(
+            result = run_quietly(lambda dest=dest, mirror=mirror: ops.download_single_repo(
                 {"name": "tool"}, 1, 1, "example-org", str(dest), mirror, *logs))
             check(f"a failed download ({label}) leaves the user's empty folder in place, empty",
                   result["status"] == "failed" and empty.is_dir() and not any(empty.iterdir()))
@@ -110,7 +110,7 @@ try:
         dest = tmp / "dest-gives-up"
         dest.mkdir()
         ops.run_checked = FakeGit(fail_first=ops.RETRY_ATTEMPTS)
-        result = run_quietly(lambda: ops.download_single_repo(
+        result = run_quietly(lambda dest=dest, mirror=mirror: ops.download_single_repo(
             {"name": "tool"}, 1, 1, "example-org", str(dest), False, *logs))
         check("a download that gives up leaves no half-clone to be mistaken for a finished one",
               result["status"] == "failed" and not (dest / "tool").exists())
@@ -118,7 +118,7 @@ try:
         dest = tmp / "dest-retry"
         dest.mkdir()
         fake = ops.run_checked = FakeGit(fail_first=1)
-        result = run_quietly(lambda: ops.download_single_repo(
+        result = run_quietly(lambda dest=dest, mirror=mirror: ops.download_single_repo(
             {"name": "tool"}, 1, 1, "example-org", str(dest), False, *logs))
         check("a clone this run left half-done is cleaned up and retried",
               result["status"] == "success" and len(fake.calls) == 2

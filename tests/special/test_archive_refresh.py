@@ -26,7 +26,7 @@ from Special._archive.plan import SyncPlan, LocalRepo, RepoRef
 from Special._settings import resolve_document, SettingsError
 from Special._runtime.files import RuntimeIOError
 from Special._runtime.output import conceal
-from Special import archive as archive_manager
+from Special._archive import manager as archive_manager
 from Special import archive_update
 from Elaborate import archive_schedule as archive_manage
 import gitso
@@ -329,7 +329,7 @@ class ArchiveRefreshTests(unittest.TestCase):
         except OSError:
             self.skipTest("native directory symlink creation unavailable on this host")
         for command, action in ((archive_manager.main, ["check"]),
-                                (update_archive.main, ["--root", str(self.a)])):
+                                (archive_update.main, ["--root", str(self.a)])):
             with self.subTest(command=command.__module__), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 code = command([*action, "--settings-home", str(self.home), "--no-log", "--report-dir", str(alias)])
             self.assertEqual(code, 2)

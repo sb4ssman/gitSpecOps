@@ -72,10 +72,11 @@ if got_all != WANT:
     FAILS.append(f"choose_orgs: {got_all}")
 
 # ---- module wiring ----
-from Special import org_copy as dup  # noqa: E402,F401
+from Special import org_copy as public  # noqa: E402
+from Special._org_duplicator import command as dup  # noqa: E402
 
 for obj, name in ((batch, "run_batch_download"), (batch, "run_single_repo"),
-                  (dup, "choose_repo_subset")):
+                  (dup, "choose_repo_subset"), (public, "cli_main")):
     if not hasattr(obj, name):
         FAILS.append(f"missing: {obj.__name__}.{name}")
 

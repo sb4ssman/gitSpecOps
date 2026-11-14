@@ -7,7 +7,7 @@ Unlike [`../WORKING-NOTES.md`](../WORKING-NOTES.md), which is transient and prun
 **kept**. Reach for this folder when you learn something worth remembering next session: a design
 decision and its rationale, a non-obvious constraint, an investigation result.
 
-- [`architecture-layers.md`](architecture-layers.md) — **shape agreed, migration not started.**
+- [`architecture-layers.md`](architecture-layers.md) — **the layer stack; migration done 2026-11-11.**
   The layer stack (Basic → Special → Elaborate → App) as *composition*, the one-way import rule,
   the full target tree, providers as the one host seam, skins, `EFFECT` declarations, and
   why the migration precedes enrolling machines.
@@ -17,6 +17,8 @@ decision and its rationale, a non-obvious constraint, an investigation result.
   in only one place; the risk classes, and the remote-free root-commit identity they need.
 - [`change-detection.md`](change-detection.md) — how change is noticed without scanning.
 - [`distribution.md`](distribution.md) — packaging and delivery direction.
+- [`handoff-design.md`](handoff-design.md) — **design, not built.** Moving work in progress
+  from one machine to another, and why it needs its own privacy boundary.
 - [`live-fleet.md`](live-fleet.md) — the tailnet tier.
 - [`manifest-privacy.md`](manifest-privacy.md) — what a published record may contain, and why the
   salt is worth a different amount per transport.
@@ -26,11 +28,9 @@ decision and its rationale, a non-obvious constraint, an investigation result.
   first `Security/` had the wrong shape, the design that replaces it (material, checks, remedies;
   security inside the layers), `clean_history` and its stops, the watch list, what GitHub does
   better, and the phased plan.
-- [`shared-layer.md`](shared-layer.md) — *superseded by the layer stack; kept for history.* The `shared/` cross-operation primitive layer: admission
-  rule, module list, import mechanics, Linux notes.
 - [`test-suite-audit.md`](test-suite-audit.md) — **2026-10-19, first read of what the tests
-  assert.** Strong where it exists; confirmed defects (safe-to-wipe says SAFE over unpushed work;
-  duplicator cleanup deletes a non-repository folder), the untested mutating verbs, weak
+  assert.** Strong where it exists; confirmed defects (safe-to-wipe said SAFE over unpushed work;
+  duplicator cleanup deleted a non-repository folder; both fixed 2026-10-19), untested verbs, weak
   assertions, and the repair order.
 - [`tiers-and-capture.md`](tiers-and-capture.md) — what each tier is supposed to be able to
   *rescue*, not merely how fast it is.

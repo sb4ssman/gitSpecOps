@@ -17,6 +17,7 @@ from _bootstrap import setup
 setup()
 
 from Special import archive_update as public
+from Special._archive import update_operation as engine
 from Special._archive import updater, update_cli
 from Special._archive.plan import RepoInfo
 from Special._runtime.files import RuntimeIOError, SOURCE_ROOT
@@ -109,12 +110,12 @@ class UpdateTests(unittest.TestCase):
         hidden.mkdir()
         nested = hidden / "private-subtree"
         with patch.object(updater, "inspect_candidate", side_effect=AssertionError("excluded repo inspected")):
-            result = public.run_update(self.settings(scope={"roots": [str(self.archive)],
-                "exclude_paths": [str(nested)]}), public.UpdateRequest(scan_only=True))
+            result = engine.run_update(self.settings(scope={"roots": [str(self.archive)],
+                "exclude_paths": [str(nested)]}), engine.UpdateRequest(scan_only=True))
         self.assertEqual(result.exit_code, 0)
         self.assertEqual(result.reports[0].excluded_folders, 1)
         with patch.object(updater, "scan_root") as scan:
-            result = public.run_update(self.settings(), public.UpdateRequest(roots=()))
+            result = engine.run_update(self.settings(), engine.UpdateRequest(roots=()))
         self.assertEqual(result.exit_code, 2)
         scan.assert_not_called()
 
@@ -122,7 +123,7 @@ class UpdateTests(unittest.TestCase):
         settings = self.settings(scope={"roots": [str(self.archive)], "exclude_paths": [str(self.archive)]},
                                  output={"save": True})
         with patch.object(updater, "scan_root") as scan:
-            result = public.run_update(settings)
+            result = engine.run_update(settings)
         self.assertEqual(result.errors, ["excluded_root"])
         scan.assert_not_called()
         self.assertFalse(self.home.exists())
@@ -133,7 +134,7 @@ class UpdateTests(unittest.TestCase):
         for section, value in (("output", {"save": True, "directory": str(bad)}),
                                ("logging", {"enabled": True, "directory": str(bad)})):
             with self.subTest(section=section), patch.object(updater, "update_repo") as pull:
-                result = public.run_update(self.settings(**{section: value}))
+                result = engine.run_update(self.settings(**{section: value}))
             self.assertEqual(result.exit_code, 2)
             pull.assert_not_called()
         self.assertEqual(bad.read_text(), "retained")
@@ -141,7 +142,7 @@ class UpdateTests(unittest.TestCase):
     def test_required_log_failure_does_not_fall_back_or_pull(self):
         with patch("Special._archive.update_operation.configure_logging", side_effect=RuntimeIOError("logging_busy")), \
              patch.object(updater, "update_repo") as pull:
-            result = public.run_update(self.settings(output={"save": True}, logging={"enabled": True}))
+            result = engine.run_update(self.settings(output={"save": True}, logging={"enabled": True}))
         self.assertEqual(result.exit_code, 2)
         self.assertIsNone(result.report_path)
         self.assertEqual(list((self.home / "reports").iterdir()), [])
@@ -154,10 +155,10 @@ class UpdateTests(unittest.TestCase):
         with patch.object(updater, "inspect_candidate", return_value=repo), \
              patch.object(updater, "update_repo", return_value="failed: fetch " + credential), \
              redirect_stdout(io.StringIO()) as out:
-            result = public.run_update(settings)
+            result = engine.run_update(settings)
         self.assertEqual(out.getvalue(), "")
         self.assertEqual(result.exit_code, 1)
-        rendered = public.render_result(result, "json") + public.render_result(result, "text", show_remote_urls=True)
+        rendered = engine.render_result(result, "json") + engine.render_result(result, "text", show_remote_urls=True)
         self.assertNotIn(credential, rendered)
         self.assertNotIn("private-marker", rendered)
         self.assertNotIn("private-marker", repr(result))
@@ -177,9 +178,9 @@ class UpdateTests(unittest.TestCase):
     def test_json_respects_remote_url_visibility_and_explicit_relative_report_location(self):
         repo = self.repo()
         with patch.object(updater, "inspect_candidate", return_value=repo):
-            result = public.run_update(self.settings(), public.UpdateRequest(scan_only=True))
-        hidden = json.loads(public.render_result(result, "json"))
-        visible = json.loads(public.render_result(result, "json", show_remote_urls=True))
+            result = engine.run_update(self.settings(), engine.UpdateRequest(scan_only=True))
+        hidden = json.loads(engine.render_result(result, "json"))
+        visible = json.loads(engine.render_result(result, "json", show_remote_urls=True))
         self.assertEqual(hidden["roots"][0]["scan"]["repos"][0]["origin"], "present")
         self.assertEqual(visible["roots"][0]["scan"]["repos"][0]["origin"], repo.origin)
 
@@ -193,7 +194,7 @@ class UpdateTests(unittest.TestCase):
         with patch.object(updater, "inspect_candidate", side_effect=[first, second]), \
              patch.object(updater, "update_repo", return_value="updated") as pull, \
              patch("Special._archive.update_operation.configure_logging", return_value=FailingLog()):
-            result = public.run_update(self.settings())
+            result = engine.run_update(self.settings())
         self.assertEqual(pull.call_count, 1)
         self.assertEqual(result.exit_code, 2)
         self.assertEqual(result.record()["status"], "partial")
@@ -224,12 +225,12 @@ class UpdateTests(unittest.TestCase):
         with patch.object(updater, "inspect_candidate", return_value=repo), \
              patch.object(updater, "update_repo", return_value="updated") as pull, \
              patch("Special._archive.update_operation.ReportSink.write", side_effect=OSError("private-marker")):
-            result = public.run_update(settings)
+            result = engine.run_update(settings)
         self.assertTrue(pull.called)
         self.assertEqual(result.exit_code, 2)
         self.assertEqual(result.record()["status"], "partial")
         self.assertIsNone(result.report_path)
-        self.assertNotIn("private-marker", public.render_result(result, "text"))
+        self.assertNotIn("private-marker", engine.render_result(result, "text"))
         self.assertEqual(list((self.home / "reports").iterdir()), [])
 
     def test_malformed_settings_are_an_error_instead_of_profile_fallback(self):
@@ -245,7 +246,7 @@ class UpdateTests(unittest.TestCase):
         for flags in (("--no-save-report", "--report-dir", str(self.root / "reports")),
                       ("--no-log", "--log-dir", str(self.root / "logs"))):
             self.assertEqual(self.cli("--root", str(self.archive), *flags)[0], 2)
-        result = public.run_update(self.settings(output={"save": True, "directory": str(SOURCE_ROOT / "logs")}))
+        result = engine.run_update(self.settings(output={"save": True, "directory": str(SOURCE_ROOT / "logs")}))
         self.assertEqual(result.errors, ["source_destination"])
 
     def test_real_local_fast_forward_keeps_dirty_checkout_untouched(self):
@@ -265,13 +266,13 @@ class UpdateTests(unittest.TestCase):
         git("-C", str(seed), "add", "tracked.txt")
         git("-C", str(seed), "-c", "commit.gpgsign=false", "commit", "-qm", "second")
         git("-C", str(seed), "push", "-q", "origin", "main")
-        request = public.UpdateRequest(approved_prefixes=(str(self.root),))
-        result = public.run_update(self.settings(), request)
+        request = engine.UpdateRequest(approved_prefixes=(str(self.root),))
+        result = engine.run_update(self.settings(), request)
         self.assertEqual(result.exit_code, 0)
         self.assertEqual((work / "tracked.txt").read_text(), "second")
         (work / "tracked.txt").write_text("local edit")
         with patch.object(updater, "update_repo", side_effect=AssertionError("dirty checkout pulled")):
-            result = public.run_update(self.settings(), request)
+            result = engine.run_update(self.settings(), request)
         self.assertEqual(result.exit_code, 0)
         self.assertEqual((work / "tracked.txt").read_text(), "local edit")
         self.assertFalse(result.reports[0].repos[0].eligible)

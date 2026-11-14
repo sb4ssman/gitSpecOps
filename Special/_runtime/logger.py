@@ -1,7 +1,8 @@
 """One explicit stdlib logging seam; no handler or settings lookup on import.
 
 Configure from resolved preferences. Cooperating CLI/app writers lock each append/rotation
-and close the file before releasing it. Busy/stale locks and write failures are errors;
+and close the file before releasing it (on Windows, a lock being deleted counts as busy for the
+same short wait). Busy/stale locks and write failures are errors;
 no stale-lock deletion or fallback. Only event names and numeric counters are accepted.
 """
 from __future__ import annotations
@@ -36,7 +37,13 @@ class _LockedHandler(RotatingFileHandler):
             except FileExistsError:
                 if time.monotonic() >= deadline:
                     raise RuntimeIOError("logging_busy") from None
-                time.sleep(0.02)
+            except PermissionError:
+                # Windows: while another writer deletes its lock, the file is "delete pending" and
+                # creating it fails with this instead of FileExistsError. Wait it out like a busy
+                # lock; one that lasts past the deadline is a real permission problem.
+                if os.name != "nt" or time.monotonic() >= deadline:
+                    raise
+            time.sleep(0.02)
         os.close(descriptor)
         try:
             for index in range(self.backupCount + 1):
