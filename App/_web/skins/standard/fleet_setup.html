@@ -24,16 +24,16 @@
 <p>Point at a folder (or the whole machine). Only folder names are read, no file contents and no Git, to list folders that hold repositories. Nothing is enrolled by looking.</p>
 <label>Look in (one folder per line)<textarea id="find-paths" rows="2" placeholder="&lt;library-root&gt;"></textarea></label>
 <label class="inline"><input id="find-whole" type="checkbox"> The whole machine</label>
-<label>Type LOOK to allow it<input id="find-confirm" autocomplete="off"></label>
 <button id="find" type="button">Find</button>
+<div id="find-plan" class="plan-box" hidden></div>
 <ul id="found" class="setup-list"></ul>
 </article>
 <article class="card">
 <h3>Add libraries</h3>
 <p id="add-notice">When the app next starts, it inventories these folders once, recursively: folder names and each repository's Git status. It copies, sends and changes nothing.</p>
 <label>Library folders (one per line)<textarea id="add-paths" rows="3" placeholder="&lt;library-root&gt;"></textarea></label>
-<label>Type SCAN to allow it<input id="add-confirm" autocomplete="off"></label>
 <button id="add" type="button">Add</button>
+<div id="add-plan" class="plan-box" hidden></div>
 </article>
 <article class="card" id="presentation-card" hidden>
 <h3>How the app shows itself</h3>
@@ -63,14 +63,14 @@
 <label class="inline"><input id="join-create" type="checkbox"> Create it if it does not exist</label>
 <label class="inline"><input id="join-tailnet" type="checkbox"> Talk directly to my machines over Tailscale</label>
 <label class="inline"><input id="join-names" type="checkbox" checked> Share repository names, branches and commits with my other machines</label>
-<label>Type JOIN to allow it<input id="join-confirm" autocomplete="off"></label>
 <button id="join" type="button">Join</button>
+<div id="join-plan" class="plan-box" hidden></div>
 </article>
 <article class="card" id="leave-card" hidden>
 <h3>Leave the fleet</h3>
 <p>Stop sharing with your other machines. This machine keeps its libraries and web view; what it already shared stays where it was published.</p>
-<label>Type LEAVE to allow it<input id="leave-confirm" autocomplete="off"></label>
 <button id="leave" type="button">Leave</button>
+<div id="leave-plan" class="plan-box" hidden></div>
 </article>
 </div>
 </section>

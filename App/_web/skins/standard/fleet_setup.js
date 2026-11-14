@@ -119,11 +119,48 @@ function render(state) {
   wasEnrolled = Boolean(state.machine);
 }
 
+const LABELS = {look_in: 'Look in', depth: 'Folder levels', reads: 'Reads', libraries: 'Libraries',
+  notice: 'What happens', fleet: 'Joins', folder: 'Synced folder', repo: 'Managed repository',
+  create_repo: 'Create it if missing', tailnet: 'Over Tailscale', share_names: 'Share names',
+  stop_sharing_through: 'Stops sharing through'};
+
+function shown(value) {
+  if (Array.isArray(value)) return value.length ? value.join('\n') : 'nothing';
+  if (value === true) return 'yes';
+  if (value === false) return 'no';
+  return String(value);
+}
+
+// The same approval as the commands: the plan first, then "Yes" applies exactly that plan.
+function showPlan(action, payload, result) {
+  const box = byId(action + '-plan');
+  box.replaceChildren(html('p', result.question, 'plan-question'));
+  if (result.notice) box.append(html('p', result.notice, 'tone-warning'));
+  const list = html('dl');
+  for (const [key, value] of Object.entries(result.plan)) {
+    if (key === 'action' || value === null || value === undefined) continue;
+    list.append(html('dt', LABELS[key] || key), html('dd', shown(value)));
+  }
+  const yes = html('button', 'Yes, do it');
+  yes.type = 'button';
+  yes.onclick = () => { box.hidden = true; run(action, {...payload, apply: result.plan_id}); };
+  const no = html('button', 'Cancel', 'quiet');
+  no.type = 'button';
+  no.onclick = () => { box.hidden = true; say('Nothing was changed.'); };
+  box.append(list, yes, no);
+  box.hidden = false;
+  say('Review the plan, then choose Yes or Cancel.');
+}
+
 async function run(action, payload) {
   say('Working…');
   try {
     const result = await act(action, payload);
-    render(result.state);
+    if (result.applied === false) {
+      showPlan(action, payload, result);
+      return;
+    }
+    if (result.state) render(result.state);
     if (action === 'find') {
       const found = byId('found');
       found.replaceChildren();
@@ -144,17 +181,15 @@ async function run(action, payload) {
   }
 }
 
-byId('find').onclick = () => run('find', {paths: lines('find-paths'), whole_machine: byId('find-whole').checked,
-                                         confirm: byId('find-confirm').value.trim()});
-byId('add').onclick = () => run('add', {paths: lines('add-paths'), confirm: byId('add-confirm').value.trim()});
+byId('find').onclick = () => run('find', {paths: lines('find-paths'), whole_machine: byId('find-whole').checked});
+byId('add').onclick = () => run('add', {paths: lines('add-paths')});
 byId('presentation').onclick = () => run('presentation', {
   face: (document.querySelector('input[name=face]:checked') || {}).value,
   web: (document.querySelector('input[name=web]:checked') || {}).value});
 byId('join').onclick = () => run('join', {key: byId('join-key').value.trim(), folder: byId('join-folder').value.trim(),
                                          repo: byId('join-repo').value.trim(), create_repo: byId('join-create').checked,
-                                         tailnet: byId('join-tailnet').checked, share_names: byId('join-names').checked,
-                                         confirm: byId('join-confirm').value.trim()});
-byId('leave').onclick = () => run('leave', {confirm: byId('leave-confirm').value.trim()});
+                                         tailnet: byId('join-tailnet').checked, share_names: byId('join-names').checked});
+byId('leave').onclick = () => run('leave', {});
 byId('readiness').onclick = async () => { say('Checking Git, GitHub, Tailscale and sync folders…'); await load(true); say('Checked.'); };
 
 load().catch(() => say('The app is not answering. Is it running?', 'danger'));
