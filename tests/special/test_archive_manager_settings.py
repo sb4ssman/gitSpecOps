@@ -376,9 +376,11 @@ class ManagerSettingsTests(unittest.TestCase):
     def test_headless_subprocess_reads_only_explicit_profile_from_outside_checkout(self):
         self.profile()
         done = subprocess.run([sys.executable, "-B", str(ROOT / "Special" / "archive_manager.py"),
-            "--list", "--settings-home", str(self.home)], cwd=self.root, capture_output=True, text=True)
+            "--list", "--json", "--settings-home", str(self.home)], cwd=self.root, capture_output=True, text=True)
         self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertIn(str(self.archive), done.stdout)
+        # The record, not the screen: a screen wraps a long path at its separators.
+        roots = [Path(item["root"]) for item in json.loads(done.stdout)["archives"]]
+        self.assertEqual(roots, [self.archive])
         self.assertFalse((self.root / "unused-profile").exists())
         self.assertEqual([path.name for path in self.home.iterdir()], ["settings.json"])
 
