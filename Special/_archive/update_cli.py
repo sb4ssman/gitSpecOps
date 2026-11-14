@@ -1,4 +1,4 @@
-"""Archive Updater CLI over run_update. Help does not read settings or configure sinks.
+"""update-archive over run_update. Help does not read settings or configure sinks.
 
 Explicit flags override component/common preferences;
 --no-report means stdout only, while --no-log separately disables operational logging.
@@ -89,7 +89,7 @@ def main(argv=None) -> int:
         return 2
     set_git_timeout(args.git_timeout)
     if sys.stdout.isatty() and settings.values["output"]["format"] != "json":
-        banner("Archive Updater", "  |  ".join(str(r) for r in settings.values["scope"]["roots"]) or str(Path.cwd()))
+        banner("Update archive", "  |  ".join(str(r) for r in settings.values["scope"]["roots"]) or str(Path.cwd()))
     request = UpdateRequest(scan_only=args.scan_only,
                             approved_prefixes=tuple(args.approved_remote_prefix or DEFAULT_APPROVED_REMOTE_PREFIXES))
     result = run_update(settings, request, progress=lambda text: print(text, file=sys.stderr),

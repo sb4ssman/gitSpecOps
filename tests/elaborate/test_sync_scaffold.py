@@ -1,4 +1,4 @@
-"""Synthetic, offline contract tests for the Sync Suggester scaffold."""
+"""Synthetic, offline contract tests for the fleet scaffold."""
 
 import sys
 import subprocess

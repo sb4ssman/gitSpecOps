@@ -9,7 +9,6 @@ reports; it never downloads, replaces or restarts anything. Every failure -- no 
 `gh`, rate limited, no releases yet -- is "unknown", never an error and never "up to date".
 A source checkout is told to `git pull`, never mutated.
 
-Lives with Sync Suggester because only its modules use it; phase 3c settles its final home.
 """
 from __future__ import annotations
 

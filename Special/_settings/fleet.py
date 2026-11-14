@@ -35,11 +35,11 @@ def fleet_home(home=None):
 
 def fleet_directory(directory=None, *, home=None):
     """Select the fleet's runtime state folder without creating it; explicit directory wins,
-    then GITSPECOPS_SYNC_HOME, then sync-suggester/ in the settings profile."""
+    then GITSPECOPS_SYNC_HOME, then fleet/ in the settings profile."""
     if directory is None:
         directory = os.environ.get("GITSPECOPS_SYNC_HOME")
         if directory is None:
-            directory = fleet_home(home) / "sync-suggester"
+            directory = fleet_home(home) / "fleet"
         elif not directory.strip() or not Path(directory).expanduser().is_absolute():
             raise SettingsError("GITSPECOPS_SYNC_HOME must be an absolute nonempty path")
     if not str(directory).strip():

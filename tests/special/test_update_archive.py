@@ -1,4 +1,4 @@
-"""Standalone updater integration with invented settings, scopes and temporary Git repos."""
+"""update-archive integration with invented settings, scopes and temporary Git repos."""
 from __future__ import annotations
 
 import io

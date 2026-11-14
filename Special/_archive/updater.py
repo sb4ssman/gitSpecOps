@@ -1,5 +1,5 @@
 """
-Archive Updater
+Update archive
 ===============
 
 Host-agnostic update of a folder of sibling Git repositories: scan direct child folders,
@@ -45,8 +45,6 @@ from Special._archive.plan import (  # noqa: E402
 )
 
 EFFECT = "local"
-APP_NAME = "Archive Updater"
-VERSION = "0.4.0"
 
 
 @dataclass
@@ -175,8 +173,7 @@ def print_summary(report: RootReport, *, stream=None) -> None:
 
 def report_payload(reports: list[RootReport], mode: str, approved_prefixes: list[str]) -> dict:
     return {
-        "tool": APP_NAME,
-        "version": VERSION,
+        "command": "update-archive",
         "generated": datetime.now().isoformat(timespec="seconds"),
         "mode": mode,
         "approved_remote_prefixes": approved_prefixes,

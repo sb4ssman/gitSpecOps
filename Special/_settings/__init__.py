@@ -120,12 +120,12 @@ def _policy_conflicts(values):
 
 
 def validate_document(document):
-    """Validate common v1 or typed enrollment v2, without altering the caller's record."""
+    """Validate a settings document, without altering the caller's record."""
     _object(document, "settings document")
     version = document.get("schema_version")
-    if type(version) is not int or version not in (1, SCHEMA_VERSION):
+    if type(version) is not int or version != SCHEMA_VERSION:
         raise SettingsError("unsupported settings schema_version")
-    allowed = {"schema_version", "defaults", "components"} | ({"machine", "transports"} if version == 2 else set())
+    allowed = {"schema_version", "defaults", "components", "machine", "transports"}
     if set(document) - allowed:
         raise SettingsError("settings document contains an unknown field")
     common = document.get("defaults", {})
@@ -136,14 +136,11 @@ def validate_document(document):
         raise SettingsError("settings name an unsupported component")
     for part in components.values():
         _object(part, "component settings")
-        if version == 1 and "options" in part:
-            raise SettingsError("component options require settings schema v2")
         _part({key: value for key, value in part.items() if key != "options"})
-    if version == 2:
-        try:
-            records.document(document)
-        except records.RecordError as exc:
-            raise SettingsError(str(exc)) from None
+    try:
+        records.document(document)
+    except records.RecordError as exc:
+        raise SettingsError(str(exc)) from None
     # Reject a bad saved component even when the current operation selects another one.
     for part in ({}, *components.values()):
         effective = copy.deepcopy(DEFAULTS)

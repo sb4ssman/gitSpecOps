@@ -1,4 +1,4 @@
-"""Persistent local Sync Suggester state: configuration and the local-only catalog.
+"""Persistent local fleet state: configuration and the local-only catalog.
 
 settings.json owns enrolled CLI choices. --settings-home selects that profile; config_dir
 selects the fleet's local state directory, which also holds:

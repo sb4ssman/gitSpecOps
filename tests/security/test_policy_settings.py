@@ -107,9 +107,9 @@ class PolicySettingsTests(unittest.TestCase):
         self.put("settings.json", "{broken-default")
         alternate = self.root / "alternate"
         alternate.mkdir()
-        (alternate / "settings.json").write_text(json.dumps({"schema_version": 1}))
+        (alternate / "settings.json").write_text(json.dumps({"schema_version": 2}))
         policy = subject.load_policy(self.repo, home=alternate)
-        self.assertEqual(policy.sources["settings"]["schema_version"], 1)
+        self.assertEqual(policy.sources["settings"]["schema_version"], 2)
         self.assertEqual(policy.sources["settings"]["home_source"], "explicit")
 
     def test_repository_exception_lifts_saved_values_for_that_repository_only(self):
@@ -209,19 +209,16 @@ class PolicySettingsTests(unittest.TestCase):
                 subject.load_policy(self.repo, **options)
         self.git_config.assert_not_called()
 
-    def test_explicit_save_preserves_schema_other_components_and_legacy_files(self):
-        for version in (1, 2):
+    def test_explicit_save_preserves_schema_and_other_components(self):
+        for version in (2,):
             document = self.profile(schema_version=version,
                 components={"app": {"security": {"never_publish": ["component-private"]}},
                             "archive_update": {"logging": {"enabled": False}}})
-            legacy = self.put("security/never_publish.txt", "stale-copy\n")
-            before = legacy.read_bytes()
             snapshot = editor.load_security_settings()
             editor.save_security_settings(snapshot, {"never_publish": ["replacement-private"]})
             expected = copy.deepcopy(document)
             expected["defaults"]["security"]["never_publish"] = ["replacement-private"]
             self.assertEqual(json.loads((self.home / "settings.json").read_text()), expected)
-            self.assertEqual(legacy.read_bytes(), before)
             self.assertEqual(resolve_settings("app").values["security"]["never_publish"],
                              ["replacement-private", "component-private"])
             self.assertFalse((self.home / "logs").exists())

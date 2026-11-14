@@ -3,7 +3,7 @@ test_batch_args
 ===============
 
 Offline tests for the duplicator's non-interactive layer: the CLI parser
-(`github_org_duplicator.parse_args`), the scripted-answer queue and activation-noise
+(`duplicate-org`'s `parse_args`), the scripted-answer queue and activation-noise
 filter (`Basic/_confirm.py`), and filter resolution (`batch.ask_filters`).
 
 No network, no GitHub, SYNTHETIC values only.

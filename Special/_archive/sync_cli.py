@@ -1,4 +1,4 @@
-"""Archive sync CLI over the shared runner; help performs no setup.
+"""sync-archive over the shared runner; help performs no setup.
 
 Default: plan to stdout. Saved output/log preferences apply unless explicitly overridden.
 Mutations require --yes outside a terminal, or interactive approval of the masked plan.

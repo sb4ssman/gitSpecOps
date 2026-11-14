@@ -14,7 +14,7 @@ from Basic._version import VERSION  # read from pyproject.toml, where it is writ
 
 CONTRACT_NAME = "gitspecops.fleet.display"
 CONTRACT_VERSION = 1
-PRODUCT_NAME = "gitSpecOps Sync-Suggester Fleet Management"
+PRODUCT_NAME = "gitSpecOps"
 
 
 def _duration(seconds: float) -> str:

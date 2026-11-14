@@ -389,7 +389,7 @@ def run_archives(settings, selected, *, scan_only=True, before_action=lambda: No
     return result
 
 
-def run_refresh(*, home=None, only_root=None, scan_only=False, force_sync=False, overrides=None) -> ArchiveResult:
+def run_refresh(*, home=None, only_root=None, scan_only=False, overrides=None) -> ArchiveResult:
     """Refresh registered update/sync choices; preview leaves receipts unchanged."""
     try:
         data = load_registry(home=home)
@@ -407,7 +407,7 @@ def run_refresh(*, home=None, only_root=None, scan_only=False, force_sync=False,
                 raise RuntimeIOError("not_registered")
         if any(item.get("mode", "update") not in ("update", "sync") for item in selected):
             raise RuntimeIOError("scope")
-        requests = [{**item, "mode": "sync" if force_sync else item.get("mode", "update"),
+        requests = [{**item, "mode": item.get("mode", "update"),
                      "approved_remote_prefixes": item.get("approved_remote_prefixes", list(DEFAULT_APPROVED_REMOTE_PREFIXES))}
                     for item in selected]
         def save_receipts(result):

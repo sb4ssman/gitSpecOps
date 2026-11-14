@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cross-machine Git observation, suggestions and explicitly selected fleet operations.
 
-    python git-sync-suggester/sync_suggester.py --help
+    gitso setup-fleet --help
 
 Observation reads local Git facts under configured roots and publishes selected status through
 the user's transports. Setup and explicit fleet commands have their own effects and consent;
@@ -543,7 +543,7 @@ def build_parser() -> argparse.ArgumentParser:
                       help="permit a PUBLIC state repository (refused by default: anyone could "
                            "read your machine status and branch names)")
     init.add_argument("--from-archives", action="store_true",
-                      help="also register roots from the archive updater's local registry")
+                      help="also register the archive folders this machine keeps current")
     init.add_argument("--compress-manifests", action="store_true",
                       help="gzip published manifests (~6x smaller, matters only for very large "
                            "repository counts; off by default so manifests stay readable)")

@@ -175,12 +175,11 @@ class ArchiveRefreshTests(unittest.TestCase):
             self.assertEqual(len(json.loads(output.getvalue())["archives"]), 2)
         self.assertFalse(registry.registry_path(self.home).exists())
 
-    def test_single_selection_and_force_sync_preserve_saved_preferences(self):
+    def test_single_selection_preserves_saved_preferences(self):
         before = (self.home / "settings.json").read_bytes()
-        result = self.run_refresh(only_root=self.a, scan_only=True, force_sync=True)
+        result = self.run_refresh(only_root=self.a, scan_only=True)
         self.assertEqual(result.exit_code, 0)
         self.assertEqual(len(result.archives), 1)
-        self.assertEqual(result.archives[0]["operation"], "sync")
         self.assertEqual((self.home / "settings.json").read_bytes(), before)
         self.assertEqual(self.run_refresh(only_root=self.root / "unknown").exit_code, 2)
 

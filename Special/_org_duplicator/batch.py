@@ -2,7 +2,7 @@
 batch
 =====
 
-Download orchestration for the org duplicator's granular modes:
+Download orchestration for duplicate-org's modes:
 
   Mode 4: batch-download several namespaces (your account + your orgs) at once.
   Mode 5: download one single repo by `owner/name` or full URL (any public repo works).

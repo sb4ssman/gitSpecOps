@@ -104,8 +104,8 @@ class PortableTests(unittest.TestCase):
             portable.raw_record()
 
     def test_v1_settings_remain_usable_without_enrollment(self):
-        local = {"schema_version": 1, "defaults": {"output": {"directory": "local-reports"}}}
-        incoming = portable_settings({"schema_version": 1, "defaults": {"security": {"engines": []}}}).raw_record()
+        local = {"schema_version": 2, "defaults": {"output": {"directory": "local-reports"}}}
+        incoming = portable_settings({"schema_version": 2, "defaults": {"security": {"engines": []}}}).raw_record()
         result = merge_portable(local, incoming)
         self.assertEqual(result["schema_version"], 2)
         self.assertNotIn("machine", result)

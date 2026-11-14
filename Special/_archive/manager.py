@@ -45,8 +45,6 @@ from Special._archive.plan import (  # noqa: E402
 
 
 EFFECT = "local"
-APP_NAME = "Archive Manager"
-VERSION = "0.4.0"
 REPO_ROOT = Path(_ROOT)
 MODE_UPDATE = "update"
 MODE_SYNC = "sync"
@@ -236,7 +234,6 @@ def installation_status(item: dict) -> dict:
 def print_registry(show_status: bool, *, home=None) -> None:
     data = load_registry(home=home)
     installations = data["installations"]
-    print(f"{APP_NAME} v{VERSION}")
     print(f"Registry: {registry_path(home)}")
     print(f"Installations: {len(installations)}")
     for item in installations:
@@ -265,7 +262,7 @@ def print_registry(show_status: bool, *, home=None) -> None:
 def print_dashboard(*, home=None) -> None:
     data = load_registry(home=home)
     installations = data["installations"]
-    banner(f"{APP_NAME} v{VERSION}", tagline=True)
+    banner("Archives", tagline=True)
     print(f"Registry: {registry_path(home)}")
     print(f"Managed archives: {len(installations)}")
     print()
@@ -292,10 +289,10 @@ def print_dashboard(*, home=None) -> None:
 # --------------------------------------------------------------------------------------
 # Refreshing every managed archive, in-process
 # --------------------------------------------------------------------------------------
-def refresh_all(scan_only: bool, force_sync: bool = False, *, home=None,
+def refresh_all(scan_only: bool, *, home=None,
                 only_root: Path | None = None, overrides=None) -> int:
     """Present the shared headless result through selected CLI channels."""
-    result = run_refresh(home=home, only_root=only_root, scan_only=scan_only, force_sync=force_sync, overrides=overrides)
+    result = run_refresh(home=home, only_root=only_root, scan_only=scan_only, overrides=overrides)
     if result.settings is not None:
         output = result.settings.values["output"]
         if output["mode"] in ("stdout", "both"):
@@ -308,9 +305,9 @@ def refresh_all(scan_only: bool, force_sync: bool = False, *, home=None,
     return result.exit_code
 
 
-def refresh_archive(root: Path, scan_only: bool = False, force_sync: bool = False, *, home=None, overrides=None) -> int:
+def refresh_archive(root: Path, scan_only: bool = False, *, home=None, overrides=None) -> int:
     """The generated-launcher and direct single-archive entry point over the same manager."""
-    return refresh_all(scan_only, force_sync, home=home, only_root=root, overrides=overrides)
+    return refresh_all(scan_only, home=home, only_root=root, overrides=overrides)
 
 def choose_folder_dialog() -> Path | None:
     import tkinter as tk
@@ -371,10 +368,8 @@ def interactive_menu(approved_prefixes: list[str], *, home=None) -> int:
             refresh_all(scan_only=True, home=home)
         elif choice == "3":
             if confirm_typed("YES", 'Type "YES" to refresh all managed archives: '):
-                # Each archive runs its own configured mode. This promotes ALL of them to sync.
-                force_sync = prompt_yes_no("Force SYNC (clone missing) for EVERY archive, "
-                                           "overriding per-archive mode?", default=False)
-                refresh_all(scan_only=False, force_sync=force_sync, home=home)
+                # Each archive runs its own saved mode.
+                refresh_all(scan_only=False, home=home)
             else:
                 print("Skipped.")
         elif choice == "4":
@@ -416,15 +411,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     actions.add_argument("--refresh", type=Path, help="Run one registered archive using current saved choices.")
     actions.add_argument("--refresh-all", action="store_true", help="Run archive sync for every managed archive.")
     parser.add_argument("--scan-only", action="store_true", help="Use scan-only mode with --refresh/--refresh-all.")
-    parser.add_argument("--force-sync", action="store_true",
-                        help="Promote every archive to sync for this --refresh-all run.")
     parser.add_argument("--approved-remote-prefix", action="append",
                         help="Allowed origin prefix. Repeatable. Defaults to the common GitHub forms.")
     add_output_options(parser)
     args = parser.parse_args(argv)
     refresh_overrides(args, parser)
-    if (args.scan_only or args.force_sync) and not (args.refresh_all or args.refresh):
-        parser.error("--scan-only/--force-sync require --refresh or --refresh-all")
+    if args.scan_only and not (args.refresh_all or args.refresh):
+        parser.error("--scan-only requires --refresh or --refresh-all")
     if args.mode is not None and not args.install:
         parser.error("--mode requires --install; --refresh reads the saved mode")
     if args.approved_remote_prefix is not None and not args.install:
@@ -438,9 +431,9 @@ def main(argv: list[str] | None = None) -> int:
     approved_prefixes = args.approved_remote_prefix or DEFAULT_APPROVED_REMOTE_PREFIXES
     try:
         if args.refresh:
-            return refresh_archive(args.refresh, args.scan_only, args.force_sync, home=args.settings_home, overrides=refresh_overrides(args))
+            return refresh_archive(args.refresh, args.scan_only, home=args.settings_home, overrides=refresh_overrides(args))
         if args.refresh_all:
-            return refresh_all(scan_only=args.scan_only, force_sync=args.force_sync, home=args.settings_home, overrides=refresh_overrides(args))
+            return refresh_all(scan_only=args.scan_only, home=args.settings_home, overrides=refresh_overrides(args))
         if args.list or args.status:
             print_registry(show_status=args.status, home=args.settings_home)
             return 0

@@ -84,7 +84,7 @@ def require_gh():
 def resolve_machine_identity(want_tailnet: bool) -> tuple[str, str]:
     """A stable id for this peer, preferring Tailscale's node id when the tier is wanted.
 
-    Falls back to the Sync Suggester machine id (hostname-derived, overridable) so that a peer
+    Falls back to the fleet's machine id (hostname-derived, overridable) so that a peer
     can exist with Tailscale absent — which is the whole point of the peer model.
     """
     if want_tailnet:

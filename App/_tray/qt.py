@@ -333,7 +333,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="tray", description=__doc__.split("\n", 1)[0])
+    parser = argparse.ArgumentParser(prog="gitso tray", description=__doc__.split("\n", 1)[0])
     parser.add_argument("--config-dir", type=Path, help="local fleet state directory")
     parser.add_argument("--settings-home", type=Path, help="common profile; defaults to the user-data home")
     parser.add_argument("--view", choices=("web", "window"),

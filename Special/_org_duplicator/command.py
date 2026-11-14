@@ -456,17 +456,17 @@ Non-interactive (so it runs cleanly inside editors/CI where a terminal helper ma
 inject keystrokes into an open prompt):
 
   # Back up every namespace, working clones, no further questions:
-  github_org_duplicator.py --batch --namespaces all --dest /backups/github --yes
+  gitso duplicate-org --batch --namespaces all --dest /backups/github --yes
 
   # Batch, skip one org, mirror clones:
-  github_org_duplicator.py --batch --namespaces 'all,!some-org' \\
+  gitso duplicate-org --batch --namespaces 'all,!some-org' \\
       --dest /backups/github --format mirror --yes
 
   # One repo:
-  github_org_duplicator.py --single owner/name --dest /backups/github --yes
+  gitso duplicate-org --single owner/name --dest /backups/github --yes
 
   # Any mode, answers pre-supplied one per line (blank line = that prompt's default):
-  github_org_duplicator.py --answers answers.txt
+  gitso duplicate-org --answers answers.txt
 
 --yes takes documented defaults for any batch option not given as a flag
 (private: yes, archived: no, forks: no, format: working, parallel: 3) and skips the
@@ -487,7 +487,7 @@ def _enter_batch(args):
 def parse_args(argv=None):
     """Parse CLI flags. No flags -> fully interactive (the historical behavior)."""
     parser = argparse.ArgumentParser(
-        prog="duplicate_org.py",
+        prog="gitso duplicate-org",
         description="Cautious copying of whole GitHub namespaces (see modes below).",
         epilog=_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,

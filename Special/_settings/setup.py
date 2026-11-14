@@ -1,4 +1,4 @@
-"""Reviewed setup plans for the standalone updater; no I/O on import or implicit saves.
+"""Reviewed setup plans for archive preferences; no I/O on import or implicit saves.
 
 prepare_setup reads an explicitly selected profile and returns a private candidate plus a safe
 summary. save_setup requires its exact review id and rechecks the settings file under the

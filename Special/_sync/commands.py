@@ -121,7 +121,7 @@ def suggest_sync(args) -> int:
 def suggest_sync_main(argv=None) -> int:
     from Special._sync.observer import DEFAULT_FETCH_TIMEOUT_SECONDS, DEFAULT_FETCH_WORKERS
 
-    parser = argparse.ArgumentParser(prog="suggest_sync",
+    parser = argparse.ArgumentParser(prog="gitso suggest-sync",
                                      description="Suggest what this machine's repositories need.")
     _profile(parser, roots=False)
     parser.add_argument("--root", action="append", help="root to inspect (overrides saved roots)")
@@ -163,7 +163,7 @@ def name_repo(args) -> int:
 
 
 def name_repo_main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="name_repo",
+    parser = argparse.ArgumentParser(prog="gitso name-repo",
                                      description="Name a repository in the local-only catalog.")
     _profile(parser, roots=False)
     parser.add_argument("repo_id", nargs="?", help="repo id or unique prefix")
@@ -201,7 +201,7 @@ def _catch_up(args) -> int:
 
 
 def catch_up_main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="catch_up", description=(
+    parser = argparse.ArgumentParser(prog="gitso catch-up", description=(
         "Fetch every observed repository and preview safe fast-forwards; --apply --yes pulls "
         "only clean, behind-only checkouts."))
     _profile(parser)
@@ -234,7 +234,7 @@ def audit_repos(args) -> int:
 
 
 def audit_repos_main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="audit_repos", description=(
+    parser = argparse.ArgumentParser(prog="gitso audit-repos", description=(
         "Read-only audit of this machine's repositories: remotes and unfinished work."))
     _profile(parser)
     parser.add_argument("--json", action="store_true", help="machine-readable result")
@@ -269,7 +269,7 @@ def _materialize(args) -> int:
 
 
 def materialize_main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="materialize", description=(
+    parser = argparse.ArgumentParser(prog="gitso materialize", description=(
         "Clone this machine's observed working set into a new library folder."))
     _profile(parser)
     parser.add_argument("--destination", type=Path, required=True, help="existing empty library folder")
@@ -295,7 +295,7 @@ def list_live_buffers(args) -> int:
 
 
 def list_live_buffers_main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="list_live_buffers", description=(
+    parser = argparse.ArgumentParser(prog="gitso list-live-buffers", description=(
         "List VS Code unsaved-buffer metadata for files under this machine's repositories."))
     _profile(parser)
     parser.add_argument("--backup-root", type=Path, help="VS Code Backups folder")
@@ -379,7 +379,7 @@ def enroll_machine(args) -> int:
 
 
 def enroll_machine_main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="enroll_machine", description=(
+    parser = argparse.ArgumentParser(prog="gitso enroll-machine", description=(
         "Enroll this machine with the app: its library folders and how the app shows itself."))
     _profile(parser, roots=False)
     parser.add_argument("action", nargs="?", default="show",

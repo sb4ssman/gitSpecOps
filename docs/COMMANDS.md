@@ -686,7 +686,7 @@ Status:       working
 Python 3.11+ and Git; --settings-home selects a profile. Preview
 reads only local scope/policy, writes no files and provides no outgoing security clearance.
 Apply needs the unchanged plan, fetches the selected remote and uses the same security gate as
-Archive Sync. Supports one matching upstream/push destination on an existing remote branch.
+sync-archive. Supports one matching upstream/push destination on an existing remote branch.
 No force, extra tags, other branches, hook installation or automatic commit. Masked output to
 stdout, no report/log unless a later common output integration explicitly requests one.
 ```

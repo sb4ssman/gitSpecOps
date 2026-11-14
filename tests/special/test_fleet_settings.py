@@ -227,7 +227,7 @@ class FleetSettingsTests(unittest.TestCase):
 
     def test_settings_home_and_runtime_directory_are_independent(self):
         self.assertEqual(fleet_directory(self.state, home=self.home), self.state)
-        self.assertEqual(fleet_directory(home=self.home), self.home / "sync-suggester")
+        self.assertEqual(fleet_directory(home=self.home), self.home / "fleet")
         with patch.dict(os.environ, {"GITSPECOPS_SYNC_HOME": str(self.state)}):
             self.assertEqual(fleet_directory(home=self.home), self.state)
             self.assertEqual(fleet_home(), self.home)
@@ -383,16 +383,6 @@ class FleetSettingsTests(unittest.TestCase):
                 cli_config.load_config(self.state)
         with self.assertRaises(ValueError):
             fleet_directory(Path(__file__).resolve().parents[2])
-
-    def test_v1_common_profile_never_silently_upgrades_for_enrollment(self):
-        self.doc = {"schema_version": 1, "defaults": {"security": {"never_publish": ["private@example.invalid"]}}}
-        self.write()
-        before = self.path.read_bytes()
-        self.assertIsNone(cli_config.load_config(self.state))
-        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-            self.assertEqual(sync_suggester.main(["--settings-home", str(self.home), "init"]), 2)
-        self.assertEqual(self.app_command("peer", "--root", str(self.root), "--acknowledge-initial-scan", "--configure-only"), 2)
-        self.assertEqual(before, self.path.read_bytes())
 
     def test_common_cli_local_check_uses_real_disposable_git_without_writes(self):
         checkout = self.root / "checkout"

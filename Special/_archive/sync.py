@@ -61,8 +61,6 @@ from Special._archive.plan import (  # noqa: E402
 
 #: --publish pushes (never forced). The scheduled and generated paths never pass it.
 EFFECT = "remote"
-APP_NAME = "Archive Sync"
-VERSION = "0.1.0"
 
 
 @dataclass
@@ -369,8 +367,7 @@ def apply_publish(root: Path, plan, issues: list[Issue],
 def build_report(result: DetectResult, applied: dict[str, int], issues: list[Issue], mode: str) -> dict:
     plan = result.plan
     return {
-        "tool": APP_NAME,
-        "version": VERSION,
+        "command": "sync-archive",
         "generated": datetime.now().isoformat(timespec="seconds"),
         "root": result.root,
         "type": ("org" if result.remote_authoritative else "update-only") if result.provider_name else "loose",

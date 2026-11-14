@@ -53,8 +53,6 @@ from Special._archive.manager import (
     parse_args,
     main,
     EFFECT,
-    APP_NAME,
-    VERSION,
     REPO_ROOT,
     MODE_UPDATE,
     MODE_SYNC,

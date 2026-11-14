@@ -23,7 +23,7 @@ from Special._settings import ResolvedSettings
 
 ERROR_MESSAGES = {
     "approval_required": "The proposed update was not approved; no further updates were run.",
-    "settings_component": "This operation needs the archive updater's resolved settings.",
+    "settings_component": "This operation needs the archive settings.",
     "invalid_scope": "Select at least one existing archive folder and an allowed origin prefix.",
     "scope": "A selected archive folder is missing or cannot be accessed.",
     "excluded_root": "A selected archive folder is excluded by the scope policy.",
@@ -96,7 +96,7 @@ def render_result(result: UpdateResult, format: str, *, show_remote_urls: bool =
     if format == "json":
         return json.dumps(result.record(show_remote_urls=show_remote_urls), indent=2)
     stream = io.StringIO()
-    print(f"{updater.APP_NAME} v{updater.VERSION}\nMode: {result.mode}", file=stream)
+    print(f"Mode: {result.mode}", file=stream)
     for report in result.reports:
         updater.print_scan(report, show_remote_urls, stream=stream)
         print(f"Excluded folders: {report.excluded_folders}", file=stream)

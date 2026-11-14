@@ -57,7 +57,7 @@ def with_peer(args) -> int:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="serve_web", description=__doc__.split("\n", 1)[0])
+    parser = argparse.ArgumentParser(prog="gitso serve-web", description=__doc__.split("\n", 1)[0])
     parser.add_argument("--config-dir", type=Path, help="local fleet state directory")
     parser.add_argument("--settings-home", type=Path, help="common profile; defaults to the user-data home")
     parser.add_argument("--remote", action="store_true",

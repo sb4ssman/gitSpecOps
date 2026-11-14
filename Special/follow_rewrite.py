@@ -32,7 +32,7 @@ def main(argv=None) -> int:
     from Special._security.follow import follow_many, relink
 
     enable_unicode_output()
-    parser = argparse.ArgumentParser(prog="follow_rewrite", description=__doc__.split("\n", 1)[0])
+    parser = argparse.ArgumentParser(prog="gitso follow-rewrite", description=__doc__.split("\n", 1)[0])
     commands = parser.add_subparsers(dest="command", required=True)
     follow = commands.add_parser("follow", help="move safe pre-rewrite clones onto the new history")
     follow.add_argument("paths", nargs="*", type=Path, default=[Path.cwd()],

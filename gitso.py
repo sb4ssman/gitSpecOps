@@ -105,7 +105,12 @@ LAYERS = {"Basic": "Basic: one Git or host operation", "Special": "Special: this
 def dispatch(command: Command, argv):
     """Invoke one chosen existing CLI adapter; never rewrite scope, argv or authorization."""
     module = importlib.import_module(command.module)
-    result = getattr(module, command.handler)(*command.prefix, list(argv))
+    # Help and errors name the command as typed: `usage: gitso archive-manager ...`.
+    program, sys.argv[0] = sys.argv[0], f"gitso {command.name}"
+    try:
+        result = getattr(module, command.handler)(*command.prefix, list(argv))
+    finally:
+        sys.argv[0] = program
     return 0 if result is None else result
 
 
@@ -178,7 +183,7 @@ def main(argv=None):
         command = next((command for command in COMMANDS if command.name == name), None)
         if command is not None:
             if not rest and not sys.stdin.isatty() and command.name in {
-                    "duplicate-org", "archive-manager", "inventory-export", "inventory-restore"}:
+                    "duplicate-org", "archive-manager", "export-inventory", "restore-inventory"}:
                 print("This operation needs explicit arguments without a terminal; use --help.", file=sys.stderr)
                 return 2
             return dispatch(command, rest)

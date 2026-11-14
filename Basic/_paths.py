@@ -27,8 +27,8 @@ def config_home() -> Path:
 
 
 def sync_home() -> Path:
-    """Sync Suggester's folder. `GITSPECOPS_SYNC_HOME` overrides everything (tests, scratch runs)."""
+    """The fleet's runtime folder. `GITSPECOPS_SYNC_HOME` overrides everything (tests, scratch runs)."""
     override = os.environ.get("GITSPECOPS_SYNC_HOME")
     if override:
         return Path(override).expanduser()
-    return config_home() / "sync-suggester"
+    return config_home() / "fleet"

@@ -1,4 +1,4 @@
-"""Synthetic, offline tests for Sync Suggester persistent local state (config + catalog).
+"""Synthetic, offline tests for the fleet's persistent local state (config + catalog).
 
 Every path used here is a disposable temporary directory; no real machine paths, no real
 repository names, no network.
