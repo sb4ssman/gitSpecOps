@@ -44,6 +44,12 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
 - **Code signing** for release builds.
 
 ## Not built yet
+- **The gitso alias in a synced profile (found 2026-11-15):** on Windows the PowerShell profiles
+  can live in OneDrive's Documents, which syncs to the user's other PCs. The alias is a function
+  with this machine's absolute paths, and a PowerShell function wins over the `gitso` launcher on
+  PATH, so on another PC `gitso` would run a path that is not there, and each PC's setup would
+  rewrite the shared block. Setup should notice a profile under a synced folder and recommend
+  the PATH launcher alone (it already works in cmd, PowerShell and Git Bash).
 - Security tab: review a finding from the page (accept an example, as `gitso review` does).
 - A menu of every command in the web view, through the same plans and safety checks.
 - Updating gitSpecOps itself (fast-forward its own checkout, restart the app). Only a version
