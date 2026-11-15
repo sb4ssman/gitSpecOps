@@ -2636,7 +2636,7 @@ No code changed; decisions recorded where they govern.
   into site-packages as top-level names. It needs one `gitspecops` package (or a zipapp) first.
   The user's second Windows machine has no SSH server, so it cannot be inspected from here.
 
-## 2026-11-14 15:10 - sb4ssman (claude) - Old archive launcher removed; CI green on all waves
+## 2026-11-14 15:10 - user (claude) - Old archive launcher removed; CI green on all waves
 - At the user's request, removed the one remaining archive launcher file from an old archive
   folder. It ran `gitArchiveUpdater/archive_updater.py`, which no longer exists. The other two
   archives in the old registry had no launcher files. The current registry is empty.
