@@ -3,7 +3,7 @@
 Select/register archives, inspect status, forget registrations or refresh each using its saved
 update/sync mode. Import main for CLI use, or the individual functions for trusted callers.
 New launchers call --refresh with a fixed settings home; choices are read at run time.
-Common profiles own archive choices; legacy-only profiles retain their registry. Registration
+The settings profile owns archive choices. Registration
 still creates a launcher. Refresh uses shared settings, structured results and optional sinks.
 Scheduling belongs to Elaborate. Importing this module does not read or write user state.
 """

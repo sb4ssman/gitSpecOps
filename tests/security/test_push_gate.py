@@ -421,17 +421,6 @@ class PushGateTests(unittest.TestCase):
         self.assertEqual(self.tip(self.bare), self.base)
         self.assertNotIn("private-marker", output.getvalue())
 
-    def test_legacy_profile_requires_explicit_selection(self):
-        self.commit("clean.txt", "ordinary")
-        (self.home / "settings.json").unlink()
-        (self.home / "security").mkdir()
-        (self.home / "security/never_publish.txt").write_text("private-marker\n")
-        snapshot = _push.read_push_snapshot(self.repo)
-        with patch.object(_push, "fetch", side_effect=AssertionError("unexpected fetch")):
-            self.assertEqual(self.publish(snapshot).status, "incomplete")
-        result = _push.publish_checked(snapshot, settings_home=self.home, legacy_policy=True)
-        self.assertEqual(result.status, "pushed", result.record())
-
     def test_direct_preview_is_local_and_has_no_clearance(self):
         self.commit("next.txt", "ordinary")
         before = self.tip(self.bare)

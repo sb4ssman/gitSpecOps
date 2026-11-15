@@ -14,7 +14,7 @@ from _bootstrap import setup  # noqa: E402
 setup()
 
 from Elaborate._fleet.cli import app_lock, guided_durable_arguments, require_gh
-from Elaborate._fleet.config import CONFIG_VERSION, migrate, validate
+from Elaborate._fleet.config import validate
 from Elaborate._fleet.peer import TransportPublisher
 from App._web._assets import load_ui_assets
 from Elaborate._fleet.display import CONTRACT_NAME, CONTRACT_VERSION, PRODUCT_NAME, build_display
@@ -159,37 +159,6 @@ def main():
                 patch("Elaborate._fleet.cli.create_state_repo") as create, redirect_stdout(io.StringIO()):
             rejected(guided_durable_arguments)
             create.assert_not_called()
-
-    with tempfile.TemporaryDirectory() as root:
-        # A v1 host configuration migrates all the way to a v3 peer, keeping its identity,
-        # its fleet key and its transports. A saved setup is never silently discarded.
-        migrated = migrate({
-            "version": 1, "mode": "host", "roots": [root], "fleet_secret": SECRET,
-            "machine_id": "ts-one", "label": "one", "interval": 30, "heartbeat": 30,
-            "scan_notice_acknowledged": True, "replica_folder": root,
-            "folder_seconds": 300, "replica_repo": None, "github_seconds": 1800,
-            "allowed_login": "owner", "port": 8765,
-        })
-        assert migrated["version"] == CONFIG_VERSION and migrated["mode"] == "peer"
-        assert "interval" not in migrated and "port" not in migrated
-        assert migrated["observation_mode"] == "filesystem-events"
-        assert migrated["inventory_notice_acknowledged"] is True
-        assert migrated["transports"]["folder"] == {"path": root, "seconds": 300}
-        assert migrated["transports"]["tailnet"]["port"] == 8765
-        assert migrated["fleet_secret"] == SECRET and migrated["machine_id"] == "ts-one"
-        validate(migrated)
-
-        # A former client migrates too, and loses the server it used to push to.
-        client = migrate({
-            "version": 2, "mode": "connect", "roots": [root], "fleet_secret": SECRET,
-            "machine_id": "ts-two", "label": "two", "heartbeat": 30,
-            "observation_mode": "filesystem-events", "debounce_seconds": 0.75,
-            "inventory_notice_acknowledged": True, "replica_folder": None,
-            "folder_seconds": 300, "replica_repo": None, "github_seconds": 1800,
-            "server": "http://100.64.0.1:8765",
-        })
-        assert client["mode"] == "peer" and "server" not in client
-        validate(client)
 
     # Publishing is paced per transport: a change reaches a synced folder quickly while the
     # GitHub API stays within budget, and one transport failing never stops the other.

@@ -13,7 +13,7 @@ from _bootstrap import setup
 
 setup()
 import Special._sync.baskets as baskets
-from Elaborate._fleet.config import CONFIG_VERSION, migrate, new_config, validate
+from Elaborate._fleet.config import new_config, validate
 from Special._sync.inventory import IncrementalObserver
 from Elaborate._fleet.local_view import display_from_manifests
 from Special._sync.manifest import build_manifest, fleet_id_for
@@ -58,25 +58,14 @@ def test_scopes_are_independent():
     refused(lambda: baskets.validate_scopes({"observe": baskets.ALL, "publish": baskets.ALL}))
 
 
-def test_config_migration():
+def test_new_config_has_the_default_baskets():
     with tempfile.TemporaryDirectory() as temp:
-        legacy = {"version": 3, "mode": "peer", "machine_id": "m", "label": "L",
-                  "fleet_secret": "22" * 32, "roots": [temp], "heartbeat": 30,
-                  "observation_mode": "filesystem-events", "debounce_seconds": 0.75,
-                  "inventory_notice_acknowledged": True, "local_port": 8760, "transports": {}}
-        migrated = migrate(dict(legacy))
-        assert migrated["version"] == CONFIG_VERSION
-        # v3 behavior is reproduced exactly: everything observed, everything published.
-        assert migrated["baskets"]["observe"] == {"mode": "all"}
-        assert migrated["baskets"]["publish"] == {"mode": "all"}
-        assert migrated["baskets"]["capture"] == {"mode": "none"}
-        validate(migrated)
-        refused(lambda: validate({**migrated, "baskets": {"observe": {"mode": "all"},
-                                                          "publish": {"mode": "all"},
-                                                          "capture": {"mode": "all"}}}))
         fresh = new_config("m", "L", [temp], "22" * 32)
         assert fresh["baskets"] == baskets.DEFAULT_SCOPES
         validate(fresh)
+        refused(lambda: validate({**fresh, "baskets": {"observe": {"mode": "all"},
+                                                        "publish": {"mode": "all"},
+                                                        "capture": {"mode": "all"}}}))
 
 
 class FakeObserver(IncrementalObserver):
@@ -189,7 +178,7 @@ def test_withheld_work_never_reaches_a_transport():
 def main():
     test_selection()
     test_scopes_are_independent()
-    test_config_migration()
+    test_new_config_has_the_default_baskets()
     test_publish_basket_withholds()
     test_dashboard_states_what_is_withheld()
     test_withheld_work_never_reaches_a_transport()

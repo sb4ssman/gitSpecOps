@@ -23,7 +23,7 @@ from _bootstrap import setup  # noqa: E402
 setup()
 
 import Elaborate._fleet.peer as fleet_peer  # noqa: E402
-from Elaborate._fleet.config import migrate, new_config, validate  # noqa: E402
+from Elaborate._fleet.config import new_config, validate  # noqa: E402
 from Elaborate._transport.folder import FolderTransport  # noqa: E402
 from Elaborate._fleet.local_view import display_from_manifests  # noqa: E402
 from Special._sync.manifest import build_manifest, fleet_id_for  # noqa: E402
@@ -148,23 +148,6 @@ def test_transports_read_independently():
         manifests, issues = publisher.read_all()
     check(len(manifests) == 1, f"the readable transport must still yield data: {manifests}")
     check(any("repo" in issue for issue in issues), f"the failure must surface: {issues}")
-
-
-def test_v2_host_and_client_both_become_peers():
-    with tempfile.TemporaryDirectory() as root:
-        base = {"version": 2, "roots": [root], "fleet_secret": SECRET, "heartbeat": 30,
-                "observation_mode": "filesystem-events", "debounce_seconds": 0.75,
-                "inventory_notice_acknowledged": True, "replica_folder": None,
-                "folder_seconds": 300, "replica_repo": None, "github_seconds": 1800}
-        host = migrate({**base, "mode": "host", "machine_id": "ts-a", "label": "a",
-                        "allowed_login": "owner", "port": 8765})
-        client = migrate({**base, "mode": "connect", "machine_id": "ts-b", "label": "b",
-                          "server": "http://100.64.0.1:8765"})
-        validate(host)
-        validate(client)
-    check(host["mode"] == client["mode"] == "peer", "both old roles become the same thing")
-    check("server" not in client and "allowed_login" not in client,
-          "a peer pushes to nobody, so it remembers no server")
 
 
 def test_cooldown_retains_latest_status_and_retries_without_new_events():

@@ -18,7 +18,6 @@ def main(argv=None):
     parser.add_argument("--revoke", help="Revoke one active review id instead of accepting a finding.")
     parser.add_argument("--reason", required=True, help="Private explanation; never echoed to normal output.")
     parser.add_argument("--settings-home", type=Path)
-    parser.add_argument("--legacy-policy", action="store_true", help="Explicitly read existing text policy without conversion.")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--approve", help="Exact current review-plan id from preview.")
     parser.add_argument("--json", action="store_true")
@@ -28,7 +27,7 @@ def main(argv=None):
     if args.approve is not None and not args.apply:
         parser.error("--approve requires --apply")
     result = review_finding(args.report, args.finding, args.reason, home=args.settings_home,
-                            legacy_policy=args.legacy_policy, apply=args.apply,
+                            apply=args.apply,
                             approve=args.approve, revoke=args.revoke)
     if args.json:
         print(json.dumps(result.record(), indent=2))

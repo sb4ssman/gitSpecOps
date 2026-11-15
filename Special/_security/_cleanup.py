@@ -19,7 +19,7 @@ from Special._history.rules import IdentityRule, Rule, Rules
 from Special._runtime.files import checked_path, excluded, RuntimeIOError
 from Special._runtime.logger import configure_logging
 from Special._runtime.output import ReportSink, conceal
-from Special._settings import (SETTINGS_NAME, SettingsError, resolve_document, resolve_settings,
+from Special._settings import (SETTINGS_NAME, SettingsError, resolve_settings,
                                select_home, SECURITY_ENGINES)
 from Special._security._findings import write_report
 from Special._security._material import scan
@@ -58,22 +58,17 @@ class CleanupResult:
                         "publication_clearance": False}, self.protected)
 
 
-def _preferences(home, legacy, overrides):
-    if type(legacy) is not bool or (overrides is not None and (
-            not isinstance(overrides, dict) or set(overrides) - {"output", "logging"})):
+def _preferences(home, overrides):
+    if overrides is not None and (not isinstance(overrides, dict) or set(overrides) - {"output", "logging"}):
         raise SettingsError("cleanup overrides select output/logging only; security and scope use the selected profile")
     selected = select_home(home, component="security")[0]
     checked_path(selected / SETTINGS_NAME)
-    if legacy:
-        if (selected / SETTINGS_NAME).exists():
-            raise SettingsError("legacy mode cannot bypass common settings")
-        return resolve_document({"schema_version": 2}, "security", home=selected, overrides=overrides, configured=False)
     return resolve_settings("security", home=selected, overrides=overrides)
 
 
-def _policy(repo, settings, legacy):
+def _policy(repo, settings):
     # Re-resolve the selected home on EVERY freshness check, including missing/corrupt files.
-    policy = load_policy(repo, home=settings.home, legacy_policy=legacy)
+    policy = load_policy(repo, home=settings.home)
     if policy.gaps:
         raise SettingsError("selected policy or review state is incomplete")
     return policy
@@ -149,7 +144,7 @@ def _artifact(result, path, kind="private operational record"):
 
 
 def run_cleanup(action, source, *, choices=None, plan_out=None, workspace=None,
-                home=None, legacy_policy=False, include_remote_refs=False, engines=None,
+                home=None, include_remote_refs=False, engines=None,
                 approve=None, confirmation=None, overrides=None):
     """One callable operation for direct CLI, gitso and future GUI. No prompts or printing.
 
@@ -162,7 +157,7 @@ Optional common reports/logs are reserved before effects; failures never select 
     try:
         if action not in ("plan", "apply"):
             raise ValueError("select plan or apply")
-        settings = _preferences(home, legacy_policy, overrides)
+        settings = _preferences(home, overrides)
         if excluded(Path(source).expanduser().absolute(), settings.values["scope"]["exclude_paths"]):
             raise SettingsError("selected report or saved plan is excluded; it was not read")
         if action == "apply":
@@ -170,12 +165,12 @@ Optional common reports/logs are reserved before effects; failures never select 
                 raise ValueError("apply uses the policy and scope bound into the saved plan")
             plan = load(source)
             context = plan.context
-            if (set(context) != {"kind", "home", "legacy_policy", "policy_revision", "engines", "source_scan", "decisions"} or
-                    context["kind"] != "security-cleanup" or type(context["legacy_policy"]) is not bool):
+            if (set(context) != {"kind", "home", "policy_revision", "engines", "source_scan", "decisions"} or
+                    context["kind"] != "security-cleanup"):
                 raise ValueError("a saved security cleanup plan is required")
-            if context["home"] != str(settings.home) or context["legacy_policy"] != legacy_policy:
-                raise SettingsError("select the same settings home and policy mode used to prepare this plan")
-            policy = _policy(Path(plan.source), settings, context["legacy_policy"])
+            if context["home"] != str(settings.home):
+                raise SettingsError("select the same settings home used to prepare this plan")
+            policy = _policy(Path(plan.source), settings)
             if policy_revision(policy) != context["policy_revision"]:
                 raise ValueError("policy changed; create a new cleanup plan")
             selected_engines = context["engines"]
@@ -194,7 +189,7 @@ Optional common reports/logs are reserved before effects; failures never select 
             if (not isinstance(raw, dict) or raw.get("material") != "history" or
                     not isinstance(raw.get("repository"), str) or not Path(raw["repository"]).is_absolute()):
                 raise ValueError("a full private history report is required")
-            policy = _policy(Path(raw["repository"]), settings, legacy_policy)
+            policy = _policy(Path(raw["repository"]), settings)
             selected_engines = list(policy.engines if engines is None else engines)
         result.protected = tuple(value for values in policy.identities.values() for value in values)
         if (not isinstance(selected_engines, (list, tuple)) or
@@ -240,12 +235,12 @@ Optional common reports/logs are reserved before effects; failures never select 
                 raise ValueError("references changed while planning")
             decisions = read_private_json(choices)
             rules, counts = _choices(decisions, report, current, model)
-            context = {"kind": "security-cleanup", "home": str(settings.home), "legacy_policy": legacy_policy,
+            context = {"kind": "security-cleanup", "home": str(settings.home),
                        "policy_revision": policy_revision(policy), "engines": selected_engines, "source_scan": report.scan_id,
                        "decisions": decisions}
             plan = prepare(report.repository, rules, include_remote_refs=include_remote_refs, context=context)
             if plan.refs != model.refs or plan.symbolic_refs != model.symbolic_refs or policy_revision(
-                    _policy(Path(plan.source), settings, legacy_policy)) != context["policy_revision"]:
+                    _policy(Path(plan.source), settings)) != context["policy_revision"]:
                 raise ValueError("source or policy changed during planning")
             result.plan_id, result.counts, result.check = plan.plan_id, counts, current.record()
             result.source_scan = report.scan_id
@@ -266,13 +261,13 @@ Optional common reports/logs are reserved before effects; failures never select 
             result.stage = "rewriting-mirror"
             outcome = execute(plan, workspace, confirmation=confirmation, approved_plan=approve, artifacts=created)
             _artifact(result, outcome.mirror, "rewritten private mirror")
-            if policy_revision(_policy(Path(plan.source), settings, context["legacy_policy"])) != context["policy_revision"]:
+            if policy_revision(_policy(Path(plan.source), settings)) != context["policy_revision"]:
                 raise ValueError("policy changed during rewriting; the private mirror needs review")
             result.stage = "rescanning-mirror"
             checked = scan(outcome.mirror, policy, material="history", engines=selected_engines)
             try:
                 plan.current()
-                if policy_revision(_policy(Path(plan.source), settings, context["legacy_policy"])) != context["policy_revision"]:
+                if policy_revision(_policy(Path(plan.source), settings)) != context["policy_revision"]:
                     checked.gap("policy", "policy changed during rescan; review required")
             except (CommandFailed, OSError, ValueError):
                 checked.gap("freshness", "source or policy could not be revalidated after rescan")

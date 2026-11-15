@@ -15,7 +15,7 @@ Status:       working
 
 --install creates a launcher that resolves saved choices at run time. --forget removes the
 registration only; common-profile receipts and launchers remain for ownership review. Existing
-common settings own choices; legacy-only profiles retain their registry without migration.
+the settings profile owns archive choices.
 Use Elaborate/schedule_archives.py for scheduling. Importing performs no operation.
 
 Refresh calls run_refresh headlessly: saved update/sync mode per archive, one masked result,

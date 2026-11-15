@@ -188,26 +188,6 @@ class PolicySettingsTests(unittest.TestCase):
         self.assertEqual(resolved.values, before)
         self.assertFalse(self.home.exists())
 
-    def test_legacy_text_requires_explicit_selection_and_remains_read_only(self):
-        watch = self.put("security/never_publish.txt", "private-marker\n")
-        safe = self.put("security/safe.txt", "private-marker\n")
-        before = watch.read_bytes(), safe.read_bytes()
-        with self.assertRaises(SettingsError):
-            subject.load_policy(self.repo)
-        self.git_config.assert_not_called()
-        policy = subject.load_policy(self.repo, legacy_policy=True)
-        self.assertEqual(policy.sources["settings"], "legacy-explicit")
-        self.assertTrue(policy.allowed("private-marker", 0, len("private-marker")))
-        self.assertEqual((watch.read_bytes(), safe.read_bytes()), before)
-        self.assertFalse((self.home / "settings.json").exists())
-
-    def test_legacy_mode_cannot_bypass_valid_or_invalid_common_settings(self):
-        for document in ({"schema_version": 2}, "{broken"):
-            self.put("settings.json", document)
-            with self.subTest(document=document), self.assertRaisesRegex(SettingsError, "cannot bypass"):
-                subject.load_policy(self.repo, legacy_policy=True)
-        self.git_config.assert_not_called()
-
     def test_missing_and_linked_explicit_files_keep_incomplete_coverage(self):
         self.profile()
         absent = self.root / "missing.txt"
@@ -223,8 +203,8 @@ class PolicySettingsTests(unittest.TestCase):
 
     def test_invalid_call_sources_and_scalar_allowances_are_refused(self):
         resolved = resolve_document({"schema_version": 2}, "security", home=self.home)
-        for options in ({"settings": resolved, "home": self.home}, {"settings": resolved, "legacy_policy": True},
-                        {"settings": {}}, {"legacy_policy": "yes"}, {"safe": "scalar"}, {"login": "scalar"}):
+        for options in ({"settings": resolved, "home": self.home},
+                        {"settings": {}}, {"safe": "scalar"}, {"login": "scalar"}):
             with self.subTest(options=options), self.assertRaises(SettingsError):
                 subject.load_policy(self.repo, **options)
         self.git_config.assert_not_called()

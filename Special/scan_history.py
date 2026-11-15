@@ -9,8 +9,7 @@ Status:       working
 
     python Special/scan_history.py /path/to/repo --settings-home /path/to/profile --json
 
-Common settings own saved policy; --legacy-policy explicitly selects old text lists without
-a common profile. Masked stdout is default; --out requests a full private report. --ref narrows
+The settings profile owns the saved policy. Masked stdout is default; --out requests a full private report. --ref narrows
 local reachable refs. No implicit report/log/config. Returns 0 checked, 1 findings, 2 incomplete.
 Optional --engine gitleaks/betterleaks/trufflehog may be repeated; --engine none overrides
 saved selection. Only already selected material is sent to an engine, without provider

@@ -21,7 +21,7 @@ from Special._settings.fleet import fleet_directory, load_fleet_settings
 
 
 def _profile(parser: argparse.ArgumentParser, roots: bool = True) -> None:
-    parser.add_argument("--config-dir", type=Path, help="local fleet state and legacy input directory")
+    parser.add_argument("--config-dir", type=Path, help="local fleet state directory")
     parser.add_argument("--settings-home", type=Path, help="common profile; defaults to the user-data home")
     if roots:
         parser.add_argument("--root", action="append", type=Path,

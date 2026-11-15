@@ -18,7 +18,6 @@ def main(argv=None):
     parser.add_argument("paths", nargs="+", help="literal repo-relative files or tracked deletions, not directories")
     parser.add_argument("-m", "--message", required=True)
     parser.add_argument("--settings-home", type=Path)
-    parser.add_argument("--legacy-policy", action="store_true")
     parser.add_argument("--json", action="store_true", help="masked result only; native hook output is not disclosed")
     parser.add_argument("--apply", action="store_true", help="commit only after current plan matches --approve")
     parser.add_argument("--approve", help="exact plan id from a prior checked preview")
@@ -26,7 +25,7 @@ def main(argv=None):
     if args.approve is not None and not args.apply:
         parser.error("--approve requires --apply")
     result = commit_checked(args.repo, args.paths, args.message, settings_home=args.settings_home,
-                           legacy_policy=args.legacy_policy, apply=args.apply, approve=args.approve)
+                           apply=args.apply, approve=args.approve)
     print(json.dumps(result.record(), indent=2) if args.json else result.summary())
     if result.status in ("ready", "committed", "nothing-to-commit"):
         return 0

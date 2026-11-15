@@ -24,7 +24,7 @@ from Special._security._me import load_policy
 def _fresh(context, repo):
     proposal = context["state"]
     state.constraints(repo)
-    policy = load_policy(repo, home=Path(context["home"]), legacy_policy=context["legacy_policy"])
+    policy = load_policy(repo, home=Path(context["home"]))
     if (state.head(repo) != proposal["head"] or state.policy_revision(policy) != proposal["policy"] or
             state.digest(next_commit_identity(repo)) != state.digest(proposal["identities"]) or
             state.hook_state(repo, proposal["hooks"])[1] != proposal["hook_revisions"]):

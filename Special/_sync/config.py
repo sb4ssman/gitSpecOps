@@ -1,10 +1,8 @@
 """Persistent local Sync Suggester state: configuration and the local-only catalog.
 
-Common settings.json owns enrolled CLI choices when present. --settings-home selects that
-profile; config_dir selects fleet state/legacy inputs independently. Otherwise the legacy
-files live side by side in one OS-appropriate directory:
+settings.json owns enrolled CLI choices. --settings-home selects that profile; config_dir
+selects the fleet's local state directory, which also holds:
 
-    config.json     machine identity, registered roots, state dir, freshness thresholds
     catalog.json    LOCAL ONLY — repo_id -> readable name, local path, optional alias
 
 Configuration is local too, but the catalog is the privacy pressure point: it is the file
@@ -22,15 +20,13 @@ from pathlib import Path
 
 from Basic._files import atomic_write_bytes
 from Basic._paths import sync_home
-from Special._settings import _unique_object
-from Special._settings.fleet import (FleetConfig, fleet_directory, load_fleet_settings,
+from Special._settings.fleet import (FleetConfig, load_fleet_settings,
                                     save_fleet_config)
 from Special._sync.manifest import is_fleet_secret, new_fleet_secret
 from Special._sync.manifest import SAFE_MACHINE_ID, SAFE_REPO_SPEC
 
 CONFIG_SCHEMA_VERSION = 1
 CATALOG_SCHEMA_VERSION = 1
-CONFIG_NAME = "config.json"
 CATALOG_NAME = "catalog.json"
 
 DEFAULT_STALE_HOURS = 24
@@ -41,10 +37,6 @@ CONFIG_KEYS = frozenset({
     "state_repo", "roots", "stale_hours", "expired_days", "compress_manifests",
 })
 ROOT_KEYS = frozenset({"path", "recursive"})
-
-
-def config_path(config_dir: Path) -> Path:
-    return Path(config_dir) / CONFIG_NAME
 
 
 def catalog_path(config_dir: Path) -> Path:
@@ -138,39 +130,25 @@ def validate_config(value: object) -> dict:
 
 
 def load_config(config_dir: Path | None = None, *, home=None) -> dict | None:
-    """Common profile wins; otherwise read legacy CLI settings without importing them.
+    """This machine's CLI fleet choices from the settings profile, or None when not enrolled.
 
-    home selects settings.json; config_dir selects local state and legacy input only.
-    Invalid common settings and absent enrollment never fall back to legacy configuration.
+    home selects settings.json; config_dir is accepted for callers that also name local state.
     """
     snapshot = load_fleet_settings(home)
-    if snapshot is not None:
-        value = snapshot.config("sync")
-        return validate_config(value) if value is not None else None
-    path = config_path(fleet_directory(config_dir, home=home))
-    if not path.is_file():
-        return None
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_object)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError("legacy CLI configuration could not be read") from None
-    return validate_config(value)
+    value = snapshot.config("sync") if snapshot is not None else None
+    return validate_config(value) if value is not None else None
 
 
 def save_config(config_dir: Path, config: dict, *, home=None, snapshot=None) -> Path:
-    """Explicit save to the loaded common authority, or a legacy-only profile.
+    """Explicit save to the settings profile.
 
-    New common enrollment needs the snapshot prepared before setup effects. Bound views
-    carry their revision. Plain copies cannot overwrite an existing common configuration.
+    New enrollment needs the snapshot prepared before setup effects. Bound views carry
+    their revision. Plain copies cannot overwrite an existing configuration.
     """
     validate_config(config)
-    common = load_fleet_settings(home)
-    if common is not None or isinstance(config, FleetConfig) or snapshot is not None:
-        return save_fleet_config(config, component="sync", home=home, snapshot=snapshot)
-    path = config_path(fleet_directory(config_dir, home=home))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_bytes(path, (json.dumps(config, indent=2, sort_keys=True) + "\n").encode("utf-8"))
-    return path
+    if load_fleet_settings(home) is None and not isinstance(config, FleetConfig) and snapshot is None:
+        raise ValueError("this machine has no settings profile; run init with a settings home")
+    return save_fleet_config(config, component="sync", home=home, snapshot=snapshot)
 
 
 def load_catalog(config_dir: Path | None = None) -> dict[str, dict]:

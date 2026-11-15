@@ -81,14 +81,18 @@ class FleetSettingsTests(unittest.TestCase):
         self.assertNotIn(str(self.home), repr(app.snapshot))
         self.assertEqual(before, self.path.read_bytes())
 
-    def test_legacy_only_round_trip(self):
+    def test_without_a_settings_profile_nothing_is_read_or_written_elsewhere(self):
         self.path.unlink()
         cli = cli_config.default_config("machine-a", self.key)
-        cli_config.save_config(self.state, cli)
-        self.assertEqual(cli, cli_config.load_config(self.state))
-        fleet_app.save_saved(self.state, self.app)
-        self.assertEqual(self.app, fleet_app.load_saved(self.state))
-        self.assertFalse(self.path.exists())
+        with self.assertRaises(ValueError):
+            cli_config.save_config(self.state, cli)
+        self.assertIsNone(cli_config.load_config(self.state))
+        with self.assertRaises(ValueError):
+            fleet_app.save_saved(self.state, self.app)
+        with self.assertRaisesRegex(ValueError, "not enrolled"):
+            fleet_app.load_saved(self.state)
+        self.assertEqual(sorted(path.name for path in self.state.iterdir() if path.suffix == ".json"), [],
+                         "no older-style config.json or fleet-app.json is written")
 
     def test_common_unenrolled_does_not_read_legacy(self):
         self.doc["components"] = {}

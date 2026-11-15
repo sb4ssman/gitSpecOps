@@ -198,18 +198,15 @@ class ResolvedSettings:
                 "sources": copy.deepcopy(self.sources)}
 
 
-def select_home(home=None, *, component=None, allow_legacy_sync_home=False):
+def select_home(home=None, *, component=None):
     """Select the explicit/environment/platform home without I/O.
 
-    The coordinated fleet adapter may allow the legacy state-directory override because it
-    handles that directory separately. Other callers still require an explicit migration choice.
+    GITSPECOPS_SYNC_HOME is not consulted here: it moves only the fleet's runtime state
+    (Special/_settings/fleet.py fleet_directory), never the settings profile.
     """
     if component is not None and component not in COMPONENTS:
         raise SettingsError("unsupported settings component")
     if home is None:
-        if (not allow_legacy_sync_home and component in (None, "sync", "app")
-                and "GITSPECOPS_SYNC_HOME" in os.environ):
-            raise SettingsError("legacy sync home requires migration or an explicit settings home")
         override = os.environ.get("GITSPECOPS_HOME")
         if override is not None and not override.strip():
             raise SettingsError("GITSPECOPS_HOME must not be empty")
@@ -223,16 +220,6 @@ def select_home(home=None, *, component=None, allow_legacy_sync_home=False):
         selected_home, home_source = home, "explicit"
     selected_home = _absolute(selected_home, Path.cwd())
     return selected_home, home_source
-
-
-def legacy_locations(home, *, sync_directory=None):
-    """The known legacy settings inputs, shared by detection, previews and setup freshness."""
-    home = _absolute(home, Path.cwd())
-    sync = _absolute(sync_directory, Path.cwd()) if sync_directory is not None else home / "sync-suggester"
-    return {"cli": sync / "config.json", "app": sync / "fleet-app.json",
-            "archives": home / "gitspecops_managed_archives.json",
-            "never_publish": home / "security" / "never_publish.txt",
-            "safe_values": home / "security" / "safe.txt"}
 
 
 def resolve_document(document, component=None, *, home, overrides=None,
@@ -282,8 +269,6 @@ def resolve_settings(component=None, *, home=None, overrides=None):
     except FileNotFoundError:
         if path.is_symlink():
             raise SettingsError("settings file is an unreadable link") from None
-        if any(path.exists() for path in legacy_locations(selected_home).values()):
-            raise SettingsError("legacy settings exist; explicit settings migration is required") from None
         document, configured = {"schema_version": SCHEMA_VERSION}, False
     except (OSError, UnicodeError):
         raise SettingsError("settings file could not be read") from None

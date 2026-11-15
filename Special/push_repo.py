@@ -10,7 +10,7 @@ Status:       working
     python Special/push_repo.py /path/to/repo --json
     python Special/push_repo.py /path/to/repo --apply --approve PLAN_ID
 
-Python 3.11+ and Git; --settings-home selects a profile, --legacy-policy is explicit. Preview
+Python 3.11+ and Git; --settings-home selects a profile. Preview
 reads only local scope/policy, writes no files and provides no outgoing security clearance.
 Apply needs the unchanged plan, fetches the selected remote and uses the same security gate as
 Archive Sync. Supports one matching upstream/push destination on an existing remote branch.

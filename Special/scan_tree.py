@@ -10,8 +10,7 @@ Status:       working
     python Special/scan_tree.py /path/to/repo --settings-home /path/to/profile --json
     python Special/scan_tree.py /path/to/repo --staged --out /private/staged.json
 
-Common settings own saved policy; explicit --legacy-policy selects old text lists only when
-no common settings file exists. --out explicitly creates a full private report; no implicit
+The settings profile owns the saved policy. --out explicitly creates a full private report; no implicit
 report/log/config is written. See --help. Returns 0 checked, 1 findings, 2 incomplete/failure.
 Optional --engine gitleaks/betterleaks/trufflehog may be repeated; --engine none overrides
 saved selection. Engines are never installed automatically. Findings include masked location,

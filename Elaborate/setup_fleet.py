@@ -1,7 +1,7 @@
 """Join this enrolled machine to a fleet, change how it shares, or leave the fleet.
 
 Why:          joining the fleet is what lets machines see each other.
-Reads:        the common settings profile, or the legacy fleet configuration.
+Reads:        the settings profile.
 May change:   this machine's fleet settings; `transports` may create a private GitHub state repository;
               `peer` without --configure-only also starts the peer.
 Results:      messages on stdout.
@@ -22,7 +22,7 @@ from Elaborate._fleet.commands import fleet  # noqa: E402
 
 def main(argv=None):
     return fleet(argv, ("setup", "status", "transports", "leave", "fleet-key", "baskets",
-                        "git-client", "convert", "peer"))
+                        "git-client", "peer"))
 
 
 EFFECT = "remote"

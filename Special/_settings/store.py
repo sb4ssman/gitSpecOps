@@ -40,7 +40,7 @@ def _real_path(path):
 def read_settings_document(home):
     """Read one existing validated document and its exact byte revision for an explicit editor.
 
-    No defaults, legacy fallback, creation or migration. This primitive keeps the original
+    No defaults, fallback or creation. This primitive keeps the original
     fields for writers; normal operations continue to use resolve_settings. Storage must be
     unlinked and outside the source checkout, just as for writes. Errors omit supplied values.
     """
@@ -67,9 +67,9 @@ def write_settings(document, *, home, expected_revision=None, check_sources=None
     """Validate and write on explicit invocation; never used implicitly by the resolver.
 
     None expects an absent destination; replacement requires its exact previous revision.
-    check_sources, if supplied, must reject stale migration inputs immediately before replace.
-    Independent legacy writers must be stopped for migration: this lock covers cooperating
-    settings writers, not unrelated programs or a malicious process changing the directory.
+    check_sources, if supplied, must reject stale inputs immediately before replace. This lock
+    covers cooperating settings writers, not unrelated programs or a malicious process changing
+    the directory.
     """
     document = validate_document(document)
     if not isinstance(home, (str, os.PathLike)) or not str(home).strip():

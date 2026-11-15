@@ -2525,3 +2525,18 @@ No code changed; decisions recorded where they govern.
 - Not yet removed: older-format reading elsewhere (security --legacy-policy text lists, the
   fleet's GITSPECOPS_SYNC_HOME config and `setup-fleet convert`, archive registry receipts,
   the resolver's "migration required" refusal); inventoried for the user.
+
+## 2026-11-13 20:30 - user (claude) - All older-settings code removed (branch wave/remove-legacy)
+- This machine's old files, listed for the user first: sync-suggester/config.json and
+  fleet-app.json and security/safe.txt did not exist; security/never_publish.txt held 10 values,
+  all already in settings.json, and was deleted. gitspecops_managed_archives.json is the live
+  receipts file (version 2; choices are in settings.json): kept. The settings-switches backup
+  folder (copies of the old files, plain-text protected values) is the user's to delete (DCG
+  refuses recursive delete); three 2026-10-19 history-rewrite workspaces under security/ were
+  listed, not touched.
+- Removed in five commits: --legacy-policy and old text lists (scan, secure-commit,
+  secure-push, reviews, cleanup, advice, the fleet check); the resolver's migration-required
+  refusal, legacy_locations and the GITSPECOPS_SYNC_HOME block; the fleet's config.json /
+  fleet-app.json readers and writers, convert and migrate(); archive choices from the receipts
+  file; legacy wording. Fleet setup and the first archive registration create an empty
+  settings.json when none exists. Tests rewritten to the new behaviour; full suite 87/87.

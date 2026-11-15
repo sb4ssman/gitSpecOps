@@ -1,6 +1,6 @@
 """Archive preference/receipt adapters for a coordinated manager cutover, not a CLI.
 
-load_archive_settings reads an existing common v2 profile, never a legacy registry fallback.
+load_archive_settings reads an existing v2 settings profile.
 manager_view joins its authoritative archive choices with optional installation/run receipts.
 merge_archive_receipts prepares operational state without changing saved archive choices.
 save_archive_preferences explicitly writes only those choices through the common CAS writer.
@@ -102,7 +102,7 @@ def _checked_settings_path(home: Path) -> Path:
 
 
 def load_archive_settings(home=None) -> ArchiveSettings:
-    """Read an existing v2 common profile once; no creation, migration or legacy fallback.
+    """Read an existing v2 settings profile once; nothing is created.
 
 Missing, unreadable, malformed/ambiguous, unsupported or duplicate-root settings raise a
 sanitized SettingsError. V1 is not upgraded implicitly. No directory, log or receipt is read
@@ -133,7 +133,7 @@ def save_archive_preferences(snapshot: ArchiveSettings, archives: list[dict], *,
 
 The invoking command must obtain approval; this callable grants no consent and creates no
 launchers/receipts. It rechecks snapshot freshness under the common writer's lock. A caller
-may add a final read-only receipt/source check; independent legacy writers must still stop
+may add a final read-only receipt/source check; independent writers must still stop
 before migration. Semantic no-ops preserve the exact original bytes, after a freshness check.
 """
     snapshot.verify()
@@ -177,7 +177,7 @@ def _receipt_registry(registry: dict | None) -> tuple[dict, dict[str, dict]]:
 
 
 def manager_view(snapshot: ArchiveSettings, registry: dict | None = None) -> dict:
-    """Join saved choices with receipts, in settings order; no legacy-root enrollment.
+    """Join saved choices with receipts, in settings order.
 
 Receipts may supply installation/run metadata but cannot replace mode or allowed remotes.
 Empty allowed-prefix lists remain empty. Filesystem aliases and operation exclusions need

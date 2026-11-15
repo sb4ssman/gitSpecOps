@@ -445,19 +445,10 @@ class CommitGateTests(unittest.TestCase):
         self.assertEqual(self.check().status, "incomplete")
         self.assertEqual(self.head(), self.base)
 
-    def test_invalid_common_and_explicit_legacy_selection_stay_distinct(self):
+    def test_invalid_settings_hold_the_commit(self):
         self.write("a.txt", "ordinary")
-        path = self.home / "settings.json"
-        path.write_text("private-invalid-config")
+        (self.home / "settings.json").write_text("private-invalid-config")
         self.assertEqual(self.check().status, "incomplete")
-        path.unlink()
-        (self.home / "security").mkdir()
-        (self.home / "security/never_publish.txt").write_text("private-marker\n")
-        self.assertEqual(self.check().status, "incomplete")
-        preview = self.check(legacy_policy=True)
-        self.assertEqual(preview.status, "ready", preview.record())
-        result = self.check(legacy_policy=True, apply=True, approve=preview.plan_id)
-        self.assertEqual(result.status, "committed", result.record())
 
     def test_hook_edit_changes_the_required_approval(self):
         self.write("a.txt", "ordinary")
