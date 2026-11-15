@@ -179,7 +179,29 @@ def repository_state(repository: Path) -> dict:
     status = _text(repository, ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
                    "working tree status")
     return {"commit": head.stdout.strip(), "branch": branch.stdout.strip(),
-            "tree": tree.stdout.strip(), "status": status}
+            "tree": tree.stdout.strip(), "status": status, "files": _changed_files(repository, status)}
+
+
+def _changed_files(repository: Path, status: str) -> dict:
+    """Size and modification time of every file the status lists. A file already modified reads
+    " M" however often it is edited again, so the status alone cannot see an editor writing to
+    it during capture; its size or time can. Used only to compare before with after."""
+    entries, files = status.split("\0"), {}
+    index = 0
+    while index < len(entries):
+        entry = entries[index]
+        index += 1
+        if len(entry) < 4:
+            continue
+        if entry[0] in "RC":
+            index += 1          # a rename or copy is followed by its source path
+        path = repository / entry[3:]
+        try:
+            info = path.lstat()
+            files[entry[3:]] = (info.st_size, info.st_mtime_ns)
+        except OSError:
+            files[entry[3:]] = None
+    return files
 
 
 def in_progress_operation(repository: Path) -> str:

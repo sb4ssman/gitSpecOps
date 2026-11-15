@@ -204,12 +204,8 @@ authority; common saves require source revisions. Legacy-only profiles remain us
 automatic common migration. Existing launchers, global cutover ownership, common output/logging
 and native rollout still need deliberate follow-through; general fleet conversion remains unavailable.
 
-Setup now has settings-existing (guided) and settings-existing-plan/save/status/resume for a
-reviewed archive/policy-only switch. Exact approval, stopped-writer and separate launcher-review
-attestations precede any save. Original bytes are retained before receipts become common-only;
-interruption has a validated inspect/resume path. The launcher repair/retirement plan never
-executes itself. Broader profiles remain unsupported by this scoped action. No actual user
-profile or launcher was changed while implementing/testing it; see knowledge/settings-schema.md.
+Settings migration and the existing-settings switch were retired on 2026-11-13: there are no
+users with older settings. See knowledge/settings-schema.md.
 
 The archive operations use:
 

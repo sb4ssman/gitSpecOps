@@ -30,12 +30,32 @@ def linked(path: Path) -> bool:
                                              getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
 
 
+def system_link(path: Path) -> bool:
+    """A link the operating system made, not one planted to redirect a write: owned by root, in a
+    folder owned by root that no one else can change. macOS's /var, /tmp and /etc (to /private/...)
+    and a Linux /home -> /var/home are such links; a link any user could create never is."""
+    if os.name != "posix":
+        return False
+    try:
+        info, parent = path.lstat(), path.parent.lstat()
+    except OSError:
+        return False
+    return (info.st_uid == 0 and parent.st_uid == 0
+            and not parent.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
+
+
+def traverses_link(path: Path) -> bool:
+    """Whether `path` or any folder above it is a link someone could have planted. Every check
+    that walks a path's ancestry for links uses this, so they all agree."""
+    return any(linked(part) and not system_link(part) for part in (path, *path.parents))
+
+
 def checked_path(path: Path) -> Path:
     """Check lexical ancestry before following any existing filesystem links."""
     path = Path(os.path.abspath(Path(path).expanduser()))
     if path == SOURCE_ROOT or SOURCE_ROOT in path.parents:
         raise RuntimeIOError("source_destination")
-    if any(linked(part) for part in (path, *path.parents)):
+    if traverses_link(path):
         raise RuntimeIOError("linked_destination")
     return path
 

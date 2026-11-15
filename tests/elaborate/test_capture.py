@@ -177,17 +177,42 @@ def test_refusals_that_protect_fidelity():
         writes = {"count": 0}
         real_state = capture.repository_state
 
+        states = []
+
         def changing(path):
             writes["count"] += 1
             if writes["count"] == 2:
                 (repository / "tracked.txt").write_text(f"moved {writes['count']}\n")
-            return real_state(path)
+            states.append(real_state(path))
+            return states[-1]
 
         capture.repository_state = changing
+        try:
+            try:
+                refused(lambda: capture.capture(repository, "r1", "machine-a"), "changed while")
+            except AssertionError:
+                # Say what Git reported before and after, so a failure on another system shows why.
+                raise AssertionError(f"a write between the two reads went unseen: {states!r}") from None
+        finally:
+            capture.repository_state = real_state
+
+        # A file already modified reads " M" before and after another edit: the status alone
+        # cannot see an editor still writing to it. Its size and time can.
+        (repository / "tracked.txt").write_text("already modified\n")
+        writes["count"] = 0
+
+        def editing_again(path):
+            writes["count"] += 1
+            if writes["count"] == 2:
+                (repository / "tracked.txt").write_text("edited once more while capturing\n")
+            return real_state(path)
+
+        capture.repository_state = editing_again
         try:
             refused(lambda: capture.capture(repository, "r1", "machine-a"), "changed while")
         finally:
             capture.repository_state = real_state
+        (repository / "tracked.txt").write_text("original\n")
 
 
 def test_bundle_is_json_serialisable_and_names_nothing_extra():

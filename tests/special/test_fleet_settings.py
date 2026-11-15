@@ -374,7 +374,7 @@ class FleetSettingsTests(unittest.TestCase):
             fleet_app.save_saved(self.state, app)
 
     def test_link_scope_and_source_destination_refused_without_creating_files(self):
-        with patch("Special._settings.fleet.linked", return_value=True):
+        with patch("Special._settings.fleet.traverses_link", return_value=True):
             with self.assertRaisesRegex(ValueError, "link"):
                 cli_config.load_config(self.state)
         with self.assertRaises(ValueError):

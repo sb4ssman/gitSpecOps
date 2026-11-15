@@ -14,16 +14,12 @@ import stat
 
 from Basic._objects import git_output
 from Basic._run import run_git
+from Special._runtime.files import traverses_link
 
 
 def _unlinked(path):
-    for part in (path, *path.parents):
-        try:
-            info = part.lstat()
-        except FileNotFoundError:
-            continue
-        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0):
-            raise ValueError("private storage must not traverse links")
+    if traverses_link(Path(path)):   # the operating system's own links (macOS /var) are fine
+        raise ValueError("private storage must not traverse links")
 
 
 def private_path(destination):
@@ -36,7 +32,9 @@ def private_path(destination):
         marker = ancestor / ".git"
         if marker.exists() or marker.is_symlink():
             top = Path(git_output(ancestor, ["rev-parse", "--show-toplevel"]).strip()).resolve()
-            relative = path.relative_to(top).as_posix()
+            # Both sides resolved: Git reports the long form of a short name (RUNNER~1 on
+            # Windows) and the canonical form of a system link (/private/var on macOS).
+            relative = Path(os.path.realpath(path)).relative_to(top).as_posix()
             if git_output(top, ["ls-files", "--cached", "--", relative]).strip():
                 raise ValueError("private storage must not be tracked")
             if run_git(top, ["check-ignore", "-q", "--no-index", "--", relative]).returncode != 0:

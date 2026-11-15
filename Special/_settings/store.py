@@ -9,7 +9,6 @@ import hashlib
 import json
 import os
 import re
-import stat
 from pathlib import Path
 
 from Basic._files import atomic_write_bytes
@@ -33,14 +32,9 @@ def revision(path):
 
 
 def _real_path(path):
-    for part in (path, *path.parents):
-        try:
-            info = part.lstat()
-        except FileNotFoundError:
-            continue
-        if stat.S_ISLNK(info.st_mode) or (getattr(info, "st_file_attributes", 0) &
-                                         getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)):
-            raise SettingsError("settings writes must not traverse links")
+    from Special._runtime.files import traverses_link
+    if traverses_link(Path(path)):   # the operating system's own links (macOS /var) are fine
+        raise SettingsError("settings writes must not traverse links")
 
 
 def read_settings_document(home):

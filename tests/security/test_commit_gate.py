@@ -339,7 +339,7 @@ class CommitGateTests(unittest.TestCase):
 
     def test_gitso_route_previews_and_applies_the_same_operation(self):
         self.write("a.txt", "ordinary")
-        arguments = ["commit", str(self.repo), "a.txt", "-m", "checked fixture", "--settings-home", str(self.home), "--json"]
+        arguments = ["secure-commit", str(self.repo), "a.txt", "-m", "checked fixture", "--settings-home", str(self.home), "--json"]
         output = io.StringIO()
         with redirect_stdout(output):
             self.assertEqual(gitso.main(arguments), 0)

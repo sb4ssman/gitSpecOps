@@ -2414,3 +2414,114 @@ No code changed; decisions recorded where they govern.
 - CHANGELOG.md, starting at 0.2.0; tagged v0.2.0.
 - `.agents/README.md` names its shape: repo-standalone from Structural-Engineering @ fdd316c,
   linking the shape on the Sb4ssport (404 until the shelf is public).
+
+## 2026-11-13 14:05 - user (claude) - CI on three systems, generated command docs, Basic commands listed
+- `.github/workflows/tests.yml`: the suite on Windows, macOS and Linux, Python 3.11 and 3.14, on
+  push to main, pull requests and by hand; read-only permissions; actions/checkout v7.0.1 and
+  setup-python v7.1.0 pinned by commit; `--jobs 4` on the 4-processor runners. Free on this
+  public repository. Not run yet: committed locally, waiting on the user before any push.
+- `_build/command_docs.py` writes docs/COMMANDS.md from each command's header;
+  tests/repo/test_command_docs.py fails when the page is stale. README links it.
+- Setup item 2 is a visit: a blank answer, a finished command or Ctrl+C returns to the setup
+  menu ("leave blank to go back to setup"). The command menu asks again after a wrong number.
+- Basic/status, fetch, pull, clone and reset_keep existed and were tested but never listed;
+  gitso lists them now (40 commands). Basic commit and push stay unlisted: their names clash
+  with the checked Special commit and push, and listing them would add an unchecked exit;
+  put to the user.
+
+## 2026-11-13 14:50 - user (claude) - Plain commit and push under Basic; secure-commit and secure-push
+- On branch wave/basic-and-secure-commands (the user's new rule: each wave on a branch; push and
+  a pull request when he says; he merges when CI is green).
+- gitso `commit` and `push` are now the plain Basic operations (exactly the named files; never a
+  forced push; no security check), like git's own. The checked Special ones are renamed
+  `secure-commit` and `secure-push`. README, SECURITY.md, CHANGELOG (Unreleased) and the two gate
+  tests follow; a test pins which module each name runs. 42 commands.
+- README: the redacted setup-menu screenshot in Get started (docs/images/setup-menu.png). The
+  command-menu screenshot was not used: it shows the old one-command Basic list.
+- Map fix: with two or more clouds, every cloud-to-machine label sat at the same height and
+  overlapped; `link()` takes a position along the line and the fleet level staggers them.
+- Found while redoing the README map (put to the user, not changed): (1) a repository absent
+  from any machine, or on a stale machine, counts as needing attention, so a real fleet whose
+  libraries differ shows nearly everything amber; (2) "Machines together" counts that row-level
+  attention per machine (Desktop 8 of 8) while the zoomable map counts the machine's own
+  copies (2 of 8); (3) no view shows repository names on machines in one picture.
+
+## 2026-11-13 15:40 - user (claude) - The map shows libraries; attention means unfinished work
+- Decided with the user: a repository needs attention only for unfinished work somewhere
+  (stashed or worse, including work a stale report last showed). Absent from a machine is
+  normal; a clean copy on an old report is "unknown", not an all-clear, and not flagged.
+  display.py implements it; each cell now carries its own `needs_attention`, and every view
+  counts a machine's flags from its cells (Machines together said 8 of 8 where the zoomable map
+  said 2 of 8). DISPLAY-CONTRACT.md says so; two dashboard tests pin it.
+- The fleet level of the zoomable map now shows each machine's library under it: host and
+  organization headings, every repository as a dot coloured by that copy (unfinished work
+  first), at most 16 lines then "+ N more"; everything clickable to zoom in.
+- README map redone from the real web view with a made-up fleet (two clouds, four machines,
+  13 repositories), clipped to the map.
+
+## 2026-11-13 16:40 - user (claude) - First CI run: what failed off this machine, and the fixes
+- First run (PR #1): Ubuntu 85-86/88, macOS 64/88, Windows (GitHub) 79/88; all pass here.
+- Real product bugs: (1) every ancestor-walking link check refused the operating system's own
+  links, so on macOS nothing under /var (/private/var) could hold settings, reports or
+  scans. One shared `traverses_link` in Special/_runtime/files.py now trusts a link only when
+  root owns it and its root-owned folder no one else can change; a user-made link is still
+  refused. checked_path, _me, _private_files, settings/store and settings/fleet use it.
+  (2) macOS had no filesystem events, so the fleet peer could not start: MacEvents uses
+  FSEvents (one recursive stream, a private dispatch queue), untested until CI runs it.
+  (3) a private report inside a repository crashed when its path and Git's spelled the same
+  folder differently (8.3 short names); both sides are resolved now. (4) archive refresh by
+  root compared the typed path with the resolved stored one; it resolves the same way now.
+  (5) `_is_git` did not split a Windows path on POSIX.
+- Test-side: the CI git identity was written in the workflow and the privacy test found it
+  (now built from the run id); an "unrelated" no-remote repository could be the identical
+  commit when built in the same second (its file now differs); tests/_bootstrap.py resolves
+  the temp folder (Windows short names, macOS /var), for test comparisons only.
+- Debian 13 added to CI: a container with Debian's own Python and Git, as a non-root user.
+
+## 2026-11-13 17:20 - user (claude) - Second CI run: Ubuntu green; the rest down to five
+- Second run: Ubuntu 3.11 and 3.14 pass; Debian 88/89 (the non-root account name was the
+  privacy test's "home folder" identity: renamed `runner`, a generic name); macOS 88/89 (FSEvents
+  works on a real Mac; the setup-page test waited 5s for the server: now 30s and the thread's
+  error is reported); Windows 86/89.
+- Windows: (1) a real race in the Windows watcher: changes before the first
+  ReadDirectoryChangesW call are never recorded; the constructor now waits until each watch
+  thread is about to make it. (2) the scanner test asserted "no finding at link.txt" but a
+  link's own target text can hold a Windows user path, a fair finding; it now asserts the
+  linked file's contents never appear. (3) capture's churn test: cause unknown (tested and
+  ruled out: ignoring system Git config); the test now prints both Git states when it fails.
+
+## 2026-11-13 17:50 - user (claude) - Third CI run: six of seven green; a real capture bug
+- Third run: Ubuntu, Debian, macOS (both) and Windows 3.14 pass. Windows 3.11 failed capture's
+  churn test; the new diagnostics showed Git status " M tracked.txt" before and after the write.
+- Real bug, every OS: capture compared status lines only, and a file already modified reads
+  " M" however often it is edited again, so a capture during active editing could bundle two
+  moments. repository_state now also records each listed file's size and modification time
+  (compared before/after only; the bundle still carries commit and branch). New test: an
+  already-modified file edited mid-capture is refused.
+- Still unexplained: why that file read as modified before the edit on the Windows runner
+  (capture runs Git without system config; a local check of that theory came back clean).
+- Local note: test_runtime_logging failed once in a parallel run and passed on every rerun;
+  a 1-second log-lock wait under load is a plausible cause, not confirmed, not changed.
+
+## 2026-11-13 18:30 - user (claude) - Every setup item comes back to the menu
+- The user chose item 4 (Check prerequisites): it printed and setup quit. Only item 2 returned.
+  Now every menu item is a visit: it runs, then "Press Enter to go back to the setup menu",
+  until [0] Exit. Ctrl+C or an error inside an item returns to the menu; an item that does not
+  finish says so instead of ending quietly. A named action on the command line still runs once.
+- Checked every item with real, scripted answers (never SAVE): 1 (walkthrough stopped), 4, 5,
+  6, 7 all return. Found, put to the user, not changed: 6 prints raw JSON; 7 stops on this
+  machine with "migration preview has unresolved conflicts" (the profile is already in the
+  current form); 5 uses plain prompts, not the station layout, and its logging question has
+  no default.
+
+## 2026-11-13 19:10 - user (claude) - Settings migration removed; the prerequisite check rewritten
+- At the user's direction ("there are no users, not even me yet"): removed settings migration
+  and the existing-settings switch: Special/_settings/migration.py and existing.py, their tests,
+  the settings-migration-preview and settings-existing* actions with their flags, setup items 6
+  and 7, and updater setup's legacy-file detection (it refused a fresh profile beside older
+  files). README and the agent knowledge follow.
+- The prerequisite check named the org duplicator as gh's only user (stale) and printed bare
+  [ok] lines: now station rows, whether gh is actually signed in, and what each tool is for.
+- Not yet removed: older-format reading elsewhere (security --legacy-policy text lists, the
+  fleet's GITSPECOPS_SYNC_HOME config and `setup-fleet convert`, archive registry receipts,
+  the resolver's "migration required" refusal); inventoried for the user.

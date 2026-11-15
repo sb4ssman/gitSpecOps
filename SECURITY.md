@@ -18,8 +18,9 @@ assessment after that. Reporters are credited in the fix unless they ask not to 
 
 Anything that breaks a promise in the [README](README.md), especially:
 
-- a commit, push or publish that goes through when its security checks should hold it, or a scan
-  that reports "passed" when something was not checked;
+- a `secure-commit`, `secure-push` or publish that goes through when its security checks should
+  hold it, or a scan that reports "passed" when something was not checked (Basic `commit` and
+  `push` are plain Git operations and do not check, by design);
 - a protected value, finding, local path, file content or the fleet key leaving this machine, in
   a status file, a log, a report or the web view;
 - the local web view or the Tailscale listener accepting a request from anyone it should refuse;

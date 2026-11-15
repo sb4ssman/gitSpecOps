@@ -1,8 +1,8 @@
 """Reviewed setup plans for the standalone updater; no I/O on import or implicit saves.
 
 prepare_setup reads an explicitly selected profile and returns a private candidate plus a safe
-summary. save_setup requires its exact review id and rechecks all snapshots under the writer's
-lock. Legacy activation remains unavailable until its active readers/writers are coordinated.
+summary. save_setup requires its exact review id and rechecks the settings file under the
+writer's lock.
 """
 from __future__ import annotations
 
@@ -14,9 +14,7 @@ from pathlib import Path
 from Special._runtime.files import RuntimeIOError, checked_path, excluded
 from Special._runtime.output import conceal
 from Special._settings import (SCHEMA_VERSION, SETTINGS_NAME, SettingsError,
-                               _unique_object, legacy_locations, resolve_document,
-                               select_home, validate_document)
-from Special._settings.migration import preview_migration
+                               _unique_object, resolve_document, select_home, validate_document)
 from Special._settings.store import fingerprint, revision, write_settings
 
 COMPONENT = "archive_update"
@@ -40,23 +38,16 @@ class SetupPlan:
     expected_revision: str | None = field(repr=False)
     review_id: str
     changes: tuple[str, ...]
-    blockers: tuple[str, ...]
-    migration: dict | None = field(repr=False)
-
-    @property
-    def ready(self):
-        return not self.blockers
 
     def summary(self):
         """No paths, policy values, identities, keys or original-byte revisions."""
         resolved = resolve_document(self.document, COMPONENT, home=self.home,
                                     home_source=self.home_source,
                                     configured=self.expected_revision is not None)
-        return {"component": COMPONENT, "ready": self.ready, "review_id": self.review_id,
+        return {"component": COMPONENT, "review_id": self.review_id,
                 "target": "existing" if self.expected_revision is not None else "new",
-                "changes": list(self.changes), "blockers": list(self.blockers),
-                "candidate": resolved.summary(), "migration": copy.deepcopy(self.migration),
-                "runs_operations": False, "changes_legacy_files": False}
+                "changes": list(self.changes), "candidate": resolved.summary(),
+                "runs_operations": False}
 
     def paths(self):
         """Explicit local-review channel: paths only, never policy/identity/transport values."""
@@ -70,9 +61,7 @@ class SetupPlan:
         return conceal(paths, (secret,) if secret else ())
 
     def verify(self):
-        """Refuse changed candidates, targets or legacy source files; never writes."""
-        if not self.ready:
-            raise SettingsError("legacy readers must be coordinated before activating this migration")
+        """Refuse a changed candidate or settings file; never writes."""
         try:
             current_id = _review_id(self.home, self.document, self.snapshots)
         except (ValueError, TypeError):
@@ -81,32 +70,14 @@ class SetupPlan:
             raise SettingsError("setup candidate changed; review a new preview")
         for path, expected in self.snapshots.items():
             if revision(path) != expected:
-                raise SettingsError("settings or legacy inputs changed; review a new preview")
+                raise SettingsError("the settings file changed; review a new preview")
 
 
-def migration_status(home=None, *, sync_directory=None, show_paths=False):
-    """Safe migration preview, distinguishing valid mapping from safe activation."""
-    selected, _ = select_home(home, component=COMPONENT)
-    preview = preview_migration(selected, sync_directory=sync_directory)
-    summary = preview.summary()
-    summary["mapping_ready"] = summary.pop("ready")
-    summary.update(activation_ready=False,
-                   activation_blockers=["general legacy activation is not implemented; archive/policy-only profiles can use settings-existing-plan"])
-    if show_paths:
-        secret = (preview.document or {}).get("machine", {}).get("fleet_secret")
-        summary["paths"] = conceal({label: str(path) for label, path in
-                                   legacy_locations(selected, sync_directory=sync_directory).items()},
-                                  (secret,) if secret else ())
-    return summary
-
-
-def prepare_setup(home=None, patch=None, *, clear_exclusions=False, sync_directory=None) -> SetupPlan:
-    """Create/edit only archive_update fields; preserve all other settings and legacy data.
+def prepare_setup(home=None, patch=None, *, clear_exclusions=False) -> SetupPlan:
+    """Create/edit only archive_update fields; preserve all other settings.
 
 Root/output/log fields replace their component values. Exclusions add unless the caller
 explicitly selects clear_exclusions; inherited common exclusions remain effective regardless.
-Fresh-profile saving refuses existing legacy sources. Existing common profiles may edit only
-this already-adopted component; this is not approval to change legacy-owned configuration.
 """
     selected, home_source = select_home(home, component=COMPONENT)
     target = selected / SETTINGS_NAME
@@ -128,13 +99,7 @@ this already-adopted component; this is not approval to change legacy-owned conf
             original = validate_document(json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_object))
         except (ValueError, UnicodeError, RecursionError):
             raise SettingsError("settings file is not valid unambiguous configuration") from None
-    locations = legacy_locations(selected, sync_directory=sync_directory)
-    snapshots = {target: expected, **{path: revision(path) for path in locations.values()}}
-    legacy = [label for label, path in locations.items() if snapshots[path] is not None]
-    blockers, migration = [], None
-    if expected is None and legacy:
-        blockers.append("legacy_readers_not_cut_over")
-        migration = migration_status(selected, sync_directory=sync_directory)
+    snapshots = {target: expected}
     patch = {} if patch is None else copy.deepcopy(patch)
     if not isinstance(patch, dict) or set(patch) - {"scope", "output", "logging"}:
         raise SettingsError("this setup item edits only updater scope, output and logging")
@@ -177,7 +142,7 @@ this already-adopted component; this is not approval to change legacy-owned conf
             changes.extend(f"components.{COMPONENT}.{section}.{key}" for key, value in values.items()
                            if value != before.get(section, {}).get(key))
     return SetupPlan(selected, home_source, candidate, snapshots, expected,
-                     _review_id(selected, candidate, snapshots), tuple(changes), tuple(blockers), migration)
+                     _review_id(selected, candidate, snapshots), tuple(changes))
 
 
 def save_setup(plan: SetupPlan, approval: str) -> str | None:

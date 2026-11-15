@@ -231,7 +231,11 @@ class Scanners(unittest.TestCase):
         except OSError:
             self.skipTest("OS does not permit creating a test symlink")
         result = scan(self.repo, self.policy)
-        self.assertFalse(any(item.where == "link.txt" for item in result.findings))
+        # The link's own text (its target path) is checked like any file -- on Windows that path
+        # can hold a user folder, a fair finding. What must never be read is the linked file.
+        at_link = [item for item in result.findings if item.where == "link.txt"]
+        self.assertFalse(any("private-marker" in item.value for item in at_link),
+                         [(item.check, item.classification) for item in at_link])
         with self.assertRaises(ValueError):
             write_report(self.repo / "link.txt", result)
 

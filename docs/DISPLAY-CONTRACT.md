@@ -48,7 +48,13 @@ skin is `ui/fleet_dashboard.html`, `ui/fleet_standard.css` and `ui/fleet_standar
 ## Semantic rules
 
 - `needs_attention` is authoritative. A skin may emphasize it but may not recompute it from
-  `severity`, status text or tone.
+  `severity`, status text or tone. A row needs attention when some copy holds unfinished work
+  (stashed or worse, including work a stale report last showed). Being absent from a machine
+  is normal, and a clean copy on a stale report is `unknown`, never an all-clear, without
+  needing attention.
+- Each present cell also carries `needs_attention`: that copy's own unfinished work. Counts per
+  machine (a machine's flags, a library's flags on a machine) use the cell's value, never the
+  row's, so every view gives a machine the same count. Absent cells carry `false`.
 - `tone` is one of `danger`, `warning`, `success`, `neutral` or `muted`. It conveys emphasis,
   not meaning; the adjacent text and state remain required for accessibility.
 - `tags` drive filtering. Current tags include `attention`, `dirty`, `ahead` (any commit on no

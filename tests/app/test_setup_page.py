@@ -118,14 +118,19 @@ class SetupTests(unittest.TestCase):
         stopping, urls, outcome = threading.Event(), [], {}
 
         def run():
-            outcome["enrolled"] = serve_setup(self.state_dir, self.home, stopping=stopping,
-                                              on_setup=urls.append, port=0)
+            try:
+                outcome["enrolled"] = serve_setup(self.state_dir, self.home, stopping=stopping,
+                                                  on_setup=urls.append, port=0)
+            except Exception as exc:  # noqa: BLE001 - a thread's error must reach the assertion
+                outcome["error"] = repr(exc)
         thread = threading.Thread(target=run, daemon=True)
         thread.start()
-        for _ in range(100):
-            if urls:
+        # Up to 30 seconds: a shared CI machine can be slow to start a server; an error ends early.
+        for _ in range(600):
+            if urls or "error" in outcome:
                 break
             threading.Event().wait(0.05)
+        self.assertNotIn("error", outcome, outcome.get("error"))
         self.assertTrue(urls and urls[0].endswith("/setup"))
         SetupRoutes(self.home, self.state_dir).act("add", {"paths": [str(self.library)], "confirm": "SCAN"})
         # The page's own routes notice; here the change came from outside, so stop explicitly.

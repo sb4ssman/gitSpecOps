@@ -17,7 +17,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from Special._runtime.files import checked_path, excluded, linked
+from Special._runtime.files import checked_path, excluded, traverses_link
 from Special._settings import SETTINGS_NAME, SettingsError, _absolute, resolve_document, select_home, validate_document
 from Special._settings.store import fingerprint, read_settings_document, write_settings
 
@@ -118,7 +118,7 @@ class FleetSettings:
         settings = resolve_document(self.document, component, home=self.home)
         for root in roots:
             path = Path(os.path.abspath(Path(root).expanduser()))
-            if any(linked(part) for part in (path, *path.parents)):
+            if traverses_link(path):
                 raise SettingsError("fleet scope traverses a link; no inventory was started")
             if excluded(path, settings.values["scope"]["exclude_paths"], contains=True):
                 raise SettingsError("fleet scope intersects an exclusion; no inventory was started")

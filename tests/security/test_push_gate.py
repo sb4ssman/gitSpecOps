@@ -473,7 +473,7 @@ class PushGateTests(unittest.TestCase):
 
     def test_direct_clean_push_through_launcher(self):
         self.commit("next.txt", "ordinary")
-        args = ["push", str(self.repo), "--settings-home", str(self.home), "--json"]
+        args = ["secure-push", str(self.repo), "--settings-home", str(self.home), "--json"]
         preview_output, applied_output = io.StringIO(), io.StringIO()
         with redirect_stdout(preview_output):
             self.assertEqual(gitso.main(args), 0)

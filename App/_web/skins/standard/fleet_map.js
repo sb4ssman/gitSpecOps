@@ -52,7 +52,7 @@ export function libraryCounts(data) {
       const key = `${row.group_id}\u0000${machine}`;
       counts[key] = counts[key] || {present: 0, attention: 0};
       counts[key].present += 1;
-      counts[key].attention += row.needs_attention ? 1 : 0;
+      counts[key].attention += cell.needs_attention ? 1 : 0;   // this machine's copy, not the row
     }
   }
   return counts;
@@ -84,7 +84,7 @@ function machinesView(container, data, perspective, onPick) {
   }
   for (const machine of machines) {
     const [x, y] = place[machine.id];
-    const attention = data.rows.filter(row => row.cells[machine.id]?.present && row.needs_attention).length;
+    const attention = data.rows.filter(row => row.cells[machine.id]?.needs_attention).length;
     const group = el('g', {class: 'map-node', tabindex: 0, role: 'button',
                            'aria-label': `${machine.label}: ${machine.freshness}, ${machine.repository_count} repositories, ${attention} need attention`});
     group.append(el('circle', {cx: x, cy: y, r: machine.id === perspective ? 46 : 38,

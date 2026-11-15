@@ -46,6 +46,15 @@ class Command:
 COMMANDS = (
     # Basic: one Git or host operation.
     Command("discover", "Basic/discover.py", "Basic.discover"),
+    Command("status", "Basic/status.py", "Basic.status"),
+    Command("fetch", "Basic/fetch.py", "Basic.fetch"),
+    Command("pull", "Basic/pull.py", "Basic.pull"),
+    Command("clone", "Basic/clone.py", "Basic.clone"),
+    Command("reset-keep", "Basic/reset_keep.py", "Basic.reset_keep"),
+    # Plain, like git's own: exactly the named files; a push that is never forced. No security
+    # check; secure-commit and secure-push (Special) are the checked ones.
+    Command("commit", "Basic/commit.py", "Basic.commit"),
+    Command("push", "Basic/push.py", "Basic.push"),
     # Special: this machine, once.
     Command("enroll-machine", "Special/enroll_machine.py", "Special._sync.commands", "enroll_machine_main"),
     Command("suggest-sync", "Special/suggest_sync.py", "Special._sync.commands", "suggest_sync_main"),
@@ -66,8 +75,8 @@ COMMANDS = (
     Command("review-finding", "Special/review_finding.py", "Special._security._review_cli"),
     Command("clean-history", "Special/clean_history.py", "Special._security._cleanup_cli"),
     Command("follow-rewrite", "Special/follow_rewrite.py", "Special.follow_rewrite"),
-    Command("commit", "Special/commit_repo.py", "Special._security._commit.cli"),
-    Command("push", "Special/push_repo.py", "Special._security._push_cli"),
+    Command("secure-commit", "Special/commit_repo.py", "Special._security._commit.cli"),
+    Command("secure-push", "Special/push_repo.py", "Special._security._push_cli"),
     # Elaborate: other machines, or over time.
     Command("setup-fleet", "Elaborate/setup_fleet.py", "Elaborate.setup_fleet"),
     Command("peer", "Elaborate/peer.py", "Elaborate.peer"),
@@ -106,8 +115,9 @@ def _help():
         print(f"  {command.name:18} {command.record()['description']}")
 
 
-def menu():
-    """Interactive selection only; cancellation/invalid selection never invokes an operation."""
+def menu(cancel: str = "cancel"):
+    """Interactive selection only; cancellation/invalid selection never invokes an operation.
+    `cancel` names what a blank answer does (setup says "go back to setup")."""
     if not sys.stdin.isatty():
         print("The menu requires a terminal; use commands or an explicit command.", file=sys.stderr)
         return 2
@@ -119,12 +129,13 @@ def menu():
             layer = command.script.split("/")[0]
             section(LAYERS.get(layer, layer))
         print(f"  {number:2}. {command.name}: {command.record()['description']}")
-    selected = input("Choose a command number, or leave blank to cancel: ").strip()
-    if not selected:
-        return 0
-    if not selected.isdigit() or not 1 <= int(selected) <= len(COMMANDS):
-        print("No command selected.", file=sys.stderr)
-        return 2
+    while True:
+        selected = input(f"Choose a command number, or leave blank to {cancel}: ").strip()
+        if not selected:
+            return 0
+        if selected.isdigit() and 1 <= int(selected) <= len(COMMANDS):
+            break
+        print(f"Choose a number from 1 to {len(COMMANDS)}.", file=sys.stderr)
     command = COMMANDS[int(selected) - 1]
     print(command.documentation())
     print("Enter arguments one per line, without shell quotes. A blank line starts the command; Ctrl+C cancels.")

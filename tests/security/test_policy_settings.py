@@ -169,7 +169,7 @@ class PolicySettingsTests(unittest.TestCase):
 
     def test_linked_scope_is_refused_but_the_source_checkout_is_a_valid_scan_target(self):
         self.profile()
-        with patch.object(subject, "linked", return_value=True), self.assertRaises(SettingsError):
+        with patch.object(subject, "traverses_link", return_value=True), self.assertRaises(SettingsError):
             subject.load_policy(self.repo)
         self.git_config.assert_not_called()
         policy = subject.load_policy(ROOT)
@@ -215,8 +215,8 @@ class PolicySettingsTests(unittest.TestCase):
         self.assertTrue(policy.gaps)
         self.assertIn("private-marker", policy.identities["never-publish"])
         target = self.put("selected.txt", "extra-private\n")
-        original = subject.linked
-        with patch.object(subject, "linked", side_effect=lambda path: path == target or original(path)):
+        original = subject.traverses_link
+        with patch.object(subject, "traverses_link", side_effect=lambda path: path == target or original(path)):
             policy = subject.load_policy(self.repo, never_file=target)
         self.assertTrue(policy.gaps)
         self.assertNotIn("extra-private", policy.identities["never-publish"])

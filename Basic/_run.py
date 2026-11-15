@@ -66,7 +66,9 @@ class CommandTimeout(CommandFailed):
 
 
 def _is_git(argv: Sequence) -> bool:
-    return bool(argv) and os.path.basename(str(argv[0])).split(".")[0].lower() == "git"
+    # Either separator: os.path on Linux and macOS does not split a Windows path.
+    name = str(argv[0]).replace("\\", "/").rsplit("/", 1)[-1] if argv else ""
+    return name.split(".")[0].lower() == "git"
 
 
 def _child_env(argv: list[str], env: dict[str, str] | None) -> dict[str, str]:
