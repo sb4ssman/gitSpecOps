@@ -3,7 +3,7 @@
 Why:          uncommitted work on a machine that dies is lost unless a copy waits elsewhere.
 Reads:        the recovery settings and the snapshot store.
 May change:   recovery settings; preview and restore act only in a disposable checkout.
-Results:      text on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 

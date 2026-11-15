@@ -1,36 +1,48 @@
-"""CLI adapter for the callable checked push; local planning never implies security clearance.
+"""secure-push: plan one branch push, then check outgoing history before publishing.
 
-Preview prints a content-bound plan id. Apply needs that id and checks actual outgoing history
-before publishing. Only masked checking and finite errors reach stdout; no reports/logs saved.
+Without --apply it shows the plan; a person at a terminal is asked, and a program gets the plan
+id and the command that applies it. Applying fetches, checks the actual outgoing history and
+pushes only that plan. Only masked checking and plain errors are printed; nothing is saved.
 """
 from __future__ import annotations
 
-import argparse
-import json
+import sys
 from pathlib import Path
 
+from Basic import _cli
 from Special._security._push import push_checked
+
+COMMAND = "secure-push"
+
+
+def _show(result, banner, repo):
+    from Basic._station import banner as draw, line, notice
+    if banner:
+        draw("Secure push", str(repo))
+    if result.report is not None:
+        for text in result.report.summary().splitlines():
+            line(text)
+    tone = {"pushed": "success", "planned": "success", "already-current": "text"}.get(result.status, "warning")
+    notice(result.status.replace("-", " ").capitalize(), result.message, tone)
+
+
+def _code(result):
+    if result.status in ("planned", "pushed", "already-current"):
+        return _cli.OK
+    return _cli.FAILED if result.status in ("blocked", "review-required") else _cli.USAGE
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Plan one branch push, then check outgoing history before publishing.")
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = _cli.parser(COMMAND, "Plan one branch push, then check outgoing history before publishing.")
     parser.add_argument("repo", type=Path)
     parser.add_argument("--settings-home", type=Path)
-    parser.add_argument("--json", action="store_true", help="masked structured result")
-    parser.add_argument("--apply", action="store_true", help="fetch/check/push only the approved current plan")
-    parser.add_argument("--approve", help="exact plan id from the local preview")
+    _cli.add_apply(parser)
     args = parser.parse_args(argv)
-    if args.approve is not None and not args.apply:
-        parser.error("--approve requires --apply")
-    result = push_checked(args.repo, settings_home=args.settings_home,
-                          apply=args.apply, approve=args.approve)
-    if args.json:
-        print(json.dumps(result.record(), indent=2))
-    else:
-        if result.report is not None:
-            print(result.report.summary())
-        print(result.message)
-        if result.plan_id is not None:
-            print("Plan: " + result.plan_id)
-    return 0 if result.status in ("planned", "pushed", "already-current") else (
-        1 if result.status in ("blocked", "review-required") else 2)
+
+    def operation(apply, approve):
+        return push_checked(args.repo, settings_home=args.settings_home, apply=apply, approve=approve)
+
+    return _cli.run_plan(args, COMMAND, argv, operation, ready=lambda r: r.status == "planned",
+                         show=lambda r, b: _show(r, b, args.repo), record=lambda r: r.record(),
+                         code=_code, question="Push this branch?")

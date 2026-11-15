@@ -175,7 +175,7 @@ class SecurityAdviceTests(unittest.TestCase):
              patch.object(cli, "observe_roots", return_value=observation), \
              patch.object(cli, "load_catalog", return_value={}), patch.object(cli, "load_branches", return_value={}), \
              redirect_stdout(output), redirect_stderr(io.StringIO()):
-            self.assertEqual(cli.command_check(args), 0)
+            self.assertEqual(cli.run(args), 0)
         result = json.loads(output.getvalue())
         self.assertEqual(result["local_security"][0]["security"]["check_status"], "blocked")
         published = transport.write_own_manifest.call_args.args[1]

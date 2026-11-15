@@ -3,13 +3,13 @@
 Why:          rebuilding a library from an inventory should never clone over anything.
 Reads:        an inventory file.
 May change:   with --apply: new clones only, into the chosen folders.
-Results:      the plan, then the results, on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/restore_inventory.py [INVENTORY] [--map LABEL=DEST ...] [--dest DIR]
+    gitso restore-inventory [INVENTORY] [--map LABEL=DEST ...] [--dest DIR]
         [--layout preserve|canonical] [--only LABEL ...] [--use-candidates]
-        [--apply] [--yes] [--no-prompt] [--answers FILE]
+        [--apply PLAN_ID] [--no-prompt] [--answers FILE]
 
 The inventory: the path given, else a file dialog (or terminal prompt) asks for it.
 
@@ -41,6 +41,7 @@ if _ROOT not in sys.path:
 
 from Basic._confirm import confirm_typed, use_scripted_answers  # noqa: E402
 from Basic._console import enable_unicode_output  # noqa: E402
+from Basic import _cli  # noqa: E402
 from Basic._pick import can_ask, pick_directory, pick_open_file  # noqa: E402
 from Basic.clone import clone  # noqa: E402
 from Special._inventory import LOOSE, plan_restore, validate_inventory  # noqa: E402
@@ -103,7 +104,8 @@ def ask_destinations(roots: list[dict], destinations: dict[str, Path], only: set
 
 def main(argv: list[str]) -> int:
     enable_unicode_output()
-    parser = argparse.ArgumentParser(description="Clone an inventory's repositories here (plan first).")
+    command = "restore-inventory"
+    parser = _cli.parser(command, "Clone an inventory's repositories here; shows the plan first.")
     parser.add_argument("inventory", type=Path, nargs="?", help="inventory file (asked for if omitted)")
     parser.add_argument("--map", action="append", default=[], metavar="LABEL=DEST",
                         help="destination for one label on this machine; repeat per label")
@@ -112,64 +114,69 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--only", action="append", metavar="LABEL", help="restore only these labels")
     parser.add_argument("--use-candidates", action="store_true",
                         help="for a repository with no remote, clone from a URL found in its own files")
-    parser.add_argument("--apply", action="store_true", help="actually clone (otherwise: plan only)")
-    parser.add_argument("--yes", action="store_true", help="with --apply, skip the typed confirmation")
     parser.add_argument("--no-prompt", action="store_true", help="never ask; use flags or fail")
     parser.add_argument("--answers", type=Path, help="file of answers, one per prompt")
+    _cli.add_apply(parser)
     args = parser.parse_args(argv)
     if args.answers:
         try:
             use_scripted_answers(args.answers.read_text(encoding="utf-8").splitlines(), strict=True)
         except OSError as exc:
-            print(f"ERROR: {exc}", file=sys.stderr)
-            return 2
+            return _cli.fail(args, command, f"{exc}.")
     ask = can_ask() and not args.no_prompt
     path = args.inventory
     if path is None:
         if not ask:
-            print("ERROR: give the inventory file (there is no terminal to ask).", file=sys.stderr)
-            return 2
+            return _cli.fail(args, command, "Give the inventory file (there is no terminal to ask).")
         path = pick_open_file("Choose the repository inventory to restore",
                               filetypes=[("Inventory (JSON)", "*.json"), ("All files", "*.*")])
         if path is None:
-            print("No inventory chosen; nothing was done.", file=sys.stderr)
-            return 1
+            return _cli.fail(args, command, "No inventory chosen; nothing was done.", _cli.FAILED)
     only = {label.lower() for label in args.only} if args.only else None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and data.get("command") == "export-inventory" and "inventory" in data:
+            data = data["inventory"]  # the record export-inventory prints, saved as it was
         repos = validate_inventory(data)
         destinations = parse_maps(args.map)
     except (OSError, ValueError) as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
+        return _cli.fail(args, command, f"{exc}.")
     roots = data.get("roots", [])
     if args.dest:
         for root in roots:
             destinations.setdefault(root["label"], args.dest.expanduser().resolve())
     if ask:
         ask_destinations(roots, destinations, only)
+    notes = []
     unmapped = [r["label"] for r in roots if r["label"] not in destinations and not (only and r["label"] not in only)]
     if unmapped:
-        print(f"No destination for: {', '.join(unmapped)} (listed for review; use --map or --dest)", file=sys.stderr)
+        notes.append(f"No destination for: {', '.join(unmapped)} (listed for review; use --map or --dest).")
     if any(r["label"] == LOOSE for r in roots) and args.layout == "preserve":
-        print("Note: 'loose' repositories lived in unrelated places; --layout canonical files them "
-              "by host/owner/name instead.", file=sys.stderr)
+        notes.append("'loose' repositories lived in unrelated places; --layout canonical files them "
+                     "by host/owner/name instead.")
     rows = plan_restore(repos, destinations, layout=args.layout, use_candidates=args.use_candidates,
                         selected_roots=only)
-    print(render(rows, applied=False))
     to_clone = [r for r in rows if r["action"] == "clone"]
-    if not args.apply:
-        print("\nNothing was changed. Re-run with --apply to clone the rows marked 'clone'.")
-        return 0
-    if not to_clone:
-        return 0
-    if not args.yes and not confirm_typed("CLONE", f"\nType CLONE to clone {len(to_clone)} repositories: "):
-        print("Declined; nothing was changed.")
-        return 1
+
+    def show():
+        from Basic._station import banner, line, say
+        banner("Restore inventory", str(path))
+        say()
+        for text in render(rows, applied=False).splitlines():
+            line(text)
+        for text in notes:
+            line(text, "warning")
+
+    approval = _cli.Approval(args, command, argv)
+    if not approval.decide(rows, show, nothing_to_do=not to_clone,
+                           question=f"Clone these {len(to_clone)} repositories?"):
+        return approval.code
     results = apply(rows)
-    print()
-    print(render(results, applied=True))
-    return 1 if any(r["action"] == "clone_failed" for r in results) else 0
+    failed = any(r["action"] == "clone_failed" for r in results)
+    return _cli.report(args, command, ok=not failed, page="Restore inventory  /  Done",
+                       output=render(results, applied=True),
+                       message="Some clones failed; see above." if failed else "Restored.",
+                       results=results, notes=notes)
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ class PortableTests(unittest.TestCase):
                 "machine": {"id": "machine-a", "label": "local-label", "fleet_secret": "0" * 64},
                 "transports": {"folder": {"path": home}},
                 "defaults": {"scope": {"roots": [home], "exclude_paths": [str(Path(home) / "excluded")]},
-                             "output": {"mode": "both", "format": "json", "directory": "local-reports"},
+                             "output": {"save": True, "directory": "local-reports"},
                              "logging": {"directory": "local-logs", "enabled": False},
                              "security": {"never_publish": ["master-private-marker"],
                                           "local_never_publish": ["machine-private-marker"],
@@ -57,13 +57,13 @@ class PortableTests(unittest.TestCase):
     def test_merge_preserves_local_fields_and_does_not_mutate_either_input(self):
         local = self.document()
         shared = portable_settings({"schema_version": 2, "defaults": {
-            "output": {"mode": "stdout"}, "security": {"never_publish": ["new-master-marker"], "engines": []}}}).raw_record()
+            "output": {"save": False}, "security": {"never_publish": ["new-master-marker"], "engines": []}}}).raw_record()
         before = copy.deepcopy((local, shared))
         result = merge_portable(local, shared)
         self.assertEqual(result["machine"], local["machine"])
         self.assertEqual(result["transports"], local["transports"])
         self.assertEqual(result["defaults"]["scope"], local["defaults"]["scope"])
-        self.assertEqual(result["defaults"]["output"], {"mode": "stdout", "directory": "local-reports"})
+        self.assertEqual(result["defaults"]["output"], {"save": False, "directory": "local-reports"})
         self.assertEqual(result["defaults"]["security"]["local_never_publish"], ["machine-private-marker"])
         self.assertEqual(result["defaults"]["security"]["never_publish"], ["new-master-marker"])
         self.assertEqual(result["components"]["archive_manage"], local["components"]["archive_manage"])
@@ -104,8 +104,8 @@ class PortableTests(unittest.TestCase):
             portable.raw_record()
 
     def test_v1_settings_remain_usable_without_enrollment(self):
-        local = {"schema_version": 1, "defaults": {"output": {"directory": "local-reports"}}}
-        incoming = portable_settings({"schema_version": 1, "defaults": {"security": {"engines": []}}}).raw_record()
+        local = {"schema_version": 2, "defaults": {"output": {"directory": "local-reports"}}}
+        incoming = portable_settings({"schema_version": 2, "defaults": {"security": {"engines": []}}}).raw_record()
         result = merge_portable(local, incoming)
         self.assertEqual(result["schema_version"], 2)
         self.assertNotIn("machine", result)

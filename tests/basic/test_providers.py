@@ -1,7 +1,7 @@
 """The host seam: providers register where they live, and nobody has to ask them to.
 
 Before phase 2, the GitHub provider only existed once some caller remembered to import a
-tool-side facade (`remote_provider.py`, reached from Sync Suggester via `_register_providers()`,
+tool-side facade (`remote_provider.py`, reached from the fleet via `_register_providers()`,
 which also put another tool's folder on `sys.path`). Forgetting meant "no providers", which
 silently degraded every lookup to host-agnostic. Offline: nothing here runs `gh`.
 """

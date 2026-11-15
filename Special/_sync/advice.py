@@ -1,4 +1,4 @@
-"""Pure Sync Suggester classification and ASCII presentation.
+"""Pure fleet classification and ASCII presentation.
 
 `classify_repository` returns a single headline state, which is what severity ordering needs.
 But a headline necessarily hides everything behind it: a repository that is both dirty and

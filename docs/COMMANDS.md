@@ -24,11 +24,11 @@ Find Git repositories under a root. Read-only: a filesystem walk, no git, no net
 Why:          every larger operation starts by knowing which repositories exist.
 Reads:        the folders under the root (no Git, no network).
 May change:   nothing.
-Results:      a list, or --json.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/discover.py <root> [--json] [--max-depth N] [--hidden]
+    gitso discover <root> [--json] [--max-depth N] [--hidden]
         [--cross-filesystems] [--no-skip]
 ```
 
@@ -37,16 +37,16 @@ Status:       working
 `gitso status`, or `Basic/status.py`.
 
 ```text
-Report one repository's facts as JSON. Read-only.
+Report one repository's facts. Read-only.
 
 Why:          every judgment above starts from one repository's plain facts.
 Reads:        one repository.
 May change:   nothing.
-Results:      JSON on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/status.py <repo-path>
+    gitso status <repo-path>
 ```
 
 ### fetch
@@ -59,11 +59,11 @@ Fetch a repository's remote. Moves remote-tracking refs only.
 Why:          "behind" must mean behind the remote now, not at the last fetch.
 Reads:        the remote.
 May change:   remote-tracking refs only; never a branch or a file.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/fetch.py <repo> [--remote origin] [--dry-run]
+    gitso fetch <repo> [--remote origin] [--dry-run]
 
 With no refspec, `git fetch` updates `refs/remotes/*` and never a local branch or the working
 tree -- nothing the user would have to undo. That is why observation may fetch at all.
@@ -79,11 +79,11 @@ Fast-forward one repository to its upstream. Never merges, never rebases.
 Why:          a fast-forward cannot lose work, so it is the one pull that needs no decision.
 Reads:        the repository and its upstream.
 May change:   the checked-out branch and its files, by fast-forward only.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/pull.py <repo>
+    gitso pull <repo>
 
 `--ff-only` is the whole safety argument: a fast-forward cannot destroy data and never asks
 for a choice, so when git cannot fast-forward it refuses, and the refusal is reported as a
@@ -101,11 +101,11 @@ Clone one repository into a destination that does not exist yet.
 Why:          a clone may only ever add a folder.
 Reads:        the remote URL; the user's own Git credentials.
 May change:   creates the destination folder; refuses one that exists.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/clone.py <url> <destination> [--mirror] [--no-local]
+    gitso clone <url> <destination> [--mirror] [--no-local]
 
 Never clones over anything: an existing destination is refused before git runs, so a clone can
 only ever add a folder. Credentials are the user's own (`gh auth setup-git`, an SSH agent);
@@ -122,11 +122,11 @@ Move one repository's checked-out branch to another commit, keeping uncommitted 
 Why:          following a rewritten history needs a branch move that never overwrites an edit.
 Reads:        the repository and the target commit.
 May change:   the checked-out branch and the files that differ; refuses over any uncommitted edit.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/reset_keep.py <repo> <target>
+    gitso reset-keep <repo> <target>
 
 `git reset --keep` moves the branch and updates the files that differ between the two commits,
 and refuses outright if any of those files has an uncommitted change -- so an edit is never
@@ -149,11 +149,11 @@ Commit the named files of one repository, and nothing else.
 Why:          commits must contain exactly what was chosen, never everything that happens to be staged.
 Reads:        the named paths in the working tree.
 May change:   one new commit of exactly those paths; other staged work stays staged.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/commit.py <repo> -m MESSAGE PATH [PATH ...]
+    gitso commit <repo> -m MESSAGE PATH [PATH ...]
 
 Only the paths given are committed -- added, changed or deleted -- even when other changes are
 staged; those stay staged, untouched. There is no option for "everything" (`-a`), for rewriting
@@ -179,11 +179,11 @@ Push one repository's current branch to its upstream. Never forced.
 Why:          publishing must never overwrite what is on the remote.
 Reads:        the current branch and its upstream.
 May change:   the remote branch, by fast-forward only; never forced.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/push.py <repo>
+    gitso push <repo>
 
 A push without `--force` is refused by git itself unless it is a fast-forward of the remote:
 the mirror image of `pull --ff-only`. There is no parameter here that could add `--force`,
@@ -207,7 +207,7 @@ Reads:        the settings profile; `find` reads folder names where you tell it 
 May change:   the profile's machine identity, libraries and presentation choices (what the
               tray opens; the web view off, on this machine, or on your tailnet). Never a
               repository, and never a fleet: joining one is Elaborate/setup_fleet.py.
-Results:      text on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
@@ -230,7 +230,7 @@ Reads:        Git facts of the repositories under the saved or given roots; work
               outgoing history for the shared security advice.
 May change:   nothing in your repositories. --fetch updates remote-tracking refs only. The local-only
               catalog (names for repository ids) is updated unless --no-catalog.
-Results:      a table and security advice on stdout, or --json. Nothing is published.
+Results:      JSON without a terminal (or with --json); a screen at one. Nothing is published.
 Layer:        Special: this machine, once.
 Status:       working
 
@@ -247,7 +247,7 @@ Give a repository id a readable name in this machine's local-only catalog.
 Why:          fleet rows for repositories never cloned here would otherwise show only an id.
 Reads:        the local catalog.
 May change:   the local catalog only.
-Results:      the new name, or the catalog listing.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
@@ -263,13 +263,14 @@ Fetch this machine's observed repositories and fast-forward the safe ones.
 
 Why:          behind-only checkouts are the one change that is always safe to make for you.
 Reads:        the observed repositories (saved roots and baskets, or --root).
-May change:   with --apply --yes: fast-forward of clean, behind-only checkouts. Fetch updates
-              remote-tracking refs only. Never commits, merges, rebases or resets.
-Results:      the plan, then the results, on stdout.
+May change:   once its plan is approved: fast-forward of clean, behind-only checkouts. Fetch
+              updates remote-tracking refs only. Never commits, merges, rebases or resets.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/catch_up.py --help
+    gitso catch-up                    (shows the plan; at a terminal, asks)
+    gitso catch-up --apply PLAN_ID    (applies exactly that plan)
 ```
 
 ### audit-repos
@@ -282,7 +283,7 @@ Audit this machine's repositories: missing remotes, unfinished work, oddities.
 Why:          the repositories with no origin are exactly the ones an inventory forgets.
 Reads:        every repository under the saved or given roots.
 May change:   nothing.
-Results:      a report on stdout, or --json; exit 1 when something needs a look.
+Results:      JSON without a terminal (or with --json); a screen at one. Exit 1 when something needs a look.
 Layer:        Special: this machine, once.
 Status:       working
 
@@ -298,12 +299,13 @@ Clone this machine's observed working set into another library folder.
 
 Why:          rebuilding a library on a new disk or machine from what this one has.
 Reads:        the observed repositories and their origins.
-May change:   with --apply --yes: clones into the existing --destination folder; nothing else.
-Results:      the plan, then the results, on stdout.
+May change:   once its plan is approved: clones into the existing --destination folder; nothing else.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/materialize.py --help
+    gitso materialize --destination /new/library                   (shows the plan)
+    gitso materialize --destination /new/library --apply PLAN_ID   (clones exactly that plan)
 ```
 
 ### list-live-buffers
@@ -316,7 +318,7 @@ List unsaved VS Code buffers that belong to this machine's repositories.
 Why:          work typed but never saved is invisible to Git; this shows where it is.
 Reads:        VS Code's local hot-exit backup headers (metadata, never content).
 May change:   nothing.
-Results:      JSON on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
@@ -333,7 +335,7 @@ Copy GitHub repositories with explicit mode, scope and confirmation.
 Why:          copying a whole GitHub organization by hand is slow and easy to get wrong.
 Reads:        the chosen GitHub namespaces (through gh) and local folders.
 May change:   local clones; in upload or migration modes, GitHub repositories, after confirmation.
-Results:      progress and results on stdout; resume state in its runs folder.
+Results:      JSON without a terminal (or with --json); a screen at one. Resume state in its runs folder.
 Layer:        Special: this machine, once.
 Status:       working
 
@@ -350,22 +352,20 @@ Git and authenticated gh are required for operations. Importing performs no oper
 `gitso update-archive`, or `Special/update_archive.py`.
 
 ```text
-Fast-forward eligible existing repositories in one or more local archives.
+Fast-forward the eligible repositories in folders of clones; shows the plan first.
 
 Why:          reference collections fall behind; only safe fast-forwards should catch them up.
-Reads:        the archive's checkouts.
-May change:   without --scan-only: fast-forward of clean, eligible checkouts.
-Results:      a result on stdout, or --json; reports and logs as settings choose.
+Reads:        the folders' checkouts.
+May change:   once a folder's plan is approved: fast-forward of clean, eligible checkouts.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/update_archive.py --help
-    python Special/update_archive.py --root /path/to/archive --scan-only
+    gitso update-archive --root /path/to/archive                   (shows the plan)
+    gitso update-archive --root /path/to/archive --apply PLAN_ID
 
-Without --scan-only this updates clean eligible checkouts. It does not clone missing repos.
-Saved roots/output/logging preferences are optional. --json gives a machine-readable result;
---no-report forces stdout only and --no-log disables operational logging. Reports are off by
-default; local counts-only logs default on. Importing performs no operation.
+It never clones missing repositories (sync-archive --sync does). --save-report also saves the
+run's report as a JSON file; the counts-only log is on unless --no-log. Importing does nothing.
 ```
 
 ### archive-manager
@@ -373,32 +373,28 @@ default; local counts-only logs default on. Importing performs no operation.
 `gitso archive-manager`, or `Special/archive_manager.py`.
 
 ```text
-Register local archive folders and refresh them using their saved update or sync mode.
+Register folders of clones (archives) and refresh them, each in its saved mode.
 
 Why:          archives you keep should refresh the way you chose for each, with one command.
 Reads:        registered archives and their saved update or sync mode.
-May change:   registrations; launchers when asked; the checkouts a refresh updates or clones.
-Results:      a masked result on stdout, or JSON; reports and logs as settings choose.
+May change:   registrations and their launchers (planned first); the checkouts a refresh updates
+              or clones.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/archive_manager.py --help
-    python Special/archive_manager.py --install /path/to/archive --mode update
-    python Special/archive_manager.py --list
-    python Special/archive_manager.py --refresh-all --scan-only --json --no-report --no-log
-    python Special/archive_manager.py --refresh /path/to/archive --settings-home /path/to/profile
+    gitso archive-manager                      (a menu, at a terminal)
+    gitso archive-manager --install /path/to/archive --mode update
+    gitso archive-manager --list
+    gitso archive-manager --refresh-all --scan-only --no-log
+    gitso archive-manager --refresh /path/to/archive
 
---install creates a launcher that resolves saved choices at run time. --forget removes the
-registration only; common-profile receipts and launchers remain for ownership review. Existing
-the settings profile owns archive choices.
-Use Elaborate/schedule_archives.py for scheduling. Importing performs no operation.
-
-Refresh calls run_refresh headlessly: saved update/sync mode per archive, one masked result,
-optional aggregate report, shared counts-only logging. --output-mode/--output-dir/--json and
---log/--no-log/--log-dir override manager preferences. Reports default off; selected invalid
-sinks fail without fallback. --scan-only leaves receipts unchanged. Action receipts contain
-run status, not a guessed last report; actual report/log destinations are result artifacts.
-Import run_refresh for programmatic use; it prints nothing and replaces no process streams.
+--install and --forget show their plan and act on approval: --apply PLAN_ID, or yes at a
+terminal. --forget removes the registration only; the folder and its launcher stay. A refresh
+runs each archive in its saved mode: registering it was the approval, so the launcher and the
+monthly task (schedule-archives) run unattended. --scan-only checks without changing anything.
+--save-report/--report-dir also save the run's report as a JSON file; --log/--no-log choose the
+counts-only log. Import run_refresh for programmatic use; it prints nothing.
 ```
 
 ### sync-archive
@@ -406,24 +402,23 @@ Import run_refresh for programmatic use; it prints nothing and replaces no proce
 `gitso sync-archive`, or `Special/sync_archive.py`.
 
 ```text
-Plan archives or explicitly update, sync, repair or publish them.
+Plan, then apply, updates, clones, repairs or publication for folders of clones.
 
 Why:          an archive should match what its host says should be there.
 Reads:        the archive's checkouts and the host's repository list (through gh).
-May change:   with the chosen action: clones, fast-forwards, origin repairs; with --publish, checked non-forced pushes.
-Results:      a plan or result on stdout, or JSON; reports and logs as settings choose.
+May change:   once each plan is approved: clones, fast-forwards, origin repairs; with
+              --publish, checked non-forced pushes.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/sync_archive.py --help
-    python Special/sync_archive.py --root /path/to/archive --json --no-log
-    python Special/sync_archive.py --root /path/to/archive --sync --yes
+    gitso sync-archive --root /path/to/archive                     (inspects only)
+    gitso sync-archive --root /path/to/archive --sync              (plans; at a terminal, asks)
+    gitso sync-archive --root /path/to/archive --sync --apply PLAN_ID
 
-Default use plans to stdout; saved output/log preferences and explicit flags select channels.
-Publication is a separate action: exact planned tips/targets pass outgoing-history security
-checks before any non-force push. Masked findings are included in the shared result.
---dry-run never approves security. No registration, enrollment or setup is implied.
-Import run_archives for headless use with explicit settings, requests and approval callback.
+Each folder's plan has its own id; repeat --apply for several. Publication is separate:
+exact planned tips pass outgoing-history security checks before any non-forced push. An
+approved plan is no security clearance. Import run_archives for headless use.
 ```
 
 ### export-inventory
@@ -436,11 +431,11 @@ Record where every repository came from, so another machine can clone them.
 Why:          another machine can only rebuild a library it has a record of.
 Reads:        the repositories under the given roots and their remotes.
 May change:   nothing.
-Results:      one JSON inventory on stdout or --out; progress on stderr.
+Results:      the inventory in a JSON record, or in --out; a screen at a terminal.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/export_inventory.py [--root [LABEL=]PATH ...] [--repo PATH ...] [--out FILE]
+    gitso export-inventory [--root [LABEL=]PATH ...] [--repo PATH ...] [--out FILE]
         [--max-depth N] [--hidden] [--no-prompt] [--answers FILE]
 
 Where the repositories are:
@@ -474,13 +469,13 @@ Clone the repositories in an inventory file onto this machine. Clone-only; never
 Why:          rebuilding a library from an inventory should never clone over anything.
 Reads:        an inventory file.
 May change:   with --apply: new clones only, into the chosen folders.
-Results:      the plan, then the results, on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/restore_inventory.py [INVENTORY] [--map LABEL=DEST ...] [--dest DIR]
+    gitso restore-inventory [INVENTORY] [--map LABEL=DEST ...] [--dest DIR]
         [--layout preserve|canonical] [--only LABEL ...] [--use-candidates]
-        [--apply] [--yes] [--no-prompt] [--answers FILE]
+        [--apply PLAN_ID] [--no-prompt] [--answers FILE]
 
 The inventory: the path given, else a file dialog (or terminal prompt) asks for it.
 
@@ -510,7 +505,7 @@ Read-only working-tree or staged-byte scan; Python 3.11+, Git, masked stdout.
 Why:          check what is about to be committed or published before it is.
 Reads:        the working tree, or the staged bytes, and the shared security policy.
 May change:   nothing.
-Results:      masked findings on stdout, or --json; a full private report only with --out.
+Results:      JSON without a terminal (or with --json); a screen at one. A full private report only with --out.
 Layer:        Special: this machine, once.
 Status:       working
 
@@ -539,7 +534,7 @@ Read-only local reachable-history scan; Python 3.11+, Git, no fetch or rewrite.
 Why:          anything ever committed stays in history, published or not.
 Reads:        every commit reachable from local refs, and the shared security policy.
 May change:   nothing.
-Results:      masked findings on stdout, or --json; a full private report only with --out.
+Results:      JSON without a terminal (or with --json); a screen at one. A full private report only with --out.
 Layer:        Special: this machine, once.
 Status:       working
 
@@ -559,23 +554,22 @@ Scoped reviews match exact finding content/location; they never clear uninspecte
 `gitso review-finding`, or `Special/review_finding.py`.
 
 ```text
-Review one exact example finding without globally allowing its value.
+Review one exact example finding without allowing its value everywhere.
 
 Why:          an example value that is fine in one exact place should not hold every action forever.
 Reads:        a private scan report.
-May change:   with --apply and the plan id: one saved review decision in the profile.
-Results:      a masked preview and result.
+May change:   once its plan is approved: one saved review decision in the profile.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/review_finding.py --help
-    python Special/review_finding.py /private/scan.json finding-000001 --reason "Reviewed test example"
+    gitso review-finding /private/scan.json finding-000001 --reason "Reviewed test example"
+    gitso review-finding /private/scan.json finding-000001 --reason "..." --apply PLAN_ID
 
-Preview creates no state. Rerun with --apply --approve REVIEW_PLAN_ID to save exactly that
-decision under the selected user-data home. Use --revoke REVIEW_ID instead of a finding to
-preview/revoke acceptance. Changed content/check/location needs review again. Prohibited
-values, strong credentials and coverage gaps cannot be waived. No Git action is performed.
-Default text and --json always mask values; full evidence/reasons remain in private files.
+The plan creates no state. Use --revoke REVIEW_ID instead of a finding to revoke a review.
+Changed content, check or location needs review again. Prohibited values, strong credentials
+and coverage gaps cannot be waived. No Git action is performed. Values are always masked; the
+reason is never printed (an apply command shows it as a placeholder).
 ```
 
 ### clean-history
@@ -588,17 +582,17 @@ DANGEROUS HISTORY MAINTENANCE: explicit cleanup into a new private mirror, never
 Why:          personal data published in history stays published until history is rewritten.
 Reads:        a full private scan report and an explicit choices document.
 May change:   only a new private mirror; never the source checkout and never a push.
-Results:      a private plan, the rewritten mirror, its proof and rescan.
+Results:      a private plan, the rewritten mirror, its proof and rescan; JSON without a terminal.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/clean_history.py plan /private/history.json --choices /private/choices.json --plan-out /private/plan.json --json
-    python Special/clean_history.py apply /private/plan.json --workspace /private/new-run --approve PLAN_ID
+    gitso clean-history plan /private/history.json --choices /private/choices.json --plan-out /private/plan.json
+    gitso clean-history rewrite /private/plan.json --workspace /private/new-run --apply PLAN_ID
 
 First use scan-history --out for a full private report. Planning rescans and rejects stale
 refs/findings. --include-remote-refs explicitly preserves remote-only history and origin/HEAD;
 without it an ordinary checkout with tracking refs is refused. No fetch or settings change.
-Application requires an attended terminal and typed REWRITE, with no --yes/confirmation flag.
+Rewriting always needs a person: an attended terminal, the plan id and the typed word REWRITE.
 GUI/callable clients use the same run_cleanup function after their own human approval.
 
 The choice document has schema_version=1 and four required lists:
@@ -630,16 +624,16 @@ Move this machine's clones onto a rewritten history, and update the commit ids t
 Why:          after clean_history rewrites a repository and the forced push is made, every
               older clone must follow, or a push from it publishes the old history again.
 Reads:        the checkouts under the given folders; the rewrite workspace's commit map.
-May change:   `follow`: after one confirmation, `git reset --keep` of each safe checkout onto
+May change:   `follow`, once its plan is approved: `git reset --keep` of each safe checkout onto
               its rewritten upstream; a checkout with unpushed or uncommitted work is refused.
-              `relink --write`: quoted commit ids in tracked text files, left for review.
-              Nothing is committed or pushed (use commit_repo.py and push_repo.py).
-Results:      plans and results on stdout.
+              `relink`, once its plan is approved: quoted commit ids in tracked text files,
+              left uncommitted for review. Nothing is committed or pushed.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once. Other machines: Elaborate/follow_rewrite_fleet.py.
 Status:       working
 
-    python Special/follow_rewrite.py follow [PATH ...] [--match TEXT] [--depth N] [--yes]
-    python Special/follow_rewrite.py relink WORKSPACE [WORKSPACE ...] --checkout PATH [--write]
+    gitso follow-rewrite follow [PATH ...] [--match TEXT] [--depth N] [--apply PLAN_ID]
+    gitso follow-rewrite relink WORKSPACE [WORKSPACE ...] --checkout PATH [--apply PLAN_ID]
 ```
 
 ### secure-commit
@@ -647,23 +641,22 @@ Status:       working
 `gitso secure-commit`, or `Special/commit_repo.py`.
 
 ```text
-Preview/check and explicitly commit named files using shared security policy.
+secure-commit: check named files, message and identity, then commit only an approved plan.
 
 Why:          a commit should never carry a secret or a private value by accident.
 Reads:        the named files and the shared security policy.
-May change:   with --apply and the plan id: one commit of the named files.
-Results:      a masked plan and result on stdout, or --json.
+May change:   once its plan is approved: one commit of the named files.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/commit_repo.py /path/to/repo file.txt -m "Describe the change" --json
-    python Special/commit_repo.py /path/to/repo file.txt -m "Describe the change" --apply --approve PLAN_ID
+    gitso secure-commit /path/to/repo file.txt -m "Describe the change"
+    gitso secure-commit /path/to/repo file.txt -m "Describe the change" --apply PLAN_ID
 
-Python 3.11+, Git 2.36+. Preview writes no index, Git objects, report or settings. Apply uses
-named working-tree contents, preserves other staged work and delegates existing traditional
-hooks through a temporary per-command relay. Unreviewed hook changes hold the commit. No
-persistent hook installation, automatic push or rollback. Source/metadata checks are optimistic
-against other writers; unsupported Git states fail explicitly. See --help for profile options.
+Python 3.11+, Git 2.36+. Checking writes no index, Git objects, report or settings. Applying uses
+named working-tree contents, preserves other staged work and runs existing traditional hooks
+through a temporary per-command relay. Unreviewed hook changes hold the commit. No persistent
+hook installation, automatic push or rollback. See --help for profile options.
 ```
 
 ### secure-push
@@ -671,24 +664,22 @@ against other writers; unsupported Git states fail explicitly. See --help for pr
 `gitso secure-push`, or `Special/push_repo.py`.
 
 ```text
-Plan a single branch push and check its outgoing history before publishing.
+secure-push: plan one branch push, and check its outgoing history before publishing.
 
 Why:          publishing should check the outgoing history first, every time.
 Reads:        the branch, its outgoing commits and the shared security policy.
-May change:   with --apply and the plan id: one non-forced push of exactly the planned tip.
-Results:      a masked plan and result on stdout, or --json.
+May change:   once its plan is approved: one non-forced push of exactly the planned tip.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/push_repo.py /path/to/repo --json
-    python Special/push_repo.py /path/to/repo --apply --approve PLAN_ID
+    gitso secure-push /path/to/repo
+    gitso secure-push /path/to/repo --apply PLAN_ID
 
-Python 3.11+ and Git; --settings-home selects a profile. Preview
-reads only local scope/policy, writes no files and provides no outgoing security clearance.
-Apply needs the unchanged plan, fetches the selected remote and uses the same security gate as
-Archive Sync. Supports one matching upstream/push destination on an existing remote branch.
-No force, extra tags, other branches, hook installation or automatic commit. Masked output to
-stdout, no report/log unless a later common output integration explicitly requests one.
+Python 3.11+ and Git; --settings-home selects a profile. The plan reads only local scope and
+policy, writes no files and is no security clearance. Applying needs the unchanged plan,
+fetches the selected remote and uses the same security gate as sync-archive. One matching
+upstream on an existing remote branch. No force, extra tags, other branches, hooks or commits.
 ```
 
 ## Elaborate: other machines, or over time
@@ -704,7 +695,7 @@ Why:          joining the fleet is what lets machines see each other.
 Reads:        the settings profile.
 May change:   this machine's fleet settings; `transports` may create a private GitHub state repository;
               `peer` without --configure-only also starts the peer.
-Results:      messages on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
@@ -722,7 +713,7 @@ Why:          the fleet only knows what running peers tell it.
 Reads:        the observed repositories, peers' published status, the tailnet when it is up.
 May change:   nothing in your repositories; writes its own state and manifests. Catch-up runs only
               where a standing consent allows it. `rescan` asks a running peer for one inventory.
-Results:      log lines on stdout. The web view and tray are App's: App/serve_web.py, App/tray.py.
+Results:      while running, log lines on stdout; errors as JSON without a terminal. The web view and tray: gitso serve-web, gitso tray.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
@@ -741,7 +732,7 @@ Reads:        the repositories under the saved roots; the configured transport (
               private GitHub state repository).
 May change:   the transport's copy of this machine's manifest (status facts and salted ids only).
               `init` saves settings and may create the private state repository.
-Results:      a table on stdout, or --json.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
@@ -758,7 +749,7 @@ Suggest sync across the fleet from every machine's published status.
 Why:          which copies are ahead, behind or missing is a question no single machine can answer.
 Reads:        published manifests from the configured transport; the local catalog for names.
 May change:   nothing.
-Results:      the fleet table on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
@@ -775,7 +766,7 @@ Report repositories other machines have that this machine does not.
 Why:          a fleet converges only when each machine knows what it is missing.
 Reads:        published manifests; the local catalog.
 May change:   the local catalog's names, unless --no-record.
-Results:      a report on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
@@ -792,7 +783,7 @@ Report whether this machine could be wiped without losing work.
 Why:          unknown is never an all-clear: work must exist on a remote or in a recovery snapshot.
 Reads:        every repository under the configured roots, freshly fetched; recovery snapshots.
 May change:   nothing in your repositories (fetch updates remote-tracking refs only).
-Results:      a report on stdout; exit 1 unless safe.
+Results:      JSON without a terminal (or with --json); a screen at one. Exit 1 unless safe.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
@@ -809,7 +800,7 @@ Configure and inspect unfinished-work snapshots that another machine can restore
 Why:          uncommitted work on a machine that dies is lost unless a copy waits elsewhere.
 Reads:        the recovery settings and the snapshot store.
 May change:   recovery settings; preview and restore act only in a disposable checkout.
-Results:      text on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
@@ -826,7 +817,7 @@ Show this machine's fleet configuration and which peers answer; hides the key.
 Why:          the first question when the fleet looks wrong is what this machine thinks it is.
 Reads:        the fleet configuration; peers on the tailnet.
 May change:   nothing.
-Results:      text on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
@@ -843,7 +834,7 @@ Check what fleet setup can use on this machine: Git, GitHub, Tailscale, a port, 
 Why:          setup should offer only what will work.
 Reads:        tool availability and local folders.
 May change:   nothing.
-Results:      text on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
@@ -860,7 +851,7 @@ Inspect or change whether the gitSpecOps tray starts when you log in.
 Why:          a fleet whose peers are not running knows nothing.
 Reads:        this user's login items.
 May change:   this user's login items only (never system-wide).
-Results:      JSON on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
@@ -877,16 +868,16 @@ Schedule registered archive refreshes; local management lives in Special.
 Why:          archives only stay current if their refresh runs on its own.
 Reads:        registered archives; this user's scheduled tasks.
 May change:   a refresh-all launcher and this user's scheduled task, only when asked.
-Results:      messages on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/schedule_archives.py --write-refresh-all-script
-    python Elaborate/schedule_archives.py --install-monthly-task --task-day 1 --task-time 09:00
-    python Elaborate/schedule_archives.py --task-status
-    python Elaborate/schedule_archives.py --remove-task
+    gitso schedule-archives --write-refresh-all-script
+    gitso schedule-archives --install-monthly-task --task-day 1 --task-time 09:00
+    gitso schedule-archives --task-status
+    gitso schedule-archives --remove-task
 
-Only explicit actions run. Newly generated launchers invoke Special/archive_manager.py
+Only explicit actions run, each at once (like a setting). Generated launchers run archive-manager
 --refresh-all at the selected profile. Scheduling never enables publication or repairs.
 Importing writes nothing and does not inspect or alter installed tasks.
 ```
@@ -942,26 +933,20 @@ Status:       working
 `gitso setup`, or `_build/setup_gitspecops.py`.
 
 ```text
-Optional guided setup for gitSpecOps's command-line tools.
+Setup for gitSpecOps: the walkthrough, or one setup item at a time.
 
 Run from this repository:
 
-    python _build/setup_gitspecops.py     (or: run_setup.bat / run_setup.ps1 / run_setup.sh)
+    run_setup.bat / run_setup.ps1 / run_setup.sh     (or: python _build/setup_gitspecops.py)
 
-With no arguments, choose the walkthrough or an individual setup item.
-Non-interactive callers must name an action; --help never performs setup.
-Use settings for guided updater preferences, and settings-preview/settings-save for reviewed
-noninteractive changes. The `bootstrap` action does two things:
+With no arguments, a person at a terminal gets the setup menu. Named actions:
 
-  1. Creates a local virtual environment (.venv) with a predictable interpreter
-     (and the desktop app's Qt). It prefers `uv sync` and falls back to the
-     stdlib `venv` module. The project is NOT installed into .venv -- the tools
-     run as scripts and there are no dependencies; an editable install would only
-     add a startup-time `.pth` hook (see the note in pyproject.toml).
+    walkthrough   the guided setup (needs a person at a terminal)
+    run           choose one command from a list and run it, without setting anything up
+    environment   build this folder's .venv (with uv when it is installed), then check
+    check         show what this computer has: Git, the GitHub CLI, uv. Changes nothing.
 
-  2. Reports whether the runtime prerequisites (git, gh, uv) are available.
-
-No shortcuts or launchers are written. Every command runs through `gitso.py`, e.g.
-`python gitso.py commands`, or directly by its path, e.g. `python Special/update_archive.py --help`.
-Auth is never touched here: users authenticate their own host CLI (`gh auth login`, ...).
+gitSpecOps needs no setup to run: every command works straight from this folder through
+`gitso`, e.g. `python gitso.py commands`. Sign-ins are never touched here: you sign in to your
+own tools (`gh auth login`).
 ```

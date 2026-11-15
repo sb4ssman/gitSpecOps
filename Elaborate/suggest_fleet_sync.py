@@ -3,7 +3,7 @@
 Why:          which copies are ahead, behind or missing is a question no single machine can answer.
 Reads:        published manifests from the configured transport; the local catalog for names.
 May change:   nothing.
-Results:      the fleet table on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 

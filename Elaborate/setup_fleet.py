@@ -4,7 +4,7 @@ Why:          joining the fleet is what lets machines see each other.
 Reads:        the settings profile.
 May change:   this machine's fleet settings; `transports` may create a private GitHub state repository;
               `peer` without --configure-only also starts the peer.
-Results:      messages on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 

@@ -125,7 +125,7 @@ class RepoTransport:
         for attempt in range(2):
             _existing, sha = self._read_raw(path)
             fields = {
-                "message": f"sync-suggester: {machine_id}",
+                "message": f"gitSpecOps: {machine_id}",
                 "content": base64.b64encode(payload).decode("ascii"),
             }
             if sha:
@@ -157,7 +157,7 @@ class RepoTransport:
             if not sha:
                 return
             self._api(f"contents/{stale}", method="DELETE",
-                      fields={"message": f"sync-suggester: drop stale {machine_id}", "sha": sha})
+                      fields={"message": f"gitSpecOps: drop stale {machine_id}", "sha": sha})
         except (GhError, ValueError):
             pass
 
@@ -197,6 +197,6 @@ def create_state_repo(spec: str, description: str | None = None) -> str:
     if not SAFE_REPO_SPEC.fullmatch(spec or ""):
         raise ValueError(f"state repo must look like owner/name, got {spec!r}")
     args = ["repo", "create", spec, "--private",
-            "--description", description or "gitSpecOps Sync Suggester machine state"]
+            "--description", description or "gitSpecOps machine state"]
     run_gh(args)
     return spec

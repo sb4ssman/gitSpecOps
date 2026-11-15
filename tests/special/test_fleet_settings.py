@@ -67,6 +67,16 @@ class FleetSettingsTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             return fleet_app.main(["--settings-home", str(self.home), "--config-dir", str(self.state), *args])
 
+    def approved_app(self, *args):
+        """Ask for the plan, then apply it by its id, as a program does."""
+        out = io.StringIO()
+        with redirect_stdout(out), redirect_stderr(io.StringIO()):
+            code = fleet_app.main(["--settings-home", str(self.home), "--config-dir", str(self.state), *args, "--json"])
+        plan = json.loads(out.getvalue()).get("plan_id") if out.getvalue().strip() else None
+        if code or plan is None:
+            return code
+        return self.app_command(*args, "--apply", plan)
+
     def test_readers_select_common_and_keep_distinct_transports(self):
         (self.state / "config.json").write_text("broken legacy", encoding="utf-8")
         (self.state / "fleet-app.json").write_text("broken legacy", encoding="utf-8")
@@ -227,7 +237,7 @@ class FleetSettingsTests(unittest.TestCase):
 
     def test_settings_home_and_runtime_directory_are_independent(self):
         self.assertEqual(fleet_directory(self.state, home=self.home), self.state)
-        self.assertEqual(fleet_directory(home=self.home), self.home / "sync-suggester")
+        self.assertEqual(fleet_directory(home=self.home), self.home / "fleet")
         with patch.dict(os.environ, {"GITSPECOPS_SYNC_HOME": str(self.state)}):
             self.assertEqual(fleet_directory(home=self.home), self.state)
             self.assertEqual(fleet_home(), self.home)
@@ -254,8 +264,8 @@ class FleetSettingsTests(unittest.TestCase):
         del self.doc["components"]["app"]
         self.write()
         with patch("Elaborate._fleet.cli.resolve_machine_identity", side_effect=AssertionError), patch("Elaborate._fleet.cli.run_peer", side_effect=AssertionError):
-            self.assertEqual(self.app_command("peer", "--root", str(self.root), "--no-tailnet",
-                                              "--acknowledge-initial-scan", "--configure-only"), 0)
+            self.assertEqual(self.approved_app("peer", "--root", str(self.root), "--no-tailnet",
+                                               "--configure-only"), 0)
         self.assertEqual(self.saved()["machine"], self.doc["machine"])
 
     def test_help_has_no_profile_reads_or_locks(self):
@@ -314,9 +324,9 @@ class FleetSettingsTests(unittest.TestCase):
         del self.doc["components"]["app"]
         self.write()
         with patch("Elaborate._fleet.cli.require_gh", side_effect=AssertionError):
-            self.assertEqual(self.app_command("peer", "--root", str(self.root), "--label", "other label",
-                                              "--repo", "example/new-status", "--create-repo",
-                                              "--acknowledge-initial-scan", "--configure-only"), 2)
+            self.assertEqual(self.approved_app("peer", "--root", str(self.root), "--label", "other label",
+                                               "--repo", "example/new-status", "--create-repo",
+                                               "--configure-only"), 2)
 
     def test_shared_transport_edit_refuses_before_optional_repo_creation(self):
         self.doc["components"]["sync"]["options"]["transport_names"] = ["repo"]
@@ -384,16 +394,6 @@ class FleetSettingsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             fleet_directory(Path(__file__).resolve().parents[2])
 
-    def test_v1_common_profile_never_silently_upgrades_for_enrollment(self):
-        self.doc = {"schema_version": 1, "defaults": {"security": {"never_publish": ["private@example.invalid"]}}}
-        self.write()
-        before = self.path.read_bytes()
-        self.assertIsNone(cli_config.load_config(self.state))
-        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-            self.assertEqual(sync_suggester.main(["--settings-home", str(self.home), "init"]), 2)
-        self.assertEqual(self.app_command("peer", "--root", str(self.root), "--acknowledge-initial-scan", "--configure-only"), 2)
-        self.assertEqual(before, self.path.read_bytes())
-
     def test_common_cli_local_check_uses_real_disposable_git_without_writes(self):
         checkout = self.root / "checkout"
         subprocess.run(["git", "init", "-q", str(checkout)], check=True, capture_output=True)
@@ -418,7 +418,7 @@ class FleetSettingsTests(unittest.TestCase):
         for command in (sync_suggester.main, fleet_app.main):
             for show in (False, True):
                 output = io.StringIO()
-                args = ["--settings-home", str(self.home), "--config-dir", str(self.state), "fleet-key"]
+                args = ["--settings-home", str(self.home), "--config-dir", str(self.state), "fleet-key", "--json"]
                 if show:
                     args.append("--show")
                 with redirect_stdout(output), redirect_stderr(io.StringIO()):
@@ -447,8 +447,11 @@ class FleetSettingsTests(unittest.TestCase):
         with patch("Elaborate._fleet.cli.new_fleet_secret", return_value=self.key), \
              patch("Elaborate._fleet.cli.resolve_machine_identity", return_value=("machine-a", "Machine A")), \
              redirect_stdout(output), redirect_stderr(io.StringIO()):
-            code = fleet_app.main(["--settings-home", str(self.home), "--config-dir", str(self.state),
-                                   "peer", "--root", str(self.root), "--no-tailnet", "--acknowledge-initial-scan", "--configure-only"])
+            arguments = ["--settings-home", str(self.home), "--config-dir", str(self.state),
+                         "peer", "--root", str(self.root), "--no-tailnet", "--configure-only"]
+            code = fleet_app.main([*arguments, "--json"])
+            plan = json.loads(output.getvalue())["plan_id"]
+            code = code or fleet_app.main([*arguments, "--apply", plan])
         self.assertEqual(code, 0, output.getvalue())
         self.assertNotIn(self.key, output.getvalue())
         self.assertEqual(self.saved()["machine"]["fleet_secret"], self.key)
@@ -456,8 +459,7 @@ class FleetSettingsTests(unittest.TestCase):
     def test_recovery_and_git_client_commands_save_common_options(self):
         location = self.base / "recovery"
         location.mkdir()
-        self.assertEqual(self.app_command("recovery", "configure", "--location", str(location),
-                                          "--confirm-private-location"), 0)
+        self.assertEqual(self.approved_app("recovery", "configure", "--location", str(location)), 0)
         options = self.saved()["components"]["app"]["options"]
         self.assertEqual(options["recovery"]["location"], str(location))
         self.assertIs(options["recovery"]["confirmed"], True)

@@ -3,11 +3,11 @@
 Why:          "behind" must mean behind the remote now, not at the last fetch.
 Reads:        the remote.
 May change:   remote-tracking refs only; never a branch or a file.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/fetch.py <repo> [--remote origin] [--dry-run]
+    gitso fetch <repo> [--remote origin] [--dry-run]
 
 With no refspec, `git fetch` updates `refs/remotes/*` and never a local branch or the working
 tree -- nothing the user would have to undo. That is why observation may fetch at all.
@@ -23,6 +23,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from Basic._console import enable_unicode_output  # noqa: E402
+from Basic import _cli  # noqa: E402
 from Basic._run import Result, run_git  # noqa: E402
 
 EFFECT = "none"
@@ -43,15 +44,16 @@ def fetch(repo: Path | str, remote: str | None = None, *, dry_run: bool = False,
 
 def main(argv: list[str]) -> int:
     enable_unicode_output()
-    parser = argparse.ArgumentParser(description="Fetch a repository's remote (refs only).")
+    parser = _cli.parser("fetch", "Fetch a repository's remote (refs only).")
     parser.add_argument("repo", type=Path)
     parser.add_argument("--remote", default=None, help="remote name (default: git's choice)")
     parser.add_argument("--dry-run", action="store_true", help="show what would be fetched")
     args = parser.parse_args(argv)
     result = fetch(args.repo, args.remote, dry_run=args.dry_run)
-    sys.stdout.write(result.stdout)
-    sys.stderr.write(result.stderr)
-    return result.returncode
+    ok = result.returncode == 0
+    return _cli.report(args, "fetch", ok=ok, page="Fetch", context=(str(args.repo),),
+                       output=result.stdout + result.stderr, repository=str(args.repo),
+                       message="Fetched." if ok else "git fetch did not finish; its own words are above.")
 
 
 if __name__ == "__main__":

@@ -172,7 +172,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
                 webbrowser.open(context["url"])
             else:
                 tray.showMessage("The Qt window comes later",
-                                 "Until then, turn the web view on: python Special/enroll_machine.py "
+                                 "Until then, turn the web view on: gitso enroll-machine "
                                  "presentation --face web --web loopback")
         elif context.get("url"):
             webbrowser.open(context["url"])
@@ -333,7 +333,8 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="tray", description=__doc__.split("\n", 1)[0])
+    from Basic import _cli
+    parser = _cli.parser("tray", __doc__.split("\n", 1)[0])
     parser.add_argument("--config-dir", type=Path, help="local fleet state directory")
     parser.add_argument("--settings-home", type=Path, help="common profile; defaults to the user-data home")
     parser.add_argument("--view", choices=("web", "window"),
@@ -348,9 +349,7 @@ def main(argv=None) -> int:
         return run_tray(args.config_dir, args.settings_home, view=args.view, web=args.web,
                         open_on_start=args.open_on_start, remote=args.remote)
     except TrayUnavailable as exc:
-        print(f"note: {exc}\nWithout a tray, App/serve_web.py serves the web view.", file=sys.stderr)
-        return 2
+        return _cli.fail(args, "tray", f"{exc}. Without a tray, gitso serve-web serves the web view.")
     except (OSError, ValueError) as exc:
-        print(f"error: {failure_reason(str(exc))}", file=sys.stderr)
-        return 2
+        return _cli.fail(args, "tray", f"{failure_reason(str(exc))}.")
 

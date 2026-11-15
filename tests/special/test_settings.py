@@ -31,7 +31,7 @@ class SettingsTests(unittest.TestCase):
     def save(self, **entries):
         self.home.mkdir(parents=True, exist_ok=True)
         path = self.home / subject.SETTINGS_NAME
-        path.write_text(json.dumps({"schema_version": 1, **entries}), encoding="utf-8")
+        path.write_text(json.dumps({"schema_version": 2, **entries}), encoding="utf-8")
         return path
 
     def test_first_use_returns_defaults_without_creating_the_home(self):
@@ -39,22 +39,22 @@ class SettingsTests(unittest.TestCase):
         self.assertFalse(self.home.exists())
         self.assertFalse(result.configured)
         self.assertEqual(result.home_source, "platform-default")
-        self.assertEqual(result.values["output"]["mode"], "stdout")
+        self.assertIs(result.values["output"]["save"], False)
         self.assertEqual(result.values["logging"]["directory"], self.home / "logs")
         self.assertEqual(result.values["scope"]["roots"], [])
 
     def test_effective_values_and_sources_follow_precedence(self):
-        path = self.save(defaults={"output": {"format": "json", "mode": "both"}},
-                         components={"archive_update": {"output": {"mode": "file"}}})
+        path = self.save(defaults={"output": {"save": True, "directory": "shared-reports"}},
+                         components={"archive_update": {"output": {"save": False}}})
         before = path.read_bytes()
-        result = subject.resolve_settings("archive_update", overrides={"output": {"mode": "stdout"}})
-        self.assertEqual(result.values["output"]["mode"], "stdout")
-        self.assertEqual(result.values["output"]["format"], "json")
-        self.assertEqual(result.sources["output.mode"], ["explicit"])
-        self.assertEqual(result.sources["output.format"], ["settings"])
+        result = subject.resolve_settings("archive_update", overrides={"output": {"save": True}})
+        self.assertIs(result.values["output"]["save"], True)
+        self.assertEqual(result.values["output"]["directory"].name, "shared-reports")
+        self.assertEqual(result.sources["output.save"], ["explicit"])
+        self.assertEqual(result.sources["output.directory"], ["settings"])
         component = subject.resolve_settings("archive_update")
-        self.assertEqual(component.sources["output.mode"], ["component:archive_update"])
-        self.assertEqual(subject.resolve_settings("security").values["output"]["mode"], "both")
+        self.assertEqual(component.sources["output.save"], ["component:archive_update"])
+        self.assertIs(subject.resolve_settings("security").values["output"]["save"], True)
         self.assertEqual(path.read_bytes(), before)
         self.assertEqual(list(self.home.iterdir()), [path])
 
@@ -128,16 +128,16 @@ class SettingsTests(unittest.TestCase):
     def test_strict_schema_refuses_unknown_fields_and_wrong_types(self):
         bad_records = [
             {}, {"schema_version": True}, {"schema_version": 99},
-            {"schema_version": 1, "mystery": {}},
-            {"schema_version": 1, "components": {"mystery": {}}},
-            {"schema_version": 1, "defaults": {"mystery": {}}},
-            {"schema_version": 1, "defaults": {"output": {"token": "private-marker"}}},
-            {"schema_version": 1, "defaults": {"logging": {"enabled": 1}}},
-            {"schema_version": 1, "defaults": {"logging": {"max_bytes": True}}},
-            {"schema_version": 1, "defaults": {"logging": {"backup_count": -1}}},
-            {"schema_version": 1, "defaults": {"scope": {"roots": "not-a-list"}}},
-            {"schema_version": 1, "defaults": {"security": {"never_publish": [""]}}},
-            {"schema_version": 1, "defaults": {"output": {"format": "yaml"}}},
+            {"schema_version": 2, "mystery": {}},
+            {"schema_version": 2, "components": {"mystery": {}}},
+            {"schema_version": 2, "defaults": {"mystery": {}}},
+            {"schema_version": 2, "defaults": {"output": {"token": "private-marker"}}},
+            {"schema_version": 2, "defaults": {"logging": {"enabled": 1}}},
+            {"schema_version": 2, "defaults": {"logging": {"max_bytes": True}}},
+            {"schema_version": 2, "defaults": {"logging": {"backup_count": -1}}},
+            {"schema_version": 2, "defaults": {"scope": {"roots": "not-a-list"}}},
+            {"schema_version": 2, "defaults": {"security": {"never_publish": [""]}}},
+            {"schema_version": 2, "defaults": {"output": {"save": "yes"}}},
         ]
         for record in bad_records:
             with self.subTest(record=record), self.assertRaises(subject.SettingsError):
@@ -181,11 +181,11 @@ class SettingsTests(unittest.TestCase):
         before = copy.deepcopy(subject.DEFAULTS)
         first = subject.resolve_settings()
         first.values["scope"]["roots"].append("private-marker")
-        first.summary()["sources"]["output.mode"].append("changed")
+        first.summary()["sources"]["output.save"].append("changed")
         second = subject.resolve_settings()
         self.assertEqual(subject.DEFAULTS, before)
         self.assertEqual(second.values["scope"]["roots"], [])
-        self.assertEqual(second.sources["output.mode"], ["default"])
+        self.assertEqual(second.sources["output.save"], ["default"])
 
 
 if __name__ == "__main__":

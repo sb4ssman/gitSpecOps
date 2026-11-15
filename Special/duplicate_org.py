@@ -3,7 +3,7 @@
 Why:          copying a whole GitHub organization by hand is slow and easy to get wrong.
 Reads:        the chosen GitHub namespaces (through gh) and local folders.
 May change:   local clones; in upload or migration modes, GitHub repositories, after confirmation.
-Results:      progress and results on stdout; resume state in its runs folder.
+Results:      JSON without a terminal (or with --json); a screen at one. Resume state in its runs folder.
 Layer:        Special: this machine, once.
 Status:       working
 

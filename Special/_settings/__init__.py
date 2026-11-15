@@ -24,7 +24,9 @@ SETTINGS_NAME = "settings.json"
 COMPONENTS = ("archive_update", "archive_sync", "archive_manage", "duplicate_org", "inventory", "security", "sync", "app")
 DEFAULTS = {
     "scope": {"roots": [], "exclude_paths": []},
-    "output": {"mode": "stdout", "format": "text", "directory": "reports"},
+    # output: also save each run's report as a JSON file in `directory` (what is printed
+    # follows the terminal: a screen for a person, JSON for a program).
+    "output": {"save": False, "directory": "reports"},
     "logging": {"enabled": True, "directory": "logs", "level": "INFO",
                 "max_bytes": 10 * 1024 * 1024, "backup_count": 3},
     # never_publish_words: protected values matched only as whole words (no letter, digit or
@@ -82,12 +84,9 @@ def _part(value):
             elif key == "directory":
                 if not isinstance(item, str) or not item.strip() or "\0" in item:
                     raise SettingsError(f"{where} must be a nonempty path")
-            elif where == "output.mode":
-                if item not in ("stdout", "file", "both"):
-                    raise SettingsError("output.mode must be stdout, file or both")
-            elif where == "output.format":
-                if item not in ("text", "json"):
-                    raise SettingsError("output.format must be text or json")
+            elif where == "output.save":
+                if type(item) is not bool:
+                    raise SettingsError("output.save must be a boolean")
             elif where == "logging.enabled":
                 if type(item) is not bool:
                     raise SettingsError("logging.enabled must be a boolean")
@@ -120,12 +119,12 @@ def _policy_conflicts(values):
 
 
 def validate_document(document):
-    """Validate common v1 or typed enrollment v2, without altering the caller's record."""
+    """Validate a settings document, without altering the caller's record."""
     _object(document, "settings document")
     version = document.get("schema_version")
-    if type(version) is not int or version not in (1, SCHEMA_VERSION):
+    if type(version) is not int or version != SCHEMA_VERSION:
         raise SettingsError("unsupported settings schema_version")
-    allowed = {"schema_version", "defaults", "components"} | ({"machine", "transports"} if version == 2 else set())
+    allowed = {"schema_version", "defaults", "components", "machine", "transports"}
     if set(document) - allowed:
         raise SettingsError("settings document contains an unknown field")
     common = document.get("defaults", {})
@@ -136,14 +135,11 @@ def validate_document(document):
         raise SettingsError("settings name an unsupported component")
     for part in components.values():
         _object(part, "component settings")
-        if version == 1 and "options" in part:
-            raise SettingsError("component options require settings schema v2")
         _part({key: value for key, value in part.items() if key != "options"})
-    if version == 2:
-        try:
-            records.document(document)
-        except records.RecordError as exc:
-            raise SettingsError(str(exc)) from None
+    try:
+        records.document(document)
+    except records.RecordError as exc:
+        raise SettingsError(str(exc)) from None
     # Reject a bad saved component even when the current operation selects another one.
     for part in ({}, *components.values()):
         effective = copy.deepcopy(DEFAULTS)
@@ -186,8 +182,7 @@ class ResolvedSettings:
                 "configured": self.configured, "home_source": self.home_source,
                 "scope": {"roots": len(self.values["scope"]["roots"]),
                           "exclude_paths": len(self.values["scope"]["exclude_paths"])},
-                "output": {"mode": self.values["output"]["mode"],
-                           "format": self.values["output"]["format"]},
+                "output": {"save": self.values["output"]["save"]},
                 "logging": {key: value for key, value in self.values["logging"].items()
                             if key != "directory"},
                 "security": {key: list(value) if key == "engines" else len(value)

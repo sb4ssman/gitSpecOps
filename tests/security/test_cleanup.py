@@ -178,7 +178,7 @@ class CleanupPlans(Fixture):
         self.assertTrue(load(self.plan_path).include_remote_refs)
 
     def test_common_file_report_and_counts_log_are_presented_without_raw_values(self):
-        result = self.plan(overrides={"output": {"mode": "file", "format": "json", "directory": str(self.root / "reports")},
+        result = self.plan(overrides={"output": {"save": True, "directory": str(self.root / "reports")},
                                      "logging": {"enabled": True, "directory": str(self.root / "logs")}})
         self.assertEqual(result.status, "planned", result.record())
         saved = next(item for item in result.artifacts if item["kind"] == "masked operation report")
@@ -190,7 +190,7 @@ class CleanupPlans(Fixture):
         self.assertNotIn(str(self.repo), log)
 
     def test_unignored_report_destination_is_removed_and_never_falls_back(self):
-        result = self.plan(overrides={"output": {"mode": "file", "directory": str(self.repo / "reports")}})
+        result = self.plan(overrides={"output": {"save": True, "directory": str(self.repo / "reports")}})
         self.assertEqual(result.status, "incomplete")
         self.assertFalse(list((self.repo / "reports").glob("*")))
         self.assertFalse((self.home / "reports").exists())
@@ -209,14 +209,14 @@ class CleanupPlans(Fixture):
         with patch.object(sys.stdin, "isatty", return_value=False), redirect_stderr(io.StringIO()), \
              patch("Special._security._cleanup_cli.run_cleanup", side_effect=AssertionError("must not run")), \
              self.assertRaises(SystemExit) as error:
-            _cleanup_cli.main(["apply", "private-plan.json", "--workspace", "new-output", "--approve", "plan-id"])
+            _cleanup_cli.main(["rewrite", "private-plan.json", "--workspace", "new-output", "--apply", "plan-id"])
         self.assertEqual(error.exception.code, 2)
 
     def test_declined_typed_approval_never_starts_the_operation(self):
         with patch.object(sys.stdin, "isatty", return_value=True), patch.object(sys.stdout, "isatty", return_value=True), \
              patch("builtins.input", return_value="yes"), redirect_stderr(io.StringIO()), \
              patch("Special._security._cleanup_cli.run_cleanup", side_effect=AssertionError("must not run")):
-            self.assertEqual(_cleanup_cli.main(["apply", "private-plan.json", "--workspace", "new-output", "--approve", "plan-id"]), 130)
+            self.assertEqual(_cleanup_cli.main(["rewrite", "private-plan.json", "--workspace", "new-output", "--apply", "plan-id"]), 130)
 
     def test_requested_report_failure_stops_before_rewriting_without_fallback(self):
         from Special._runtime.files import RuntimeIOError
@@ -225,7 +225,7 @@ class CleanupPlans(Fixture):
              patch("Special._security._cleanup.execute", side_effect=AssertionError("must not rewrite")):
             result = run_cleanup("apply", self.plan_path, workspace=self.root / "output", home=self.home,
                                  approve=planned.plan_id, confirmation="REWRITE",
-                                 overrides={"output": {"mode": "both", "directory": str(self.root / "reports")}})
+                                 overrides={"output": {"save": True, "directory": str(self.root / "reports")}})
         self.assertEqual(result.status, "incomplete")
         self.assertFalse(result.effects_possible)
         self.assertFalse((self.root / "output").exists())
@@ -304,8 +304,8 @@ class NativeCleanup(Fixture):
         output = io.StringIO()
         with redirect_stdout(output), redirect_stderr(io.StringIO()), patch.object(sys.stdin, "isatty", return_value=True), \
              patch.object(sys.stdout, "isatty", return_value=True), patch("builtins.input", return_value="REWRITE"):
-            code = _cleanup_cli.main(["apply", str(self.plan_path), "--workspace", str(self.root / "output"),
-                                      "--approve", plan_id, "--settings-home", str(self.home), "--json"])
+            code = _cleanup_cli.main(["rewrite", str(self.plan_path), "--workspace", str(self.root / "output"),
+                                      "--apply", plan_id, "--settings-home", str(self.home), "--json"])
         self.assertEqual(code, 0, output.getvalue())
         result = json.loads(output.getvalue())
         self.assertEqual(result["status"], "verified")

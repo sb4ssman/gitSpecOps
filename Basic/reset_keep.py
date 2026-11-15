@@ -3,11 +3,11 @@
 Why:          following a rewritten history needs a branch move that never overwrites an edit.
 Reads:        the repository and the target commit.
 May change:   the checked-out branch and the files that differ; refuses over any uncommitted edit.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/reset_keep.py <repo> <target>
+    gitso reset-keep <repo> <target>
 
 `git reset --keep` moves the branch and updates the files that differ between the two commits,
 and refuses outright if any of those files has an uncommitted change -- so an edit is never
@@ -29,6 +29,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from Basic._console import enable_unicode_output  # noqa: E402
+from Basic import _cli  # noqa: E402
 from Basic._run import run_git  # noqa: E402
 
 EFFECT = "local"
@@ -64,12 +65,15 @@ def reset_keep(repo: Path | str, target: str) -> str:
 
 def main(argv: list[str]) -> int:
     enable_unicode_output()
-    if len(argv) != 2 or argv[0] in ("-h", "--help"):
-        print(__doc__)
-        return 0 if argv and argv[0] in ("-h", "--help") else 2
-    result = reset_keep(Path(argv[0]), argv[1])
-    print(result)
-    return 1 if result.startswith("failed:") else 0
+    parser = _cli.parser("reset-keep", "Move the checked-out branch to another commit, keeping uncommitted edits.")
+    parser.add_argument("repo", type=Path)
+    parser.add_argument("target", help="the commit to move to")
+    args = parser.parse_args(argv)
+    result = reset_keep(args.repo, args.target)
+    ok = not result.startswith("failed:")
+    return _cli.report(args, "reset-keep", ok=ok, page="Reset, keeping edits", context=(str(args.repo),),
+                       repository=str(args.repo), result=result,
+                       message=result[0].upper() + result[1:] + ("." if ok else ""))
 
 
 if __name__ == "__main__":

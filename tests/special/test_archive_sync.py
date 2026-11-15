@@ -21,6 +21,7 @@ from _bootstrap import ROOT, setup
 setup()
 
 from Special import sync_archive as archive_sync
+from Basic import _cli
 from Special._archive import operation, sync, sync_cli
 from Special._archive.plan import LocalRepo, ReconcileItem, RepoRef, SyncPlan
 from Special._settings import resolve_settings
@@ -75,8 +76,15 @@ class ArchiveSyncTests(unittest.TestCase):
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
             code = entry(["--root", str(self.archive), "--settings-home", str(self.home),
-                          "--approved-remote-prefix", str(self.root), "--json", *args])
+                          "--allowed-remote", str(self.root), "--json", *args])
         return code, json.loads(out.getvalue()), err.getvalue()
+
+    def applied(self, *args):
+        """Preview, then apply every plan the preview offered, by its id."""
+        code, record, err = self.cli(*args)
+        self.assertEqual(code, 0, (record, err))
+        ids = [flag for item in record["plans"] for flag in ("--apply", item["plan_id"])]
+        return self.cli(*args, *ids)
 
     def detected(self, plan):
         return sync.DetectResult(root=str(self.archive), plan=plan)
@@ -93,7 +101,7 @@ class ArchiveSyncTests(unittest.TestCase):
         self.commit(self.work)
         tip = self.git(self.work, "rev-parse", "HEAD")
         with patch.object(sync, "detect_plan", side_effect=AssertionError("unexpected discovery")):
-            code, record, err = self.cli("--publish", "--yes", "--publish-pause", "0")
+            code, record, err = self.applied("--publish", "--publish-pause", "0")
         self.assertEqual(code, 0, (record, err))
         self.assertEqual(self.git(self.bare, "rev-parse", "main"), tip)
         published = record["archives"][0]["result"]["publication"]
@@ -105,7 +113,7 @@ class ArchiveSyncTests(unittest.TestCase):
         self.commit(self.work)
         base = self.git(self.bare, "rev-parse", "main")
         with patch.object(sync, "publish_checked", side_effect=AssertionError("unexpected gate/fetch")):
-            code, record, err = self.cli("--publish", "--dry-run")
+            code, record, err = self.cli("--publish")
         self.assertEqual(code, 0, (record, err))
         payload = record["archives"][0]["result"]
         self.assertEqual(payload["plan"]["to_push"][0]["tip"], self.git(self.work, "rev-parse", "HEAD"))
@@ -116,11 +124,11 @@ class ArchiveSyncTests(unittest.TestCase):
     def test_changed_security_profile_at_approval_prevents_publication(self):
         self.commit(self.work)
         base = self.git(self.bare, "rev-parse", "main")
-        def approve(*_):
+        def approve(gate, action, plan):
             self.document["defaults"]["security"]["never_publish"].append("different-private-marker")
             self.save()
             return True
-        with patch.object(sys.stdin, "isatty", return_value=True), patch.object(sync_cli, "_approve", side_effect=approve), \
+        with patch.object(_cli.Gate, "__call__", approve), \
              patch.object(sync, "publish_checked", side_effect=AssertionError("unexpected gate/fetch")):
             code, record, err = self.cli("--publish")
         self.assertEqual(code, 2, (record, err))
@@ -177,7 +185,7 @@ class ArchiveSyncTests(unittest.TestCase):
         self.advance("later.txt")
         with patch.object(sync, "detect_plan", side_effect=AssertionError("unexpected discovery")), \
              patch.object(sync, "apply_publish", side_effect=AssertionError("unexpected publication")):
-            code, record, err = self.cli("--update", "--yes")
+            code, record, err = self.applied("--update")
         self.assertEqual(code, 0, (record, err))
         self.assertTrue((self.work / "later.txt").exists())
 
@@ -207,7 +215,7 @@ class ArchiveSyncTests(unittest.TestCase):
         plans = []
         result = self.run_operation([self.request("update")], scan_only=False,
                                     approve=lambda action, plan: plans.append((action, plan)) or False)
-        self.assertEqual(result.exit_code, 2, result.record())
+        self.assertEqual(result.exit_code, 0, result.record())
         self.assertFalse(result.effects_possible)
         self.assertEqual(plans[0][0], "update")
         self.assertNotIn("private-fixture-marker", json.dumps(plans))
@@ -215,10 +223,10 @@ class ArchiveSyncTests(unittest.TestCase):
 
     def test_interactive_profile_disappearance_holds_pull_without_default_fallback(self):
         self.advance("later.txt")
-        def approve(*_):
+        def approve(gate, action, plan):
             (self.home / "settings.json").unlink()
             return True
-        with patch.object(sys.stdin, "isatty", return_value=True), patch.object(sync_cli, "_approve", side_effect=approve):
+        with patch.object(_cli.Gate, "__call__", approve):
             code, record, err = self.cli("--update")
         self.assertEqual(code, 2, (record, err))
         self.assertFalse((self.work / "later.txt").exists())
@@ -228,7 +236,7 @@ class ArchiveSyncTests(unittest.TestCase):
         self.advance("later.txt")
         bad = self.root / "occupied"
         bad.write_text("keep", encoding="utf-8")
-        code, record, err = self.cli("--update", "--yes", "--output-dir", str(bad))
+        code, record, err = self.cli("--update", "--report-dir", str(bad))
         self.assertEqual(code, 2, (record, err))
         self.assertEqual(record["artifacts"], [])
         self.assertEqual(bad.read_text(), "keep")
@@ -236,11 +244,11 @@ class ArchiveSyncTests(unittest.TestCase):
         self.assertFalse((self.home / "reports").exists())
 
     def test_explicit_report_and_log_are_presented_as_actual_masked_artifacts(self):
-        code, record, err = self.cli("--output-dir", str(self.home / "reports"), "--log")
+        code, record, err = self.cli("--report-dir", str(self.home / "reports"), "--log")
         self.assertEqual(code, 0, err)
         artifacts = {item["kind"]: Path(item["path"]) for item in record["artifacts"]}
         self.assertEqual(set(artifacts), {"report", "operational-log"})
-        self.assertEqual(json.loads(artifacts["report"].read_text()), record)
+        self.assertEqual(json.loads(artifacts["report"].read_text())["archives"], record["archives"])
         self.assertNotIn(str(self.archive), artifacts["operational-log"].read_text())
 
     def test_explicit_origin_and_folder_repairs_use_same_engine_and_real_git(self):
@@ -249,7 +257,7 @@ class ArchiveSyncTests(unittest.TestCase):
         ref = RepoRef(id="fixture-repair", owner="fixture", name="renamed", url=str(replacement))
         plan = SyncPlan(to_reconcile=[ReconcileItem(LocalRepo("work", str(self.bare), None), ref, True, True)])
         with patch.object(sync, "detect_plan", return_value=self.detected(plan)):
-            code, record, err = self.cli("--reconcile", "--rename-folders", "--yes")
+            code, record, err = self.applied("--reconcile", "--rename-folders")
         self.assertEqual(code, 0, (record, err))
         self.assertFalse(self.work.exists())
         renamed = self.archive / "renamed"
@@ -260,7 +268,7 @@ class ArchiveSyncTests(unittest.TestCase):
         ref = RepoRef(id="fixture-repair", owner="fixture", name="renamed", url=str(self.bare))
         plan = SyncPlan(to_reconcile=[ReconcileItem(LocalRepo("work", str(self.bare), None), ref, False, True)])
         with patch.object(sync, "detect_plan", return_value=self.detected(plan)):
-            code, record, err = self.cli("--rename-folders", "--dry-run")
+            code, record, err = self.cli("--rename-folders")
         self.assertEqual(code, 0, (record, err))
         self.assertTrue(self.work.exists())
         self.assertFalse((self.archive / "renamed").exists())
@@ -276,8 +284,8 @@ class ArchiveSyncTests(unittest.TestCase):
     def test_unattended_mutations_and_invalid_publish_combinations_fail_before_settings(self):
         with patch.object(sync_cli, "resolve_settings", side_effect=AssertionError("unexpected read")), \
              patch.object(sys.stdin, "isatty", return_value=False), redirect_stderr(io.StringIO()):
-            for args in (["--sync"], ["--publish", "--sync"], ["--publish", "--reconcile", "--yes"],
-                         ["--publish", "--publish-pause", "nan", "--yes"], ["--include-dirty"], ["--legacy-policy"]):
+            for args in (["--publish", "--sync"], ["--publish", "--reconcile"],
+                         ["--publish", "--publish-pause", "nan"], ["--include-dirty"], ["--yes"], ["--dry-run"]):
                 with self.subTest(args=args), self.assertRaises(SystemExit) as caught:
                     archive_sync.main(args)
                 self.assertEqual(caught.exception.code, 2)
@@ -288,7 +296,7 @@ class ArchiveSyncTests(unittest.TestCase):
                                "--settings-home", str(absent), "--help"], cwd=self.root,
                               capture_output=True, text=True, timeout=30)
         self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertIn("--output-mode", done.stdout)
+        self.assertIn("--save-report", done.stdout)
         self.assertFalse(absent.exists())
 
 

@@ -225,15 +225,17 @@ Runs the pieces in order, saves its stage after each, and resumes there when run
 unasked -- with three choices: move now; leave it (it stays flagged); or do it by hand (it
 prints the plain git commands).
 
-## The watch list (today: `never_publish.txt`)
+## The watch list: protected values
 
-What exists today: nothing creates it. `Security/_seeds.listed_values()` only reads
-`%APPDATA%\gitspecops\security\never_publish.txt` (Windows; `$XDG_CONFIG_HOME/gitspecops/...`
-elsewhere). The agent wrote it by hand on 2026-10-19. Setup never mentions it, nothing shows its
-contents, and the auto-discovered half (git and gh identity, host, home folder, tailnet, orgs)
-is gathered fresh each run and never shown either. The hygiene test reads it too.
+Where it lives now: `settings.json` in the per-user gitSpecOps folder (`defaults.security`:
+`never_publish`, `never_publish_words`, `safe_values`; a component may add its own). There is
+no `never_publish.txt` any more. Setup's Protection part suggests the Git name, Git email and
+computer user name; the map's Security tab shows and changes the lists
+(`Special/_security/_policy_edit.py`; loosening needs the typed word LOOSEN). The
+auto-discovered half (git and gh identity, host, home folder, tailnet, orgs) is gathered fresh
+each run. The hygiene test reads the same lists.
 
-The rebuild:
+Still planned:
 
 - **A command** (`show` lists both halves in full, labelled by source; `add`, `remove`, `edit`).
 - **Every scan prints counts**, never values: "discovered: 1 email, 1 login, host, 5 tailnet

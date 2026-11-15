@@ -98,9 +98,11 @@ as a fourth way to share is built but **experimental and untested**.
 
 ## Commands
 
-`gitso commands` lists them; each also runs by its own path, for example
-`python Special/suggest_sync.py --help`. [The command reference](docs/COMMANDS.md) has every
-command's own description, generated from its source.
+`gitso commands` lists them. At a terminal each shows a screen; run by a script or an AI agent,
+each answers with one JSON record. Anything that changes things shows its plan first and acts
+only on approval. [The command reference](docs/COMMANDS.md) has every command's own
+description, generated from its source; [for AI agents](docs/FOR-AI-AGENTS.md) explains plans
+and records.
 
 | Layer | Commands |
 |---|---|

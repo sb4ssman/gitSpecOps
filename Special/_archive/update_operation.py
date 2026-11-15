@@ -23,7 +23,7 @@ from Special._settings import ResolvedSettings
 
 ERROR_MESSAGES = {
     "approval_required": "The proposed update was not approved; no further updates were run.",
-    "settings_component": "This operation needs the archive updater's resolved settings.",
+    "settings_component": "This operation needs the archive settings.",
     "invalid_scope": "Select at least one existing archive folder and an allowed origin prefix.",
     "scope": "A selected archive folder is missing or cannot be accessed.",
     "excluded_root": "A selected archive folder is excluded by the scope policy.",
@@ -60,6 +60,7 @@ class UpdateResult:
     reports: list = field(default_factory=list, repr=False)
     errors: list[str] = field(default_factory=list)
     completed_roots: int = 0
+    declined: int = 0
     effects_possible: bool = False
     elapsed_seconds: float = 0.0
     report_path: Path | None = field(default=None, repr=False)
@@ -73,9 +74,9 @@ class UpdateResult:
         return int(any(repo.result.startswith("failed:") for report in self.reports for repo in report.repos))
 
     def record(self, *, redacted: bool = True, show_remote_urls: bool = False) -> dict:
-        """Schema-v1 presentation record. Raw records are only for explicitly trusted callers."""
+        """The presentation record. Raw records are only for explicitly trusted callers."""
         record = updater.report_payload(self.reports, self.mode, list(self.approved_prefixes))
-        record.update(schema_version=1, operation="archive_update", generated=self.generated, exit_code=self.exit_code,
+        record.update(operation="archive_update", generated=self.generated, exit_code=self.exit_code,
                       status=("partial" if self.errors and (self.effects_possible or self.completed_roots)
                               else ("failed" if self.exit_code else "ok")), errors=list(self.errors),
                       completed_roots=self.completed_roots, effects_possible=self.effects_possible,
@@ -96,7 +97,7 @@ def render_result(result: UpdateResult, format: str, *, show_remote_urls: bool =
     if format == "json":
         return json.dumps(result.record(show_remote_urls=show_remote_urls), indent=2)
     stream = io.StringIO()
-    print(f"{updater.APP_NAME} v{updater.VERSION}\nMode: {result.mode}", file=stream)
+    print(f"Mode: {result.mode}", file=stream)
     for report in result.reports:
         updater.print_scan(report, show_remote_urls, stream=stream)
         print(f"Excluded folders: {report.excluded_folders}", file=stream)
@@ -141,13 +142,13 @@ subtree. Required sink failures stop further work and never trigger another dest
         roots = updater.resolve_roots([Path(root) for root in raw_roots])
         if any(excluded(root, exclusions) for root in roots):
             raise RuntimeIOError("excluded_root")
-        for section, active in (("output", settings.values["output"]["mode"] != "stdout"),
+        for section, active in (("output", settings.values["output"]["save"]),
                                 ("logging", settings.values["logging"]["enabled"])):
             if active and excluded(settings.values[section]["directory"], exclusions, contains=True):
                 raise RuntimeIOError("excluded_destination")
         phase = "report_setup"
-        if settings.values["output"]["mode"] != "stdout":
-            sink = ReportSink(settings.values["output"]["directory"], settings.values["output"]["format"])
+        if settings.values["output"]["save"]:
+            sink = ReportSink(settings.values["output"]["directory"], "json")
             result.report_path = sink.path
         phase = "logging_setup"
         log = configure_logging(settings, "archive_update")
@@ -164,10 +165,12 @@ subtree. Required sink failures stop further work and never trigger another dest
             if request.scan_only:
                 for repo in report.repos:
                     repo.result = repo.action if not repo.eligible else "not run (scan only)"
+            elif approve is not None and not approve(conceal(updater.report_payload([report], "update", list(request.approved_prefixes)), result.protected)):
+                # Not approved: this folder's plan is shown, nothing in it changes, the run goes on.
+                result.declined += 1
+                for repo in report.repos:
+                    repo.result = repo.action if not repo.eligible else "not applied (not approved)"
             else:
-                if approve is not None and not approve(conceal(updater.report_payload([report], "update", list(request.approved_prefixes)), result.protected)):
-                    result.errors.append("approval_required")
-                    break
                 result.effects_possible |= any(repo.eligible for repo in report.repos)
                 emit = ((lambda text: progress(conceal(text, result.protected))) if progress is not None else None)
                 updater.run_updates(report, emit=emit, log=log, before_action=before_action)
@@ -193,7 +196,7 @@ subtree. Required sink failures stop further work and never trigger another dest
             result.report_path = None
         else:
             try:
-                sink.write(render_result(result, settings.values["output"]["format"],
+                sink.write(render_result(result, "json",
                                          show_remote_urls=show_remote_urls))
             except (RuntimeIOError, OSError):
                 sink.abort()

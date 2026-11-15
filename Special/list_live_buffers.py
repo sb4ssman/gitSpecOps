@@ -3,7 +3,7 @@
 Why:          work typed but never saved is invisible to Git; this shows where it is.
 Reads:        VS Code's local hot-exit backup headers (metadata, never content).
 May change:   nothing.
-Results:      JSON on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 

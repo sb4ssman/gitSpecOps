@@ -2549,3 +2549,26 @@ No code changed; decisions recorded where they govern.
   and FLEET (gained the tray-and-map and how-machines-share overview; its own catch-up section
   replaces the README's duplicate). Every relative link checked; fixed a stale
   ../packaging/BUILD-DESKTOP.md link in FLEET.md.
+
+## 2026-11-13 23:30 - user (claude) - One output and one approval for every command (branch wave/polish)
+- The user asked for a once-over for consistency and professionalism, then: JSON as the
+  default for programs, one approval pattern, setup item 5 replaced, --force-sync removed,
+  per-tool versions removed, minimal format labels, macOS's native settings folder, the stale
+  security doc fixed, the user folder named gitSpecOps. Both mechanisms were asked first:
+  "JSON unless at a terminal" and "plan, then --apply PLAN_ID", the recommended options.
+- Basic/_cli.py holds the rules: machine() (no terminal, --json, GITSPECOPS_OUTPUT), one record
+  {command, ok, ...}, fail(), plan_id() (digest; `generated` and `*elapsed*` ignored), Approval
+  (one plan), Gate (an engine asking per folder), run_plan (operations owning their ids:
+  secure-commit, secure-push, review-finding), Out (commands that print as they go: the fleet
+  and status CLIs, wrapped once). tests/_bootstrap.py sets GITSPECOPS_OUTPUT=screen; tests of
+  what a program sees drop it or pass --json.
+- Archive engines: a declined plan is now "not applied", not an error, and the run goes on, so
+  a preview and an apply run the same code and produce the same plan ids. Registered-archive
+  refresh still acts unattended: registration is the approval.
+- Kept on purpose: clean-history rewrite needs a terminal, the id and typed REWRITE. Basic
+  commands and single explicit settings (name-repo, baskets, transports, start-at-login,
+  schedule-archives) act at once, like git.
+- Settings: format 1 refused; output is {save, directory}. Setup's settings actions and
+  Special/_settings/setup*.py are deleted; the walkthrough has an Archives part.
+- Not done, proposed to the user instead: renaming commands to one pattern (item 5 of the
+  review). Full suite 86/86 after each stage; nothing pushed.

@@ -19,7 +19,7 @@ Modes (CLI):
   --sync            + clone repos missing locally (update implied)
   --reconcile       + rewrite stale origin URLs to the canonical upstream
   --rename-folders  + rename local folders to match the upstream name (guarded)
-  --yes             approve explicit actions outside a terminal; otherwise review a masked plan
+  --apply PLAN_ID   carry out a plan; otherwise each folder's masked plan is shown (asked at a terminal)
 
 Updating existing repos is host-agnostic and works with no provider. Discovery/clone/reconcile
 require a provider for the repos' host; where none exists the archive degrades to update-only.
@@ -61,8 +61,6 @@ from Special._archive.plan import (  # noqa: E402
 
 #: --publish pushes (never forced). The scheduled and generated paths never pass it.
 EFFECT = "remote"
-APP_NAME = "Archive Sync"
-VERSION = "0.1.0"
 
 
 @dataclass
@@ -369,8 +367,7 @@ def apply_publish(root: Path, plan, issues: list[Issue],
 def build_report(result: DetectResult, applied: dict[str, int], issues: list[Issue], mode: str) -> dict:
     plan = result.plan
     return {
-        "tool": APP_NAME,
-        "version": VERSION,
+        "command": "sync-archive",
         "generated": datetime.now().isoformat(timespec="seconds"),
         "root": result.root,
         "type": ("org" if result.remote_authoritative else "update-only") if result.provider_name else "loose",

@@ -3,17 +3,17 @@
 Why:          personal data published in history stays published until history is rewritten.
 Reads:        a full private scan report and an explicit choices document.
 May change:   only a new private mirror; never the source checkout and never a push.
-Results:      a private plan, the rewritten mirror, its proof and rescan.
+Results:      a private plan, the rewritten mirror, its proof and rescan; JSON without a terminal.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/clean_history.py plan /private/history.json --choices /private/choices.json --plan-out /private/plan.json --json
-    python Special/clean_history.py apply /private/plan.json --workspace /private/new-run --approve PLAN_ID
+    gitso clean-history plan /private/history.json --choices /private/choices.json --plan-out /private/plan.json
+    gitso clean-history rewrite /private/plan.json --workspace /private/new-run --apply PLAN_ID
 
 First use scan-history --out for a full private report. Planning rescans and rejects stale
 refs/findings. --include-remote-refs explicitly preserves remote-only history and origin/HEAD;
 without it an ordinary checkout with tracking refs is refused. No fetch or settings change.
-Application requires an attended terminal and typed REWRITE, with no --yes/confirmation flag.
+Rewriting always needs a person: an attended terminal, the plan id and the typed word REWRITE.
 GUI/callable clients use the same run_cleanup function after their own human approval.
 
 The choice document has schema_version=1 and four required lists:

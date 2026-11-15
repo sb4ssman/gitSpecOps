@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import io
 import sys
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -38,11 +38,11 @@ def raises_system_exit(func) -> bool:
 
 # ---- scripted answers: queue, echo, strict overflow ----
 confirm.use_scripted_answers(["4", "all", "", "y"], strict=True)
-out = io.StringIO()
-with redirect_stdout(out):
+out, echoed = io.StringIO(), io.StringIO()
+with redirect_stdout(out), redirect_stderr(echoed):
     got = [confirm.prompt_input(f"q{i}: ") for i in range(4)]
 check("scripted answers served in order", got == ["4", "all", "", "y"])
-check("scripted prompt is echoed", "q0: 4" in out.getvalue())
+check("scripted prompt is echoed, on stderr", "q0: 4" in echoed.getvalue() and out.getvalue() == "")
 check("strict overflow stops cleanly", raises_system_exit(lambda: confirm.prompt_input("overflow: ")))
 
 # ---- activation-noise filter ----

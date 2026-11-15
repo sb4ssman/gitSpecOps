@@ -166,7 +166,7 @@ def render_catchup(plan: list[dict], *, applied: bool = False) -> str:
     if not applied:
         eligible = counts.get("pull", 0)
         lines.append("No working tree changed. " + (
-            f"Re-run with --apply --yes to fast-forward the {eligible} eligible checkout(s)."
+            f"Approve the plan to fast-forward the {eligible} eligible checkout(s)."
             if eligible else "There are no safe fast-forward pulls to apply."))
     return "\n".join(lines)
 
@@ -411,5 +411,5 @@ def render_materialize(plan: list[dict], *, applied=False) -> str:
     for item in plan:
         lines.append(f"  {item['name']}: {item['action'].replace('_', ' ')} — {item['detail']}")
     if not applied:
-        lines.append("No destination was changed. Re-run with --apply --yes to clone only planned missing repositories.")
+        lines.append("No destination was changed. Approve the plan to clone only the planned missing repositories.")
     return "\n".join(lines)

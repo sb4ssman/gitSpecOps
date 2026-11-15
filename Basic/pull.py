@@ -3,11 +3,11 @@
 Why:          a fast-forward cannot lose work, so it is the one pull that needs no decision.
 Reads:        the repository and its upstream.
 May change:   the checked-out branch and its files, by fast-forward only.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/pull.py <repo>
+    gitso pull <repo>
 
 `--ff-only` is the whole safety argument: a fast-forward cannot destroy data and never asks
 for a choice, so when git cannot fast-forward it refuses, and the refusal is reported as a
@@ -24,6 +24,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from Basic._console import enable_unicode_output  # noqa: E402
+from Basic import _cli  # noqa: E402
 from Basic._run import run_git  # noqa: E402
 
 EFFECT = "local"
@@ -55,12 +56,14 @@ def fast_forward(repo: Path | str, remote: str = "origin") -> str:
 
 def main(argv: list[str]) -> int:
     enable_unicode_output()
-    if len(argv) != 1 or argv[0] in ("-h", "--help"):
-        print(__doc__)
-        return 0 if argv and argv[0] in ("-h", "--help") else 2
-    result = fast_forward(Path(argv[0]))
-    print(result)
-    return 1 if result.startswith("failed:") else 0
+    parser = _cli.parser("pull", "Fast-forward one repository to its upstream. Never merges, never rebases.")
+    parser.add_argument("repo", type=Path)
+    args = parser.parse_args(argv)
+    result = fast_forward(args.repo)
+    ok = not result.startswith("failed:")
+    return _cli.report(args, "pull", ok=ok, page="Pull", context=(str(args.repo),),
+                       repository=str(args.repo), result=result,
+                       message=result[0].upper() + result[1:] + ("." if ok else ""))
 
 
 if __name__ == "__main__":

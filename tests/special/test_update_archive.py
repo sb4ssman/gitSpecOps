@@ -1,4 +1,4 @@
-"""Standalone updater integration with invented settings, scopes and temporary Git repos."""
+"""update-archive integration with invented settings, scopes and temporary Git repos."""
 from __future__ import annotations
 
 import io
@@ -67,7 +67,7 @@ class UpdateTests(unittest.TestCase):
         self.assertFalse(self.home.exists())
 
     def test_fresh_stdout_and_disabled_logging_create_no_user_files(self):
-        code, out, err = self.cli("--root", str(self.archive), "--scan-only", "--json", "--no-log")
+        code, out, err = self.cli("--root", str(self.archive), "--json", "--no-log")
         self.assertEqual(code, 0, err)
         self.assertEqual(json.loads(out)["status"], "ok")
         self.assertFalse(self.home.exists())
@@ -75,7 +75,7 @@ class UpdateTests(unittest.TestCase):
     def test_default_logging_is_counts_only_and_reports_remain_off(self):
         repo = self.repo("private-marker")
         with patch.object(updater, "inspect_candidate", return_value=repo):
-            code, out, err = self.cli("--root", str(self.archive), "--scan-only", "--json")
+            code, out, err = self.cli("--root", str(self.archive), "--json")
         self.assertEqual(code, 0, err)
         self.assertFalse(any(item["kind"] == "report" for item in json.loads(out)["artifacts"]))
         log = (self.home / "logs" / "archive_update.log").read_text()
@@ -86,20 +86,21 @@ class UpdateTests(unittest.TestCase):
 
     def test_saved_component_preferences_and_explicit_stdout_override(self):
         self.save({"scope": {"roots": [str(self.archive)]}, "logging": {"enabled": False}},
-                  {"archive_update": {"output": {"mode": "both", "format": "json", "directory": "chosen"}}})
-        code, out, err = self.cli("--scan-only")
+                  {"archive_update": {"output": {"save": True, "directory": "chosen"}}})
+        code, out, err = self.cli("--json")
         self.assertEqual(code, 0, err)
         record = json.loads(out)
-        self.assertEqual(json.loads(Path(next(item["path"] for item in record["artifacts"] if item["kind"] == "report")).read_text()), record)
+        saved = json.loads(Path(next(item["path"] for item in record["artifacts"] if item["kind"] == "report")).read_text())
+        self.assertEqual(saved["roots"], record["roots"])
         before = list((self.home / "chosen").iterdir())
-        code, out, err = self.cli("--scan-only", "--no-report")
+        code, out, err = self.cli("--json", "--no-save-report")
         self.assertEqual(code, 0, err)
         self.assertFalse(any(item["kind"] == "report" for item in json.loads(out)["artifacts"]))
         self.assertEqual(list((self.home / "chosen").iterdir()), before)
 
     def test_explicit_root_replaces_saved_roots(self):
         self.save({"scope": {"roots": [str(self.root / "missing")]}, "logging": {"enabled": False}})
-        code, out, err = self.cli("--root", str(self.archive), "--scan-only", "--json")
+        code, out, err = self.cli("--root", str(self.archive), "--json")
         self.assertEqual(code, 0, err)
         self.assertEqual(json.loads(out)["roots"][0]["scan"]["root"], str(self.archive.resolve()))
 
@@ -119,7 +120,7 @@ class UpdateTests(unittest.TestCase):
 
     def test_excluded_root_refuses_before_inspection_or_output_setup(self):
         settings = self.settings(scope={"roots": [str(self.archive)], "exclude_paths": [str(self.archive)]},
-                                 output={"mode": "both"})
+                                 output={"save": True})
         with patch.object(updater, "scan_root") as scan:
             result = public.run_update(settings)
         self.assertEqual(result.errors, ["excluded_root"])
@@ -129,7 +130,7 @@ class UpdateTests(unittest.TestCase):
     def test_invalid_report_and_log_destinations_prevent_pulls(self):
         bad = self.root / "not-directory"
         bad.write_text("retained")
-        for section, value in (("output", {"mode": "both", "directory": str(bad)}),
+        for section, value in (("output", {"save": True, "directory": str(bad)}),
                                ("logging", {"enabled": True, "directory": str(bad)})):
             with self.subTest(section=section), patch.object(updater, "update_repo") as pull:
                 result = public.run_update(self.settings(**{section: value}))
@@ -140,7 +141,7 @@ class UpdateTests(unittest.TestCase):
     def test_required_log_failure_does_not_fall_back_or_pull(self):
         with patch("Special._archive.update_operation.configure_logging", side_effect=RuntimeIOError("logging_busy")), \
              patch.object(updater, "update_repo") as pull:
-            result = public.run_update(self.settings(output={"mode": "both"}, logging={"enabled": True}))
+            result = public.run_update(self.settings(output={"save": True}, logging={"enabled": True}))
         self.assertEqual(result.exit_code, 2)
         self.assertIsNone(result.report_path)
         self.assertEqual(list((self.home / "reports").iterdir()), [])
@@ -162,14 +163,13 @@ class UpdateTests(unittest.TestCase):
         self.assertNotIn("private-marker", repr(result))
         self.assertIn(credential, json.dumps(result.record(redacted=False)))
 
-    def test_file_mode_has_no_stdout_and_reports_never_overwrite(self):
-        args = ["--root", str(self.archive), "--scan-only", "--output-dir", str(self.root / "reports"),
-                "--output-mode", "file", "--json", "--no-log"]
+    def test_saved_reports_never_overwrite(self):
+        args = ["--root", str(self.archive), "--report-dir", str(self.root / "reports"), "--json", "--no-log"]
         for _ in range(2):
             code, out, err = self.cli(*args)
-            self.assertEqual((code, out), (0, ""), err)
-            self.assertIn("report: ", err)
-            self.assertIn(str(self.root / "reports"), err)
+            self.assertEqual(code, 0, err)
+            report = next(item["path"] for item in json.loads(out)["artifacts"] if item["kind"] == "report")
+            self.assertEqual(Path(report).parent, self.root / "reports")
         reports = list((self.root / "reports").glob("*.json"))
         self.assertEqual(len(reports), 2)
         self.assertTrue(all(json.loads(path.read_text())["status"] == "ok" for path in reports))
@@ -182,10 +182,6 @@ class UpdateTests(unittest.TestCase):
         visible = json.loads(public.render_result(result, "json", show_remote_urls=True))
         self.assertEqual(hidden["roots"][0]["scan"]["repos"][0]["origin"], "present")
         self.assertEqual(visible["roots"][0]["scan"]["repos"][0]["origin"], repo.origin)
-        code, out, err = self.cli("--root", str(self.archive), "--scan-only", "--json", "--no-log",
-                                  "--default-output-dir", "reports")
-        self.assertEqual(code, 0, err)
-        self.assertEqual(Path(next(item["path"] for item in json.loads(out)["artifacts"] if item["kind"] == "report")).parent, self.archive / "reports")
 
     def test_logging_failure_after_a_pull_stops_later_repositories(self):
         first, second = self.repo("first"), self.repo("second")
@@ -203,20 +199,28 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(result.record()["status"], "partial")
         self.assertEqual(second.result, "not run")
 
-    def test_update_progress_is_stderr_and_json_stdout_remains_one_record(self):
-        repo = self.repo("private-marker")
+    def test_json_is_one_record_the_plan_first_then_its_id_applies_it(self):
         self.save({"security": {"never_publish": ["private-marker"]}, "logging": {"enabled": False}})
-        with patch.object(updater, "inspect_candidate", return_value=repo), \
-             patch.object(updater, "update_repo", return_value="updated"):
+        # Each run inspects its repositories anew: a fresh record for each run.
+        with patch.object(updater, "inspect_candidate", return_value=self.repo("private-marker")), \
+             patch.object(updater, "update_repo", side_effect=AssertionError("a preview pulled")):
             code, out, err = self.cli("--root", str(self.archive), "--json")
-        self.assertEqual(code, 0)
+        self.assertEqual((code, err), (0, ""))
+        preview = json.loads(out)
+        self.assertEqual(len(preview["plans"]), 1)
+        self.assertIn("--apply " + preview["plans"][0]["plan_id"], preview["apply"])
+        self.assertNotIn("private-marker", out)
+        with patch.object(updater, "inspect_candidate", return_value=self.repo("private-marker")), \
+             patch.object(updater, "update_repo", return_value="updated"):
+            code, out, err = self.cli("--root", str(self.archive), "--json", "--apply", preview["plans"][0]["plan_id"])
+        self.assertEqual((code, err), (0, ""))
         self.assertEqual(json.loads(out)["roots"][0]["summary"]["updated"], ["[redacted]"])
-        self.assertIn("[PULL]", err)
-        self.assertNotIn("private-marker", out + err)
+        self.assertEqual(json.loads(out)["plans"], [])
+        self.assertNotIn("private-marker", out)
 
     def test_report_write_failure_after_update_returns_partial_without_fallback(self):
         repo = self.repo()
-        settings = self.settings(output={"mode": "both", "format": "json"})
+        settings = self.settings(output={"save": True})
         with patch.object(updater, "inspect_candidate", return_value=repo), \
              patch.object(updater, "update_repo", return_value="updated") as pull, \
              patch("Special._archive.update_operation.ReportSink.write", side_effect=OSError("private-marker")):
@@ -232,15 +236,16 @@ class UpdateTests(unittest.TestCase):
         self.home.mkdir()
         source = self.home / "settings.json"
         source.write_text("{broken")
-        code, out, err = self.cli("--root", str(self.archive), "--no-log")
-        self.assertEqual((code, out), (2, ""))
+        code, out, err = self.cli("--root", str(self.archive), "--no-log", "--json")
+        self.assertEqual(code, 2)
+        self.assertFalse(json.loads(out)["ok"])
         self.assertFalse((self.home / "logs").exists())
 
     def test_conflicting_flags_and_source_runtime_destinations_are_errors(self):
-        for flags in (("--no-report", "--output-dir", str(self.root / "reports")),
+        for flags in (("--no-save-report", "--report-dir", str(self.root / "reports")),
                       ("--no-log", "--log-dir", str(self.root / "logs"))):
             self.assertEqual(self.cli("--root", str(self.archive), *flags)[0], 2)
-        result = public.run_update(self.settings(output={"mode": "both", "directory": str(SOURCE_ROOT / "logs")}))
+        result = public.run_update(self.settings(output={"save": True, "directory": str(SOURCE_ROOT / "logs")}))
         self.assertEqual(result.errors, ["source_destination"])
 
     def test_real_local_fast_forward_keeps_dirty_checkout_untouched(self):
@@ -270,6 +275,33 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         self.assertEqual((work / "tracked.txt").read_text(), "local edit")
         self.assertFalse(result.reports[0].repos[0].eligible)
+
+    def test_a_plan_id_applies_only_the_plan_it_names(self):
+        def git(*args):
+            return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout.strip()
+        bare, seed, work = self.root / "remote.git", self.root / "seed", self.archive / "work"
+        git("init", "--bare", "-q", "-b", "main", str(bare))
+        git("clone", "-q", str(bare), str(seed))
+        git("-C", str(seed), "config", "user.name", "Fixture")
+        git("-C", str(seed), "config", "user.email", "fixture@example.test")
+        for text in ("first", "second"):
+            (seed / "tracked.txt").write_text(text)
+            git("-C", str(seed), "add", "tracked.txt")
+            git("-C", str(seed), "-c", "commit.gpgsign=false", "commit", "-qm", text)
+            git("-C", str(seed), "push", "-q", "origin", "main")
+            if text == "first":
+                git("clone", "-q", str(bare), str(work))
+        flags = ["--root", str(self.archive), "--allowed-remote", str(self.root), "--json", "--no-log"]
+        code, out, err = self.cli(*flags)
+        self.assertEqual(code, 0, err)
+        self.assertEqual((work / "tracked.txt").read_text(), "first")
+        plan = json.loads(out)["plans"][0]["plan_id"]
+        code, out, err = self.cli(*flags, "--apply", "0" * 12)
+        self.assertEqual(code, 3, out)
+        self.assertEqual((work / "tracked.txt").read_text(), "first")
+        code, out, err = self.cli(*flags, "--apply", plan)
+        self.assertEqual(code, 0, out)
+        self.assertEqual((work / "tracked.txt").read_text(), "second")
 
 
 if __name__ == "__main__":

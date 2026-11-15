@@ -1,29 +1,25 @@
-"""Register local archive folders and refresh them using their saved update or sync mode.
+"""Register folders of clones (archives) and refresh them, each in its saved mode.
 
 Why:          archives you keep should refresh the way you chose for each, with one command.
 Reads:        registered archives and their saved update or sync mode.
-May change:   registrations; launchers when asked; the checkouts a refresh updates or clones.
-Results:      a masked result on stdout, or JSON; reports and logs as settings choose.
+May change:   registrations and their launchers (planned first); the checkouts a refresh updates
+              or clones.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/archive_manager.py --help
-    python Special/archive_manager.py --install /path/to/archive --mode update
-    python Special/archive_manager.py --list
-    python Special/archive_manager.py --refresh-all --scan-only --json --no-report --no-log
-    python Special/archive_manager.py --refresh /path/to/archive --settings-home /path/to/profile
+    gitso archive-manager                      (a menu, at a terminal)
+    gitso archive-manager --install /path/to/archive --mode update
+    gitso archive-manager --list
+    gitso archive-manager --refresh-all --scan-only --no-log
+    gitso archive-manager --refresh /path/to/archive
 
---install creates a launcher that resolves saved choices at run time. --forget removes the
-registration only; common-profile receipts and launchers remain for ownership review. Existing
-the settings profile owns archive choices.
-Use Elaborate/schedule_archives.py for scheduling. Importing performs no operation.
-
-Refresh calls run_refresh headlessly: saved update/sync mode per archive, one masked result,
-optional aggregate report, shared counts-only logging. --output-mode/--output-dir/--json and
---log/--no-log/--log-dir override manager preferences. Reports default off; selected invalid
-sinks fail without fallback. --scan-only leaves receipts unchanged. Action receipts contain
-run status, not a guessed last report; actual report/log destinations are result artifacts.
-Import run_refresh for programmatic use; it prints nothing and replaces no process streams.
+--install and --forget show their plan and act on approval: --apply PLAN_ID, or yes at a
+terminal. --forget removes the registration only; the folder and its launcher stay. A refresh
+runs each archive in its saved mode: registering it was the approval, so the launcher and the
+monthly task (schedule-archives) run unattended. --scan-only checks without changing anything.
+--save-report/--report-dir also save the run's report as a JSON file; --log/--no-log choose the
+counts-only log. Import run_refresh for programmatic use; it prints nothing.
 """
 from pathlib import Path
 import sys
@@ -44,7 +40,6 @@ from Special._archive.manager import (
     registry_path,
     installation_status,
     print_registry,
-    print_dashboard,
     refresh_all,
     run_refresh,
     refresh_archive,
@@ -53,8 +48,6 @@ from Special._archive.manager import (
     parse_args,
     main,
     EFFECT,
-    APP_NAME,
-    VERSION,
     REPO_ROOT,
     MODE_UPDATE,
     MODE_SYNC,

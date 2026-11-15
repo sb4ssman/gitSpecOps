@@ -16,11 +16,12 @@ before anything leaves:
 
 ## Security in detail
 
-Scans use your saved security policy and print masked results without writing reports or logs:
+Scans use your saved security policy and print masked results without writing reports or logs
+(a screen at a terminal, one JSON record otherwise):
 
 ```sh
-gitso scan-tree /path/to/repo --json
-gitso scan-history /path/to/repo --json
+gitso scan-tree /path/to/repo
+gitso scan-history /path/to/repo
 ```
 
 - **Engines.** Built-in checks need no extra packages. Choose optional engines with repeatable
@@ -37,11 +38,12 @@ gitso scan-history /path/to/repo --json
 **Reviews.** For a documented example or a test fixture, review that exact finding:
 
 ```sh
-gitso scan-tree /path/to/repo --out /private/reports/scan.json --json
+gitso scan-tree /path/to/repo --out /private/reports/scan.json
 gitso review-finding /private/reports/scan.json finding-000001 --reason "Reviewed example"
 ```
 
-The preview writes nothing; rerun with `--apply --approve <plan id>`. Changed bytes, location or
+The plan writes nothing; at a terminal you are asked, and a script reruns it with
+`--apply <plan id>`. Changed bytes, location or
 repository need review again. Protected values, strong credentials, unsupported engine findings
 and coverage gaps cannot be waived. A binary file (a font, an executable) is a "binary content"
 finding: its readable strings are checked, and a review accepts that exact file at that place.
@@ -52,11 +54,12 @@ on this machine.
 staged, `scan-tree --staged --out FILE` inspects exactly what would be committed. It never stages
 or commits anything.
 
-**`secure-commit`.** Preview the files, message and author, then apply that exact plan:
+**`secure-commit`.** Check the files, message and author, then apply that exact plan (at a
+terminal you are asked; a script uses the plan id):
 
 ```sh
-gitso secure-commit /path/to/repo file.py docs/usage.md -m 'Describe the change' --json
-gitso secure-commit /path/to/repo file.py docs/usage.md -m 'Describe the change' --apply --approve '<plan-id>'
+gitso secure-commit /path/to/repo file.py docs/usage.md -m 'Describe the change'
+gitso secure-commit /path/to/repo file.py docs/usage.md -m 'Describe the change' --apply '<plan-id>'
 ```
 
 Only the named files are committed, with their whole working contents; other staged work is
@@ -65,13 +68,13 @@ settings are installed. Requires Git 2.36 or later. Directories, linked files, m
 states need compatibility work. If Git created a commit but final verification fails, the result
 says `partial`; nothing is pushed or undone automatically.
 
-**`secure-push`.** `gitso secure-push /path/to/repo --json` previews the branch, tip and destination
-without network access; `--apply --approve '<plan-id>'` fetches, checks the actual outgoing
+**`secure-push`.** `gitso secure-push /path/to/repo` plans the branch, tip and destination
+without network access; approving it (or `--apply '<plan-id>'`) fetches, checks the actual outgoing
 history through the same gate as archive publishing, then pushes that fixed snapshot. There is
 no force, extra-tag or bypass option.
 
 **Status with security.** `gitso publish-status check --root /path/to/library --local-only
---no-publish --no-catalog --json` reports Git status together with local findings. Only the
+--no-publish --no-catalog` reports Git status together with local findings. Only the
 status manifest is ever shared; findings stay on this machine. The map's **Check local
 security** runs the same checks on observed repositories, in memory only.
 
@@ -79,13 +82,13 @@ security** runs the same checks on observed repositories, in memory only.
 a new private mirror, never the source, and never publishes:
 
 ```sh
-gitso scan-history /path/to/repo --out /private/history.json --json
-gitso clean-history plan /private/history.json --choices /private/choices.json --include-remote-refs --plan-out /private/plan.json --json
-gitso clean-history apply /private/plan.json --workspace /private/new-run --approve PLAN_ID
+gitso scan-history /path/to/repo --out /private/history.json
+gitso clean-history plan /private/history.json --choices /private/choices.json --include-remote-refs --plan-out /private/plan.json
+gitso clean-history rewrite /private/plan.json --workspace /private/new-run --apply PLAN_ID
 ```
 
-`gitso docs clean-history` gives the choices format. Apply needs an attended terminal and typed
-`REWRITE`; there is no `--yes`. Remaining findings or gaps hold the result for review. A verified
+`gitso docs clean-history` gives the choices format. Rewriting always needs a person: an
+attended terminal, the plan id and the typed word `REWRITE`; it has no unattended form. Remaining findings or gaps hold the result for review. A verified
 mirror does not rotate credentials, erase other copies or update other clones: publishing it is
 your step, and `gitso follow-rewrite` then moves your clones onto it.
 

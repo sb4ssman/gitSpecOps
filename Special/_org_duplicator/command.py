@@ -452,25 +452,24 @@ Modes (interactive menu when run with no flags):
   4. All my orgs -> Local batch download
   5. One repo -> Local (owner/name or URL)
 
-Non-interactive (so it runs cleanly inside editors/CI where a terminal helper may
-inject keystrokes into an open prompt):
+Without a terminal (so it runs cleanly inside editors, CI or for an AI agent), batch
+and single modes take the documented defaults for options not given (private: yes,
+archived: no, forks: no, format: working, parallel: 3), print the plan with its id and
+download nothing. Run the same command again with --apply PLAN_ID to carry out exactly
+that plan; at a terminal, you are asked instead.
 
-  # Back up every namespace, working clones, no further questions:
-  github_org_duplicator.py --batch --namespaces all --dest /backups/github --yes
+  # Plan a backup of every namespace, then apply it by its id:
+  gitso duplicate-org --batch --namespaces all --dest /backups/github
+  gitso duplicate-org --batch --namespaces all --dest /backups/github --apply PLAN_ID
 
   # Batch, skip one org, mirror clones:
-  github_org_duplicator.py --batch --namespaces 'all,!some-org' \\
-      --dest /backups/github --format mirror --yes
+  gitso duplicate-org --batch --namespaces 'all,!some-org' --dest /backups/github --format mirror
 
   # One repo:
-  github_org_duplicator.py --single owner/name --dest /backups/github --yes
+  gitso duplicate-org --single owner/name --dest /backups/github
 
   # Any mode, answers pre-supplied one per line (blank line = that prompt's default):
-  github_org_duplicator.py --answers answers.txt
-
---yes takes documented defaults for any batch option not given as a flag
-(private: yes, archived: no, forks: no, format: working, parallel: 3) and skips the
-final typed confirmation. It requires --namespaces and --dest.
+  gitso duplicate-org --answers answers.txt
 
 Run files: {RUNS_DIR}
 """
@@ -487,7 +486,7 @@ def _enter_batch(args):
 def parse_args(argv=None):
     """Parse CLI flags. No flags -> fully interactive (the historical behavior)."""
     parser = argparse.ArgumentParser(
-        prog="duplicate_org.py",
+        prog="gitso duplicate-org",
         description="Cautious copying of whole GitHub namespaces (see modes below).",
         epilog=_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -510,23 +509,51 @@ def parse_args(argv=None):
                         help="Clone format for batch/single (default: working).")
     parser.add_argument("--parallel", type=int, metavar="N", default=None,
                         help="Batch: parallel downloads per namespace, 1-5 (default: 3).")
-    parser.add_argument("--yes", action="store_true",
-                        help="Assume YES and take defaults for unspecified batch options.")
     parser.add_argument("--answers", metavar="FILE", type=Path,
                         help="Feed answers to any remaining prompt, one per line.")
+    from Basic import _cli
+    _cli.add_json(parser)
+    _cli.add_apply(parser)
     args = parser.parse_args(argv)
+    args.argv = list(sys.argv[1:] if argv is None else argv)
+    # Without a person to ask, unspecified options take their documented defaults.
+    args.yes = args.apply is not None or not _cli.interactive(args)
 
     if args.batch and args.single:
         parser.error("--batch and --single are mutually exclusive")
     if args.parallel is not None and not 1 <= args.parallel <= 5:
         parser.error("--parallel must be between 1 and 5")
-    if args.yes and not (args.single or _enter_batch(args)):
-        parser.error("--yes only applies to --batch or --single")
+    if args.apply is not None and not (args.single or _enter_batch(args)):
+        parser.error("--apply goes with --batch or --single")
     if args.yes and args.batch and (not args.namespaces or not args.dest):
-        parser.error("--yes with --batch requires --namespaces and --dest")
+        parser.error("--batch without a terminal needs --namespaces and --dest")
     if args.yes and args.single and not args.dest:
-        parser.error("--yes with --single requires --dest")
+        parser.error("--single without a terminal needs --dest")
     return args
+
+
+def _run_mode(args) -> int:
+    """Batch or single mode: its plan, then (on approval) the download. Without a terminal the
+    whole run is one JSON record: what it printed, the plan, its id and how to apply it."""
+    import contextlib
+    import io
+    from Basic import _cli
+    from Special._org_duplicator import batch
+
+    batch.RESULT.clear()
+    captured = io.StringIO()
+    machine = _cli.machine(args)
+    with contextlib.redirect_stdout(captured) if machine else contextlib.nullcontext():
+        check_prerequisites()
+        if args.single is not None:
+            batch.run_single_repo(args.single, args.dest, args)
+        else:
+            batch.run_batch_download(args)
+    code = batch.RESULT.get("code", _cli.OK)
+    if machine:
+        _cli.print_json(_cli.document("duplicate-org", code == _cli.OK, lines=captured.getvalue().splitlines(),
+                                      **{key: value for key, value in batch.RESULT.items() if key != "code"}))
+    return code
 
 
 def main(argv=None):
@@ -546,17 +573,8 @@ def main(argv=None):
         use_scripted_answers(lines, strict=bool(args.yes))
 
     # --- Non-interactive entry points ---
-    if args.single is not None:
-        check_prerequisites()
-        from Special._org_duplicator.batch import run_single_repo
-        run_single_repo(args.single, args.dest, args)
-        return
-
-    if _enter_batch(args):
-        check_prerequisites()
-        from Special._org_duplicator.batch import run_batch_download
-        run_batch_download(args)
-        return
+    if args.single is not None or _enter_batch(args):
+        return _run_mode(args)
 
     # --- Interactive menu (unchanged) ---
     config = setup_operation()

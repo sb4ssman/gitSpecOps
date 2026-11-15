@@ -101,7 +101,7 @@ class ArchiveRefreshTests(unittest.TestCase):
         self.assertFalse((self.a / "work/next.txt").exists())
 
     def test_requested_report_and_log_are_exact_masked_invocation_artifacts(self):
-        self.document["components"]["archive_manage"].update(output={"mode": "both", "format": "json", "directory": "reports"},
+        self.document["components"]["archive_manage"].update(output={"save": True, "directory": "reports"},
                                                            logging={"enabled": True, "directory": "logs"})
         self.save()
         result = self.run_refresh(scan_only=True)
@@ -117,7 +117,7 @@ class ArchiveRefreshTests(unittest.TestCase):
         self.advance("next.txt")
         occupied = self.home / "occupied"
         occupied.write_text("retain")
-        result = self.run_refresh(overrides={"output": {"mode": "both", "directory": str(occupied)}})
+        result = self.run_refresh(overrides={"output": {"save": True, "directory": str(occupied)}})
         self.assertEqual(result.exit_code, 2)
         self.assertFalse(result.effects_possible)
         self.assertFalse((self.a / "work/next.txt").exists())
@@ -175,12 +175,11 @@ class ArchiveRefreshTests(unittest.TestCase):
             self.assertEqual(len(json.loads(output.getvalue())["archives"]), 2)
         self.assertFalse(registry.registry_path(self.home).exists())
 
-    def test_single_selection_and_force_sync_preserve_saved_preferences(self):
+    def test_single_selection_preserves_saved_preferences(self):
         before = (self.home / "settings.json").read_bytes()
-        result = self.run_refresh(only_root=self.a, scan_only=True, force_sync=True)
+        result = self.run_refresh(only_root=self.a, scan_only=True)
         self.assertEqual(result.exit_code, 0)
         self.assertEqual(len(result.archives), 1)
-        self.assertEqual(result.archives[0]["operation"], "sync")
         self.assertEqual((self.home / "settings.json").read_bytes(), before)
         self.assertEqual(self.run_refresh(only_root=self.root / "unknown").exit_code, 2)
 
@@ -223,7 +222,7 @@ class ArchiveRefreshTests(unittest.TestCase):
 
     def test_report_failure_is_explicit_and_never_advertises_successful_report(self):
         with patch.object(operation.ReportSink, "write", side_effect=RuntimeIOError("report_write")):
-            result = self.run_refresh(scan_only=True, overrides={"output": {"mode": "both", "directory": str(self.home / "reports")}})
+            result = self.run_refresh(scan_only=True, overrides={"output": {"save": True, "directory": str(self.home / "reports")}})
         self.assertIn("report_write", result.errors)
         self.assertIsNone(result.report_path)
         self.assertFalse(any(item["kind"] == "report" for item in result.record()["artifacts"]))
@@ -240,26 +239,26 @@ class ArchiveRefreshTests(unittest.TestCase):
         self.assertNotIn(protected_value, json.dumps(direct.record()))
         self.assertNotIn(protected_value, json.dumps(managed.record()))
 
-    def test_file_only_output_exposes_artifacts_on_stderr_without_mixed_json(self):
+    def test_a_saved_report_is_named_in_the_one_json_record(self):
         output, errors = io.StringIO(), io.StringIO()
         with redirect_stdout(output), redirect_stderr(errors):
             code = archive_manager.main(["--refresh-all", "--scan-only", "--settings-home", str(self.home),
-                                         "--output-mode", "file", "--output-dir", str(self.home / "reports"), "--json", "--no-log"])
+                                         "--report-dir", str(self.home / "reports"), "--json", "--no-log"])
         self.assertEqual(code, 0)
-        self.assertEqual(output.getvalue(), "")
-        self.assertIn("report:", errors.getvalue())
+        record = json.loads(output.getvalue())
+        self.assertTrue(any(item["kind"] == "report" for item in record["artifacts"]))
         self.assertEqual(len(list((self.home / "reports").iterdir())), 1)
 
     def test_refresh_options_and_help_do_not_read_or_change_profiles(self):
         for command in (archive_manager.main, archive_manage.main):
-            for options in (["--help"], ["--list", "--json"], ["--refresh-all", "--no-log", "--log-dir", "chosen"],
-                             ["--refresh-all", "--no-report", "--output-dir", "chosen"]):
+            for options in (["--help"], ["--refresh-all", "--no-log", "--log-dir", "chosen"],
+                             ["--refresh-all", "--no-save-report", "--report-dir", "chosen"]):
                 with self.subTest(options=options), patch.object(operation, "load_registry", side_effect=AssertionError("unexpected read")), \
                      redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                     command(options)
 
     def test_profile_change_during_preflight_prevents_sink_creation_and_actions(self):
-        self.document["defaults"].update(output={"mode": "both", "directory": "reports"}, logging={"enabled": True})
+        self.document["defaults"].update(output={"save": True, "directory": "reports"}, logging={"enabled": True})
         self.save()
         real_scope = operation._scope
         def changing(*args):
@@ -329,17 +328,17 @@ class ArchiveRefreshTests(unittest.TestCase):
             alias.symlink_to(target, target_is_directory=True)
         except OSError:
             self.skipTest("native directory symlink creation unavailable on this host")
-        for command, action in ((archive_manager.main, ["--refresh-all"]),
+        for command, action in ((archive_manager.main, ["--refresh-all", "--scan-only"]),
                                 (update_archive.main, ["--root", str(self.a)])):
             with self.subTest(command=command.__module__), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-                code = command([*action, "--settings-home", str(self.home), "--scan-only", "--no-log", "--output-dir", str(alias)])
+                code = command([*action, "--settings-home", str(self.home), "--no-log", "--report-dir", str(alias)])
             self.assertEqual(code, 2)
         self.assertEqual(list(target.iterdir()), [])
 
     def test_empty_collection_still_honors_requested_report_without_creating_receipts(self):
         self.document["components"]["archive_manage"]["options"]["archives"] = []
         self.save()
-        result = self.run_refresh(overrides={"output": {"mode": "both", "format": "json", "directory": str(self.home / "reports")}})
+        result = self.run_refresh(overrides={"output": {"save": True, "directory": str(self.home / "reports")}})
         self.assertEqual(result.exit_code, 0, result.record())
         self.assertEqual(result.archives, [])
         self.assertEqual(json.loads(result.report_path.read_text()), result.record())

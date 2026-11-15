@@ -215,7 +215,11 @@ with tempfile.TemporaryDirectory(prefix="inventory-") as tmp:
     # --- the commands themselves: no dialog without a person -----------------------------------
     import os as _os
 
-    env = {**_os.environ, "GITSPECOPS_NO_GUI": "1"}
+    # A program runs these, so they answer in JSON: the tests' own screen setting is not passed on.
+    env = {**{k: v for k, v in _os.environ.items() if k != "GITSPECOPS_OUTPUT"}, "GITSPECOPS_NO_GUI": "1"}
+
+    def record(done):
+        return json.loads(done.stdout)
     script = Path(__file__).resolve().parents[2] / "Special"
 
     def run_cmd(name: str, *cli: str) -> subprocess.CompletedProcess:
@@ -224,17 +228,17 @@ with tempfile.TemporaryDirectory(prefix="inventory-") as tmp:
 
     nope = run_cmd("export_inventory.py")
     check("export with nothing to record and no terminal fails instead of opening a dialog",
-          nope.returncode == 2 and "no terminal" in nope.stderr)
+          nope.returncode == 2 and "no terminal" in record(nope)["error"])
     nope = run_cmd("restore_inventory.py")
     check("restore with no file and no terminal fails instead of opening a dialog",
-          nope.returncode == 2 and "no terminal" in nope.stderr)
+          nope.returncode == 2 and "no terminal" in record(nope)["error"])
 
     out_file = tmp / "asked" / "inv.json"
     answers = tmp / "export-answers.txt"
     answers.write_text(f"{drive_a}\ny\n{drive_b}\nn\n{out_file}\n", encoding="utf-8")
     asked = run_cmd("export_inventory.py", "--answers", str(answers))
     check("export asks for folders (twice) and a save location, from scripted answers",
-          asked.returncode == 0 and out_file.is_file() and "2 label(s)" in asked.stderr)
+          asked.returncode == 0 and out_file.is_file() and "2 label(s)" in " ".join(record(asked)["notes"]))
     check("a guided export shows its prompts but keeps the record out of stdout",
           "gitspecops.inventory" not in asked.stdout)
 
@@ -242,8 +246,9 @@ with tempfile.TemporaryDirectory(prefix="inventory-") as tmp:
     answers.write_text(f"{out_file}\n{dest_a}\n{dest_b}\n", encoding="utf-8")
     planned = run_cmd("restore_inventory.py", "--answers", str(answers))
     check("restore asks for the file and a destination per label",
-          planned.returncode == 0 and str(dest_a) in planned.stdout and str(dest_b) in planned.stdout
-          and not dest_a.exists())
+          planned.returncode == 0 and not dest_a.exists()
+          and any(str(dest_a) in str(row.get("target")) for row in record(planned)["plan"])
+          and any(str(dest_b) in str(row.get("target")) for row in record(planned)["plan"]))
     flagged = run_cmd("restore_inventory.py", str(out_file), "--dest", str(tmp / "one"), "--layout", "canonical",
                       "--no-prompt")
     check("one --dest with canonical layout plans a single tree", flagged.returncode == 0
@@ -253,28 +258,28 @@ with tempfile.TemporaryDirectory(prefix="inventory-") as tmp:
     source_default = script.parent / ".agents" / "output" / "library_inventory.json"
     before = source_default.stat().st_mtime_ns if source_default.exists() else None
     plain = run_cmd("export_inventory.py", "--root", str(drive_a), "--no-prompt")
-    check("without --out, stdout is exactly the JSON record", plain.returncode == 0
-          and len(validate_inventory(json.loads(plain.stdout))) == 1)
-    check("progress and the summary stay on stderr", "1 repositories" in plain.stderr
-          and "1 repositories" not in plain.stdout)
+    check("without --out, stdout is one JSON record holding the inventory", plain.returncode == 0
+          and len(validate_inventory(record(plain)["inventory"])) == 1)
+    check("the summary is in the record, and nothing else is printed",
+          "1 repositories" in " ".join(record(plain)["notes"]) and plain.stderr == "")
     check("nothing is written beside the source by default",
           (source_default.stat().st_mtime_ns if source_default.exists() else None) == before)
 
     piped = tmp / "piped.json"
     piped.write_text(plain.stdout, encoding="utf-8")
     replay = run_cmd("restore_inventory.py", str(piped), "--dest", str(tmp / "piped-dest"), "--no-prompt")
-    check("captured stdout restores like a file", replay.returncode == 0 and "RESTORE PLAN" in replay.stdout)
+    check("captured stdout restores like a file", replay.returncode == 0 and record(replay)["plan"])
 
     chosen = tmp / "chosen" / "deep" / "inv.json"
     wrote = run_cmd("export_inventory.py", "--root", str(drive_a), "--out", str(chosen), "--no-prompt")
-    check("--out creates the file and its folders", wrote.returncode == 0 and wrote.stdout == ""
+    check("--out creates the file and its folders", wrote.returncode == 0 and record(wrote)["written"] == str(chosen)
           and len(validate_inventory(json.loads(chosen.read_text(encoding="utf-8")))) == 1)
 
     kept = chosen.read_bytes()
     again = run_cmd("export_inventory.py", "--root", str(drive_a), "--out", str(chosen), "--no-prompt")
     check("an existing --out is refused and left unchanged", again.returncode == 2
-          and "already exists" in again.stderr and chosen.read_bytes() == kept)
-    check("the refusal comes before the scan", str(drive_a / "alpha") not in again.stderr)
+          and "already exists" in record(again)["error"] and chosen.read_bytes() == kept)
+    check("the refusal comes before the scan", str(drive_a / "alpha") not in again.stdout + again.stderr)
 
     work_tree = tmp / "work-tree"
     make_repo(work_tree)

@@ -3,11 +3,11 @@
 Why:          a clone may only ever add a folder.
 Reads:        the remote URL; the user's own Git credentials.
 May change:   creates the destination folder; refuses one that exists.
-Results:      a JSON result on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Basic: one Git or host operation.
 Status:       working
 
-    python Basic/clone.py <url> <destination> [--mirror] [--no-local]
+    gitso clone <url> <destination> [--mirror] [--no-local]
 
 Never clones over anything: an existing destination is refused before git runs, so a clone can
 only ever add a folder. Credentials are the user's own (`gh auth setup-git`, an SSH agent);
@@ -24,6 +24,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from Basic._console import enable_unicode_output  # noqa: E402
+from Basic import _cli  # noqa: E402
 from Basic._run import EXIT_CANNOT_START, Result, run  # noqa: E402
 
 EFFECT = "local"
@@ -47,16 +48,17 @@ def clone(url: str, destination: Path | str, *, mirror: bool = False,
 
 def main(argv: list[str]) -> int:
     enable_unicode_output()
-    parser = argparse.ArgumentParser(description="Clone one repository (never over anything).")
+    parser = _cli.parser("clone", "Clone one repository (never over anything).")
     parser.add_argument("url")
     parser.add_argument("destination", type=Path)
     parser.add_argument("--mirror", action="store_true", help="bare mirror of every ref")
-    parser.add_argument("--no-local", action="store_true", help="independent transport copy without local hardlinks")
+    parser.add_argument("--no-local", action="store_true", help="independent copy without local hardlinks")
     args = parser.parse_args(argv)
     result = clone(args.url, args.destination, mirror=args.mirror, no_local=args.no_local)
-    sys.stdout.write(result.stdout)
-    sys.stderr.write(result.stderr)
-    return result.returncode
+    ok = result.returncode == 0
+    return _cli.report(args, "clone", ok=ok, page="Clone", context=(str(args.destination),),
+                       output=result.stdout + result.stderr, destination=str(args.destination),
+                       message="Cloned." if ok else "git clone did not finish; its own words are above.")
 
 
 if __name__ == "__main__":

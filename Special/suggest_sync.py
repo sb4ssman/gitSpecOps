@@ -5,7 +5,7 @@ Reads:        Git facts of the repositories under the saved or given roots; work
               outgoing history for the shared security advice.
 May change:   nothing in your repositories. --fetch updates remote-tracking refs only. The local-only
               catalog (names for repository ids) is updated unless --no-catalog.
-Results:      a table and security advice on stdout, or --json. Nothing is published.
+Results:      JSON without a terminal (or with --json); a screen at one. Nothing is published.
 Layer:        Special: this machine, once.
 Status:       working
 

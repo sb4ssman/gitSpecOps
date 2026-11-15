@@ -25,7 +25,7 @@ def fleet_key_record(secret, *, show=False):
     """
     if not isinstance(secret, str) or re.fullmatch(r"[0-9a-fA-F]{64}", secret) is None or type(show) is not bool:
         raise ValueError("a valid configured fleet key and explicit display choice are required")
-    return {"schema_version": 1, "configured": True, "disclosed": show,
+    return {"configured": True, "disclosed": show,
             "fleet_key": secret if show else "(hidden)"}
 
 

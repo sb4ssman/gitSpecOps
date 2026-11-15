@@ -1,25 +1,19 @@
-"""Optional guided setup for gitSpecOps's command-line tools.
+"""Setup for gitSpecOps: the walkthrough, or one setup item at a time.
 
 Run from this repository:
 
-    python _build/setup_gitspecops.py     (or: run_setup.bat / run_setup.ps1 / run_setup.sh)
+    run_setup.bat / run_setup.ps1 / run_setup.sh     (or: python _build/setup_gitspecops.py)
 
-With no arguments, choose the walkthrough or an individual setup item.
-Non-interactive callers must name an action; --help never performs setup.
-Use settings for guided updater preferences, and settings-preview/settings-save for reviewed
-noninteractive changes. The `bootstrap` action does two things:
+With no arguments, a person at a terminal gets the setup menu. Named actions:
 
-  1. Creates a local virtual environment (.venv) with a predictable interpreter
-     (and the desktop app's Qt). It prefers `uv sync` and falls back to the
-     stdlib `venv` module. The project is NOT installed into .venv -- the tools
-     run as scripts and there are no dependencies; an editable install would only
-     add a startup-time `.pth` hook (see the note in pyproject.toml).
+    walkthrough   the guided setup (needs a person at a terminal)
+    run           choose one command from a list and run it, without setting anything up
+    environment   build this folder's .venv (with uv when it is installed), then check
+    check         show what this computer has: Git, the GitHub CLI, uv. Changes nothing.
 
-  2. Reports whether the runtime prerequisites (git, gh, uv) are available.
-
-No shortcuts or launchers are written. Every command runs through `gitso.py`, e.g.
-`python gitso.py commands`, or directly by its path, e.g. `python Special/update_archive.py --help`.
-Auth is never touched here: users authenticate their own host CLI (`gh auth login`, ...).
+gitSpecOps needs no setup to run: every command works straight from this folder through
+`gitso`, e.g. `python gitso.py commands`. Sign-ins are never touched here: you sign in to your
+own tools (`gh auth login`).
 """
 
 from __future__ import annotations
@@ -36,7 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from Basic._station import banner, choose, line, option, row, say  # noqa: E402
+from Basic._station import banner, choose, line, notice, option, row, say  # noqa: E402
 
 WINDOWS = platform.system().lower() == "windows"
 VENV_DIR = ROOT / ".venv"
@@ -98,7 +92,7 @@ def create_venv_with_stdlib() -> bool:
 
 def build_environment() -> bool:
     """Build .venv, preferring uv and falling back to the stdlib. Returns True on success."""
-    banner("Building the gitSpecOps environment (.venv)")
+    banner("Setup  /  Python environment", f"folder: {VENV_DIR}")
     if create_venv_with_uv():
         return True
     print("\nFalling back to the stdlib environment builder...")
@@ -114,7 +108,7 @@ def _gh_signed_in() -> bool:
 
 def report_prerequisites() -> None:
     """Show what this computer has for gitSpecOps; changes nothing."""
-    banner("Prerequisite check")
+    banner("Setup  /  This computer")
     say()
     git, gh, uv = shutil.which("git"), shutil.which("gh"), shutil.which("uv")
     row("Git", "found" if git else "missing: required", "success" if git else "error")
@@ -141,32 +135,26 @@ def report_prerequisites() -> None:
 
 
 def bootstrap() -> int:
-    """Run the environment bootstrap after an explicit selection."""
+    """Build the environment, then show what this computer has."""
     ok = build_environment()
-    print()
     if ok and VENV_PYTHON.exists():
-        print(f"[ok] Environment ready: {VENV_PYTHON}")
+        notice("Environment ready", str(VENV_PYTHON), "success")
     else:
-        print("[warn] Could not build .venv. The tools still run with any Python 3.11+.")
-
+        notice("No .venv built", "The commands still run with any Python 3.11 or later.", "warning")
     report_prerequisites()
-    print()
-    print("Setup complete. Every command runs through gitso, e.g.:")
-    print("  python gitso.py commands")
+    say()
+    line("Every command runs through gitso, for example: python gitso.py commands", "muted")
     return 0 if ok else 1
 
 
-def build_parser() -> argparse.ArgumentParser:
-    from Special._settings.setup_cli import ACTIONS, add_arguments
+ACTIONS = ("walkthrough", "run", "environment", "check")
 
-    parser = argparse.ArgumentParser(description=__doc__,
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="gitso setup", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("action", nargs="?",
-                        choices=("walkthrough", "run", "bootstrap", "environment", "check", *ACTIONS),
-                        help="walkthrough (a person at a console), run one command from the menu "
-                             "without setting anything up, bootstrap the environment, check "
-                             "prerequisites, or select a settings action")
-    add_arguments(parser)
+    parser.add_argument("action", nargs="?", choices=ACTIONS,
+                        help="what to do; with none, a person at a terminal gets the menu")
     return parser
 
 
@@ -174,24 +162,24 @@ def choose_action() -> str | None:
     """The setup menu: the walkthrough first, then single items."""
     banner("Setup", tagline=True)
     say()
-    line("Individual tools work without fleet enrollment or the desktop app. Source use needs "
-         "Python 3.11+ and Git; GitHub operations also need the GitHub CLI, signed in.")
+    line("gitSpecOps needs no setup to run: every command works straight from this folder. Setup "
+         "adds the parts you want, such as the gitso command, this machine's map and a fleet.")
     say()
     option("1", "Walk me through everything", "Recommended. Finds what this computer already has and "
            "asks about each part. Nothing changes until you review it.")
-    option("2", "Run one command, without setting anything up", "Any Basic, Special or Elaborate "
-           "command, straight from this folder: for example, register archive folders to keep updated "
-           "(archive-manager). Installs nothing.")
-    option("3", "Set up the Python environment", "This folder's .venv, then a prerequisite check.")
-    option("4", "Check prerequisites", "Changes nothing.")
-    option("5", "Configure standalone updater preferences", "Guided.")
+    option("2", "Run one command, without setting anything up", "Choose any command from a list and "
+           "run it from this folder. Installs nothing.")
+    option("3", "Set up the Python environment", "This folder's .venv (the desktop app needs it), "
+           "then a check.")
+    option("4", "Check this computer", "Git, the GitHub CLI and uv: what is there and what each is "
+           "for. Changes nothing.")
     option("0", "Exit")
     try:
-        answer = choose("123450", "1")
+        answer = choose("12340", "1")
     except (EOFError, KeyboardInterrupt):
         print("\nSetup cancelled; nothing has been changed.")
         return None
-    return {"1": "walkthrough", "2": "run", "3": "bootstrap", "4": "check", "5": "settings"}.get(answer)
+    return {"1": "walkthrough", "2": "run", "3": "environment", "4": "check"}.get(answer)
 
 
 def run_one_command(back: bool) -> int:
@@ -211,11 +199,8 @@ def run_one_command(back: bool) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    action = args.action
-    if action is not None:
-        return perform(parser, args, action)
-    if args.json or args.approve is not None:
-        parser.error("name an explicit settings action for JSON output or approval")
+    if args.action is not None:
+        return perform(parser, args, args.action)
     if not sys.stdin.isatty():
         parser.print_help(file=sys.stderr)
         print("Name a setup action when there is no interactive terminal.", file=sys.stderr)
@@ -255,25 +240,9 @@ def menu_loop(parser, args) -> int:
 
 def perform(parser, args, action) -> int:
     """One setup action, from the menu or named on the command line."""
-    from Special._settings.setup_cli import ACTIONS, dispatch
-
-    preference_fields = ("root", "exclude_path", "output_mode", "saved_format", "output_dir",
-                         "log", "log_dir", "log_level", "log_max_bytes", "log_backups")
-    has_preferences = any(getattr(args, name) is not None for name in preference_fields) or args.clear_roots or args.clear_exclusions
-    has_settings_options = (has_preferences or args.settings_home is not None
-                            or args.approve is not None or args.json or args.show_paths)
-    if action not in ACTIONS and has_settings_options:
-        parser.error("settings options require a settings action")
-    if action in ACTIONS:
-        if args.approve is not None and action != "settings-save":
-            parser.error("--approve is only valid with an explicit settings save")
-        if action == "settings" and args.json:
-            parser.error("use settings-preview/settings-save for noninteractive JSON")
-        args.action = action
-        return dispatch(args)
     if action == "walkthrough":
         if not sys.stdin.isatty():
-            print("The walkthrough needs a person at a console; name another action.", file=sys.stderr)
+            print("The walkthrough needs a person at a terminal; name another action.", file=sys.stderr)
             return 2
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from setup_walkthrough import Stop, walkthrough
@@ -284,14 +253,12 @@ def perform(parser, args, action) -> int:
             return 0
     if action == "run":
         if not sys.stdin.isatty():
-            print("Choosing a command needs a person at a console; run gitso.py with the command "
+            print("Choosing a command needs a person at a terminal; run gitso with the command "
                   "instead.", file=sys.stderr)
             return 2
         return run_one_command(back=False)
-    if action == "bootstrap":
-        return bootstrap()
     if action == "environment":
-        return 0 if build_environment() else 1
+        return bootstrap()
     report_prerequisites()
     return 0
 

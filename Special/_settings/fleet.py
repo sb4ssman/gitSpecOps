@@ -35,11 +35,11 @@ def fleet_home(home=None):
 
 def fleet_directory(directory=None, *, home=None):
     """Select the fleet's runtime state folder without creating it; explicit directory wins,
-    then GITSPECOPS_SYNC_HOME, then sync-suggester/ in the settings profile."""
+    then GITSPECOPS_SYNC_HOME, then fleet/ in the settings profile."""
     if directory is None:
         directory = os.environ.get("GITSPECOPS_SYNC_HOME")
         if directory is None:
-            directory = fleet_home(home) / "sync-suggester"
+            directory = fleet_home(home) / "fleet"
         elif not directory.strip() or not Path(directory).expanduser().is_absolute():
             raise SettingsError("GITSPECOPS_SYNC_HOME must be an absolute nonempty path")
     if not str(directory).strip():
@@ -210,8 +210,6 @@ def save_fleet_config(config, *, component, home=None, snapshot=None):
     if baseline is not None and dict(config) == dict(baseline):
         return snapshot.home / SETTINGS_NAME
     candidate = copy.deepcopy(snapshot.document)
-    if candidate["schema_version"] != 2:
-        raise SettingsError("fleet enrollment requires common settings v2; no upgrade was performed")
     machine = {"id": config["machine_id"], "label": config["machine_label" if component == "sync" else "label"],
                "fleet_secret": config["fleet_secret"]}
     snapshot.check_identity(machine["id"], machine["label"], machine["fleet_secret"])

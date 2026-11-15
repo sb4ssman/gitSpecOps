@@ -3,16 +3,16 @@
 Why:          archives only stay current if their refresh runs on its own.
 Reads:        registered archives; this user's scheduled tasks.
 May change:   a refresh-all launcher and this user's scheduled task, only when asked.
-Results:      messages on stdout.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/schedule_archives.py --write-refresh-all-script
-    python Elaborate/schedule_archives.py --install-monthly-task --task-day 1 --task-time 09:00
-    python Elaborate/schedule_archives.py --task-status
-    python Elaborate/schedule_archives.py --remove-task
+    gitso schedule-archives --write-refresh-all-script
+    gitso schedule-archives --install-monthly-task --task-day 1 --task-time 09:00
+    gitso schedule-archives --task-status
+    gitso schedule-archives --remove-task
 
-Only explicit actions run. Newly generated launchers invoke Special/archive_manager.py
+Only explicit actions run, each at once (like a setting). Generated launchers run archive-manager
 --refresh-all at the selected profile. Scheduling never enables publication or repairs.
 Importing writes nothing and does not inspect or alter installed tasks.
 """
@@ -28,6 +28,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from _os.current import launcher, schedule
+from Basic import _cli
 from Basic._console import enable_unicode_output
 from Special._runtime.files import checked_path
 from Special._archive.manager import REPO_ROOT, log_event
@@ -72,7 +73,7 @@ def remove_task(task_name: str, *, home=None) -> int:
 
 def parse_args(argv=None):
     """Reject local management and invalid scheduling choices before any file writes."""
-    parser = argparse.ArgumentParser(description="Schedule refreshes registered with Special/archive_manager.py.")
+    parser = _cli.parser("schedule-archives", "Run every registered archive's refresh on a monthly schedule.")
     actions = parser.add_mutually_exclusive_group(required=True)
     actions.add_argument("--write-refresh-all-script", action="store_true")
     actions.add_argument("--install-monthly-task", action="store_true")
@@ -95,18 +96,28 @@ def parse_args(argv=None):
 def main(argv=None):
     enable_unicode_output()
     args = parse_args(argv)
+    command = "schedule-archives"
     try:
         if args.write_refresh_all_script:
-            print(f"Wrote refresh-all script: {write_refresh_all_script(home=args.settings_home)}")
-            return 0
+            path = write_refresh_all_script(home=args.settings_home)
+            return _cli.report(args, command, ok=True, page="Schedule archives", rows=[("Script", path)],
+                               message="Wrote the refresh-all script.", script=str(path))
         if args.install_monthly_task:
-            return install_monthly_task(args.task_name, args.task_day, args.task_time, home=args.settings_home)
+            code = install_monthly_task(args.task_name, args.task_day, args.task_time, home=args.settings_home)
+            return _cli.report(args, command, ok=code == 0, page="Schedule archives",
+                               rows=[("Task", args.task_name), ("When", f"day {args.task_day}, {args.task_time}")],
+                               message="Scheduled." if code == 0 else "The task was not created.",
+                               task=args.task_name, day=args.task_day, time=args.task_time) or code
         if args.task_status:
-            return task_status(args.task_name)
-        return remove_task(args.task_name, home=args.settings_home)
+            code = task_status(args.task_name)
+            return _cli.report(args, command, ok=code == 0, page="Schedule archives", rows=[("Task", args.task_name)],
+                               message="Scheduled." if code == 0 else "Not scheduled.",
+                               task=args.task_name, scheduled=code == 0)
+        code = remove_task(args.task_name, home=args.settings_home)
+        return _cli.report(args, command, ok=code == 0, page="Schedule archives", rows=[("Task", args.task_name)],
+                           message="Removed." if code == 0 else "The task was not removed.", task=args.task_name) or code
     except (ValueError, OSError):
-        print("Scheduling operation did not complete; inspect any partial launcher/task locally.", file=sys.stderr)
-        return 2
+        return _cli.fail(args, command, "Scheduling did not finish; check for a partial launcher or task.")
 
 
 if __name__ == "__main__":

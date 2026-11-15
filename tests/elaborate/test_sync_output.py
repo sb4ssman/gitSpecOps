@@ -44,10 +44,13 @@ class CheckOutputTests(unittest.TestCase):
             save = stack.enter_context(patch.object(cli, "save_catalog"))
             stack.enter_context(redirect_stdout(stdout))
             stack.enter_context(redirect_stderr(stderr))
-            code = args.handler(args)
+            code = cli.run(args)
         self.assertEqual(code, 0)
-        self.assertIn("warning: one checkout could not be inspected", stderr.getvalue())
-        return stdout.getvalue(), stderr.getvalue(), observer, save, transport
+        # A person sees everything on the screen; a program finds the same lines in its record.
+        shown = (stdout.getvalue() if "--json" not in options
+                 else "\n".join(json.loads(stdout.getvalue())["lines"]))
+        self.assertIn("warning: one checkout could not be inspected", shown)
+        return stdout.getvalue(), shown, observer, save, transport
 
     def test_local_json_is_one_parseable_manifest(self):
         stdout, stderr, observer, save, transport = self.invoke("--json")
@@ -79,7 +82,7 @@ class CheckOutputTests(unittest.TestCase):
         self.assertIn("Fetching remote refs", stdout)
         self.assertIn("Observed 0 repositor(ies)", stdout)
         self.assertIn("Manifest written: chosen-state/machine-a.json", stdout)
-        self.assertIn("1/1 observed", stderr)
+        self.assertIn("1/1 observed", stdout)
         save.assert_called_once()
         transport.write_own_manifest.assert_called_once()
 

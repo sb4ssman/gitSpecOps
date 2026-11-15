@@ -43,7 +43,7 @@ class SetupTests(unittest.TestCase):
         with self.assertRaises(SystemExit) as stopped:
             subject.main(["--help"])
         self.assertEqual(stopped.exception.code, 0)
-        self.assertIn("bootstrap", self.output.getvalue())
+        self.assertIn("environment", self.output.getvalue())
         self.assert_no_actions()
 
     def test_unattended_run_requires_an_action(self):
@@ -51,8 +51,8 @@ class SetupTests(unittest.TestCase):
         self.assertIn("Name a setup action", self.errors.getvalue())
         self.assert_no_actions()
 
-    def test_bootstrap_remains_available_explicitly(self):
-        self.assertEqual(subject.main(["bootstrap"]), 0)
+    def test_the_environment_item_remains_available_explicitly(self):
+        self.assertEqual(subject.main(["environment"]), 0)
         self.environment.assert_called_once()
         self.prerequisites.assert_called_once()
 
@@ -64,7 +64,7 @@ class SetupTests(unittest.TestCase):
     def test_environment_failure_is_reported(self):
         self.environment.return_value = False
         self.assertEqual(subject.main(["environment"]), 1)
-        self.prerequisites.assert_not_called()
+        self.prerequisites.assert_called_once()  # what is missing is shown either way
 
     def test_check_only_checks_prerequisites(self):
         self.assertEqual(subject.main(["check"]), 0)
@@ -84,11 +84,11 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(self.prerequisites.call_count, 2)
         prompts = [call.args[0] for call in prompt.call_args_list]
         self.assertEqual(sum("go back to the setup menu" in text for text in prompts), 2)
-        self.assertEqual(self.output.getvalue().count("[4] Check prerequisites"), 3)
+        self.assertEqual(self.output.getvalue().count("[4] Check this computer"), 3)
 
     def test_a_named_action_runs_once_and_exits(self):
         self.assertEqual(subject.main(["check"]), 0)
-        self.assertNotIn("[4] Check prerequisites", self.output.getvalue())
+        self.assertNotIn("[4] Check this computer", self.output.getvalue())
 
     def test_an_item_that_fails_says_so_and_comes_back(self):
         self.environment.return_value = False
@@ -121,7 +121,7 @@ class SetupTests(unittest.TestCase):
             self.assertEqual(subject.main([]), 0)
         prompts = [call.args[0] for call in prompt.call_args_list]
         self.assertEqual(len(prompts), 3, "setup menu, command menu, setup menu again")
-        self.assertIn("leave blank to go back to setup", prompts[1])
+        self.assertIn("press Enter to go back to setup", prompts[1])
         self.assert_no_actions()
 
     def test_the_walkthrough_is_the_first_and_default_item(self):
@@ -164,7 +164,7 @@ class WalkthroughTests(unittest.TestCase):
                 "engines": [], "gitleaks": None, "betterleaks": None, "trufflehog": None,
                 "gitso_command": {"launcher": "none", "on_path": False, "folder": "/home/x/.gitspecops/bin",
                                   "aliases": [], "in_this_terminal": False},
-                "alias_targets": ["/home/x/.bashrc"], "powershell_profiles_run": None}
+                "alias_targets": ["/home/x/.bashrc"], "powershell_profiles_run": None, "archives": []}
         base.update(overrides)
         return base
 
@@ -265,6 +265,20 @@ class WalkthroughTests(unittest.TestCase):
 
     def test_protected_values_are_masked_on_screen(self):
         self.assertEqual(self.walk.masked("someone@example.invalid"), "so" + "*" * 20 + "d")
+
+    def test_an_archive_is_planned_after_reading_its_folder_and_changes_nothing_yet(self):
+        folder = Path(__file__).resolve().parent
+        proposal = {"root": str(folder), "repositories": ["one", "two"]}
+        with patch("Special._archive.manager.registration_plan", return_value=proposal) as read:
+            plan = self.area(self.walk.area_archives, ["p", str(folder), "2", "", "y"])
+        read.assert_called_once()
+        self.assertEqual(read.call_args.args[2], "sync")
+        self.assertEqual([change.title for change in plan.changes], ["Archive", "Monthly refresh"])
+        self.assertIn("2 repositories", plan.changes[0].review)
+        self.assertIn("Nothing is pulled or cloned now", plan.changes[0].review)
+
+    def test_no_archives_asks_nothing_more(self):
+        self.assertEqual(self.area(self.walk.area_archives, [""]).changes, [])
 
 
 if __name__ == "__main__":

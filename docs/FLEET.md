@@ -73,9 +73,8 @@ program, that reads it can join your fleet.
 the saved policy and selected optional engines. No fetch occurs unless `--fetch` was selected.
 Alerts and incomplete checking do not discard sync facts or authorize an action.
 
-`check --json` now returns a local result envelope: `schema_version`, `manifest`,
-`local_security`, `artifacts`. Consumers of the former bare-manifest output must read
-`result.manifest`. Only that manifest is published, with no findings, private paths or policy
+Without a terminal (or with `--json`), `check` prints one record holding `manifest` and
+`local_security`. Only that manifest is published, with no findings, private paths or policy
 added. Each local checkout retains its own security result, even when identities match.
 
 The local peer dashboard offers **Check local security** on locally observed repositories.
@@ -110,43 +109,45 @@ connected Tailscale is required only for direct peer access. The app never manag
 Before setup, inspect exactly which optional tiers are ready:
 
 ```sh
-python Elaborate/preflight.py
+gitso preflight
 ```
 
 This is read-only. It checks Git, the existing `gh` login, Tailscale connectivity, the loopback
 dashboard port, and common existing sync-folder locations. Missing Git is a blocker; the other
 tiers are simply reported as unavailable and can be added later.
 
-**The easiest way is the app itself.** Start the tray (`App/tray.py`) or the web view
-(`App/serve_web.py`). On a machine that is not enrolled, double-clicking the tray (or opening
-`http://127.0.0.1:8760/`) shows the setup page: what each step unlocks, then *find libraries*
-(LOOK), *add libraries* (SCAN), how the app shows itself, and joining a fleet (JOIN). The map
+**The easiest way is the app itself.** Start the tray (`gitso tray`) or the web view
+(`gitso serve-web`). On a machine that is not enrolled, double-clicking the tray (or opening
+`http://127.0.0.1:8760/`) shows the setup page: what each step unlocks, then *find libraries*,
+*add libraries*, how the app shows itself, and joining a fleet; each asks before it acts. The map
 starts by itself as soon as a library is added, and the page stays reachable from the map's
-Setup link. `python Elaborate/setup_fleet.py status` (or `--json`) shows the same picture.
+Setup link. `gitso setup-fleet status` (or `--json`) shows the same picture.
 
 Setup is two steps, kept apart on purpose: **enroll the machine** (its libraries; this is
 enough for the tray, the web view and every local command), then, whenever you like, **join it
 to a fleet** (a key and how it shares status).
 
 ```sh
-python Special/enroll_machine.py find /path/to/look/in     # or --whole-machine; asks you to type LOOK
-python Special/enroll_machine.py add /path/to/library [/another/library]   # asks you to type SCAN
-python Special/enroll_machine.py presentation --face web --web loopback
-python Elaborate/setup_fleet.py                              # join: key, transports, name sharing
+gitso enroll-machine find /path/to/look/in     # or --whole-machine; shows where it will look, then asks
+gitso enroll-machine add /path/to/library [/another/library]   # shows what it will look through, then asks
+gitso enroll-machine presentation --face web --web loopback
+gitso setup-fleet                              # join: key, transports, name sharing
 ```
 
 `find` only suggests: it reads folder names where you point it, lists folders that hold
 repositories, and enrolls nothing. `add` says exactly which folders will be inventoried and
-waits for `SCAN`; a machine may hold several libraries, and they may not overlap. The
+waits for your approval; a machine may hold several libraries, and they may not overlap. The
 presentation choice says what double-clicking the tray opens (`web` or `window`) and whether
 the web view is served at all (`off`, `loopback`, or `tailnet` for your own devices).
-`setup_fleet.py leave` deselects every transport; the machine keeps its libraries. A fleet key
+`gitso setup-fleet leave` deselects every transport; the machine keeps its libraries. A fleet key
 can be replaced (joining another fleet) only while this machine shares nothing.
 
-Scripted, in one step, with no Tailscale:
+Scripted, with no Tailscale: the first run prints the plan (which folders it looks through
+once, what it shares) and its id; the second carries out exactly that plan.
 
 ```sh
-python Elaborate/setup_fleet.py peer --root /path/to/library --acknowledge-initial-scan --no-tailnet
+gitso setup-fleet peer --root /path/to/library --no-tailnet
+gitso setup-fleet peer --root /path/to/library --no-tailnet --apply PLAN_ID
 ```
 
 `--root` is repeatable. Another machine uses the same fleet key, entered in setup or supplied
@@ -179,8 +180,8 @@ content is never published by this release.
 To add or remove transports, stop the local peer and run:
 
 ```sh
-python Elaborate/setup_fleet.py transports --folder /path/to/synced-folder --folder-seconds 300 --repo example/private-fleet-state --create-repo --repo-seconds 1800
-python Elaborate/peer.py
+gitso setup-fleet transports --folder /path/to/synced-folder --folder-seconds 300 --repo example/private-fleet-state --create-repo --repo-seconds 1800
+gitso peer run
 ```
 
 `--clear-folder`, `--clear-repo`, and `--clear-tailnet` remove individual integrations;
@@ -203,9 +204,9 @@ No last-second upload is promised on shutdown or power loss.
 ## Observe and resume
 
 ```sh
-python Elaborate/peer.py
-python Elaborate/doctor.py
-python Elaborate/peer.py rescan
+gitso peer run
+gitso doctor
+gitso peer rescan
 ```
 
 Startup performs one inventory. Linux inotify or Windows `ReadDirectoryChangesW` then triggers
@@ -231,13 +232,13 @@ peers using the same state directory.
 ## Catch up a machine safely
 
 ```sh
-python Special/catch_up.py
-python Special/catch_up.py --apply --yes
+gitso catch-up                    # the plan; at a terminal, it asks
+gitso catch-up --apply PLAN_ID    # exactly that plan, for scripts and agents
 ```
 
 `catchup` is terminal-first: it performs a fresh, non-interactive `git fetch origin` for every
 locally observed checkout, then reports exactly what it found. The default is a plan only and
-does not alter a branch, index, or working file. `--apply --yes` applies only the plan entries
+does not alter a branch, index, or working file. An approved plan applies only the entries
 that are both clean and behind-only, using `git pull --ff-only`, and rechecks success against
 the freshly fetched remote.
 
@@ -250,8 +251,8 @@ concurrent run. Resume the peer afterward to publish the changed local status.
 ## Audit a large local working set
 
 ```sh
-python Special/audit_repos.py
-python Special/audit_repos.py --json
+gitso audit-repos
+gitso audit-repos --json
 ```
 
 This report finds missing origins or upstreams, plain-HTTP origins, detached heads, commits on
@@ -264,8 +265,8 @@ future operations; this audit deliberately does not invent repairs for ambiguous
 To seed a new library from this machine's approved working set:
 
 ```sh
-python Special/materialize.py --destination /new/library
-python Special/materialize.py --destination /new/library --apply --yes
+gitso materialize --destination /new/library
+gitso materialize --destination /new/library --apply PLAN_ID
 ```
 
 The first command maps recognizable origins to `host/owner/repository` folders and reports
@@ -277,7 +278,7 @@ entire organization inventory.
 ## Inspect VS Code's existing unsaved buffers
 
 ```sh
-python Special/list_live_buffers.py
+gitso list-live-buffers
 ```
 
 This is an explicit local inspection, not a watcher. On Windows it reads the existing VS Code
@@ -289,9 +290,9 @@ machine. Publishing opt-in live buffers is a separate privacy and transport deci
 ## Baskets: what this machine takes part in
 
 ```sh
-python Elaborate/setup_fleet.py baskets
-python Elaborate/setup_fleet.py baskets --scope observe --mode except --namespace github.com/some-owner
-python Elaborate/setup_fleet.py baskets --scope publish --mode only --namespace github.com/some-owner
+gitso setup-fleet baskets
+gitso setup-fleet baskets --scope observe --mode except --namespace github.com/some-owner
+gitso setup-fleet baskets --scope publish --mode only --namespace github.com/some-owner
 ```
 
 Roots are the filesystem boundary; baskets narrow what happens inside it, per scope:
@@ -319,18 +320,18 @@ next observation.
 ## Recover saved work and audit replacement safety
 
 ```sh
-python Elaborate/recovery.py configure --location /private/sync-folder --confirm-private-location
-python Elaborate/setup_fleet.py baskets --scope capture --mode only --namespace github.com/some-owner
-python Elaborate/recovery.py status
-python Elaborate/check_safe_to_wipe.py
+gitso recovery configure --location /private/sync-folder    # shows any warning, then asks
+gitso setup-fleet baskets --scope capture --mode only --namespace github.com/some-owner
+gitso recovery status
+gitso check-safe-to-wipe
 ```
 
 The recovery folder is deliberately separate from the status folder and must already exist.
 The peer captures selected repositories after filesystem quiet periods. A second peer that can
 read the same folder verifies each checksum and writes an acknowledgement; only then does the
 source call it *recoverable elsewhere*. `recovery preview` reads a named bundle without writing;
-`recovery restore --yes` creates a disposable checkout, never overlays an existing working tree.
-`recovery retire --yes` freshly fetches `origin` and removes a local bundle only when the fetched
+`recovery restore` creates a disposable checkout, never overlays an existing working tree.
+`recovery retire` freshly fetches `origin` and removes a local bundle only when the fetched
 upstream's tree exactly matches the bundle's staged, unstaged, and carried-file content.
 
 `safe-to-wipe` walks the configured roots itself — hidden folders included, and each root
@@ -345,10 +346,10 @@ under a root, and remote branches deleted since the last fetch.
 ## Tray and start-at-login
 
 ```sh
-python App/tray.py
-python Elaborate/start_at_login.py status
-python Elaborate/start_at_login.py enable
-python Elaborate/start_at_login.py disable
+gitso tray
+gitso start-at-login status
+gitso start-at-login enable
+gitso start-at-login disable
 ```
 
 The Windows tray reads the local display contract, opens the dashboard, requests a rescan,
@@ -363,7 +364,7 @@ See [BUILD-DESKTOP.md](../_build/BUILD-DESKTOP.md).
 
 The peer observes staged, unstaged, untracked, stashed, operation, and cached ahead/behind
 facts. Its scheduled fetch is read-only toward branches and files. The explicit, stopped-peer
-`Special/catch_up.py --apply --yes` command may fast-forward clean, behind-only checkouts after a
+`gitso catch-up` command, once its plan is approved, may fast-forward clean, behind-only checkouts after a
 fresh fetch; it never clones, commits, stashes, pushes, transfers unfinished files, or makes an
 ambiguous Git decision.
 Namespace groups in the dashboard are a display grouping, not a basket; baskets are configured

@@ -1,5 +1,13 @@
 # Architecture: the layer stack
 
+> **Current (2026-11-13): one output, one approval.** Every command answers through
+> `Basic/_cli.py`: one JSON record without a terminal (or with `--json`), a station screen at
+> one. Anything that changes things plans first and applies on `--apply PLAN_ID` (or yes at a
+> terminal). `--yes`, `--approve`, `--dry-run`, `--output-mode`, `--no-report`, `--format`,
+> `--acknowledge-initial-scan`, `--confirm-*`, `--approved-remote-prefix` (now `--allowed-remote`)
+> and setup's settings actions are gone; older passages below that name them are history.
+> See docs/ARCHITECTURE.md (Safety model, Output) and docs/FOR-AI-AGENTS.md.
+
 **Status:** target agreed 2026-09-20, revised 2026-09-21 (root `_os/`, flat `Basic/`, flat
 `App/tray.py`, `_providers/`; see "Revisions" at the end). **Latest revision 2026-11-11:** Special
 is this machine, once; Elaborate is other machines or over time; Sync Suggester splits;

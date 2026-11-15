@@ -24,7 +24,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-APP_NAME = "GitSpecOpsFleet"
+APP_NAME = "gitSpecOps"
 DISPLAY_NAME = "gitSpecOps Fleet"
 
 
@@ -33,8 +33,7 @@ def launch_command(argv=None, script=None) -> list[str]:
 
     ``script`` must be passed explicitly by callers, because ``sys.argv[0]`` is the wrong
     answer in exactly the cases that matter: the same tray menu item can be clicked from
-    ``sync_suggester.py fleet tray`` (which needs the ``fleet`` prefix), from ``fleet_app.py``
-    (which does not), or from the frozen build (which has no script at all). Registering an
+    ``gitso tray``, from the setup page, or from the map, or from the frozen build (which has no script at all). Registering an
     argv the target cannot parse produces a login entry that silently fails every boot.
 
     Paths are resolved so the entry does not depend on the login shell's working directory.

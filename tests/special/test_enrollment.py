@@ -52,13 +52,21 @@ class EnrollmentTests(unittest.TestCase):
             code = enroll_machine_main(["--settings-home", str(self.home), *args])
         return code, out.getvalue()
 
+    def approved(self, *args):
+        """Ask for the plan, then apply it by its id, as a program does."""
+        code, out = self.command(*args, "--json")
+        self.assertEqual(code, 0, out)
+        return self.command(*args, "--json", "--apply", json.loads(out)["plan_id"])
+
     def app(self):
         return load_fleet_settings(self.home).config("app")
 
     def test_nothing_is_enrolled_without_consent(self):
-        with patch("sys.stdin.isatty", return_value=False):
-            code, _out = self.command("add", str(self.libraries[0]))
-        self.assertEqual(code, 2)
+        code, out = self.command("add", str(self.libraries[0]), "--json")
+        self.assertEqual(code, 0)
+        self.assertFalse(json.loads(out)["applied"])
+        self.assertIsNone(self.app())
+        self.assertEqual(self.command("add", str(self.libraries[0]), "--apply", "0" * 12)[0], 3)
         self.assertIsNone(self.app())
 
     def test_the_notice_says_exactly_what_will_be_inventoried(self):
@@ -67,8 +75,8 @@ class EnrollmentTests(unittest.TestCase):
         self.assertIn("Nothing outside these folders", notice)
 
     def test_several_libraries_and_no_overlap(self):
-        self.assertEqual(self.command("add", str(self.libraries[0]), "--yes")[0], 0)
-        self.assertEqual(self.command("add", str(self.libraries[1]), "--yes")[0], 0)
+        self.assertEqual(self.approved("add", str(self.libraries[0]))[0], 0)
+        self.assertEqual(self.approved("add", str(self.libraries[1]))[0], 0)
         self.assertEqual(self.app()["roots"], [str(path.resolve()) for path in self.libraries])
         with self.assertRaisesRegex(ValueError, "overlap"):
             enrollment.add_libraries([self.libraries[0] / "one"], home=self.home)
@@ -83,11 +91,12 @@ class EnrollmentTests(unittest.TestCase):
         self.assertEqual(config["presentation"], {"face": "web", "web": "loopback"})
 
     def test_finding_libraries_needs_consent_and_enrolls_nothing(self):
-        with patch("sys.stdin.isatty", return_value=False):
-            self.assertEqual(self.command("find", str(self.root))[0], 2)
-        code, out = self.command("find", str(self.root), "--yes")
+        code, out = self.command("find", str(self.root), "--json")
         self.assertEqual(code, 0)
-        self.assertIn(str(self.libraries[0].resolve()), out)
+        self.assertNotIn("found", json.loads(out))
+        code, out = self.approved("find", str(self.root))
+        self.assertEqual(code, 0)
+        self.assertIn(str(self.libraries[0].resolve()), [item["path"] for item in json.loads(out)["found"]])
         found = {item["path"]: item["repositories"] for item in enrollment.find_libraries([self.root])}
         self.assertEqual(found[str(self.libraries[0].resolve())], 2)
         self.assertIsNone(self.app(), "looking must never enroll")
@@ -140,10 +149,10 @@ class EnrollmentTests(unittest.TestCase):
                          "joining a fleet never changes the machine's libraries")
 
     def test_fleet_setup_requires_an_enrolled_machine(self):
-        with redirect_stdout(io.StringIO()), patch("sys.stderr", new_callable=io.StringIO) as errors:
+        with redirect_stdout(io.StringIO()) as said, patch("sys.stderr", new_callable=io.StringIO):
             code = fleet_main(["--settings-home", str(self.home), "--config-dir", str(self.state), "setup"])
         self.assertEqual(code, 2)
-        self.assertIn("enroll_machine.py add", errors.getvalue())
+        self.assertIn("gitso enroll-machine add", " ".join(said.getvalue().split()))
 
 
 if __name__ == "__main__":

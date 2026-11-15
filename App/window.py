@@ -22,8 +22,8 @@ def open_window(context: dict) -> None:
 
 
 def main(argv=None) -> int:
-    print("The Qt window is not built yet. Use App/tray.py (it opens the web view) or "
-          "App/serve_web.py.")
+    print("The Qt window is not built yet. Use gitso tray (it opens the web view) or "
+          "gitso serve-web.")
     return 2
 
 

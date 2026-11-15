@@ -1,20 +1,19 @@
-"""Preview/check and explicitly commit named files using shared security policy.
+"""secure-commit: check named files, message and identity, then commit only an approved plan.
 
 Why:          a commit should never carry a secret or a private value by accident.
 Reads:        the named files and the shared security policy.
-May change:   with --apply and the plan id: one commit of the named files.
-Results:      a masked plan and result on stdout, or --json.
+May change:   once its plan is approved: one commit of the named files.
+Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/commit_repo.py /path/to/repo file.txt -m "Describe the change" --json
-    python Special/commit_repo.py /path/to/repo file.txt -m "Describe the change" --apply --approve PLAN_ID
+    gitso secure-commit /path/to/repo file.txt -m "Describe the change"
+    gitso secure-commit /path/to/repo file.txt -m "Describe the change" --apply PLAN_ID
 
-Python 3.11+, Git 2.36+. Preview writes no index, Git objects, report or settings. Apply uses
-named working-tree contents, preserves other staged work and delegates existing traditional
-hooks through a temporary per-command relay. Unreviewed hook changes hold the commit. No
-persistent hook installation, automatic push or rollback. Source/metadata checks are optimistic
-against other writers; unsupported Git states fail explicitly. See --help for profile options.
+Python 3.11+, Git 2.36+. Checking writes no index, Git objects, report or settings. Applying uses
+named working-tree contents, preserves other staged work and runs existing traditional hooks
+through a temporary per-command relay. Unreviewed hook changes hold the commit. No persistent
+hook installation, automatic push or rollback. See --help for profile options.
 """
 from pathlib import Path
 import sys

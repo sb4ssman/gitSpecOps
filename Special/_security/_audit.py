@@ -80,7 +80,7 @@ def _without_path(record: dict) -> dict:
 
 def audit_checkout(repo, *, history=True, engines=(), settings_home=None, expected_settings=None) -> dict:
     """One checkout: working files, then (optionally) every reachable commit. Never clearance."""
-    result = {"schema_version": 1, "scope": "local-audit", "action_clearance": False,
+    result = {"scope": "local-audit", "action_clearance": False,
               "observed_at": datetime.now(timezone.utc).isoformat(), "check_status": "incomplete",
               "working_tree": None, "history": None, "gaps": []}
     try:

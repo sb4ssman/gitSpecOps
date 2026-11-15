@@ -3,13 +3,31 @@
 ## Safety model
 
 - **Fast-forward only, everywhere.** Pulls are `--ff-only`; every push is a non-force push.
-- **Detect, show the plan, approve, run, review.** Failures are collected and reported at the
-  end. Nothing ambiguous is applied automatically.
-- **Destructive-adjacent actions are interactive only** and need typed confirmation; scheduled
-  and launcher runs cannot reach them.
+- **Detect, show the plan, approve, run, review.** A command that changes things works out its
+  plan, with an id that is a digest of its content, and changes nothing. A person at a terminal
+  is asked; a program applies it with `--apply PLAN_ID`, and a plan that changed in between is
+  refused (exit 3). Failures are collected and reported at the end. Nothing ambiguous is applied
+  automatically. Basic commands and single explicit settings act at once, like `git`.
+- **Destructive-adjacent actions need a person**: a history rewrite needs an attended terminal,
+  the plan id and the typed word REWRITE. Scheduled and launcher runs cannot reach them.
 - **A tray item or a map button runs the same command as the terminal**, with the same plan and
   confirmation. Operations that change repositories refuse to run beside a live peer.
 - **Bounded everything:** timeouts, bounded discovery and thread pools, non-interactive Git.
+
+## Output
+
+`Basic/_cli.py` is the one place that decides how a command answers. With no terminal attached
+(a script, a scheduler, an AI agent), a command prints exactly one JSON record:
+`{"command": ..., "ok": ..., ...}`, or `{"ok": false, "error": "one plain sentence"}`. At a
+terminal it draws a station screen (`Basic/_station.py`, after Sb4ssport's station script
+design). `--json` asks for the record at a terminal; `GITSPECOPS_OUTPUT=json|screen` overrides
+the detection (the tests use `screen`, to read what a person would see).
+
+Version numbers appear only on what gitSpecOps saves or sends and later reads back: the
+settings file, fleet manifests, inventories, recovery snapshots, saved plans and reviews. Each
+lets a reader refuse a format it does not understand instead of misreading it. Command output
+carries none; it names its command instead, and the product has one version, in
+`pyproject.toml`.
 - **Your credentials stay yours.** No token is read, stored, forwarded or logged.
 
 ## Layout

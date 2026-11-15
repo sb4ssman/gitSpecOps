@@ -1,11 +1,10 @@
 """Shared scan command interface. Findings go to stdout masked; full reports are explicit."""
 from __future__ import annotations
 
-import argparse
-import json
-import sys
 import os
 from pathlib import Path
+
+from Basic import _cli
 
 from Basic._run import CommandFailed
 from Special._runtime.files import excluded
@@ -19,13 +18,13 @@ def main(material, argv=None):
     description = ("Inspect indexed and non-ignored untracked working-tree files; does not scan staged-only bytes."
                    if material == "tree" else
                    "Inspect history reachable from every local ref and HEAD; no fetch, reflogs or unreachable objects.")
-    parser = argparse.ArgumentParser(description=description)
+    command = "scan-tree" if material == "tree" else "scan-history"
+    parser = _cli.parser(command, description)
     parser.add_argument("repo", type=Path)
     if material == "tree":
         parser.add_argument("--staged", action="store_true", help="Inspect staged changed-file bytes instead of working/untracked files; no staging or commit.")
     parser.add_argument("--settings-home", type=Path, help="selected user-data profile; nothing is created")
     parser.add_argument("--out", type=Path, help="exclusive-create a full private JSON report; inside Git it must be ignored/untracked")
-    parser.add_argument("--json", action="store_true", help="masked JSON on stdout")
     parser.add_argument("--engine", action="append", choices=("none", *SECURITY_ENGINES),
                         help="optional engine; repeat to combine, or none to override saved engines; no installation")
     parser.add_argument("--never-publish", type=Path, help="a file of additional protected values, one per line; absence is incomplete")
@@ -51,11 +50,15 @@ def main(material, argv=None):
     except (CommandFailed, OSError, ValueError) as exc:
         # Paths and subprocess stderr may contain the very values being protected.
         message = str(exc) if isinstance(exc, SettingsError) else "Scan or report failed; no clean result issued."
-        if args.json:
-            print(json.dumps({"status": "error", "coverage": "incomplete", "error_type": type(exc).__name__,
-                              "message": message}))
-        else:
-            print(message, file=sys.stderr)
-        return 2
-    print(json.dumps(report.record(), indent=2) if args.json else report.summary())
+        return _cli.fail(args, command, message, status="error", coverage="incomplete",
+                         error_type=type(exc).__name__)
+
+    def screen():
+        from Basic._station import banner, line, say
+        banner("Scan working files" if material in ("tree", "index") else "Scan history", str(args.repo))
+        say()
+        for text in report.summary().splitlines():
+            line(text)
+
+    _cli.emit(args, _cli.document(command, report.exit_code == 0, **report.record()), screen)
     return report.exit_code

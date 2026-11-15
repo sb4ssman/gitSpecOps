@@ -3,7 +3,7 @@
 Why:          check what is about to be committed or published before it is.
 Reads:        the working tree, or the staged bytes, and the shared security policy.
 May change:   nothing.
-Results:      masked findings on stdout, or --json; a full private report only with --out.
+Results:      JSON without a terminal (or with --json); a screen at one. A full private report only with --out.
 Layer:        Special: this machine, once.
 Status:       working
 

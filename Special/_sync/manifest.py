@@ -1,4 +1,4 @@
-"""Privacy-minimized Sync Suggester manifest primitives.
+"""Privacy-minimized fleet manifest primitives.
 
 Synced manifests contain repository identity digests and status facts only. Display names,
 remote URLs, local paths, filenames, diffs, and source content belong in local-only state.
@@ -63,7 +63,7 @@ from datetime import datetime, timezone
 
 SCHEMA_VERSION = 5
 FLEET_SECRET_BYTES = 32
-FLEET_ID_LABEL = b"gitspecops-sync-suggester-fleet-id"
+FLEET_ID_LABEL = b"gitspecops-fleet-id"
 BRANCH_LABEL = b"branch:"
 ROOT_LABEL = b"root:"
 LOCAL_LABEL = b"local:"

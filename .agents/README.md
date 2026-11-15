@@ -185,7 +185,7 @@ The entry-point tools are:
 
 The archive manager and direct commands share implementations in `Special/_archive/`:
 updater.py, sync.py, manager.py, plan.py and registry.py. The local manager does not import
-Elaborate or scheduling. The standalone updater now integrates common settings, headless
+Elaborate or scheduling. update-archive integrates common settings, headless
 structured results and counts-only logging through update_operation.py/update_cli.py and
 Special/_runtime/. The manager/registry now read archive choices from existing common v2
 profiles, with separate receipts; their output/logging and other consumers await adoption.
@@ -222,12 +222,9 @@ The optional bootstrap helper is:
 - `_build/setup_gitspecops.py` (builds a bare `.venv` — `uv sync`,
   or the stdlib `venv` module as a fallback; the project itself is never installed into it)
 
-The setup menu also offers guided updater preferences and read-only migration preview.
-settings-preview/settings-save share Special/_settings/setup.py's reviewed plan/writer flow;
-only updater fields change after typed SAVE or exact preview-id approval. Summaries hide
-paths/policy/identity values by default; --show-paths explicitly reveals paths only. Legacy
-activation awaits remaining security/fleet adapters and reviewed launcher transition. Settings actions never bootstrap, write launchers,
-authenticate or run repository operations.
+The setup menu offers the walkthrough (which includes an Archives part), one command from a
+list, the Python environment and a check of this computer. Archive preferences are set by
+registering archives (archive-manager), not by a separate settings screen.
 
 Archive planning and duplicator helpers use explicit imports from private Special folders.
 The old `git-sync-suggester/` tree is resolved into the layers (2026-11-11); see the tree in
@@ -315,10 +312,10 @@ points at it, and that path must survive the code moving (2026-09-22).
 - have clean work tree and index state
 
 It now consumes common component settings. Saved roots/exclusions and output/logging preferences
-are overridden per invocation. When stdout is enabled, --json reserves it for the result;
---no-report forces stdout and --no-log separately disables default local operational logging.
-The public run_update API is headless and returns schema-v1 results. The full contract, failure
-behavior and legacy-profile migration refusal are in [settings-schema.md](knowledge/settings-schema.md).
+are overridden per invocation. What is printed follows the terminal (one record or a screen);
+--save-report also saves the report as a JSON file and --no-log disables the counts-only log.
+The public run_update API is headless. The settings contract is in
+[settings-schema.md](knowledge/settings-schema.md).
 
 It should use fast-forward pulls only. It must not merge, rebase, reset, delete repos, install dependencies, run project code, or recurse through arbitrary nested directories.
 
@@ -344,9 +341,9 @@ launchers need reviewed regeneration before real migration. Manager refresh and 
 and native/multimachine acceptance remain open.
 
 ```text
-<per-user config>/gitspecops/gitspecops_managed_archives.json   # GITSPECOPS_HOME overrides
-<per-user config>/gitspecops/archive_manage.log
-<per-user config>/gitspecops/refresh_managed_archives.{bat,ps1 | sh}
+<per-user config>/gitSpecOps/gitspecops_managed_archives.json   # GITSPECOPS_HOME overrides
+<per-user config>/gitSpecOps/archive_manage.log
+<per-user config>/gitSpecOps/refresh_managed_archives.{bat,ps1 | sh}
 ```
 
 ### The push direction ("publish") — shipped 2026-09-03, first slice
@@ -371,7 +368,7 @@ deliberately narrow, and the narrowness is the feature:
   `_publish_dirty()` uses `git status --porcelain`. Keep this policy in the publish path; making
   the shared fact stricter would needlessly narrow pull eligibility. `--include-dirty` pushes the
   committed work anyway. **Nothing is ever auto-committed, under any flag.**
-- `--dry-run` previews; a typed `PUBLISH` confirms; pushes are paced (`--publish-pause`) so a
+- each folder's plan is shown first and applies on approval (`--apply PLAN_ID`); pushes are paced (`--publish-pause`) so a
   bulk publish cannot become a CI storm.
 
 Checked publication now includes outgoing-history privacy/secret checking and masked findings.
@@ -396,8 +393,7 @@ whoever builds it, so the safety model is not broken:
   do not push agents straight to default branches - prefer a per-agent/per-run branch + PR
   (add `open_pr()` to the provider seam); fetch immediately before each push and let non-force
   rejection mean "remote moved, needs human"; rate-limit to avoid CI/agent storms; give agent
-  commits their own identity/trailers; guard blast radius (`--dry-run` preview, typed-YES bulk
-  confirm, protected-branch awareness, optional secret/size checks); make runs idempotent and
+  commits their own identity/trailers; guard blast radius (a plan first, applied by its id, protected-branch awareness, optional secret/size checks); make runs idempotent and
   resumable.
 - Architecture: keep the layers. `git_inspect` gains ahead/behind facts; `archive_diff` gains a
   pure push-direction classifier; `archive_sync` gains a `--publish` phase that is its OWN apply
@@ -435,7 +431,8 @@ warning-only signal and must never gate or stall a run.
 
 **Non-interactive layer (added 2026-08-31).** Run with no flags it is still the interactive menu.
 `parse_args()` in the orchestrator adds `--batch` / `--single` plus `--namespaces --dest
---[no-]private --[no-]archived --[no-]forks --format --parallel --yes` for an unattended batch,
+--[no-]private --[no-]archived --[no-]forks --format --parallel` for an unattended batch (its plan,
+then `--apply PLAN_ID`),
 and `--answers FILE` feeds any remaining prompt (one line each; blank = default) for every mode.
 This is why it exists: VS Code / CI type venv-activation lines into an open prompt and corrupt
 `input()`. `Basic/_confirm.use_scripted_answers()` holds the queue; `prompt_input()` serves from it,
@@ -579,11 +576,11 @@ the tray is `App/tray.py`. The subcommand names below are those CLI's own:
 - `audit` - read-only fleet-scale report of missing origins/upstreams, plain-HTTP origins,
   detached heads, local-only commits, behind state and tracked changes
 - `catchup` - fresh non-interactive fetch of every observed checkout, then a printed plan.
-  `--apply --yes` fast-forwards **only** clean behind-only checkouts; every other state is listed
+  An approved plan fast-forwards **only** clean behind-only checkouts; every other state is listed
   for a human. It cannot commit, push, stash, reset, merge, rebase, or recurse submodules, and it
   refuses to run beside a live peer via the per-configuration lock.
-- `materialize` - a reviewed **clone-only** plan for the locally observed working set, behind
-  `--apply --yes`. It never replaces or updates an existing destination, validates portable path
+- `materialize` - a reviewed **clone-only** plan for the locally observed working set, applied
+  by its plan id. It never replaces or updates an existing destination, validates portable path
   components, and rejects destinations that would escape the library through a symlink.
 - `live-buffers` - explicit, local-only, content-free VS Code unsaved-buffer evidence
 - `safe-to-wipe` - accepts a dirty checkout **only** for an exact current snapshot acknowledged by
@@ -617,7 +614,7 @@ Four rules hold this design together; do not quietly relax any of them:
   cloner here — that is a de-duplication argument, not a safety boundary.
 
 Local state lives outside the repo — `GITSPECOPS_SYNC_HOME`, else XDG on POSIX / `%APPDATA%` on
-Windows, under `gitspecops/sync-suggester/`. `config.json` and `catalog.json` are per-machine and
+Windows, under `gitSpecOps/sync-suggester/`. `config.json` and `catalog.json` are per-machine and
 never enter the state directory.
 
 ### Transports
