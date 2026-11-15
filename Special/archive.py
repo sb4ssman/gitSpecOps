@@ -19,7 +19,7 @@ terminal. remove forgets the registration only; the folder and its launcher stay
 runs each archive in its saved mode: registering it was the approval, so the launcher and the
 monthly task (archive schedule) run unattended. check looks without changing anything.
 --save-report/--report-dir also save the run's report as a JSON file; --log/--no-log choose the
-counts-only log. Import run_refresh for programmatic use; it prints nothing.
+counts-only log. Programs call Special._archive.manager.run_refresh, which prints nothing.
 """
 from pathlib import Path
 import sys
@@ -28,33 +28,7 @@ _ROOT = str(Path(__file__).resolve().parents[1])
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from Special._archive.manager import (
-    now_stamp,
-    log_path,
-    log_event,
-    scan_suitable_repos_with_progress,
-    validate_archive_root,
-    install_launchers,
-    forget_installation,
-    load_registry,
-    registry_path,
-    installation_status,
-    print_registry,
-    refresh_all,
-    run_refresh,
-    refresh_archive,
-    choose_folder_dialog,
-    interactive_menu,
-    build_parser,
-    menu_main,
-    main,
-    EFFECT,
-    REPO_ROOT,
-    MODE_UPDATE,
-    MODE_SYNC,
-    VALID_MODES,
-    ARCHIVE_LAUNCHER,
-)
+from Special._archive.manager import main
 
 EFFECT = "local"
 

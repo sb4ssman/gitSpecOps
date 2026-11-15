@@ -14,7 +14,7 @@ Status:       working
 
 Each folder's plan has its own id; repeat --apply for several. Publication is separate:
 exact planned tips pass outgoing-history security checks before any non-forced push. An
-approved plan is no security clearance. Import run_archives for headless use.
+approved plan is no security clearance. Programs call Special._archive.operation.run_archives.
 """
 from pathlib import Path
 import sys
@@ -24,7 +24,6 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from Special._archive.sync_cli import main
-from Special._archive.operation import ArchiveResult, run_archives
 
 EFFECT = "remote"
 

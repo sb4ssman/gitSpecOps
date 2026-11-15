@@ -23,9 +23,7 @@ import Elaborate._fleet.cli as fleet_app
 import Elaborate._fleet.config as fleet_config
 import App.desktop as fleet_desktop
 import Elaborate._fleet.sync_cli as sync_suggester
-from Special._settings import SettingsError
-from Special._settings.fleet import (fleet_directory, fleet_home, load_fleet_settings,
-                                    save_fleet_config)
+from Special._settings.fleet import (fleet_directory, fleet_home)
 
 
 class FleetSettingsTests(unittest.TestCase):

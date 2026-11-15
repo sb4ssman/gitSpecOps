@@ -27,7 +27,7 @@ setup()
 
 from Basic._console import format_size  # noqa: E402
 from Special._org_duplicator import batch, tracking  # noqa: E402
-from Special.org_copy import parse_args  # noqa: E402
+from Special._org_duplicator.command import parse_args  # noqa: E402
 
 FAILS = []
 

@@ -26,7 +26,7 @@ from Special._archive.plan import SyncPlan, LocalRepo, RepoRef
 from Special._settings import resolve_document, SettingsError
 from Special._runtime.files import RuntimeIOError
 from Special._runtime.output import conceal
-from Special import archive as archive_manager
+from Special._archive import manager as archive_manager
 from Special import archive_update
 from Elaborate import archive_schedule as archive_manage
 import gitso

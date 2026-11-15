@@ -23,7 +23,6 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from Special._security._review_cli import main
-from Special._security._review_operation import ReviewResult, review_finding
 
 EFFECT = "local"
 

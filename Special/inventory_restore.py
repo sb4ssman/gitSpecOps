@@ -30,7 +30,6 @@ work, unpushed commits, stashes -- is named per row. Credentials are yours: this
 """
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 from pathlib import Path
@@ -39,7 +38,7 @@ _ROOT = str(Path(__file__).resolve().parents[1])
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from Basic._confirm import confirm_typed, use_scripted_answers  # noqa: E402
+from Basic._confirm import use_scripted_answers  # noqa: E402
 from Basic._console import enable_unicode_output  # noqa: E402
 from Basic import _cli  # noqa: E402
 from Basic._pick import can_ask, pick_directory, pick_open_file  # noqa: E402

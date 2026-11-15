@@ -11,8 +11,8 @@
 **Status:** target agreed 2026-09-20, revised 2026-09-21 (root `_os/`, flat `Basic/`, flat
 `App/tray.py`, `_providers/`; see "Revisions" at the end). **Latest revision 2026-11-11:** Special
 is this machine, once; Elaborate is other machines or over time; Sync Suggester splits;
-`git-sync-suggester/` is emptied and gone; the tree below is current. Migration phase 1 landed 2026-09-21. How to get there is in
-[`../HANDOFF.md`](../HANDOFF.md). The picture is [`architecture-diagram.md`](architecture-diagram.md).
+`git-sync-suggester/` is emptied and gone; the tree below is current. Migration phase 1 landed 2026-09-21. The migration's phases
+are in the WORK-LOG (finished 2026-11-11). The picture is [`architecture-diagram.md`](architecture-diagram.md).
 [`../README.md`](../README.md) "Repo Shape" describes what is on disk *today* until the migration lands.
 
 ## The model
@@ -490,7 +490,7 @@ Decided by the user:
   the whole library, one library folder across machines, one org across machines and one
   repo across machines; a chosen machine sets the perspective.
 - **`_archive/` (version 1) is ported where still needed, then deleted.** `tests/` keeps its
-  name. Execution plan: `../HANDOFF-CLEAN-TREE.md`.
+  name. Done 2026-11-11 (WORK-LOG).
 
 ## Revisions, 2026-11-11 (later): machine enrollment apart from fleet enrollment
 

@@ -92,8 +92,8 @@ Direct/CLI and callable paths share this operation; full GUI/finishing/native ac
 ### Start every session by looking, not remembering
 
 1. **Read this file**, then [`WORKING-NOTES.md`](WORKING-NOTES.md) for current work and the
-   latest [`WORK-LOG.md`](WORK-LOG.md) entries for evidence. [`HANDOFF.md`](HANDOFF.md) is a
-   historical phase record; consult it for context rather than treating it as today's task list.
+   latest [`WORK-LOG.md`](WORK-LOG.md) entries for evidence. Older handoffs were absorbed into
+   the log and removed on 2026-11-14; git history keeps them.
 2. **Map the tree with the tool**, do not reconstruct it from memory or a few `ls` calls:
 
    ```bash
@@ -168,9 +168,8 @@ there freely. That is the release valve.
 > `Basic → Special → Elaborate → App` — with a one-way import rule, the host seam in
 > `Basic/providers/`, three skins under `App/skins/`, and `_build/ docs/ _tests/` at the root.
 > See [`knowledge/architecture-layers.md`](knowledge/architecture-layers.md) for the model and the
-> full target tree, and [`HANDOFF.md`](HANDOFF.md) for the migration phases. **The section below describes what is
-> on disk today.** Phase 1 landed 2026-09-21 (`Basic/` and `_os/` exist; the tool folders import
-> downward); the tool folders themselves move in phase 3. Update this as each phase lands.
+> full target tree. The migration finished 2026-11-11 (WORK-LOG); the section below predates it
+> in places, so check the tree itself.
 
 This repo is intentionally small. Keep it that way.
 
@@ -508,8 +507,8 @@ uncommitted work stranded on a machine that is now switched off.
 > pulls, pushes, commits, stashes, or otherwise touches an observed repository." That described
 > the first vertical slice — which genuinely only observed and printed advice — and it was written
 > into this brief as if it were a safety principle. It was not one. It contradicted the recorded
-> product goal ("convergence is the product, not just observation",
-> [new-tool-sync-suggester.md](new-tool-sync-suggester.md)) from the day both were written, and
+> product goal ("convergence is the product, not just observation", in the original Sync Suggester design record (removed 2026-11-14; in git history before that day)) from the day
+> both were written, and
 > because this file is what every session reads first, the stale scope kept outranking the goal.
 > **Do not restore that framing.** The boundary below is the real one.
 
@@ -761,8 +760,7 @@ folder one. See [`knowledge/manifest-privacy.md`](knowledge/manifest-privacy.md)
 Changing the schema again once several machines publish into one folder is expensive, so
 schema-affecting work goes first. `validate_manifest` refuses an unknown `schema_version` — with a
 specific "re-run check on that machine" message for a v1 file — so a mixed-version fleet fails
-loudly instead of silently mis-joining. The complete product/design record remains in
-[`new-tool-sync-suggester.md`](new-tool-sync-suggester.md).
+loudly instead of silently mis-joining. The complete product/design record was the original Sync Suggester design record (removed 2026-11-14; in git history before that day).
 
 ## Generated And Ignored State
 

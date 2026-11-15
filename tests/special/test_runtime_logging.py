@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import multiprocessing
+import os
 import sys
 import tempfile
 import unittest
@@ -67,6 +68,28 @@ class LoggingTests(unittest.TestCase):
         self.assertEqual(stopped.exception.code, "logging_busy")
         self.assertEqual(lock.read_text(), "existing lock")
         self.assertFalse((directory / "archive_update.log").exists())
+
+    @unittest.skipUnless(os.name == "nt", "Windows reports a lock being deleted as PermissionError")
+    def test_a_lock_being_deleted_on_windows_is_waited_out_and_a_lasting_denial_is_an_error(self):
+        real_open, refusals = os.open, []
+
+        def open_lock(path, flags, *rest, refuse=1):
+            if str(path).endswith(".lock") and len(refusals) < refuse:
+                refusals.append(path)
+                raise PermissionError(13, "Permission denied")
+            return real_open(path, flags, *rest)
+
+        with patch.object(logger.os, "open", open_lock):
+            output = logger.configure_logging(self.settings(), "archive_update")
+            output.event("fixture_event", repositories=1)
+            output.close()
+        self.assertEqual(len(refusals), 1, "the refused open was retried, not reported")
+        refusals.clear()
+        with patch.object(logger, "LOCK_WAIT_SECONDS", 0.05), \
+             patch.object(logger.os, "open", lambda *a: open_lock(*a, refuse=10**6)), \
+             self.assertRaises(RuntimeIOError) as stopped:
+            logger.configure_logging(self.settings(), "archive_update")
+        self.assertEqual(stopped.exception.code, "logging_setup", "a denial that lasts is not 'busy'")
 
     def test_error_events_survive_warning_level_without_raw_diagnostics(self):
         output = logger.configure_logging(self.settings(level="WARNING"), "archive_update")

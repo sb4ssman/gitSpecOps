@@ -18,7 +18,7 @@ from pathlib import Path
 
 from Special._archive import sync
 from Special._archive.registry import load_registry, save_registry
-from Special._archive.plan import DEFAULT_APPROVED_REMOTE_PREFIXES, approved_remote
+from Special._archive.plan import DEFAULT_APPROVED_REMOTE_PREFIXES, approved_remote, build_publish_plan
 from Special._archive.update_operation import UpdateRequest, explain_error, run_update
 from Special._runtime.files import RuntimeIOError, checked_path, excluded, linked
 from Special._runtime.logger import configure_logging
@@ -232,7 +232,7 @@ def _protected(settings):
 def _publish(item, settings, before_action, *, scan_only, progress, approve):
     """Plan locally, approve masked scope, then gate each exact tip/target before pushing."""
     root = Path(item["root"])
-    plan = sync.build_publish_plan(sync.collect_publish_candidates(root), include_dirty=item.get("include_dirty", False))
+    plan = build_publish_plan(sync.collect_publish_candidates(root), include_dirty=item.get("include_dirty", False))
     policies = {}
     for candidate in plan.to_push:
         _target(root, candidate.folder)

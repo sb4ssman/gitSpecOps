@@ -14,7 +14,6 @@ Status:       working
 """
 from __future__ import annotations
 
-import argparse
 import sys
 import threading
 from pathlib import Path

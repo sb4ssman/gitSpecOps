@@ -32,7 +32,6 @@ repositories with no remote. Observation only: git reads, no network, at most th
 """
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 from pathlib import Path

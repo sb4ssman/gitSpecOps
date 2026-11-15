@@ -6,7 +6,6 @@ only reads machine manifests and atomically replaces the current machine's file.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from Basic._files import atomic_write_bytes

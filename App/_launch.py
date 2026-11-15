@@ -95,7 +95,7 @@ def run_app(config_dir=None, settings_home=None, *, stopping, on_ready=None, on_
         changed, run_stop = threading.Event(), threading.Event()
         try:
             _config, serve, choice = presentation(config_dir, settings_home, remote=remote, face=face,
-                                                  web=web, on_change=lambda state: changed.set())
+                                                  web=web, on_change=lambda state, changed=changed: changed.set())
         except ValueError as exc:
             if not is_not_enrolled(exc):
                 raise
@@ -105,7 +105,7 @@ def run_app(config_dir=None, settings_home=None, *, stopping, on_ready=None, on_
         if choice_out is not None:
             choice_out.update(choice)
 
-        def relay():
+        def relay(changed=changed, run_stop=run_stop):  # this pass's events, not the next one's
             while not (stopping.is_set() or changed.is_set()):
                 stopping.wait(0.5)
             run_stop.set()

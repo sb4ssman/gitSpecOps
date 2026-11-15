@@ -17,7 +17,6 @@ from datetime import datetime, timezone
 
 from Special._sync.advice import classify_repository, elsewhere_unpushed, secondary_facts
 from Special._sync.config import display_name_for
-from Special._sync.manifest import decode_manifest
 
 CURRENT = "current"
 STALE = "stale"

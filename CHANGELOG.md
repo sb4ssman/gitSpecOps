@@ -5,6 +5,13 @@ while the version starts with 0, gitSpecOps is a development preview and anythin
 
 ## Unreleased
 
+- **Fixed (Windows): two gitSpecOps processes logging at the same moment could stop with
+  `logging_write`.** A lock file being deleted by one process now counts as busy for the other.
+- **The web setup page approves like the commands:** it shows the plan, then "Yes, do it". The
+  typed confirmation words are gone.
+- **CI runs Ruff** (development only; gitSpecOps does not need it to run) with the rules that
+  catch mistakes, not style.
+- Setup's desktop-app question says what it does (installs Qt into this folder's `.venv`).
 - **Commands renamed: `gitso <subject> <action>`.** The Git commands keep Git's names;
   `gitso <subject>` lists a subject's actions. Old to new: enroll-machine to `machine`
   (show/add/remove/find/presentation); suggest-sync, catch-up, audit-repos, materialize,

@@ -35,11 +35,10 @@ _ROOT = str(Path(__file__).resolve().parents[2])
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from Basic._discovery import is_hidden, list_child_dirs  # noqa: E402
+from Basic._discovery import is_hidden  # noqa: E402
 from Basic.pull import fast_forward  # noqa: E402
 from Special._runtime.files import checked_path, excluded, linked
 from Special._archive.plan import (  # noqa: E402
-    DEFAULT_APPROVED_REMOTE_PREFIXES,
     RepoInfo,
     inspect_candidate,
 )

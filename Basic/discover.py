@@ -12,8 +12,6 @@ Status:       working
 """
 from __future__ import annotations
 
-import argparse
-import json
 import sys
 import time
 from pathlib import Path

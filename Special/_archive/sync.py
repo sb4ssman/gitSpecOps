@@ -47,13 +47,11 @@ from Basic.clone import clone  # noqa: E402
 from Basic.pull import fast_forward  # noqa: E402
 from Special._security._push import PushResult, PushSnapshot, publish_checked, read_push_snapshot  # noqa: E402
 from Special._archive.plan import (  # noqa: E402
-    DEFAULT_APPROVED_REMOTE_PREFIXES,
     LocalRepo,
     PublishCandidate,
     RepoRef,
     SyncPlan,
     build_plan,
-    build_publish_plan,
     approved_remote,
     inspect_candidate,
     normalize_owner_name,
@@ -264,7 +262,7 @@ def apply_rename_folders(root: Path, plan: SyncPlan, issues: list[Issue], *, emi
             src.rename(dest)
             emit("renamed")
             done += 1
-        except OSError as exc:  # locked folder (Windows), permissions, etc.
+        except OSError:  # locked folder (Windows), permissions, etc.
             emit("skip: locked/in use")
             issues.append(Issue(repo=it.local.folder, action="rename", detail="folder could not be renamed; inspect locally"))
     return done

@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _bootstrap import ROOT, setup  # noqa: E402
+from _bootstrap import setup  # noqa: E402
 
 setup()
 

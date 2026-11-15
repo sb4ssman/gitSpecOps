@@ -368,7 +368,7 @@ terminal. remove forgets the registration only; the folder and its launcher stay
 runs each archive in its saved mode: registering it was the approval, so the launcher and the
 monthly task (archive schedule) run unattended. check looks without changing anything.
 --save-report/--report-dir also save the run's report as a JSON file; --log/--no-log choose the
-counts-only log. Import run_refresh for programmatic use; it prints nothing.
+counts-only log. Programs call Special._archive.manager.run_refresh, which prints nothing.
 ```
 
 ### archive update
@@ -413,7 +413,7 @@ Status:       working
 
 Each folder's plan has its own id; repeat --apply for several. Publication is separate:
 exact planned tips pass outgoing-history security checks before any non-forced push. An
-approved plan is no security clearance. Import run_archives for headless use.
+approved plan is no security clearance. Programs call Special._archive.operation.run_archives.
 ```
 
 ### inventory export
