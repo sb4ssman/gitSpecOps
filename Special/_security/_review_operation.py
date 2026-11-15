@@ -35,7 +35,7 @@ class ReviewResult:
     artifacts: list = field(default_factory=list, repr=False)
 
     def record(self):
-        return {"operation": "review-finding", "status": self.status,
+        return {"operation": "review", "status": self.status,
                 "message": self.message, "plan_id": self.plan_id, "review_id": self.review_id,
                 "saved": self.saved, "scope": self.scope, "artifacts": self.artifacts}
 

@@ -18,7 +18,7 @@ from Special._settings.fleet import fleet_directory, fleet_home
 
 
 def profile_arguments(config_dir=None, settings_home=None) -> list[str]:
-    """The profile selection every handoff keeps: tray, start-at-login and the peer itself."""
+    """The profile selection every handoff keeps: tray, start-at-sign-in and the peer itself."""
     arguments = []
     if config_dir is not None:
         arguments += ["--config-dir", str(Path(config_dir))]

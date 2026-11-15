@@ -1,4 +1,4 @@
-"""Per-user start-at-login registration. Consent lives with the caller; this only executes it.
+"""Per-user start-at-sign-in registration. Consent lives with the caller; this only executes it.
 
 Deliberately per-user, never system-wide: the fleet app must run **as the interactive user**, so
 that Git ownership, the gh login, Tailscale identity and any synchronized-folder mount are the
@@ -297,7 +297,7 @@ def status() -> dict:
     backend = _backend()
     if backend is None:
         return {"supported": False, "enabled": False, "method": None, "target": None,
-                "reason": f"no start-at-login backend for {sys.platform}"}
+                "reason": f"no start-at-sign-in backend for {sys.platform}"}
     method, read, _enable, _disable = backend
     return {"supported": True, "method": method, "reason": None, **read()}
 
@@ -306,7 +306,7 @@ def enable(argv=None, script=None) -> dict:
     """Register a command to run at login. The caller is responsible for having consent."""
     backend = _backend()
     if backend is None:
-        raise ValueError(f"no start-at-login backend for {sys.platform}")
+        raise ValueError(f"no start-at-sign-in backend for {sys.platform}")
     method, _read, write, _disable = backend
     target = write(launch_command(argv, script))
     return {"enabled": True, "method": method, "target": target}
@@ -315,7 +315,7 @@ def enable(argv=None, script=None) -> dict:
 def disable() -> dict:
     backend = _backend()
     if backend is None:
-        raise ValueError(f"no start-at-login backend for {sys.platform}")
+        raise ValueError(f"no start-at-sign-in backend for {sys.platform}")
     method, _read, _write, remove = backend
     return {"enabled": False, "method": method, "removed": remove()}
 
@@ -327,7 +327,7 @@ def main(argv=None) -> int:
 
     from Basic._console import enable_unicode_output
     enable_unicode_output()
-    parser = argparse.ArgumentParser(description="inspect or change start-at-login registration")
+    parser = argparse.ArgumentParser(description="inspect or change start-at-sign-in registration")
     parser.add_argument("action", choices=("status", "enable", "disable"), default="status",
                         nargs="?")
     parser.add_argument("--systemd", action="store_true",

@@ -1,4 +1,4 @@
-"""DANGEROUS HISTORY MAINTENANCE: explicit cleanup into a new private mirror, never publish.
+"""Clean history into a new private mirror: dangerous maintenance, never the source, never published.
 
 Why:          personal data published in history stays published until history is rewritten.
 Reads:        a full private scan report and an explicit choices document.
@@ -7,10 +7,10 @@ Results:      a private plan, the rewritten mirror, its proof and rescan; JSON w
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso clean-history plan /private/history.json --choices /private/choices.json --plan-out /private/plan.json
-    gitso clean-history rewrite /private/plan.json --workspace /private/new-run --apply PLAN_ID
+    gitso history clean plan /private/history.json --choices /private/choices.json --plan-out /private/plan.json
+    gitso history clean rewrite /private/plan.json --workspace /private/new-run --apply PLAN_ID
 
-First use scan-history --out for a full private report. Planning rescans and rejects stale
+First use history scan --out for a full private report. Planning rescans and rejects stale
 refs/findings. --include-remote-refs explicitly preserves remote-only history and origin/HEAD;
 without it an ordinary checkout with tracking refs is refused. No fetch or settings change.
 Rewriting always needs a person: an attended terminal, the plan id and the typed word REWRITE.

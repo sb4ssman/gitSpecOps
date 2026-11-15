@@ -1,4 +1,4 @@
-"""Read-only working-tree or staged-byte scan; Python 3.11+, Git, masked stdout.
+"""Scan a repository's working files (or its staged bytes) for secrets and protected values.
 
 Why:          check what is about to be committed or published before it is.
 Reads:        the working tree, or the staged bytes, and the shared security policy.
@@ -7,8 +7,8 @@ Results:      JSON without a terminal (or with --json); a screen at one. A full 
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/scan_tree.py /path/to/repo --settings-home /path/to/profile --json
-    python Special/scan_tree.py /path/to/repo --staged --out /private/staged.json
+    gitso scan /path/to/repo --settings-home /path/to/profile --json
+    gitso scan /path/to/repo --staged --out /private/staged.json
 
 The settings profile owns the saved policy. --out explicitly creates a full private report; no implicit
 report/log/config is written. See --help. Returns 0 checked, 1 findings, 2 incomplete/failure.

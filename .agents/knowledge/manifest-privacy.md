@@ -121,7 +121,7 @@ above. Nothing here is built.
 
 **Why names are wanted.** The route ("go to A and push x, y, z; C pull R") must name a
 repository the reading machine may not hold. Today a peer's repository renders `repo:abcd1234`
-until `converge` resolves it, which works only for remote identities under owners the host
+until `fleet converge` resolves it, which works only for remote identities under owners the host
 provider can list, and never for a repository with no remote. The live tier already sends
 `names` beside the manifest; the stored manifests (the ones an offline machine leaves behind)
 do not, so the route is weakest exactly when it matters: machine-D, not seen in a week.

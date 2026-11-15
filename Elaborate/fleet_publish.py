@@ -9,7 +9,7 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/publish_status.py --help
+    gitso fleet publish --help
 """
 from pathlib import Path
 import sys
@@ -22,7 +22,7 @@ from Elaborate._fleet.commands import status  # noqa: E402
 
 
 def main(argv=None):
-    return status(argv, ("check", "init", "fleet-key", "doctor", "version"))
+    return status(argv, ("check", "init", "key", "doctor", "version"))
 
 
 EFFECT = "remote"

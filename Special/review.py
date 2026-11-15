@@ -7,8 +7,8 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso review-finding /private/scan.json finding-000001 --reason "Reviewed test example"
-    gitso review-finding /private/scan.json finding-000001 --reason "..." --apply PLAN_ID
+    gitso review /private/scan.json finding-000001 --reason "Reviewed test example"
+    gitso review /private/scan.json finding-000001 --reason "..." --apply PLAN_ID
 
 The plan creates no state. Use --revoke REVIEW_ID instead of a finding to revoke a review.
 Changed content, check or location needs review again. Prohibited values, strong credentials

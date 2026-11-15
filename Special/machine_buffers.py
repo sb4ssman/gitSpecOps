@@ -7,7 +7,7 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/list_live_buffers.py --help
+    gitso machine buffers --help
 """
 from pathlib import Path
 import sys

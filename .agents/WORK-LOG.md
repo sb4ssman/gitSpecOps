@@ -2572,3 +2572,19 @@ No code changed; decisions recorded where they govern.
   Special/_settings/setup*.py are deleted; the walkthrough has an Archives part.
 - Not done, proposed to the user instead: renaming commands to one pattern (item 5 of the
   review). Full suite 86/86 after each stage; nothing pushed.
+
+## 2026-11-14 11:00 - user (claude) - Commands renamed to `gitso <subject> <action>` (branch wave/command-names)
+- The user approved the naming proposal. gitso.py's table now has two-word commands
+  (find() matches two words, then one); Command gained `argv` (an action word put in front of
+  what was typed), `summary` (an action's own description) and `program` (what the handler's
+  help calls itself when it adds the action). `gitso <subject>` lists the actions (a screen, or
+  one record); `gitso archive` at a terminal is the archives menu.
+- 30 public files renamed to match (Special/archive.py, machine_check.py, ..., Elaborate/fleet.py,
+  fleet_doctor.py, start_at_sign_in.py); module paths, docs and tests followed. Fleet CLI
+  subcommands fleet-key/peer/autostart became key/join/start-at-sign-in; the status CLI's
+  dashboard became suggest. archive-manager's flags became real actions with their own parsers.
+- docs/COMMANDS.md groups a subject's actions that share a file into one section.
+- Found on a smoke run with an empty profile: enrollment refused on a machine with no settings
+  file ("create it with setup first"), which the walkthrough's library step would also hit.
+  Reading now says "not enrolled"; the first `machine add` creates the profile. Test added.
+- Not changed: the web setup page still asks for typed LOOK/SCAN/JOIN (a person in a browser).

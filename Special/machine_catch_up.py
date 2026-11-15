@@ -8,8 +8,8 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso catch-up                    (shows the plan; at a terminal, asks)
-    gitso catch-up --apply PLAN_ID    (applies exactly that plan)
+    gitso machine catch-up                    (shows the plan; at a terminal, asks)
+    gitso machine catch-up --apply PLAN_ID    (applies exactly that plan)
 """
 from pathlib import Path
 import sys

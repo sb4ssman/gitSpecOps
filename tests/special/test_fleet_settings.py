@@ -264,7 +264,7 @@ class FleetSettingsTests(unittest.TestCase):
         del self.doc["components"]["app"]
         self.write()
         with patch("Elaborate._fleet.cli.resolve_machine_identity", side_effect=AssertionError), patch("Elaborate._fleet.cli.run_peer", side_effect=AssertionError):
-            self.assertEqual(self.approved_app("peer", "--root", str(self.root), "--no-tailnet",
+            self.assertEqual(self.approved_app("join", "--root", str(self.root), "--no-tailnet",
                                                "--configure-only"), 0)
         self.assertEqual(self.saved()["machine"], self.doc["machine"])
 
@@ -324,7 +324,7 @@ class FleetSettingsTests(unittest.TestCase):
         del self.doc["components"]["app"]
         self.write()
         with patch("Elaborate._fleet.cli.require_gh", side_effect=AssertionError):
-            self.assertEqual(self.approved_app("peer", "--root", str(self.root), "--label", "other label",
+            self.assertEqual(self.approved_app("join", "--root", str(self.root), "--label", "other label",
                                                "--repo", "example/new-status", "--create-repo",
                                                "--configure-only"), 2)
 
@@ -418,7 +418,7 @@ class FleetSettingsTests(unittest.TestCase):
         for command in (sync_suggester.main, fleet_app.main):
             for show in (False, True):
                 output = io.StringIO()
-                args = ["--settings-home", str(self.home), "--config-dir", str(self.state), "fleet-key", "--json"]
+                args = ["--settings-home", str(self.home), "--config-dir", str(self.state), "key", "--json"]
                 if show:
                     args.append("--show")
                 with redirect_stdout(output), redirect_stderr(io.StringIO()):
@@ -448,7 +448,7 @@ class FleetSettingsTests(unittest.TestCase):
              patch("Elaborate._fleet.cli.resolve_machine_identity", return_value=("machine-a", "Machine A")), \
              redirect_stdout(output), redirect_stderr(io.StringIO()):
             arguments = ["--settings-home", str(self.home), "--config-dir", str(self.state),
-                         "peer", "--root", str(self.root), "--no-tailnet", "--configure-only"]
+                         "join", "--root", str(self.root), "--no-tailnet", "--configure-only"]
             code = fleet_app.main([*arguments, "--json"])
             plan = json.loads(output.getvalue())["plan_id"]
             code = code or fleet_app.main([*arguments, "--apply", plan])

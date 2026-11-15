@@ -126,7 +126,7 @@ The [2026-10-27 architecture ruling](architecture-layers.md#2026-10-27-ruling-op
 keeps action-named public scripts at layer roots and implementation in private folders. It
 revises the physical organization without changing the layers; exact migration stays reviewable.
 
-The user's local archive-management front door is Special/archive_manager.py: select/register
+The user's local archive-management front door is Special/archive.py: select/register
 collections, invoke the selected update or sync operation once per archive and return results through the
 same callable entry point used by CLI/GUI. Plain local management is Special; scheduled and
 cross-machine coordination remain Elaborate and call it. Registration recognizes valid Git
@@ -254,7 +254,7 @@ pulling a source clone alone does not replace that bundle. No updater has been i
 
 ## Output and file writes
 
-**2026-10-29 archive evidence:** Special/archive_manager.py and direct archive-sync use
+**2026-10-29 archive evidence:** Special/archive.py and direct archive-sync use
 Special/_archive/operation.py. Each saved manager update/sync mode runs through the shared
 runner; update is Git-only and sync can discover/clone approved missing repositories. Direct
 requests also support explicit origin/folder repairs and exclusive policy-gated publication.
@@ -334,7 +334,7 @@ patterns block; uncertain candidates require review; gaps/failures hold publicat
 notes alone do not block. Resolve policy at its owning scope and rerun; action approval such
 as --yes is not a security override.
 
-**Scoped example reviews (2026-10-29):** review-finding previews one candidate from an explicit
+**Scoped example reviews (2026-10-29):** review previews one candidate from an explicit
 full private report. The exact current plan id is required to save/revoke a decision under the
 selected profile; preview writes nothing. Built-in uncertain findings can be accepted as
 examples for one repository/check/location/line/value/occurrence and complete checked content.
@@ -358,7 +358,7 @@ Immutable private decisions/revocations contain UTC time and reasons, never ordi
 fleet state. This is local operational evidence; GUI review, deliberate cross-machine transfer
 and repository relocation/import remain separate acceptance work.
 
-An explicit scan-tree --staged reads changed-file index bytes without staging, filters or
+An explicit scan --staged reads changed-file index bytes without staging, filters or
 working-file writes. Its private report can supply a separate review when line-ending or clean
 filter conversion changes previously reviewed working bytes. Re-preview the checked commit
 after review; changed/unmerged index snapshots and coverage gaps still hold actions. Deletions
@@ -379,7 +379,7 @@ archive adapter retains its existing aggregate exit/report interface. Other publ
 sync advice, universal output/logging and installed hooks remain integration work. Do not claim
 system-wide prevention or full publication clearance from these supported actions.
 
-**Checked commit slice (2026-10-28):** Special/commit_repo.py and `gitso commit` call the same
+**Checked commit slice (2026-10-28):** Special/secure_commit.py and `gitso commit` call the same
 headless commit_checked operation. Preview is read-only, returns masked checking and a plan id,
 and creates no Git objects/index, reports, logs or profile. Apply requires the exact current
 plan id, binding named working-tree file bytes/modes, message, effective author/committer,
@@ -403,7 +403,7 @@ review and are refused. Trusted hooks retain their own side effects; optimistic 
 not a sandbox or an atomic lock against arbitrary external writers. Common logging/artifact
 routing, complete GUI action integration and protection in other Git clients remain separate work.
 
-**Local advice/direct push slice (2026-10-29):** Special/push_repo.py and `gitso push` call
+**Local advice/direct push slice (2026-10-29):** Special/secure_push.py and `gitso push` call
 push_checked over the existing publication gate. Local preview binds tip/branch/single target,
 profile and effective policy without contacting a remote or claiming outgoing checking. Apply
 needs the exact current id; policy is also compared at entry into the publication gate, before
@@ -454,7 +454,7 @@ commit/push, common output/logging and native visual/multimachine acceptance rem
   the agreed layered rebuild. History repair retains plan/review/approve/execute/verify stages,
   explicit destructive/publishing boundaries and disposable scan/rewrite/rescan proof first.
 
-Current bounded repair implementation is `clean-history plan/apply`, shared by the direct
+Current bounded repair implementation is `history clean plan/apply`, shared by the direct
 script, gitso and callable operation. A full private report plus explicit finding-id/path/
 identity choices produces an exact private plan. Apply revalidates the same selected profile,
 policy, refs and plan id and requires attended typed REWRITE into a new independent mirror.

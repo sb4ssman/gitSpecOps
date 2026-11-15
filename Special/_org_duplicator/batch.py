@@ -2,7 +2,7 @@
 batch
 =====
 
-Download orchestration for duplicate-org's modes:
+Download orchestration for org copy's modes:
 
   Mode 4: batch-download several namespaces (your account + your orgs) at once.
   Mode 5: download one single repo by `owner/name` or full URL (any public repo works).
@@ -55,7 +55,7 @@ def _approved(args, plan, question) -> bool:
             return True
         print("Nothing was downloaded.")
         return False
-    RESULT["apply"] = _cli.apply_line("duplicate-org", getattr(args, "argv", []), identity)
+    RESULT["apply"] = _cli.apply_line("org copy", getattr(args, "argv", []), identity)
     print(f"Nothing was downloaded. To start this plan: {RESULT['apply']}")
     return False
 from Basic._providers.github import (

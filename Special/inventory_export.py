@@ -7,7 +7,7 @@ Results:      the inventory in a JSON record, or in --out; a screen at a termina
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso export-inventory [--root [LABEL=]PATH ...] [--repo PATH ...] [--out FILE]
+    gitso inventory export [--root [LABEL=]PATH ...] [--repo PATH ...] [--out FILE]
         [--max-depth N] [--hidden] [--no-prompt] [--answers FILE]
 
 Where the repositories are:
@@ -89,7 +89,7 @@ def check_destination(out: Path) -> None:
 
 def main(argv: list[str]) -> int:
     enable_unicode_output()
-    parser = _cli.parser("export-inventory", "Record a library of repositories for cloning elsewhere (read-only).")
+    parser = _cli.parser("inventory export", "Record a library of repositories for cloning elsewhere (read-only).")
     parser.add_argument("--root", action="append", default=[], metavar="[LABEL=]PATH",
                         help="a folder containing repositories; repeat for several")
     parser.add_argument("--repo", action="append", default=[], metavar="PATH",
@@ -101,7 +101,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--no-prompt", action="store_true", help="never ask; use defaults or fail")
     parser.add_argument("--answers", type=Path, help="file of answers, one per prompt")
     args = parser.parse_args(argv)
-    command = "export-inventory"
+    command = "inventory export"
     if args.answers:
         try:
             use_scripted_answers(args.answers.read_text(encoding="utf-8").splitlines(), strict=True)

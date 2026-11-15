@@ -7,10 +7,10 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso update-archive --root /path/to/archive                   (shows the plan)
-    gitso update-archive --root /path/to/archive --apply PLAN_ID
+    gitso archive update --root /path/to/archive                   (shows the plan)
+    gitso archive update --root /path/to/archive --apply PLAN_ID
 
-It never clones missing repositories (sync-archive --sync does). --save-report also saves the
+It never clones missing repositories (archive sync --sync does). --save-report also saves the
 run's report as a JSON file; the counts-only log is on unless --no-log. Importing does nothing.
 """
 from pathlib import Path

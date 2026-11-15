@@ -7,7 +7,7 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/converge.py --help
+    gitso fleet converge --help
 """
 from pathlib import Path
 import sys

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cross-machine Git observation, suggestions and explicitly selected fleet operations.
 
-    gitso setup-fleet --help
+    gitso fleet --help
 
 Observation reads local Git facts under configured roots and publishes selected status through
 the user's transports. Setup and explicit fleet commands have their own effects and consent;
@@ -247,7 +247,7 @@ def command_init(args: argparse.Namespace) -> int:
         print(f"Joined fleet {fleet_id_for(config['fleet_secret'])}.")
     else:
         print(f"Created fleet {fleet_id_for(config['fleet_secret'])}. The key is hidden. "
-              "Use fleet-key --show only in the intended local display channel when joining another machine.")
+              "Use 'gitso fleet key --show' only where you mean to display it, when joining another machine.")
     return 0
 
 
@@ -433,7 +433,7 @@ def command_converge(args: argparse.Namespace) -> int:
     """Report which repositories peers have that this machine does not, and name them.
 
     Read-only, including the network calls: it lists namespaces through the provider seam and
-    never clones. Cloning belongs to `Special/sync_archive.py`, which already does it safely.
+    never clones. Cloning belongs to `Special/archive_sync.py`, which already does it safely.
     """
     config_dir = _config_dir(args)
     try:
@@ -522,8 +522,7 @@ def command_doctor(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    public = sys.argv[0] if sys.argv[0].startswith("gitso ") else "gitso publish-status"
-    parser = argparse.ArgumentParser(prog="gitso" if public.split(" ", 1)[1] in PAGES else public,
+    parser = argparse.ArgumentParser(prog=sys.argv[0] if sys.argv[0].startswith("gitso") else "gitso fleet publish",
                                      description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     _cli.add_json(parser)
@@ -588,11 +587,11 @@ def build_parser() -> argparse.ArgumentParser:
                        help=f"seconds per fetch (default {DEFAULT_FETCH_TIMEOUT_SECONDS})")
     check.set_defaults(handler=command_check)
 
-    key = subparsers.add_parser("fleet-key", help="inspect configured key metadata; no logs or writes")
+    key = subparsers.add_parser("key", help="the fleet key's details, without logs or writes")
     key.add_argument("--show", action="store_true", help="print the raw key here; any agent capturing this output will receive it")
     key.set_defaults(handler=command_fleet_key)
 
-    dashboard = subparsers.add_parser("dashboard", help="read peer manifests without observing")
+    dashboard = subparsers.add_parser("suggest", help="suggest sync from every machine's published status, without observing")
     dashboard.add_argument("--state-dir", help="override the saved manifest folder")
     dashboard.add_argument("--state-repo", help="override the saved state repository (owner/name)")
     dashboard.add_argument("--all", action="store_true", help="list every repository, not just exceptions")
@@ -625,7 +624,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 #: Each subcommand's page title on a screen.
 PAGES = {"version": "Version", "init": "Publish status  /  Set up", "check": "Publish status",
-         "fleet-key": "Fleet key", "dashboard": "Fleet dashboard", "doctor": "Doctor",
+         "key": "Fleet key", "suggest": "Suggest fleet sync", "doctor": "Doctor",
          "converge": "Suggest fleet sync"}
 
 
@@ -640,8 +639,11 @@ def main(argv: list[str] | None = None) -> int:
 def run(args) -> int:
     """One parsed subcommand, finished as one result: a JSON record or a screen."""
     global _OUT
-    program = sys.argv[0] if sys.argv and sys.argv[0].startswith("gitso ") else ""
-    name = program.split(" ", 1)[1] if program else f"publish-status {args.command}"
+    program = sys.argv[0] if sys.argv and sys.argv[0].startswith("gitso") else "gitso fleet publish"
+    words = program.split()[1:]
+    # `fleet publish` runs check by default: it is named without it.
+    default = words[-1:] == ["publish"] and args.command == "check"
+    name = " ".join(words + ([] if args.command in words or default else [args.command]))
     out = _cli.Out(args, name, PAGES.get(args.command, "Fleet"))
     _OUT = out
     try:
@@ -652,7 +654,7 @@ def run(args) -> int:
         return _cli.fail(args, name, message[0].upper() + message[1:] + ".")
     finally:
         _OUT = None
-    return out.finish(code == 0, code, rows=args.command in ("doctor", "fleet-key"))
+    return out.finish(code == 0, code, rows=args.command in ("doctor", "key"))
 
 
 if __name__ == "__main__":

@@ -23,7 +23,9 @@ class CommandDocsTests(unittest.TestCase):
         page = command_docs.render()
         import gitso
         for command in gitso.COMMANDS:
-            self.assertIn(f"### {command.name}\n", page)
+            # Each command is named as typed under its section's heading (a subject's actions share one).
+            self.assertIn(f"`gitso {command.name}`", page)
+            self.assertIn(f"### {command.name.split(' ')[0]}", page)
 
 
 if __name__ == "__main__":

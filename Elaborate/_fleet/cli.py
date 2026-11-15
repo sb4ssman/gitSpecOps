@@ -34,7 +34,7 @@ from Elaborate._fleet.config import (DEFAULT_FOLDER_SECONDS, DEFAULT_LOCAL_PORT,
 from Elaborate._fleet.peer import run_peer  # noqa: E402
 from Special._sync.lock import app_lock  # noqa: E402
 
-#: What start-at-login launches: the App's tray, by path (Elaborate never imports App).
+#: What start-at-sign-in launches: the App's tray, by path (Elaborate never imports App).
 TRAY_SCRIPT = Path(__file__).resolve().parents[2] / "App" / "tray.py"
 from Basic._files import atomic_write_bytes  # noqa: E402
 from Special._sync.manifest import fleet_id_for, is_fleet_secret, new_fleet_secret  # noqa: E402
@@ -58,7 +58,7 @@ def load_saved(directory: Path, *, home=None) -> dict:
     snapshot = load_fleet_settings(home)
     config = snapshot.config("app") if snapshot is not None else None
     if config is None:
-        raise ValueError("this machine is not enrolled; enroll it with: gitso enroll-machine add <library folder>")
+        raise ValueError("this machine is not enrolled; enroll it with: gitso machine add <library folder>")
     return validate(config)
 
 
@@ -169,14 +169,14 @@ def configure(args, directory: Path) -> dict:
     _say(f"Saved: {path}\nTransports:\n{describe(config)}")
     if not args.fleet_secret and machine is None:
         _say(f"\nCreated fleet {fleet_id_for(secret)}. The key is hidden. "
-              "Use fleet-key --show only in the intended local display channel when joining another machine.")
+              "Use 'gitso fleet key --show' only where you mean to display it, when joining another machine.")
     return config
 
 
 def build_parser():
-    # `gitso doctor` reaches the `doctor` subcommand: name it once, not twice, in its usage.
-    public = sys.argv[0] if sys.argv[0].startswith("gitso ") else "gitso setup-fleet"
-    parser = argparse.ArgumentParser(prog="gitso" if public.split(" ", 1)[1] in PAGES else public,
+    # `gitso fleet doctor` reaches the `fleet doctor` subcommand: name it once, not twice, in its usage.
+    # gitso passes the words before the subcommand (`gitso fleet`, `gitso machine`, `gitso`).
+    parser = argparse.ArgumentParser(prog=sys.argv[0] if sys.argv[0].startswith("gitso") else "gitso fleet",
                                      description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     _cli.add_json(parser)
@@ -188,7 +188,7 @@ def build_parser():
     setup.add_argument("--configure-only", action="store_true",
                        help="save the configuration and exit instead of starting")
 
-    peer = commands.add_parser("peer", help="configure this peer non-interactively and start it")
+    peer = commands.add_parser("join", help="enroll, join and start this peer in one step (shows the plan first)")
     peer.add_argument("--root", action="append", help="repository library, inventoried once")
     peer.add_argument("--label", help="display name; independent of the stable machine id")
     peer.add_argument("--fleet-secret", help="join an existing fleet (64 hex characters)")
@@ -210,7 +210,7 @@ def build_parser():
 
     commands.add_parser("run", help="resume this peer; installs no service")
     commands.add_parser("doctor", help="show configuration and reachability; hides the secret")
-    key = commands.add_parser("fleet-key", help="inspect key metadata without logs/writes")
+    key = commands.add_parser("key", help="the fleet key's details, without logs or writes")
     key.add_argument("--show", action="store_true", help="print the raw key here; any agent capturing this output will receive it")
     commands.add_parser("preflight", help="check setup prerequisites and optional tiers without changing anything")
     commands.add_parser("rescan", help="request one deliberate local inventory refresh")
@@ -257,7 +257,7 @@ def build_parser():
     recovery.add_argument("--destination", type=Path,
                           help="new or empty disposable checkout destination, for restore")
 
-    autostart = commands.add_parser("autostart", help="inspect or change start-at-login")
+    autostart = commands.add_parser("start-at-sign-in", help="inspect or change starting the tray at sign-in")
     autostart.add_argument("action", choices=("status", "enable", "disable"), nargs="?",
                            default="status")
     autostart.add_argument("--systemd", action="store_true",
@@ -276,7 +276,7 @@ def build_parser():
     transports.add_argument("--tailnet-port", type=int)
     for name, sub in commands.choices.items():
         _cli.add_json(sub, sub=True)
-        if name in ("peer", "leave", "recovery"):
+        if name in ("join", "leave", "recovery"):
             _cli.add_apply(sub)
     return parser
 
@@ -365,14 +365,14 @@ def guided_tailnet_join_secret() -> str:
 def guided_fleet_setup(directory: Path, *, home=None) -> int:
     """Join this enrolled machine to a fleet: a key (new or existing), then how it shares status.
 
-    The machine's libraries are its own enrollment (Special/enroll_machine.py); this asks only
+    The machine's libraries are its own enrollment (Special/machine.py); this asks only
     the fleet's questions and offers every transport, requiring none."""
     from Special._settings.fleet import replace_fleet_secret
 
     snapshot = load_fleet_settings(home)
     config = snapshot.config("app") if snapshot is not None else None
     if config is None:
-        raise ValueError("this machine is not enrolled; enroll it with: gitso enroll-machine add <library folder>")
+        raise ValueError("this machine is not enrolled; enroll it with: gitso machine add <library folder>")
     _say("Fleet setup. This machine is enrolled; now it joins a fleet. Every machine is a peer:\n"
           "it publishes what it sees and reads what the others publish. None is in charge.\n")
     readiness = preflight_state(int(config["local_port"]))
@@ -398,7 +398,7 @@ def guided_fleet_setup(directory: Path, *, home=None) -> int:
         arguments += ["--folder", folder]
     if not readiness["tailnet"]:
         _say("Tailscale live sharing skipped: it is not connected. Add it later with "
-              "gitso setup-fleet transports --tailnet.")
+              "gitso fleet transports --tailnet.")
     elif _ask("Talk directly to your other machines over Tailscale? [Y/n]: ").strip().lower() \
             not in ("n", "no"):
         arguments.append("--tailnet")
@@ -426,7 +426,7 @@ def guided_fleet_setup(directory: Path, *, home=None) -> int:
 def command_leave(directory: Path, out=None, approval=None, *, home=None) -> int:
     """Stop sharing with the fleet: deselect every transport. The machine stays enrolled.
     A trusted caller passing no `approval` has approved already."""
-    out = out or _cli.Out(None, "setup-fleet leave", PAGES["leave"])
+    out = out or _cli.Out(None, "fleet leave", PAGES["leave"])
     config = load_saved(directory, home=home)
     if not config.get("transports"):
         return out.finish(message="This machine shares with no fleet; nothing to leave.")
@@ -452,7 +452,7 @@ def command_transports(args, directory: Path, out) -> int:
         clear_tailnet=args.clear_tailnet, tailnet_port=args.tailnet_port, directory=directory, home=home)
     out.say(f"Transports now:\n{describe(config)}")
     out.data(transports=config.get("transports") or {})
-    return out.finish(message="Saved. Start sharing with gitso peer, or the tray.")
+    return out.finish(message="Saved. Start sharing with gitso peer run, or the tray.")
 
 
 def command_status(args, out) -> int:
@@ -472,9 +472,9 @@ def command_status(args, out) -> int:
         for item in tier["unlocks"]:
             out.say(f"      {item['text']}" + ("" if item["built"] else "  (planned)"))
     if state["next"] == "machine":
-        out.say("\nNext: gitso enroll-machine add <library folder>")
+        out.say("\nNext: gitso machine add <library folder>")
     elif state["next"]:
-        out.say("\nNext: gitso setup-fleet   (or the tray, then its setup page)")
+        out.say("\nNext: gitso fleet   (or the tray, then its setup page)")
     return out.finish()
 
 
@@ -795,7 +795,7 @@ def command_safe_to_wipe(config: dict, out=None) -> int:
     from Special._sync.inventory import IncrementalObserver
     from Elaborate._recovery.runtime import RecoveryRuntime
 
-    out = out or _cli.Out(None, "check-safe-to-wipe", PAGES["safe-to-wipe"])
+    out = out or _cli.Out(None, "machine safe-to-wipe", PAGES["safe-to-wipe"])
     observer = IncrementalObserver(config)
     observer.inventory()  # only to let recovery match a checkout to its repository id
     recovery = RecoveryRuntime(config, observer, log=lambda *_: None)
@@ -837,15 +837,30 @@ def run_autostart(args, out) -> int:
 
 #: Each fleet subcommand's page title on a screen.
 PAGES = {"setup": "Fleet setup", "peer": "Peer", "run": "Peer", "doctor": "Doctor",
-         "fleet-key": "Fleet key", "preflight": "Preflight", "rescan": "Rescan",
+         "key": "Fleet key", "preflight": "Preflight", "rescan": "Rescan",
          "safe-to-wipe": "Safe to wipe?", "leave": "Leave the fleet", "status": "Setup status",
          "git-client": "Desktop Git app", "baskets": "Baskets", "recovery": "Recovery",
-         "autostart": "Start at sign-in", "transports": "Transports"}
+         "start-at-sign-in": "Start at sign-in", "transports": "Transports"}
+
+
+def _program_words() -> list[str]:
+    """The words gitso put before the subcommand: ["fleet"], ["machine"], [] for `gitso recovery`."""
+    program = sys.argv[0] if sys.argv and sys.argv[0].startswith("gitso") else "gitso fleet"
+    return program.split()[1:]
 
 
 def _command_name(args) -> str:
-    program = sys.argv[0] if sys.argv and sys.argv[0].startswith("gitso ") else ""
-    return program.split(" ", 1)[1] if program else f"setup-fleet {args.command}"
+    """The command as typed: `fleet join`, `machine safe-to-wipe`, `recovery`, `peer run`."""
+    words = _program_words()
+    return " ".join(words + ([args.command] if args.command not in words else []))
+
+
+def _approval(args, argv):
+    """Plans apply with the command as typed: the subcommand first, then everything else."""
+    argv = list(argv)
+    if args.command in argv:
+        argv.remove(args.command)
+    return _cli.Approval(args, " ".join([*_program_words(), args.command]), argv)
 
 
 def _peer_plan(args) -> dict:
@@ -869,7 +884,7 @@ def _main(argv=None, stopping=None, on_ready=None, serve=None):
     args = build_parser().parse_args(argv)
     name = _command_name(args)
     out = _cli.Out(args, name, PAGES.get(args.command, "Fleet"))
-    approval = _cli.Approval(args, name, argv)
+    approval = _approval(args, argv)
     try:
         if args.command == "preflight":
             return command_preflight(out)
@@ -914,7 +929,7 @@ def _main(argv=None, stopping=None, on_ready=None, serve=None):
             return guided_fleet_setup(directory, home=args.settings_home)
         if args.command == "leave":
             return command_leave(directory, out, approval, home=args.settings_home)
-        if args.command == "peer":
+        if args.command == "join":
             plan = _peer_plan(args)
             if not approval.decide(plan, lambda: _cli.outline("Start this machine as a fleet peer", plan),
                                    question="Look through these folders once and start sharing?"):
@@ -926,7 +941,7 @@ def _main(argv=None, stopping=None, on_ready=None, serve=None):
             config = load_saved(directory, home=args.settings_home)
         if args.command == "doctor":
             return command_doctor(config, out)
-        if args.command == "fleet-key":
+        if args.command == "key":
             from Special._runtime.output import fleet_key_record
             out.data(**fleet_key_record(config["fleet_secret"], show=args.show))
             return out.finish(rows=True)
@@ -955,9 +970,9 @@ def main(argv=None, stopping=None, on_ready=None, serve=None):
         load_fleet_settings(args.settings_home)  # invalid common settings fail before locks/effects
     except (OSError, ValueError) as exc:
         return _cli.fail(args, name, f"{exc}.")
-    if args.command == "autostart":
+    if args.command == "start-at-sign-in":
         try:
-            return run_autostart(args, _cli.Out(args, name, PAGES["autostart"]))
+            return run_autostart(args, _cli.Out(args, name, PAGES["start-at-sign-in"]))
         except (OSError, ValueError) as exc:
             return _cli.fail(args, name, f"{exc}.")
     if args.command == "setup" and not args.configure_only:
@@ -976,7 +991,7 @@ def main(argv=None, stopping=None, on_ready=None, serve=None):
         _say("Setup is complete. Start gitSpecOps with the tray and web view: gitso tray; "
              "the web view without a tray: gitso serve-web; headless: gitso peer run.")
         return 0
-    if args.command in ("doctor", "rescan", "preflight", "fleet-key", "status"):
+    if args.command in ("doctor", "rescan", "preflight", "key", "status"):
         return _main(argv, stopping, on_ready)
     try:
         with app_lock(args.config_dir.expanduser()):

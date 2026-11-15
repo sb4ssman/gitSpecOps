@@ -337,7 +337,7 @@ def area_gitso(found: dict, plan: Plan) -> None:
     reach = "adds that folder to your user Path" if WINDOWS else \
         "adds that folder to PATH with a marked line in your shell startup files"
     line("gitso is a command of its own, alongside git and gh: gitSpecOps' special operations in "
-         "any terminal, in any folder (gitso commands, gitso scan-tree ., and so on), using git and "
+         "any terminal, in any folder (gitso commands, gitso scan ., and so on), using git and "
          f"gh underneath. It replaces nothing. Setup writes {files}, small text files you can read, "
          f"in {where}, and {reach}. They run this folder's gitso.py with Python; nothing is compiled "
          "or installed. Without it, the same commands run as: python gitso.py <command>.", "muted")
@@ -484,7 +484,7 @@ def area_app(found: dict, plan: Plan) -> None:
 
 
 def _start_at_login(enable: bool) -> str:
-    command = [str(VENV_PYTHON), str(ROOT / "Elaborate" / "start_at_login.py"), "enable" if enable else "disable"]
+    command = [str(VENV_PYTHON), str(ROOT / "Elaborate" / "start_at_sign_in.py"), "enable" if enable else "disable"]
     done = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, errors="replace")
     if done.returncode:
         raise RuntimeError((done.stderr or done.stdout).strip().splitlines()[-1] if (done.stderr or done.stdout).strip()
@@ -677,7 +677,7 @@ def area_archives(found: dict, plan: Plan) -> None:
     if (added or found["archives"]) and yes_no(
             "Refresh every archive once a month?", "n",
             "A scheduled task for your account, on the 1st of each month at 09:00, each archive in its "
-            "own mode. Remove it any time: schedule-archives --remove-task."):
+            "own mode. Remove it any time: archive schedule --remove-task."):
         plan.add("Monthly refresh", "Monthly refresh: a scheduled task for your account runs every archive "
                  "on the 1st of each month at 09:00.", _schedule_archives)
 
@@ -689,7 +689,7 @@ def _register_archive(folder, mode, repos) -> str:
 
 
 def _schedule_archives() -> str:
-    from Elaborate.schedule_archives import DEFAULT_TASK_NAME, install_monthly_task
+    from Elaborate.archive_schedule import DEFAULT_TASK_NAME, install_monthly_task
     if install_monthly_task(DEFAULT_TASK_NAME, 1, "09:00"):
         raise RuntimeError("the scheduled task was not created")
     return "1st of each month, 09:00"
@@ -737,7 +737,7 @@ def area_fleet(found: dict, plan: Plan) -> None:
         if answer == "s":
             if ask("Anyone, or any program reading this window, who has the key can join your fleet. "
                    "Type SHOW to print it:") == "SHOW":
-                subprocess.call([sys.executable, str(ROOT / "Elaborate" / "setup_fleet.py"), "fleet-key", "--show"],
+                subprocess.call([sys.executable, str(ROOT / "Elaborate" / "fleet.py"), "key", "--show"],
                                 cwd=ROOT)
                 ask("Press Enter when you have copied it:")
         elif answer == "l":

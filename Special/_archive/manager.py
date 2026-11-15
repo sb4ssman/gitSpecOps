@@ -1,8 +1,8 @@
-"""Local archive management shared by Special/archive_manager.py and scheduling above it.
+"""Local archive management shared by Special/archive.py and scheduling above it.
 
 Select/register archives, inspect status, forget registrations or refresh each using its saved
 update/sync mode. Import main for CLI use, or the individual functions for trusted callers.
-New launchers call --refresh with a fixed settings home; choices are read at run time.
+New launchers run `archive refresh FOLDER` with a fixed settings home; choices are read at run time.
 The settings profile owns archive choices. Registration
 still creates a launcher. Refresh uses shared settings, structured results and optional sinks.
 Scheduling belongs to Elaborate. Importing this module does not read or write user state.
@@ -48,7 +48,7 @@ MODE_UPDATE = "update"
 MODE_SYNC = "sync"
 VALID_MODES = (MODE_UPDATE, MODE_SYNC)
 ARCHIVE_LAUNCHER = "update_archive"
-MANAGER_SCRIPT = "Special/archive_manager.py"
+MANAGER_SCRIPT = "Special/archive.py"
 
 
 def now_stamp() -> str:
@@ -168,7 +168,7 @@ def install_launchers(root: Path, approved_prefixes: list[str] | None = None, sh
     data.verify()
     try:
         written = launcher.write_launcher(resolved, ARCHIVE_LAUNCHER, REPO_ROOT, MANAGER_SCRIPT,
-                                          ["--refresh", str(resolved), "--settings-home", str(data.home)])
+                                          ["refresh", str(resolved), "--settings-home", str(data.home)])
     except OSError:
         raise SettingsError("launcher creation failed; some launcher files may exist; registration was not saved") from None
     launcher_type = "+".join(p.suffix.lstrip(".")
@@ -226,7 +226,7 @@ def installation_status(item: dict) -> dict:
     }
 
 
-COMMAND = "archive-manager"
+COMMAND = "archive"
 
 
 def registry_record(show_status: bool, *, home=None) -> dict:
@@ -379,7 +379,7 @@ def register(args, argv) -> int:
                        rows=[("Mode", record.mode), ("Launcher", record.launcher),
                              ("Repositories", record.repo_count)],
                        message="Registered. Its launcher refreshes it in this mode; "
-                               "schedule-archives can run them monthly.",
+                               "archive schedule can run them monthly.",
                        root=record.root, mode=record.mode, launcher=record.launcher, repositories=record.repo_count)
 
 
@@ -452,7 +452,7 @@ def interactive_menu(approved_prefixes, *, home=None) -> int:
         banner("Archives", tagline=True)
         count = len(record["archives"])
         notice(f"{count} folder{'s' if count != 1 else ''} of clones registered",
-               "Each is kept current in its own mode by its launcher, or by schedule-archives.")
+               "Each is kept current in its own mode by its launcher, or by archive schedule.")
         _show_archives(record, False)
         say()
         option("1", "Register a folder of clones", "Choose the folder and its mode; you review before anything is saved.")
@@ -476,77 +476,80 @@ def interactive_menu(approved_prefixes, *, home=None) -> int:
         ask("Press Enter to go back to the archives menu.")
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+ACTIONS = ("add", "remove", "list", "status", "refresh", "check")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """`archive <action>`: each action its own options; --settings-home and --json on every one."""
     from Basic import _cli
-    parser = _cli.parser(COMMAND, "Register folders of clones, give each a launcher, and refresh them.")
-    parser.add_argument("--settings-home", type=Path, help="use the settings in this folder instead")
-    actions = parser.add_mutually_exclusive_group()
-    actions.add_argument("--install", type=Path, metavar="FOLDER",
-                         help="register a folder of clones (shows the plan first)")
-    parser.add_argument("--mode", choices=VALID_MODES,
-                        help="with --install: update (existing clones only) or sync (also clone missing ones); "
-                             "default: the saved choice, else update")
-    actions.add_argument("--list", action="store_true", help="list registered archives")
-    actions.add_argument("--status", action="store_true", help="list them and check their folders and launchers")
-    actions.add_argument("--forget", type=Path, metavar="FOLDER",
-                         help="remove a registration (shows the plan first); keeps every file")
-    actions.add_argument("--refresh", type=Path, metavar="FOLDER", help="refresh one registered archive in its saved mode")
-    actions.add_argument("--refresh-all", action="store_true", help="refresh every registered archive in its saved mode")
-    parser.add_argument("--scan-only", action="store_true",
-                        help="with --refresh/--refresh-all: check without changing anything")
-    parser.add_argument("--allowed-remote", action="append",
-                        help="with --install: only origins starting with this; repeatable (default: GitHub)")
-    add_output_options(parser)
-    _cli.add_apply(parser)
-    args = parser.parse_args(argv)
-    refresh_overrides(args, parser)
-    if args.scan_only and not (args.refresh_all or args.refresh):
-        parser.error("--scan-only requires --refresh or --refresh-all")
-    if args.mode is not None and not args.install:
-        parser.error("--mode requires --install; --refresh reads the saved mode")
-    if args.allowed_remote is not None and not args.install:
-        parser.error("--allowed-remote requires --install; --refresh reads the saved choice")
-    if args.apply is not None and not (args.install or args.forget):
-        parser.error("--apply goes with --install or --forget; a refresh runs the registered choice")
-    return args
-
-
-def refresh_overrides(args, parser=None):
-    """Report and log choices go only with a refresh."""
-    selected = any((args.save_report is not None, args.report_dir is not None,
-                    args.log is not None, args.log_dir is not None))
-    try:
-        if selected and not (args.refresh or args.refresh_all):
-            raise SettingsError("report and log options go with --refresh or --refresh-all")
-        return output_overrides(args)
-    except SettingsError as exc:
-        if parser is not None:
-            parser.error(str(exc))
-        raise
+    program = sys.argv[0] if sys.argv and sys.argv[0].startswith("gitso ") else "gitso archive"
+    parser = argparse.ArgumentParser(prog=program, description="Register folders of clones, give each a "
+                                     "launcher, and refresh them.")
+    actions = parser.add_subparsers(dest="action", required=True)
+    add = actions.add_parser("add", help="register a folder of clones (shows the plan first)")
+    add.add_argument("folder", type=Path)
+    add.add_argument("--mode", choices=VALID_MODES,
+                     help="update (existing clones only) or sync (also clone missing ones); "
+                          "default: the saved choice, else update")
+    add.add_argument("--allowed-remote", action="append",
+                     help="only origins starting with this; repeatable (default: GitHub)")
+    remove = actions.add_parser("remove", help="forget a registration (shows the plan first); keeps every file")
+    remove.add_argument("folder", type=Path)
+    actions.add_parser("list", help="the registered archives")
+    actions.add_parser("status", help="the registered archives, with their folders and launchers checked")
+    for name, about in (("refresh", "refresh one registered archive, or all, each in its saved mode"),
+                        ("check", "check one registered archive, or all, without changing anything")):
+        action = actions.add_parser(name, help=about)
+        action.add_argument("folder", type=Path, nargs="?", help="one registered archive (default: all)")
+        add_output_options(action)
+    for name, action in actions.choices.items():
+        action.add_argument("--settings-home", type=Path, help="use the settings in this folder instead")
+        _cli.add_json(action, sub=True)
+        if name in ("add", "remove"):
+            _cli.add_apply(action)
+    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     from Basic import _cli
     enable_unicode_output()
     argv = list(sys.argv[1:] if argv is None else argv)
-    args = parse_args(argv)
+    if not argv:
+        return menu_main(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    overrides = None
+    if args.action in ("refresh", "check"):
+        try:  # a contradiction among the options is refused before anything is read
+            overrides = output_overrides(args)
+        except SettingsError as exc:
+            parser.error(str(exc))
+    args.install = args.folder if args.action == "add" else None
+    args.forget = args.folder if args.action == "remove" else None
     try:
-        if args.refresh:
-            return refresh_archive(args.refresh, args.scan_only, home=args.settings_home,
-                                   overrides=refresh_overrides(args), args=args)
-        if args.refresh_all:
-            return refresh_all(scan_only=args.scan_only, home=args.settings_home,
-                               overrides=refresh_overrides(args), args=args)
-        if args.list or args.status:
-            print_registry(show_status=args.status, home=args.settings_home, args=args)
+        if args.action in ("refresh", "check"):
+            if args.folder is not None:
+                return refresh_archive(args.folder, args.action == "check", home=args.settings_home,
+                                       overrides=overrides, args=args)
+            return refresh_all(scan_only=args.action == "check", home=args.settings_home,
+                               overrides=overrides, args=args)
+        if args.action in ("list", "status"):
+            print_registry(show_status=args.action == "status", home=args.settings_home, args=args)
             return _cli.OK
-        if args.forget:
+        if args.action == "remove":
             return forget(args, argv)
-        if args.install:
-            return register(args, argv)
-        return interactive_menu(DEFAULT_APPROVED_REMOTE_PREFIXES, home=args.settings_home)
+        args.mode = getattr(args, "mode", None)
+        return register(args, argv)
+    except SettingsError as exc:
+        return _cli.fail(args, COMMAND, f"{exc}.")
     except (ValueError, OSError) as exc:
         return _cli.fail(args, COMMAND, f"{exc}.")
+
+
+def menu_main(argv=None, *, home=None) -> int:
+    """`gitso archive` at a terminal: the archives menu."""
+    enable_unicode_output()
+    return interactive_menu(DEFAULT_APPROVED_REMOTE_PREFIXES, home=home)
 
 
 if __name__ == "__main__":

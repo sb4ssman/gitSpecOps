@@ -104,7 +104,7 @@ def suggest_sync(args) -> int:
     if config and not args.no_catalog:
         save_catalog(config_dir, merged, branches)
     message = f"Looked at {len(observation.repositories)} repositories from the {source}. Nothing was published."
-    record = _cli.document("suggest-sync", manifest=manifest, local_security=security, message=message,
+    record = _cli.document("machine check", manifest=manifest, local_security=security, message=message,
                            warnings=list(observation.issues), artifacts=[])
 
     def show():
@@ -126,7 +126,7 @@ def suggest_sync(args) -> int:
 def suggest_sync_main(argv=None) -> int:
     from Special._sync.observer import DEFAULT_FETCH_TIMEOUT_SECONDS, DEFAULT_FETCH_WORKERS
 
-    parser = _cli.parser("suggest-sync", "Suggest what this machine's repositories need.")
+    parser = _cli.parser("machine check", "Suggest what this machine's repositories need.")
     _profile(parser, roots=False)
     parser.add_argument("--root", action="append", help="folder to look at (instead of the saved ones)")
     parser.add_argument("--recursive-root", action="append", help="folder to look through recursively")
@@ -136,7 +136,7 @@ def suggest_sync_main(argv=None) -> int:
     parser.add_argument("--fetch-workers", type=int, default=DEFAULT_FETCH_WORKERS)
     parser.add_argument("--fetch-timeout", type=int, default=DEFAULT_FETCH_TIMEOUT_SECONDS)
     parser.add_argument("--no-catalog", action="store_true", help="do not update the local catalog")
-    return _run("suggest-sync", suggest_sync, parser, argv)
+    return _run("machine check", suggest_sync, parser, argv)
 
 
 # --------------------------------------------------------------------------- name_repo
@@ -151,29 +151,29 @@ def name_repo(args) -> int:
         entries = [{"repo_id": repo_id, "name": entry.get("alias") or entry.get("display_name"),
                     "alias": bool(entry.get("alias"))}
                    for repo_id, entry in sorted(catalog.items(), key=lambda item: item[0])]
-        return _cli.report(args, "name-repo", ok=True, page="Repository names",
+        return _cli.report(args, "repo list", ok=True, page="Repository names",
                            rows=[(entry["repo_id"][:12], f"{entry['name'] or '(unnamed)'}"
                                   + (" (your name)" if entry["alias"] else "")) for entry in entries],
                            message=f"{len(entries)} repositories in this machine's catalog." if entries
-                           else "The catalog is empty. Run suggest-sync first.", repositories=entries)
+                           else "The catalog is empty. Run machine check first.", repositories=entries)
     if not args.name:
-        raise ValueError("name-repo needs both a repository id and a name (or --list)")
+        raise ValueError("repo name needs both a repository id and a name (or --list)")
     matches = [repo_id for repo_id in catalog if repo_id.startswith(args.repo_id)]
     if len(matches) != 1:
         raise ValueError(f"{'no' if not matches else 'more than one'} repository id starts with {args.repo_id!r}")
     catalog[matches[0]] = {**catalog[matches[0]], "alias": args.name}
     save_catalog(config_dir, catalog)
-    return _cli.report(args, "name-repo", ok=True, page="Repository names", rows=[(matches[0][:12], args.name)],
+    return _cli.report(args, "repo name", ok=True, page="Repository names", rows=[(matches[0][:12], args.name)],
                        message="Named. The name stays on this machine.", repo_id=matches[0], name=args.name)
 
 
 def name_repo_main(argv=None) -> int:
-    parser = _cli.parser("name-repo", "Name a repository in this machine's local catalog.")
+    parser = _cli.parser("repo name", "Name a repository in this machine's local catalog.")
     _profile(parser, roots=False)
     parser.add_argument("repo_id", nargs="?", help="repository id, or the start of one")
     parser.add_argument("name", nargs="?", help="readable name to show for it")
     parser.add_argument("--list", action="store_true", help="list the catalog")
-    return _run("name-repo", name_repo, parser, argv)
+    return _run("repo name", name_repo, parser, argv)
 
 
 # --------------------------------------------------------------------------- catch_up
@@ -238,7 +238,7 @@ def audit_repos(args) -> int:
               "findings": ["bare repository (not audited)"]} for hit in hits if hit.kind == "bare"]
     rows += audit_repositories([hit.path for hit in hits if hit.kind != "bare"])
     attention = any(item["findings"] != ["no audited issue"] for item in rows)
-    _cli.report(args, "audit-repos", ok=not attention, page="Audit repositories",
+    _cli.report(args, "machine audit", ok=not attention, page="Audit repositories",
                 output=render_audit(rows),
                 message=f"Looked at {len(hits)} repositories; " +
                         ("some need attention." if attention else "nothing needs attention."),
@@ -247,10 +247,10 @@ def audit_repos(args) -> int:
 
 
 def audit_repos_main(argv=None) -> int:
-    parser = _cli.parser("audit-repos", "Read-only audit of this machine's repositories: remotes and "
+    parser = _cli.parser("machine audit", "Read-only audit of this machine's repositories: remotes and "
                                         "unfinished work.")
     _profile(parser)
-    return _run("audit-repos", audit_repos, parser, argv)
+    return _run("machine audit", audit_repos, parser, argv)
 
 
 # --------------------------------------------------------------------------- materialize
@@ -311,7 +311,7 @@ def list_live_buffers(args) -> int:
     if root is None or not root.is_dir():
         raise ValueError("select an existing VS Code Backups folder with --backup-root")
     items = inspect(selection["roots"], root)
-    return _cli.report(args, "list-live-buffers", ok=True, page="Unsaved editor buffers", context=(str(root),),
+    return _cli.report(args, "machine buffers", ok=True, page="Unsaved editor buffers", context=(str(root),),
                        rows=[(Path(str(item.get("path", ""))).name or "buffer", item.get("path", ""))
                              for item in items],
                        message="Local metadata only; no editor buffer content was read out, sent or stored.",
@@ -319,11 +319,11 @@ def list_live_buffers(args) -> int:
 
 
 def list_live_buffers_main(argv=None) -> int:
-    parser = _cli.parser("list-live-buffers", "List VS Code unsaved-buffer metadata for files under "
+    parser = _cli.parser("machine buffers", "List VS Code unsaved-buffer metadata for files under "
                                               "this machine's repositories.")
     _profile(parser)
     parser.add_argument("--backup-root", type=Path, help="VS Code Backups folder")
-    return _run("list-live-buffers", list_live_buffers, parser, argv)
+    return _run("machine buffers", list_live_buffers, parser, argv)
 
 
 # --------------------------------------------------------------------------- enroll_machine
@@ -332,7 +332,7 @@ def enroll_machine(args, argv) -> int:
     from Special._sync import enrollment
 
     home = args.settings_home
-    approval = _cli.Approval(args, "enroll-machine", argv)
+    approval = _cli.Approval(args, "machine", argv)
     if args.action == "add":
         paths = args.paths
         if not paths:
@@ -356,7 +356,7 @@ def enroll_machine(args, argv) -> int:
         if not approval.decide(plan, show, question="Enroll these library folders?"):
             return approval.code
         roots = enrollment.add_libraries(paths, home=home, label=args.label, local_port=args.port)
-        return _cli.report(args, "enroll-machine", ok=True, page="Enroll this machine",
+        return _cli.report(args, "machine", ok=True, page="Enroll this machine",
                            rows=[("Library", root) for root in roots],
                            message="Enrolled. Start the app (gitso tray); it looks through new libraries "
                                    "when it starts.", libraries=roots)
@@ -364,7 +364,7 @@ def enroll_machine(args, argv) -> int:
         if len(args.paths) != 1:
             raise ValueError("remove one library at a time")
         roots = enrollment.remove_library(args.paths[0], home=home)
-        return _cli.report(args, "enroll-machine", ok=True, page="Enroll this machine",
+        return _cli.report(args, "machine", ok=True, page="Enroll this machine",
                            rows=[("Library", root) for root in roots],
                            message="Removed. Nothing in that folder was touched.", libraries=roots)
     if args.action == "find":
@@ -385,25 +385,25 @@ def enroll_machine(args, argv) -> int:
         if not approval.decide(plan, show_look, question="Look there?"):
             return approval.code
         found = enrollment.find_libraries(starts, max_depth=args.depth)
-        return _cli.report(args, "enroll-machine", ok=True, page="Enroll this machine  /  Found",
+        return _cli.report(args, "machine", ok=True, page="Enroll this machine  /  Found",
                            rows=[(f"{item['repositories']} repos", item["path"]) for item in found[:40]],
-                           message=("Add the ones that are libraries: gitso enroll-machine add FOLDER ..."
+                           message=("Add the ones that are libraries: gitso machine add FOLDER ..."
                                     if found else "No repositories found there."),
                            found=[{**item, "path": str(item["path"])} for item in found])
     if args.action == "presentation":
         chosen = enrollment.set_presentation(face=args.face, web=args.web, home=home)
-        return _cli.report(args, "enroll-machine", ok=True, page="Enroll this machine",
+        return _cli.report(args, "machine", ok=True, page="Enroll this machine",
                            rows=[("Tray opens", chosen["face"]), ("Web view", chosen["web"])],
                            message="Saved.", presentation=chosen)
     machine, config = enrollment.enrollment(home)
     if config is None:
-        return _cli.report(args, "enroll-machine", ok=True, page="Enroll this machine",
+        return _cli.report(args, "machine", ok=True, page="Enroll this machine",
                            message="This machine is not enrolled. Add a library folder: "
-                                   "gitso enroll-machine add FOLDER (or find FOLDER to get suggestions).",
+                                   "gitso machine add FOLDER (or find FOLDER to get suggestions).",
                            enrolled=False)
     presentation = {**enrollment.DEFAULT_PRESENTATION, **(config.get("presentation") or {})}
     shared = "joined" if config.get("transports") else "not joined (this machine only)"
-    return _cli.report(args, "enroll-machine", ok=True, page="Enroll this machine",
+    return _cli.report(args, "machine", ok=True, page="Enroll this machine",
                        rows=[("Machine", f"{config['label']} ({config['machine_id']})"),
                              *(("Library", root) for root in config["roots"]),
                              ("Tray opens", presentation["face"]), ("Web view", presentation["web"]),
@@ -415,7 +415,7 @@ def enroll_machine(args, argv) -> int:
 
 def enroll_machine_main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    parser = _cli.parser("enroll-machine", "Enroll this machine: its library folders and how the app "
+    parser = _cli.parser("machine", "Enroll this machine: its library folders and how the app "
                                            "shows itself.")
     _profile(parser, roots=False)
     parser.add_argument("action", nargs="?", default="show",
@@ -429,4 +429,4 @@ def enroll_machine_main(argv=None) -> int:
     parser.add_argument("--web", choices=("off", "loopback", "tailnet"),
                         help="serve the web view: off, this machine only, or also your tailnet devices")
     _cli.add_apply(parser)
-    return _run("enroll-machine", lambda args: enroll_machine(args, argv), parser, argv)
+    return _run("machine", lambda args: enroll_machine(args, argv), parser, argv)

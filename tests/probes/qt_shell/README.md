@@ -42,7 +42,7 @@ real library in `.agents/output/` (ignored) -- they show real repository names.
    window? Does closing the window keep the icon?
 3. Does the window look native and readable (light and dark themes)?
 
-**What it does not establish:** notifications, start-at-login, packaging, or any action
+**What it does not establish:** notifications, start-at-sign-in, packaging, or any action
 (pull, push, commit) -- those come with the App itself.
 
 **Results so far:**

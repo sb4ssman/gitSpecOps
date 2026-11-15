@@ -1,4 +1,4 @@
-"""The Qt tray's model, its failure reasons, and start-at-login. Offline and non-mutating.
+"""The Qt tray's model, its failure reasons, and start-at-sign-in. Offline and non-mutating.
 
 - The tray is a skin: every number and state comes from the display document, and an
   unrecognized contract version is refused instead of guessed.

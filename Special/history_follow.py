@@ -8,11 +8,11 @@ May change:   `follow`, once its plan is approved: `git reset --keep` of each sa
               `relink`, once its plan is approved: quoted commit ids in tracked text files,
               left uncommitted for review. Nothing is committed or pushed.
 Results:      JSON without a terminal (or with --json); a screen at one.
-Layer:        Special: this machine, once. Other machines: Elaborate/follow_rewrite_fleet.py.
+Layer:        Special: this machine, once. Other machines: Elaborate/history_follow_fleet.py.
 Status:       working
 
-    gitso follow-rewrite follow [PATH ...] [--match TEXT] [--depth N] [--apply PLAN_ID]
-    gitso follow-rewrite relink WORKSPACE [WORKSPACE ...] --checkout PATH [--apply PLAN_ID]
+    gitso history follow [PATH ...] [--match TEXT] [--depth N] [--apply PLAN_ID]
+    gitso history relink WORKSPACE [WORKSPACE ...] --checkout PATH [--apply PLAN_ID]
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ if _ROOT not in sys.path:
 EFFECT = "local"
 
 
-COMMAND = "follow-rewrite"
+COMMAND = "history"  # with its action: history follow, history relink
 
 
 def main(argv=None) -> int:
@@ -46,7 +46,7 @@ def main(argv=None) -> int:
     follow.add_argument("--depth", type=int, default=3, help="folder depth to search (default 3)")
     follow.add_argument("--no-fetch", action="store_true", help="use the remote refs already fetched")
     linked = commands.add_parser("relink", help="update commit ids quoted in a checkout's files")
-    linked.add_argument("workspaces", nargs="+", type=Path, help="rewrite workspace(s) from clean-history")
+    linked.add_argument("workspaces", nargs="+", type=Path, help="rewrite workspace(s) from history clean")
     linked.add_argument("--checkout", type=Path, required=True, help="the checkout to update")
     for command in (follow, linked):
         _cli.add_json(command, sub=True)

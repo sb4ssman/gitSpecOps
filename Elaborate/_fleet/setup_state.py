@@ -6,7 +6,7 @@ Why:          setup must look and work the same in the terminal, the app's setup
 Reads:        the settings profile; tool readiness (Git, a gh login, Tailscale, likely sync
               folders, the web view's port) only when asked to.
 May change:   join and leave only: the fleet key (while nothing is shared under it) and which
-              transports are selected. Libraries are the machine's (Special/enroll_machine.py).
+              transports are selected. Libraries are the machine's (Special/machine.py).
 Results:      plain dicts, JSON-ready.
 Layer:        Elaborate: other machines, or over time.
 Status:       working

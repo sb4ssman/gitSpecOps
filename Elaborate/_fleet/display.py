@@ -289,7 +289,7 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
                              "reason": desktop.get("reason") or "No desktop Git client configured."},
                          "repository_actions": {"available": True, "reason":
                              "The local dashboard can run the terminal-equivalent catch-up preview. "
-                             "Applying fast-forward pulls is 'gitso catch-up', once its plan is approved."},
+                             "Applying fast-forward pulls is 'gitso machine catch-up', once its plan is approved."},
                          "baskets": {"available": bool(scopes), "reason":
                              "Observe and publish baskets are configured with 'fleet baskets'; "
                              "capture requires a separately confirmed recovery location."
@@ -329,7 +329,7 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
             {"id": "remote_actions", "label": "Fleet catch-up actions",
              "available": True, "enabled": True,
              "description": "Dashboard preview and terminal application share one safe policy.",
-             "detail": "Preview fresh-fetches; 'gitso catch-up' fast-forwards only clean, behind-only local checkouts, once its plan is approved."},
+             "detail": "Preview fresh-fetches; 'gitso machine catch-up' fast-forwards only clean, behind-only local checkouts, once its plan is approved."},
             {"id": "recovery_snapshots", "label": "Unfinished-work recovery snapshots",
              "available": bool(recovery.get("location") and recovery.get("confirmed")),
              "enabled": bool(recovery.get("location") and recovery.get("confirmed")

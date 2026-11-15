@@ -412,7 +412,7 @@ class PushGateTests(unittest.TestCase):
 
     def test_an_approved_publish_plan_does_not_bypass_the_security_gate(self):
         self.commit("data.txt", "private-marker")
-        command = ["sync-archive", "--root", str(self.archive), "--publish", "--no-save-report",
+        command = ["archive sync", "--root", str(self.archive), "--publish", "--no-save-report",
                    "--allowed-remote", str(self.root), "--settings-home", str(self.home), "--json"]
         output = io.StringIO()
         with redirect_stdout(output):

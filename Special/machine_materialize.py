@@ -7,8 +7,8 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Special: this machine, once.
 Status:       working
 
-    gitso materialize --destination /new/library                   (shows the plan)
-    gitso materialize --destination /new/library --apply PLAN_ID   (clones exactly that plan)
+    gitso machine materialize --destination /new/library                   (shows the plan)
+    gitso machine materialize --destination /new/library --apply PLAN_ID   (clones exactly that plan)
 """
 from pathlib import Path
 import sys

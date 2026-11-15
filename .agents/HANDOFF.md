@@ -163,11 +163,11 @@ Phase 1 is where to start. Do not begin a phase until the one before it is commi
   only that `.bat` and stale `.pyc`s). Read-only query on 2026-09-20: last run 2026-09-01, result
   2 (file not found); monthly, next 2026-10-01. **Done 2026-09-22:** the new launcher is
   `<per-user config>/gitSpecOps/refresh_managed_archives.bat`; the user replaces the task with
-  `Elaborate/schedule_archives.py --install-monthly-task` and reinstalls the three archives'
+  `Elaborate/archive_schedule.py --install-monthly-task` and reinstalls the three archives'
   launchers (`--install <root>`). Delete `gitArchiveUpdater/` only after they confirm.
 - **No fleet autostart is registered and no machine is enrolled.** That is why the migration goes
   first: `autostart` writes an absolute resolved path into the registry Run key, the XDG
-  `.desktop` file and the LaunchAgent, so moving files after enrollment would break start-at-login
+  `.desktop` file and the LaunchAgent, so moving files after enrollment would break start-at-sign-in
   silently on every machine.
 - **Untracked generated folders exist at the root** (`gitArchiveUpdater/`, `build/`, `dist/`,
   `git_spec_ops.egg-info/`, `__pycache__/`). None are tracked; do not migrate them. The tracked
@@ -197,8 +197,8 @@ deployment as validation unless the user asks.
 
 **The code is complete and green; the architecture is agreed; nothing has moved.** The
 medium-tier recovery chain is built end to end (capture, storage, preview, disposable restore,
-peer acknowledgement, exact retirement proof), along with `catchup`, `audit`, `materialize`,
-`preflight`, `live_buffers` and `safe_to_wipe`.
+peer acknowledgement, exact retirement proof), along with `catchup`, `audit`, `machine materialize`,
+`fleet preflight`, `live_buffers` and `safe_to_wipe`.
 
 After the migration: enroll three machines on one fleet key, validate with one peer switched off,
 and decide whether unsaved buffer *content* may ever leave a machine.

@@ -30,8 +30,8 @@ Setup offers three ways in:
 
 ```sh
 gitso commands             # every command, by layer
-gitso docs suggest-sync    # what a command reads, may change, and returns
-gitso suggest-sync         # this machine: what needs attention
+gitso docs machine check    # what a command reads, may change, and returns
+gitso machine check         # this machine: what needs attention
 ```
 
 ## Requirements and hard assumptions
@@ -59,11 +59,11 @@ Every part of the walkthrough is also a command, for scripts and for agents:
 
 | Part | Command |
 |---|---|
-| This machine's library folders | `gitso enroll-machine add FOLDER` (`find` suggests some) |
-| Archives | `gitso archive-manager --install FOLDER --mode update` |
-| A monthly archive refresh | `gitso schedule-archives --install-monthly-task` |
-| Start at sign-in | `gitso start-at-login enable` |
-| A fleet | `gitso setup-fleet` (guided), or `setup-fleet transports ...` |
+| This machine's library folders | `gitso machine add FOLDER` (`find` suggests some) |
+| Archives | `gitso archive --install FOLDER --mode update` |
+| A monthly archive refresh | `gitso archive schedule --install-monthly-task` |
+| Start at sign-in | `gitso start-at-sign-in enable` |
+| A fleet | `gitso fleet` (guided), or `fleet transports ...` |
 
 A command that changes things shows its plan first: at a terminal it asks, and a script runs
 it again with `--apply PLAN_ID` (see [For AI agents](FOR-AI-AGENTS.md)).

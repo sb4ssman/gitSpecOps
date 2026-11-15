@@ -1,4 +1,4 @@
-"""secure-push: plan one branch push, and check its outgoing history before publishing.
+"""Plan one branch push, and check its outgoing history before publishing.
 
 Why:          publishing should check the outgoing history first, every time.
 Reads:        the branch, its outgoing commits and the shared security policy.
@@ -12,7 +12,7 @@ Status:       working
 
 Python 3.11+ and Git; --settings-home selects a profile. The plan reads only local scope and
 policy, writes no files and is no security clearance. Applying needs the unchanged plan,
-fetches the selected remote and uses the same security gate as sync-archive. One matching
+fetches the selected remote and uses the same security gate as archive sync. One matching
 upstream on an existing remote branch. No force, extra tags, other branches, hooks or commits.
 """
 from pathlib import Path

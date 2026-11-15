@@ -39,13 +39,19 @@ def git(repo: Path, *args: str) -> str:
     return done.stdout.strip()
 
 
+def has_word(text, word):
+    """The launcher may quote its arguments: `refresh`, "refresh" or 'refresh'."""
+    import re
+    return re.search(rf"(?<![\w-]){word}(?![\w-])", text) is not None
+
+
 with tempfile.TemporaryDirectory(prefix="archive-manage-") as tmp:
     tmp = Path(tmp)
     os.environ["GITSPECOPS_HOME"] = str(tmp / "home")
 
-    from Special import archive_manager as manage  # noqa: E402  (after GITSPECOPS_HOME is set)
+    from Special import archive as manage  # noqa: E402  (after GITSPECOPS_HOME is set)
     from Special._archive import manager as engine  # noqa: E402
-    from Elaborate import schedule_archives as scheduled  # noqa: E402
+    from Elaborate import archive_schedule as scheduled  # noqa: E402
     from Special._archive.registry import load_registry, registered_roots, registry_path  # noqa: E402
 
     check("scheduling exposes no duplicate local-management API",
@@ -53,7 +59,7 @@ with tempfile.TemporaryDirectory(prefix="archive-manage-") as tmp:
     check("importing management commands creates no user state", not (tmp / "home").exists())
     with redirect_stderr(io.StringIO()):
         try:
-            manage.parse_args(["--install-monthly-task"])
+            manage.build_parser().parse_args(["--install-monthly-task"])
         except SystemExit as exc:
             check("Special manager refuses scheduling flags", exc.code == 2)
         else:
@@ -86,20 +92,20 @@ with tempfile.TemporaryDirectory(prefix="archive-manage-") as tmp:
     check("per-archive launcher written", bool(written) and Path(record.launcher).is_file())
     text = "\n".join(p.read_text(encoding="utf-8") for p in written)
     check("launcher resolves saved choices through the manager at its selected profile",
-          "Special/archive_manager.py" in text and "--refresh" in text and "--settings-home" in text
+          "Special/archive.py" in text and has_word(text, "refresh") and "--settings-home" in text
           and str(tmp / "home") in text and "--update" not in text and "--yes" not in text)
     check("launcher never carries a publish/reconcile/rename verb",
           not any(flag in text for flag in FORBIDDEN))
     check("registry records the archive", registered_roots() == [str(archive.resolve())])
     with redirect_stdout(io.StringIO()):
-        check("Special lists the registered archive", manage.main(["--list"]) == 0)
+        check("Special lists the registered archive", manage.main(["list"]) == 0)
 
     refresh = scheduled.write_refresh_all_script()
     check("refresh-all launcher lives in the per-user state folder", refresh.parent == tmp / "home")
     refresh_text = "\n".join(p.read_text(encoding="utf-8")
                              for p in (tmp / "home").glob(f"{scheduled.REFRESH_ALL_LAUNCHER}.*"))
-    check("refresh-all launcher runs Special/archive_manager.py --refresh-all",
-          "Special/archive_manager.py" in refresh_text and "--refresh-all" in refresh_text)
+    check("refresh-all launcher runs Special/archive.py refresh (every archive)",
+          "Special/archive.py" in refresh_text and has_word(refresh_text, "refresh"))
     check("refresh-all launcher knows where the checkout is", str(ROOT) in refresh_text)
 
     # New upstream work, then an in-process refresh must fast-forward the archive's clone.
@@ -152,7 +158,7 @@ with tempfile.TemporaryDirectory(prefix="archive-manage-") as tmp:
           and registered_roots() == [])
 
     # Both saved modes reach the shared headless operation, without network discovery.
-    update_root, sync_root = tmp / "update-archive", tmp / "sync-archive"
+    update_root, sync_root = tmp / "archive update", tmp / "archive sync"
     update_root.mkdir()
     sync_root.mkdir()
     fixture = {"version": 1, "installations": [
@@ -182,7 +188,7 @@ with tempfile.TemporaryDirectory(prefix="archive-manage-") as tmp:
         check("monthly task uses the retained refresh launcher",
               install.call_args.args == ("fixture-task", tmp / "refresh", 1, "09:00"))
 
-code_only = (ROOT / "Elaborate" / "schedule_archives.py").read_text(encoding="utf-8").split('"""', 2)[2]
+code_only = (ROOT / "Elaborate" / "archive_schedule.py").read_text(encoding="utf-8").split('"""', 2)[2]
 check("archive_manage code never names --publish", "--publish" not in code_only)
 local_code = (ROOT / "Special" / "_archive" / "manager.py").read_text(encoding="utf-8")
 check("local manager imports neither Elaborate nor the scheduler",

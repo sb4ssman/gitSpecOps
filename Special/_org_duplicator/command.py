@@ -459,17 +459,17 @@ download nothing. Run the same command again with --apply PLAN_ID to carry out e
 that plan; at a terminal, you are asked instead.
 
   # Plan a backup of every namespace, then apply it by its id:
-  gitso duplicate-org --batch --namespaces all --dest /backups/github
-  gitso duplicate-org --batch --namespaces all --dest /backups/github --apply PLAN_ID
+  gitso org copy --batch --namespaces all --dest /backups/github
+  gitso org copy --batch --namespaces all --dest /backups/github --apply PLAN_ID
 
   # Batch, skip one org, mirror clones:
-  gitso duplicate-org --batch --namespaces 'all,!some-org' --dest /backups/github --format mirror
+  gitso org copy --batch --namespaces 'all,!some-org' --dest /backups/github --format mirror
 
   # One repo:
-  gitso duplicate-org --single owner/name --dest /backups/github
+  gitso org copy --single owner/name --dest /backups/github
 
   # Any mode, answers pre-supplied one per line (blank line = that prompt's default):
-  gitso duplicate-org --answers answers.txt
+  gitso org copy --answers answers.txt
 
 Run files: {RUNS_DIR}
 """
@@ -486,7 +486,7 @@ def _enter_batch(args):
 def parse_args(argv=None):
     """Parse CLI flags. No flags -> fully interactive (the historical behavior)."""
     parser = argparse.ArgumentParser(
-        prog="gitso duplicate-org",
+        prog="gitso org copy",
         description="Cautious copying of whole GitHub namespaces (see modes below).",
         epilog=_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -551,7 +551,7 @@ def _run_mode(args) -> int:
             batch.run_batch_download(args)
     code = batch.RESULT.get("code", _cli.OK)
     if machine:
-        _cli.print_json(_cli.document("duplicate-org", code == _cli.OK, lines=captured.getvalue().splitlines(),
+        _cli.print_json(_cli.document("org copy", code == _cli.OK, lines=captured.getvalue().splitlines(),
                                       **{key: value for key, value in batch.RESULT.items() if key != "code"}))
     return code
 

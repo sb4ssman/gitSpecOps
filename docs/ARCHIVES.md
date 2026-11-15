@@ -3,7 +3,7 @@
 ### Copy an organization
 
 ```sh
-gitso duplicate-org
+gitso org copy
 ```
 
 Downloads every repository in an organization, uploads a folder of local repositories into one,
@@ -14,29 +14,29 @@ continues instead of restarting.
 ### Keep archives current
 
 ```sh
-gitso update-archive --root /path/to/archive
-gitso archive-manager --list
-gitso archive-manager --install /path/to/archive --mode update
+gitso archive update --root /path/to/archive
+gitso archive --list
+gitso archive --install /path/to/archive --mode update
 ```
 
 **Fast-forward pulls only.** A repository that is dirty, diverged, or on an unapproved remote is
-reported and skipped, never "fixed". `update-archive` uses only `git` and updates what is on
-disk, with any host. `sync-archive` asks GitHub (via `gh`) what *should* be there, so it can
+reported and skipped, never "fixed". `archive update` uses only `git` and updates what is on
+disk, with any host. `archive sync` asks GitHub (via `gh`) what *should* be there, so it can
 also clone what is missing, repair stale origins after a rename, and rename folders to match
 upstream, each as a separate, explicitly approved kind of change. If discovery fails it falls
 back to updating only; it never invents a clone, an orphan or a rename from a failed listing.
 Identity is by stable provider id, never by folder name or URL.
 
-`archive-manager` registers archives, refreshes them in their saved mode, and installs
-per-archive launchers; `schedule-archives` sets up a monthly refresh. Registrations live in your
+`archive` registers archives, refreshes them in their saved mode, and installs
+per-archive launchers; `archive schedule` sets up a monthly refresh. Registrations live in your
 per-user gitSpecOps folder (`%APPDATA%\gitSpecOps` on Windows, `~/Library/Application
 Support/gitSpecOps` on macOS, `~/.config/gitSpecOps` on Linux; `GITSPECOPS_HOME` overrides),
 never in the checkout, so a scheduled refresh keeps working when the code moves. Setup's
 walkthrough has an Archives part that does the registering for you.
 
-`update-archive` and `sync-archive` show each folder's plan first and change nothing until it is
+`archive update` and `archive sync` show each folder's plan first and change nothing until it is
 approved. Registering an archive is its approval, so its launcher and the monthly task refresh
-it unattended; `archive-manager --refresh-all --scan-only` checks without changing anything.
+it unattended; `archive --refresh-all --scan-only` checks without changing anything.
 Saving each run's report as a JSON file is opt-in (`--save-report`). A counts-only log line (how
 many repositories were checked, updated or skipped, never their names) is written unless
 `--no-log`.
@@ -44,8 +44,8 @@ many repositories were checked, updated or skipped, never their names) is writte
 ### Publishing archives
 
 ```sh
-gitso sync-archive --root /path/to/archive --publish                   # the plan
-gitso sync-archive --root /path/to/archive --publish --apply PLAN_ID   # exactly that plan
+gitso archive sync --root /path/to/archive --publish                   # the plan
+gitso archive sync --root /path/to/archive --publish --apply PLAN_ID   # exactly that plan
 ```
 
 `--publish` pushes without force, so Git itself refuses anything that is not a fast-forward.

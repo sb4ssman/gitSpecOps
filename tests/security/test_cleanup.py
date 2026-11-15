@@ -197,7 +197,7 @@ class CleanupPlans(Fixture):
         self.assertFalse(result.artifacts)
 
     def test_direct_and_catalog_plan_route_share_the_headless_operation(self):
-        for invoke in (_cleanup_cli.main, lambda args: gitso.main(["clean-history", *args])):
+        for invoke in (_cleanup_cli.main, lambda args: gitso.main(["history clean", *args])):
             output = io.StringIO()
             with redirect_stdout(output):
                 code = invoke(["plan", str(self.report), "--choices", str(self.choices),
@@ -297,7 +297,7 @@ class NativeCleanup(Fixture):
         before = self.git("rev-parse", "HEAD"), (self.repo / ".git/index").read_bytes()
         output = io.StringIO()
         with redirect_stdout(output):
-            code = gitso.main(["clean-history", "plan", str(self.report), "--choices", str(self.choices),
+            code = gitso.main(["history clean", "plan", str(self.report), "--choices", str(self.choices),
                                "--settings-home", str(self.home), "--include-remote-refs", "--plan-out", str(self.plan_path), "--json"])
         self.assertEqual(code, 0, output.getvalue())
         plan_id = json.loads(output.getvalue())["plan_id"]

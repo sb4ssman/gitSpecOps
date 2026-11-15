@@ -322,7 +322,7 @@ class Scanners(unittest.TestCase):
         watch.write_text("private-marker\n", encoding="utf-8")
         safe = self.root / "safe.txt"
         safe.write_text("", encoding="utf-8")
-        done = subprocess.run([sys.executable, "-B", str(ROOT / "Special/scan_tree.py"),
+        done = subprocess.run([sys.executable, "-B", str(ROOT / "Special/scan.py"),
                                str(self.repo), "--never-publish", str(watch), "--safe-file", str(safe), "--json"],
                               cwd=self.root, capture_output=True, text=True)
         self.assertEqual(done.returncode, 1, done.stderr + done.stdout)
@@ -343,7 +343,7 @@ class Scanners(unittest.TestCase):
         settings.write_text(json.dumps(document), encoding="utf-8")
         original = settings.read_bytes(), (self.repo / ".git/index").read_bytes(), self.git("rev-parse", "HEAD")
         for material in ("tree", "history"):
-            done = subprocess.run([sys.executable, "-B", str(ROOT / f"Special/scan_{material}.py"),
+            done = subprocess.run([sys.executable, "-B", str(ROOT / {"tree": "Special/scan.py", "history": "Special/history_scan.py"}[material]),
                 str(self.repo), "--settings-home", str(home), "--json"],
                 cwd=self.root, capture_output=True, text=True)
             self.assertEqual(done.returncode, 1, done.stderr)

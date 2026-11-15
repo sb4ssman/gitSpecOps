@@ -367,7 +367,7 @@ def apply_publish(root: Path, plan, issues: list[Issue],
 def build_report(result: DetectResult, applied: dict[str, int], issues: list[Issue], mode: str) -> dict:
     plan = result.plan
     return {
-        "command": "sync-archive",
+        "command": "archive sync",
         "generated": datetime.now().isoformat(timespec="seconds"),
         "root": result.root,
         "type": ("org" if result.remote_authoritative else "update-only") if result.provider_name else "loose",

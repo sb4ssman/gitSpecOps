@@ -50,7 +50,7 @@ class CleanupResult:
                 130 if self.status == "interrupted" else 2)
 
     def record(self):
-        return conceal({"operation": "clean-history", "status": self.status,
+        return conceal({"operation": "history clean", "status": self.status,
                         "message": self.message, "plan_id": self.plan_id, "counts": self.counts,
                         "source_scan": self.source_scan,
                         "decisions": self.decisions, "stage": self.stage, "error_code": self.error_code,

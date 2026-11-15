@@ -20,8 +20,8 @@ Scans use your saved security policy and print masked results without writing re
 (a screen at a terminal, one JSON record otherwise):
 
 ```sh
-gitso scan-tree /path/to/repo
-gitso scan-history /path/to/repo
+gitso scan /path/to/repo
+gitso history scan /path/to/repo
 ```
 
 - **Engines.** Built-in checks need no extra packages. Choose optional engines with repeatable
@@ -38,8 +38,8 @@ gitso scan-history /path/to/repo
 **Reviews.** For a documented example or a test fixture, review that exact finding:
 
 ```sh
-gitso scan-tree /path/to/repo --out /private/reports/scan.json
-gitso review-finding /private/reports/scan.json finding-000001 --reason "Reviewed example"
+gitso scan /path/to/repo --out /private/reports/scan.json
+gitso review /private/reports/scan.json finding-000001 --reason "Reviewed example"
 ```
 
 The plan writes nothing; at a terminal you are asked, and a script reruns it with
@@ -51,7 +51,7 @@ PDFs and 7z/RAR archives remain coverage gaps. Revoke with `--revoke <review id>
 on this machine.
 
 **Staged bytes.** If Git's line-ending conversion or a clean filter changes a reviewed file when
-staged, `scan-tree --staged --out FILE` inspects exactly what would be committed. It never stages
+staged, `scan --staged --out FILE` inspects exactly what would be committed. It never stages
 or commits anything.
 
 **`secure-commit`.** Check the files, message and author, then apply that exact plan (at a
@@ -73,7 +73,7 @@ without network access; approving it (or `--apply '<plan-id>'`) fetches, checks 
 history through the same gate as archive publishing, then pushes that fixed snapshot. There is
 no force, extra-tag or bypass option.
 
-**Status with security.** `gitso publish-status check --root /path/to/library --local-only
+**Status with security.** `gitso fleet publish check --root /path/to/library --local-only
 --no-publish --no-catalog` reports Git status together with local findings. Only the
 status manifest is ever shared; findings stay on this machine. The map's **Check local
 security** runs the same checks on observed repositories, in memory only.
@@ -82,14 +82,14 @@ security** runs the same checks on observed repositories, in memory only.
 a new private mirror, never the source, and never publishes:
 
 ```sh
-gitso scan-history /path/to/repo --out /private/history.json
-gitso clean-history plan /private/history.json --choices /private/choices.json --include-remote-refs --plan-out /private/plan.json
-gitso clean-history rewrite /private/plan.json --workspace /private/new-run --apply PLAN_ID
+gitso history scan /path/to/repo --out /private/history.json
+gitso history clean plan /private/history.json --choices /private/choices.json --include-remote-refs --plan-out /private/plan.json
+gitso history clean rewrite /private/plan.json --workspace /private/new-run --apply PLAN_ID
 ```
 
-`gitso docs clean-history` gives the choices format. Rewriting always needs a person: an
+`gitso docs history clean` gives the choices format. Rewriting always needs a person: an
 attended terminal, the plan id and the typed word `REWRITE`; it has no unattended form. Remaining findings or gaps hold the result for review. A verified
 mirror does not rotate credentials, erase other copies or update other clones: publishing it is
-your step, and `gitso follow-rewrite` then moves your clones onto it.
+your step, and `gitso history follow` then moves your clones onto it.
 
 [Back to the README](../README.md)

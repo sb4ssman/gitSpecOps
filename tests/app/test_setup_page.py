@@ -52,21 +52,33 @@ class SetupTests(unittest.TestCase):
         self.assertIn("One privacy policy on every machine", planned)
         self.assertEqual(len(TIERS), 5)
 
-    def test_every_change_needs_its_typed_word(self):
+    def approved(self, routes, action, payload):
+        """What the page does: ask for the plan, then send it back with its id."""
+        plan = routes.act(action, payload)
+        self.assertFalse(plan["applied"])
+        return routes.act(action, {**payload, "apply": plan["plan_id"]})
+
+    def test_every_change_shows_its_plan_first_and_a_stale_id_changes_nothing(self):
         for action, payload in (("find", {"paths": [str(self.root)]}),
-                                ("add", {"paths": [str(self.library)]}),
-                                ("join", {"folder": str(self.root)}), ("leave", {})):
-            with self.assertRaisesRegex(ValueError, "type [A-Z]+ to allow"):
-                self.routes.act(action, {**payload, "confirm": "yes"})
+                                ("add", {"paths": [str(self.library)]}), ("leave", {})):
+            with self.subTest(action=action):
+                first = self.routes.act(action, payload)
+                self.assertFalse(first["applied"])
+                self.assertEqual(first["plan"]["action"], action)
+                stale = self.routes.act(action, {**payload, "apply": "0" * 12})
+                self.assertFalse(stale["applied"])
+                self.assertIn("changed", stale["notice"])
+        joined = self.routes.act("join", {"key": "ab" * 32, "folder": str(self.root)})
+        self.assertNotIn("ab" * 32, json.dumps(joined), "a fleet key is covered by the id, never echoed")
         self.assertIsNone(setup_state(self.home, self.state_dir)["machine"])
 
     def test_find_add_presentation_join_and_leave(self):
         seen = []
         routes = SetupRoutes(self.home, self.state_dir, on_change=seen.append)
-        found = routes.act("find", {"paths": [str(self.root)], "confirm": "LOOK"})["found"]
+        found = self.approved(routes, "find", {"paths": [str(self.root)]})["found"]
         self.assertEqual(found[0]["path"], str(self.library.resolve()))
         self.assertIsNone(setup_state(self.home, self.state_dir)["machine"], "looking never enrolls")
-        state = routes.act("add", {"paths": [str(self.library)], "confirm": "SCAN"})["state"]
+        state = self.approved(routes, "add", {"paths": [str(self.library)]})["state"]
         self.assertEqual(state["machine"]["libraries"], [str(self.library.resolve())])
         self.assertEqual(state["next"], "fleet")
         self.assertTrue(seen and seen[-1]["machine"], "the app hears about the change")
@@ -74,11 +86,11 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(state["machine"]["presentation"], {"face": "window", "web": "off"})
         synced = self.root / "synced"
         synced.mkdir()
-        state = routes.act("join", {"folder": str(synced), "share_names": False, "confirm": "JOIN"})["state"]
+        state = self.approved(routes, "join", {"folder": str(synced), "share_names": False})["state"]
         self.assertEqual(list(state["fleet"]["transports"]), ["folder"])
         self.assertFalse(state["fleet"]["share_names"])
         self.assertTrue([tier for tier in state["tiers"] if tier["id"] == "fleet"][0]["reached"])
-        state = routes.act("leave", {"confirm": "LEAVE"})["state"]
+        state = self.approved(routes, "leave", {})["state"]
         self.assertIsNone(state["fleet"])
         self.assertEqual(state["machine"]["libraries"], [str(self.library.resolve())])
 
@@ -101,13 +113,13 @@ class SetupTests(unittest.TestCase):
                         return response.status, json.loads(response.read())
                 except urllib.error.HTTPError as exc:
                     return exc.code, json.loads(exc.read() or b"{}")
-            body = {"paths": [str(self.library)], "confirm": "SCAN"}
+            body = {"paths": [str(self.library)]}
             self.assertEqual(post(body, {"Origin": origin})[0], 403, "no token, no change")
             self.assertEqual(post(body, {"Origin": "http://elsewhere", "X-GitSpecOps-Token": token})[0], 403)
-            status, refused = post({**body, "confirm": "scan"}, {"Origin": origin, "X-GitSpecOps-Token": token})
-            self.assertEqual(status, 400)
-            self.assertIn("type SCAN", refused["error"], "a refusal says why")
-            status, result = post(body, {"Origin": origin, "X-GitSpecOps-Token": token})
+            status, planned = post(body, {"Origin": origin, "X-GitSpecOps-Token": token})
+            self.assertEqual(status, 200)
+            self.assertFalse(planned["applied"], "the first answer is the plan")
+            status, result = post({**body, "apply": planned["plan_id"]}, {"Origin": origin, "X-GitSpecOps-Token": token})
             self.assertEqual(status, 200)
             self.assertTrue(result["state"]["machine"])
         finally:
@@ -132,14 +144,14 @@ class SetupTests(unittest.TestCase):
             threading.Event().wait(0.05)
         self.assertNotIn("error", outcome, outcome.get("error"))
         self.assertTrue(urls and urls[0].endswith("/setup"))
-        SetupRoutes(self.home, self.state_dir).act("add", {"paths": [str(self.library)], "confirm": "SCAN"})
+        self.approved(SetupRoutes(self.home, self.state_dir), "add", {"paths": [str(self.library)]})
         # The page's own routes notice; here the change came from outside, so stop explicitly.
         stopping.set()
         thread.join(timeout=10)
         self.assertFalse(thread.is_alive())
 
     def test_the_app_loop_restarts_the_peer_when_setup_changes_something(self):
-        SetupRoutes(self.home, self.state_dir).act("add", {"paths": [str(self.library)], "confirm": "SCAN"})
+        self.approved(SetupRoutes(self.home, self.state_dir), "add", {"paths": [str(self.library)]})
         app_stopping, runs, routes = threading.Event(), [], []
 
         def fake_server(port, setup=None):

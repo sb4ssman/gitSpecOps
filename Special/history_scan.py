@@ -1,4 +1,4 @@
-"""Read-only local reachable-history scan; Python 3.11+, Git, no fetch or rewrite.
+"""Scan a repository's reachable history for secrets and protected values; no fetch.
 
 Why:          anything ever committed stays in history, published or not.
 Reads:        every commit reachable from local refs, and the shared security policy.
@@ -7,7 +7,7 @@ Results:      JSON without a terminal (or with --json); a screen at one. A full 
 Layer:        Special: this machine, once.
 Status:       working
 
-    python Special/scan_history.py /path/to/repo --settings-home /path/to/profile --json
+    gitso history scan /path/to/repo --settings-home /path/to/profile --json
 
 The settings profile owns the saved policy. Masked stdout is default; --out requests a full private report. --ref narrows
 local reachable refs. No implicit report/log/config. Returns 0 checked, 1 findings, 2 incomplete.

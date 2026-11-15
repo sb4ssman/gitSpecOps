@@ -8,7 +8,7 @@ Results:      JSON without a terminal (or with --json); a screen at one.
 Layer:        Elaborate: other machines, or over time.
 Status:       working
 
-    python Elaborate/setup_fleet.py --help
+    gitso fleet --help
 """
 from pathlib import Path
 import sys
@@ -21,8 +21,8 @@ from Elaborate._fleet.commands import fleet  # noqa: E402
 
 
 def main(argv=None):
-    return fleet(argv, ("setup", "status", "transports", "leave", "fleet-key", "baskets",
-                        "git-client", "peer"))
+    return fleet(argv, ("setup", "status", "transports", "leave", "key", "baskets",
+                        "git-client", "join"))
 
 
 EFFECT = "remote"

@@ -23,7 +23,7 @@ kept object contents and renames; the commit callback separately handles deletio
 Exact identity pairs preserve other contributors. The child keeps fresh-clone checks, empty
 commits and merge topology; it disables automatic commit-message hash substitution. Those choices
 follow the [upstream manual](https://github.com/newren/git-filter-repo/blob/main/Documentation/git-filter-repo.txt).
-The public clean-history adapter owns attended typed approval; no force option is exposed. Private plan/native-run/proof artifacts
+The public history clean adapter owns attended typed approval; no force option is exposed. Private plan/native-run/proof artifacts
 stay in the explicitly selected new workspace; failed workspaces are retained without retries.
 
 The executor runs read-only integrity checks, compares every selected reachable commit, ordered
@@ -45,8 +45,8 @@ other OSs, nested-tag execution, broader encoding/signature handling and full GU
 composition remain acceptance work. The archived v1 tools stay frozen. This proof does not
 erase external copies or authorize changing actual repository history.
 
-**2026-10-29 public cleanup and remote-ref boundary:** Special/clean_history.py and
-gitso clean-history share _cleanup.run_cleanup. The plan command accepts a full private history
+**2026-10-29 public cleanup and remote-ref boundary:** Special/history_clean.py and
+gitso history clean share _cleanup.run_cleanup. The plan command accepts a full private history
 report and explicit choice JSON: literal path removals, finding-id replacements, whole containing
 file/container removals and exact author/committer/tagger identity choices. It rereads the current
 material and verifies report refs and selected evidence; it never treats a finding as a purge
@@ -80,7 +80,7 @@ Following/relinking histories, renaming/removing refs and publication remain sep
 **2026-10-29 scoped review/report evidence:** the report writer supports explicit private
 storage outside Git; inside Git it requires an ignored, untracked target. `_private_files.py`
 owns exclusive creation, link/traversal checks, bounded strict JSON and partial-file cleanup.
-`review_finding.py` / gitso review-finding preview and explicitly save/revoke one content-bound
+`review_finding.py` / gitso review preview and explicitly save/revoke one content-bound
 example decision through `_review_operation.py` and `_reviews.py`. Decisions never add a
 global safe value. Full reasons/evidence and byte digests stay private; accepted findings remain
 visible in masked records. The common reader/checks apply these records to exact matching
@@ -93,10 +93,10 @@ cross-machine transfer/relocation and native permissions remain separate accepta
 **2026-10-28 implementation evidence:** Special/_security/_push.py now composes selected policy,
 the active outgoing-range reader and optional engines with Basic.fetch and a fixed-tip,
 single-branch Basic.push.push_snapshot. Archive Sync publish is the first publishing caller.
-Special/commit_repo.py and gitso commit now use the checked named-file operation in _commit/:
+Special/secure_commit.py and gitso commit now use the checked named-file operation in _commit/:
 read-only exact-plan preview, raw/staged/final-hook checks, preserved unrelated staging and
 traditional hooks via a temporary relay, and explicit partial state after uncertain execution.
-No persistent hooks/config are installed. As of 2026-10-29, Special/push_repo.py / gitso push
+No persistent hooks/config are installed. As of 2026-10-29, Special/secure_push.py / gitso push
 provide the direct publication route through the same gate, with policy-bound local planning.
 Sync check and the explicit local dashboard security action share working-tree/cached-outgoing
 advice; results stay outside fleet manifests/reports. Continuous advice, recovery/hygiene,

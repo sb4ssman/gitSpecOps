@@ -79,7 +79,7 @@ app over independently useful operations, remembered per-machine context and exp
 policy. Its acceptance work is in WORKING-NOTES. It extends the existing layer/security designs;
 old handoffs and descriptions of current code do not override these newer decisions.
 
-The command catalog now includes `review-finding` and `clean-history` (16 routes). Active scanners support full
+The command catalog now includes `review` and `history clean` (16 routes). Active scanners support full
 private reports outside Git and exact-content example reviews. Preview writes nothing;
 explicit approval saves/revokes private operational records under the selected profile.
 Findings remain visible; strong/prohibited material and incomplete checks cannot be waived.
@@ -120,7 +120,7 @@ Applies to **every tracked file**: code, comments, docstrings, tests, `WORKING-N
 - **Real account, organization, or repository names** — fixtures and self-tests use invented
   names (`old-team`, `new-team`, `example/work`). A real namespace in a self-test is still a
   disclosure, and `archive_diff.py` shipped with one for months before it was caught.
-- **Secrets of any kind.** The fleet secret, tokens, anything 64-hex. `doctor` and config dumps
+- **Secrets of any kind.** The fleet secret, tokens, anything 64-hex. `fleet doctor` and config dumps
   must keep printing `(set, hidden)`.
 
 Write the *shape* of the finding, not the specimen: "a root under an ignored name discarded
@@ -176,16 +176,16 @@ This repo is intentionally small. Keep it that way.
 
 The entry-point tools are:
 
-- `Special/archive_manager.py` (local front door: registry, launchers, update/sync)
-- `Elaborate/schedule_archives.py` (scheduling and existing-launcher compatibility)
-- `Special/update_archive.py` (standalone, git-only, update-only)
-- `Special/duplicate_org.py`
-- `Elaborate/publish_status.py` (cross-machine status, and the group operations that act
+- `Special/archive.py` (local front door: registry, launchers, update/sync)
+- `Elaborate/archive_schedule.py` (scheduling and existing-launcher compatibility)
+- `Special/archive_update.py` (standalone, git-only, update-only)
+- `Special/org_copy.py`
+- `Elaborate/fleet_publish.py` (cross-machine status, and the group operations that act
   on it — observation never mutates, mutation is always an invoked command)
 
 The archive manager and direct commands share implementations in `Special/_archive/`:
 updater.py, sync.py, manager.py, plan.py and registry.py. The local manager does not import
-Elaborate or scheduling. update-archive integrates common settings, headless
+Elaborate or scheduling. archive update integrates common settings, headless
 structured results and counts-only logging through update_operation.py/update_cli.py and
 Special/_runtime/. The manager/registry now read archive choices from existing common v2
 profiles, with separate receipts; their output/logging and other consumers await adoption.
@@ -209,7 +209,7 @@ users with older settings. See knowledge/settings-schema.md.
 
 The archive operations use:
 
-- `Special/sync_archive.py` (plan/apply: detect -> plan -> decide -> execute -> review)
+- `Special/archive_sync.py` (plan/apply: detect -> plan -> decide -> execute -> review)
 - `Special/_archive/plan.py` (the judgment: fast-forward eligibility, drift buckets, publish
   classification; its tests are `tests/special/test_archive_plan.py`)
 - the git operations themselves are `Basic/pull.py` (ff-only), `Basic/push.py` (never forced),
@@ -224,7 +224,7 @@ The optional bootstrap helper is:
 
 The setup menu offers the walkthrough (which includes an Archives part), one command from a
 list, the Python environment and a check of this computer. Archive preferences are set by
-registering archives (archive-manager), not by a separate settings screen.
+registering archives (archive), not by a separate settings screen.
 
 Archive planning and duplicator helpers use explicit imports from private Special folders.
 The old `git-sync-suggester/` tree is resolved into the layers (2026-11-11); see the tree in
@@ -294,7 +294,7 @@ bootstrap they already carry.
 ## Launchers
 
 **No per-tool shortcuts.** `gitso.py` is the one front door: `python gitso.py <command>` runs any
-tool, and every `.py` entry can also be run directly (`python3 Special/update_archive.py --help`).
+tool, and every `.py` entry can also be run directly (`python3 Special/archive_update.py --help`).
 Setup writes no launchers into the repository (decided 2026-11-13: per-tool shortcuts in the
 root do not match the product). `run_setup.{bat,ps1,sh}` stay committed — they bootstrap setup
 itself. The per-archive `update_archive` launchers and the
@@ -305,7 +305,7 @@ points at it, and that path must survive the code moving (2026-09-22).
 
 ## Archive Tools
 
-`Special/update_archive.py` is the low-level, git-only updater. It scans direct children of archive roots and only updates repos that:
+`Special/archive_update.py` is the low-level, git-only updater. It scans direct children of archive roots and only updates repos that:
 
 - are Git work trees rooted at that child folder
 - have an approved `origin` remote
@@ -319,16 +319,16 @@ The public run_update API is headless. The settings contract is in
 
 It should use fast-forward pulls only. It must not merge, rebase, reset, delete repos, install dependencies, run project code, or recurse through arbitrary nested directories.
 
-`Special/sync_archive.py` and the manager share headless `_archive/operation.py`.
+`Special/archive_sync.py` and the manager share headless `_archive/operation.py`.
 Update delegates to the updater; sync adds provider discovery and clones; explicit repair flags
 select origin/folder changes. Failed/nonexistent provider discovery never invents clones or
 orphans. Publication is a separate request and checks exact outgoing history before each push.
 Every presentation result is masked, with actual report/log artifacts; stdout is the default.
 
-`Special/archive_manager.py` owns registration, status, forgetting and registered refresh.
+`Special/archive.py` owns registration, status, forgetting and registered refresh.
 New per-archive launchers invoke its --refresh with a fixed selected home; current saved
 mode/allowances are resolved on each run. New refresh-all launchers also invoke this manager.
-`Elaborate/schedule_archives.py` handles scheduling actions only. Registration has no direct
+`Elaborate/archive_schedule.py` handles scheduling actions only. Registration has no direct
 pull/clone/repair pipeline; it may offer a normal refresh after registration. No generated
 archive launcher selects publication or repairs. See the shared runner contract in
 [settings-schema.md](knowledge/settings-schema.md).
@@ -404,7 +404,7 @@ whoever builds it, so the safety model is not broken:
 
 ## GitHub Org Duplicator
 
-`Special/duplicate_org.py` is the interactive, confirmation-heavy orchestrator. It checks `git`, `gh`, authentication, and org access before moving repositories. **It is GitHub-specific by design** (org concept, `gh repo create`, LFS probing); multi-host support is a stated goal, tracked in `WORKING-NOTES.md`, and will enter through the shared provider seam — the archive tools are the multi-host frontier. Its plumbing is grouped in `Special/_org_duplicator/`, imported by full path (`from Special._org_duplicator.batch import ...`). Earlier script paths remain compatibility wrappers; setup uses the public Special entry points:
+`Special/org_copy.py` is the interactive, confirmation-heavy orchestrator. It checks `git`, `gh`, authentication, and org access before moving repositories. **It is GitHub-specific by design** (org concept, `gh repo create`, LFS probing); multi-host support is a stated goal, tracked in `WORKING-NOTES.md`, and will enter through the shared provider seam — the archive tools are the multi-host frontier. Its plumbing is grouped in `Special/_org_duplicator/`, imported by full path (`from Special._org_duplicator.batch import ...`). Earlier script paths remain compatibility wrappers; setup uses the public Special entry points:
 
 - generic pieces live lower in the stack: prompts, `--answers`, the selection grammar and
   directory prompts in `Basic/_confirm.py`; the print lock and `format_size` in `Basic/_console.py`;
@@ -461,8 +461,8 @@ Keep output and tracking files there. Do not move them back to the repo root.
 ## Sync Suggester
 
 **Current fleet model (2026-09-11):** every machine is an independent peer. There is no
-host authority and no client enrollment dependency. `Elaborate/setup_fleet.py` guides first run;
-`Elaborate/setup_fleet.py peer` configures directly, and `Elaborate/peer.py` resumes. Old v1/v2 configurations migrate
+host authority and no client enrollment dependency. `Elaborate/fleet.py` guides first run;
+`Elaborate/fleet.py peer` configures directly, and `Elaborate/peer.py` resumes. Old v1/v2 configurations migrate
 to v3 while preserving the fleet key. `host` and `connect` are retired commands.
 
 `app/fleet_peer.py` observes locally, publishes to configured folder/GitHub transports,
@@ -480,11 +480,11 @@ The legacy `init`/`check`/`watch` commands below use a separate `config.json` an
 transport. Their polling and transport exclusivity rules do not describe the peer runtime.
 
 **Lifecycle shell (2026-09-11):** `fleet_tray.py` (native Windows tray via ctypes; no runtime
-dependency) and `fleet_autostart.py` (per-user start-at-login: registry Run key / XDG autostart /
+dependency) and `fleet_autostart.py` (per-user start-at-sign-in: registry Run key / XDG autostart /
 LaunchAgent, plus an explicit systemd `--user` option) make the app survive a closed terminal.
-`App/tray.py` and `Elaborate/start_at_login.py {status,enable,disable}` are the commands; `tray` degrades to a
+`App/tray.py` and `Elaborate/start_at_sign_in.py {status,enable,disable}` are the commands; `tray` degrades to a
 foreground run where no tray exists, so one registered command works fleet-wide. Two rules:
-start-at-login is **per-user, never a service** (the app must run as the interactive user or the
+start-at-sign-in is **per-user, never a service** (the app must run as the interactive user or the
 `gh` login, Git ownership and Tailscale identity all differ), and the tray is **a skin** — it
 reads `summary` from the display contract and refuses an unknown contract version rather than
 recomputing anything. `Elaborate._fleet.cli._main` gained a `stopping`/`on_ready` seam for it, because
@@ -497,7 +497,7 @@ generic selectors; `fleet_dashboard.html` + `fleet_standard.*` are only the stan
 Future skins, including LCARS, must consume the same `gitspecops.fleet.display` contract and
 must not reimplement Git/freshness policy. See `docs/DISPLAY-CONTRACT.md`.
 
-`Special/suggest_sync.py` (this machine) and `Elaborate/suggest_fleet_sync.py` (the fleet) are
+`Special/machine_check.py` (this machine) and `Elaborate/fleet_suggest.py` (the fleet) are
 the entry points; `App/tray.py` runs the peer with its web view. **This tool performs Git operations** — that is the
 product. It exists so that a user with many repositories, spread across many orgs and several
 machines, can see the whole picture from any one of them and then *act on it*: group fast-forward
@@ -517,7 +517,7 @@ uncommitted work stranded on a machine that is now switched off.
 observer, the manifest publisher, the watcher, the dashboard, the tray and the scheduled fetch
 read local Git facts, publish this machine's status manifest, and read what other machines left
 behind — none of them may change a repository as a side effect of observing, or of time passing.
-The mutating operations (`Special/catch_up.py --apply`, `Special/materialize.py --apply`, recovery restore)
+The mutating operations (`Special/machine_catch_up.py --apply`, `Special/machine_materialize.py --apply`, recovery restore)
 are separate named commands that refuse to run beside a live peer and follow the same
 detect → plan → approve → execute → review ladder as the archive updater. The flat modules are:
 
@@ -562,8 +562,8 @@ concrete threat the three tiers do not already cover, and do not add a dependenc
 
 ### Command surface
 
-The legacy read-only commands `init`, `check`, `dashboard`, `converge`, `alias`, `watch`, and
-`doctor` all run. **`handoff` stays reserved on purpose** — moving unfinished work between machines
+The legacy read-only commands `init`, `check`, `dashboard`, `fleet converge`, `alias`, `watch`, and
+`fleet doctor` all run. **`handoff` stays reserved on purpose** — moving unfinished work between machines
 is a mutation flow and gets its own design pass rather than hiding inside the watcher.
 
 The peer runtime's commands are separate files in `Elaborate/` (setup_fleet, peer, doctor,
@@ -571,7 +571,7 @@ preflight, recovery, start_at_login, check_safe_to_wipe), routed into `Elaborate
 the tray is `App/tray.py`. The subcommand names below are those CLI's own:
 
 - `setup`, `peer`, `run`, `tray`, `autostart`, `rescan`, `baskets` — configuration and lifecycle
-- `preflight` - read-only: is Git / the optional GitHub and Tailscale tiers / the loopback port
+- `fleet preflight` - read-only: is Git / the optional GitHub and Tailscale tiers / the loopback port
   usable, and where might a synced folder already be. Creates no configuration.
 - `audit` - read-only fleet-scale report of missing origins/upstreams, plain-HTTP origins,
   detached heads, local-only commits, behind state and tracked changes
@@ -579,14 +579,14 @@ the tray is `App/tray.py`. The subcommand names below are those CLI's own:
   An approved plan fast-forwards **only** clean behind-only checkouts; every other state is listed
   for a human. It cannot commit, push, stash, reset, merge, rebase, or recurse submodules, and it
   refuses to run beside a live peer via the per-configuration lock.
-- `materialize` - a reviewed **clone-only** plan for the locally observed working set, applied
+- `machine materialize` - a reviewed **clone-only** plan for the locally observed working set, applied
   by its plan id. It never replaces or updates an existing destination, validates portable path
   components, and rejects destinations that would escape the library through a symlink.
 - `live-buffers` - explicit, local-only, content-free VS Code unsaved-buffer evidence
 - `safe-to-wipe` - accepts a dirty checkout **only** for an exact current snapshot acknowledged by
   another peer. Never for unpushed commits, never for a merely recent snapshot.
 
-`catchup`, `materialize` and the recovery applies are the only mutating paths here, they are all
+`catchup`, `machine materialize` and the recovery applies are the only mutating paths here, they are all
 terminal-first and explicitly confirmed, and the dashboard and tray remain skins: they may invoke
 the same planner and show its summary, but must never carry their own Git policy.
 
@@ -620,7 +620,7 @@ never enter the state directory.
 ### Transports
 
 Two, behind one small interface (`list_manifests` / `read_manifest` / `write_own_manifest` /
-`doctor`). `open_transport()` in the CLI is the single place that decides which is in play, and a
+`fleet doctor`). `open_transport()` in the CLI is the single place that decides which is in play, and a
 config may hold `state_dir` **or** `state_repo`, never both — two places to publish means two
 disagreeing sources of truth.
 
@@ -692,7 +692,7 @@ the git dir. It had been in the schema and the advice logic from the start but w
 
 ### Convergence and the deterministic-hash trick
 
-`converge` answers "which repositories do my peers have that I do not?". The privacy boundary
+`fleet converge` answers "which repositories do my peers have that I do not?". The privacy boundary
 makes that harder than it sounds: a peer publishes only `HMAC(fleet_secret, host/owner/name)`, so
 a machine cannot clone what it cannot name.
 
@@ -736,7 +736,7 @@ checkouts sharing an identity on one machine are merged into one record that hid
 - **It must never be written into the state directory.** A secret stored beside the data it
   protects protects nothing — that is the whole reason v2 is stronger than v1's bare SHA-256 over
   a brute-forceable `host/owner/name`.
-- **Never print it.** `init` shows it once, on purpose, when creating a fleet; `doctor` and the
+- **Never print it.** `init` shows it once, on purpose, when creating a fleet; `fleet doctor` and the
   config dump show `(set, hidden)` and the public `fleet_id` instead.
 
 `fleet_id` (`HMAC(secret, "…fleet-id")[:16]`) is published so a machine that joined with the wrong
@@ -807,11 +807,11 @@ git history.
 Individually, plus the compile and `--help` smoke checks:
 
 ```powershell
-uv run python -m py_compile _build/setup_gitspecops.py Special\update_archive.py Special\sync_archive.py Elaborate/schedule_archives.py Special\duplicate_org.py
+uv run python -m py_compile _build/setup_gitspecops.py Special\update_archive.py Special\sync_archive.py Elaborate/archive_schedule.py Special\duplicate_org.py
 uv run python Special\update_archive.py --help
-uv run python Elaborate/schedule_archives.py --help
+uv run python Elaborate/archive_schedule.py --help
 uv run python Special\duplicate_org.py --help
-uv run python Elaborate/publish_status.py --help
+uv run python Elaborate/fleet_publish.py --help
 uv run python tests\duplicator\test_selection.py
 uv run python tests\duplicator\test_local_repos.py
 uv run python tests\duplicator\test_batch_args.py
@@ -829,15 +829,15 @@ A fleet is testable on one box: give each simulated machine its own `--config-di
 shared `--state-dir`. Joining with a deliberately wrong `--fleet-secret` should be *reported*, not
 silently empty.
 
-Sync Suggester's **observation** commands (`init`, `check`, `watch`, `dashboard`, `doctor`,
-`preflight`, `audit`) change no repository, so they are safe to smoke-test live against real
+Sync Suggester's **observation** commands (`init`, `check`, `watch`, `dashboard`, `fleet doctor`,
+`fleet preflight`, `audit`) change no repository, so they are safe to smoke-test live against real
 roots — point them at a scratch config dir so they cannot disturb the real one. Do **not** smoke-test
 the mutating commands (`catchup --apply`, `materialize --apply`, recovery restore) against real
 roots; they have their own disposable-Git tests:
 
 ```powershell
-uv run python Elaborate/publish_status.py --config-dir <scratch> init --machine-id test --root <path> --state-dir <scratch>\state
-uv run python Elaborate/publish_status.py --config-dir <scratch> check
+uv run python Elaborate/fleet_publish.py --config-dir <scratch> init --machine-id test --root <path> --state-dir <scratch>\state
+uv run python Elaborate/fleet_publish.py --config-dir <scratch> check
 uv run python Elaborate/peer.py --config-dir <scratch> --interval 2 --heartbeat 0 --cycles 3
 ```
 

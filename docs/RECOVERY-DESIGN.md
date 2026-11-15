@@ -182,7 +182,7 @@ than storing a lossy decode. Symbolic links and submodules are refused by previe
 
 ## Unsaved buffers and baskets
 
-The `Special/list_live_buffers.py` command now performs the deliberately narrow first production slice:
+The `Special/machine_buffers.py` command now performs the deliberately narrow first production slice:
 it reads existing VS Code backup metadata only when the URI resolves beneath a configured root,
 reports a bounded content-difference fact, and neither prints, stores, watches nor transmits
 buffer content. A disposable-file probe remains the way to establish backup existence for a

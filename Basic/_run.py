@@ -1,7 +1,7 @@
 """The one subprocess wrapper. Every call out to `git` or a host CLI goes through `run()`.
 
 Two wrappers used to exist and had drifted apart: the shared fact reader's never raised and
-had no prompt guard, while duplicate-org's forced ``GIT_TERMINAL_PROMPT=0`` and raised on
+had no prompt guard, while org copy's forced ``GIT_TERMINAL_PROMPT=0`` and raised on
 everything. Both behaviors are legitimate -- a fact reader wants a result it can inspect, a
 worker pool wants an exception it can retry -- so they are two thin faces over one careful core:
 

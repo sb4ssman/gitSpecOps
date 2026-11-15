@@ -26,9 +26,9 @@ from Special._archive.plan import SyncPlan, LocalRepo, RepoRef
 from Special._settings import resolve_document, SettingsError
 from Special._runtime.files import RuntimeIOError
 from Special._runtime.output import conceal
-from Special import archive_manager
-from Special import update_archive
-from Elaborate import schedule_archives as archive_manage
+from Special import archive as archive_manager
+from Special import archive_update
+from Elaborate import archive_schedule as archive_manage
 import gitso
 
 
@@ -167,10 +167,10 @@ class ArchiveRefreshTests(unittest.TestCase):
         self.assertNotIn("private diagnostic", json.dumps(result.record()))
 
     def test_direct_and_catalog_route_return_one_json_record_without_default_files(self):
-        for command in (archive_manager.main, lambda args: gitso.main(["archive-manager", *args])):
+        for command in (archive_manager.main, lambda args: gitso.main(["archive", *args])):
             output = io.StringIO()
             with redirect_stdout(output), redirect_stderr(io.StringIO()):
-                code = command(["--refresh-all", "--scan-only", "--settings-home", str(self.home), "--json", "--no-log"])
+                code = command(["check", "--settings-home", str(self.home), "--json", "--no-log"])
             self.assertEqual(code, 0)
             self.assertEqual(len(json.loads(output.getvalue())["archives"]), 2)
         self.assertFalse(registry.registry_path(self.home).exists())
@@ -242,7 +242,7 @@ class ArchiveRefreshTests(unittest.TestCase):
     def test_a_saved_report_is_named_in_the_one_json_record(self):
         output, errors = io.StringIO(), io.StringIO()
         with redirect_stdout(output), redirect_stderr(errors):
-            code = archive_manager.main(["--refresh-all", "--scan-only", "--settings-home", str(self.home),
+            code = archive_manager.main(["check", "--settings-home", str(self.home),
                                          "--report-dir", str(self.home / "reports"), "--json", "--no-log"])
         self.assertEqual(code, 0)
         record = json.loads(output.getvalue())
@@ -251,8 +251,8 @@ class ArchiveRefreshTests(unittest.TestCase):
 
     def test_refresh_options_and_help_do_not_read_or_change_profiles(self):
         for command in (archive_manager.main, archive_manage.main):
-            for options in (["--help"], ["--refresh-all", "--no-log", "--log-dir", "chosen"],
-                             ["--refresh-all", "--no-save-report", "--report-dir", "chosen"]):
+            for options in (["--help"], ["refresh", "--no-log", "--log-dir", "chosen"],
+                             ["refresh", "--no-save-report", "--report-dir", "chosen"]):
                 with self.subTest(options=options), patch.object(operation, "load_registry", side_effect=AssertionError("unexpected read")), \
                      redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                     command(options)
@@ -328,8 +328,8 @@ class ArchiveRefreshTests(unittest.TestCase):
             alias.symlink_to(target, target_is_directory=True)
         except OSError:
             self.skipTest("native directory symlink creation unavailable on this host")
-        for command, action in ((archive_manager.main, ["--refresh-all", "--scan-only"]),
-                                (update_archive.main, ["--root", str(self.a)])):
+        for command, action in ((archive_manager.main, ["check"]),
+                                (archive_update.main, ["--root", str(self.a)])):
             with self.subTest(command=command.__module__), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 code = command([*action, "--settings-home", str(self.home), "--no-log", "--report-dir", str(alias)])
             self.assertEqual(code, 2)
