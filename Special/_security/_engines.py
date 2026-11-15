@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import tempfile
 from pathlib import Path
 
+from Basic._paths import find_program
 from Basic._run import CommandFailed, stream
 from Special._settings import SECURITY_ENGINES, SettingsError
 from Special._security._findings import Finding
@@ -138,7 +138,7 @@ class EngineBatch:
             if state == "incomplete":
                 continue
             try:
-                executable = self.executables.get(engine) or shutil.which(engine)
+                executable = self.executables.get(engine) or find_program(engine)
                 if executable is None:
                     raise ValueError("selected engine unavailable")
                 rows = _execute(engine, str(Path(executable).absolute()), data)

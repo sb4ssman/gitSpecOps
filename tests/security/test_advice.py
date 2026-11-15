@@ -115,7 +115,7 @@ class SecurityAdviceTests(unittest.TestCase):
     def test_missing_selected_engine_is_incomplete(self):
         self.document["defaults"]["security"]["engines"] = ["gitleaks"]
         self.save()
-        with patch("Special._security._engines.shutil.which", return_value=None):
+        with patch("Special._security._engines.find_program", return_value=None):
             self.assertEqual(self.check()["check_status"], "incomplete")
 
     def test_invalid_policy_prevents_material_reads(self):

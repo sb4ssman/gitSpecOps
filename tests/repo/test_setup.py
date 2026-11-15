@@ -328,19 +328,32 @@ class WalkthroughTests(unittest.TestCase):
             self.assertEqual(self.walk.choose_part(), 6)
         self.assertEqual(self.output.getvalue().count("Choose a number from the list."), 2)
 
-    def test_saying_yes_to_installing_a_scanner_is_the_only_question_about_it(self):
+    def test_every_scanner_is_offered_the_same_way_and_yes_is_the_only_question(self):
+        # No package for trufflehog here: it is offered from its checked GitHub release instead.
         def command(name):
             return None if name == "trufflehog" else ["installer", name]
-        with patch.object(self.walk, "install_command", side_effect=command):
-            plan = self.area(self.walk.area_scanners, ["y", "n"])
+        from _build import release_install
+        with patch.object(self.walk, "install_command", side_effect=command),                 patch.object(release_install, "available", return_value=True):
+            plan = self.area(self.walk.area_scanners, ["y", "n", "y"])
         out = self.output.getvalue()
+        self.assertEqual(out.count("Install "), 3)
+        self.assertIn("Install trufflehog?", out)
         self.assertNotIn("in every scan?", out)
-        self.assertIn("Setup cannot install trufflehog on this system", out)
-        self.assertEqual([c.review for c in plan.changes],
-                         ["gitleaks: installer gitleaks", "Scanners used in scans: gitleaks"])
+        self.assertEqual([c.title for c in plan.changes],
+                         ["Install gitleaks", "Install trufflehog", "Scanners used"])
+        self.assertIn("checks its SHA-256", plan.changes[1].review)
+        self.assertEqual(plan.changes[2].review, "Scanners used in scans: gitleaks, trufflehog")
+
+    def test_a_scanner_with_no_package_and_no_release_says_there_is_nothing_to_decide(self):
+        from _build import release_install
+        with patch.object(self.walk, "install_command", return_value=None),                 patch.object(release_install, "available", return_value=False):
+            plan = self.area(self.walk.area_scanners, [])
+        self.assertIn("Setup cannot install trufflehog on this system", self.output.getvalue())
+        self.assertEqual(plan.changes, [])
 
     def test_an_installed_scanner_is_asked_about_once(self):
-        with patch.object(self.walk, "install_command", return_value=None):
+        from _build import release_install
+        with patch.object(self.walk, "install_command", return_value=None),                 patch.object(release_install, "available", return_value=False):
             plan = self.area(self.walk.area_scanners, ["y"], gitleaks="gitleaks")
         self.assertIn("gitleaks is already installed. Use it in every scan?", self.output.getvalue())
         self.assertEqual([c.review for c in plan.changes], ["Scanners used in scans: gitleaks"])

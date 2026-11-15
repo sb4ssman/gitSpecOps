@@ -8,6 +8,7 @@ losing it, and nothing personal can be committed by accident. The OS decides the
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
 from _os.current import paths as _os_paths
@@ -24,6 +25,22 @@ def config_home() -> Path:
     if override:
         return Path(override).expanduser()
     return _os_paths.config_base() / APP_DIR_NAME
+
+
+def tools_home() -> Path:
+    """Programs setup downloads because no package manager offers them here (a secret scanner):
+    `~/.gitspecops/tools`, beside the gitso launchers. `GITSPECOPS_TOOLS` overrides it (tests)."""
+    override = os.environ.get("GITSPECOPS_TOOLS")
+    return Path(override).expanduser() if override else Path.home() / ".gitspecops" / "tools"
+
+
+def find_program(name: str) -> str | None:
+    """A program on PATH, or one setup downloaded into tools_home(); None when neither has it."""
+    on_path = shutil.which(name)
+    if on_path:
+        return on_path
+    downloaded = tools_home() / (name + (".exe" if os.name == "nt" else ""))
+    return str(downloaded) if downloaded.is_file() else None
 
 
 def sync_home() -> Path:

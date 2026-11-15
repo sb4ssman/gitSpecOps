@@ -46,6 +46,11 @@ gitso machine check         # this machine: what needs attention
 | **`git` on PATH** | Every Git operation runs your real `git`. |
 | **`gh`, already signed in** | Only for anything that talks to GitHub. |
 
+**Secret scanners** are optional. Setup installs one with your package manager (winget, Homebrew,
+apt). Where none has it (TruffleHog on Windows), setup downloads the project's official GitHub
+release, refuses it unless its SHA-256 matches the release's checksum file, and puts only the
+program in `~/.gitspecops/tools`, where gitSpecOps looks as well as on PATH.
+
 **Authentication is yours and stays yours.** gitSpecOps stores no token, writes no credential
 file, configures no keyring, and never prompts for a password. It runs CLIs you have already
 signed in to (`gh auth login` is yours to run). If `gh` is not signed in, GitHub features decline

@@ -189,8 +189,9 @@ def detect() -> dict:
     found["gitso_command"] = gitso_command.status()
     found["alias_targets"] = [str(path) for path in gitso_command.alias_files()]
     found["powershell_profiles_run"] = gitso_command.powershell_runs_profiles() if WINDOWS else None
+    from Basic._paths import find_program
     for name in SCANNERS:
-        found[name] = shutil.which(name)
+        found[name] = find_program(name)
     found["archives"] = _archives()
     return found
 
@@ -262,14 +263,21 @@ def tool_row(label: str, path: str | None, missing: str) -> None:
 def offer_install(plan: Plan, name: str, label: str, why: str) -> bool:
     """Ask to install a missing program; returns whether it will be installed."""
     command = install_command(name)
-    if not command:
-        line(f"Setup cannot install {label} on this system, so there is nothing to decide here. To add "
-             f"it later, get it at {HOME_PAGES[name]} and run setup again.", "muted")
-        return False
-    if not yes_no(f"Install {label}?", "y", f"{why} Runs: {' '.join(command)}".strip()):
-        return False
-    plan.add(f"Install {label}", f"{label}: {' '.join(command)}", lambda: _install(command, name))
-    return True
+    if command:
+        if not yes_no(f"Install {label}?", "y", f"{why} Runs: {' '.join(command)}".strip()):
+            return False
+        plan.add(f"Install {label}", f"{label}: {' '.join(command)}", lambda: _install(command, name))
+        return True
+    from _build import release_install  # no package here: the project's own release, checked
+    if release_install.available(name):
+        if not yes_no(f"Install {label}?", "y", f"{why} {release_install.describe(name)}".strip()):
+            return False
+        plan.add(f"Install {label}", f"{label}: {release_install.describe(name)}",
+                 lambda: release_install.install(name))
+        return True
+    line(f"Setup cannot install {label} on this system, so there is nothing to decide here. To add "
+         f"it later, get it at {HOME_PAGES[name]} and run setup again.", "muted")
+    return False
 
 
 def _install(command: list[str], name: str) -> str:
@@ -728,7 +736,8 @@ def area_scanners(found: dict, plan: Plan) -> None:
 
 def _select_engines(chosen) -> str:
     from Special._settings.security import load_security_settings, save_security_settings
-    missing = [name for name in chosen if not shutil.which(name)]
+    from Basic._paths import find_program
+    missing = [name for name in chosen if not find_program(name)]
     if missing:
         raise RuntimeError(f"not installed: {', '.join(missing)} (open a new terminal and run setup again)")
     save_security_settings(load_security_settings(), {"engines": list(chosen)})

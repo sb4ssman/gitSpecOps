@@ -2677,3 +2677,16 @@ No code changed; decisions recorded where they govern.
   cannot install it on Windows. It now says there is nothing to decide, and how to add it later.
 - Betterleaks is described as its README does ("maintained by the folks who made Gitleaks,
   including the original author"), not as "the successor".
+
+## 2026-11-15 16:20 - user (claude) - Setup offers every scanner the same way: TruffleHog from its checked release (branch wave/setup-protection)
+- The user, rightly: setup offered Gitleaks and Betterleaks but only told him it could not install
+  TruffleHog. TruffleHog has no winget package, but it publishes Windows archives and a checksum
+  file on every GitHub release.
+- New `_build/release_install.py` (setup only): the latest release, refused unless its major
+  version is one gitSpecOps reads (3.x) and its SHA-256 matches the release's checksum file; only
+  the program is taken out of the archive, into `Basic._paths.tools_home()` (`~/.gitspecops/tools`).
+  `find_program` looks there as well as on PATH (setup, the scan engines, the Security tab), so
+  nothing is added to PATH. Tested once against the real v3.99.9 release in a scratch folder,
+  then deleted.
+- Setup now asks "Install trufflehog?" like the others; the "cannot install" note remains only
+  for a system with neither a package nor a release.
