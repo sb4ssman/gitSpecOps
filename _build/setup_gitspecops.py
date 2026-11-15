@@ -7,6 +7,7 @@ Run from this repository:
 With no arguments, a person at a terminal gets the setup menu. Named actions:
 
     walkthrough   the guided setup (needs a person at a terminal)
+    part          set up, change or repair one part of the walkthrough on its own
     run           choose one command from a list and run it, without setting anything up
     environment   build this folder's .venv (with uv when it is installed), then check
     check         show what this computer has: Git, the GitHub CLI, uv. Changes nothing.
@@ -147,7 +148,7 @@ def bootstrap() -> int:
     return 0 if ok else 1
 
 
-ACTIONS = ("walkthrough", "run", "environment", "check")
+ACTIONS = ("walkthrough", "part", "run", "environment", "check")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -167,10 +168,10 @@ def choose_action() -> str | None:
     say()
     option("1", "Walk me through everything", "Recommended. Finds what this computer already has and "
            "asks about each part. Nothing changes until you review it.")
-    option("2", "Run one command, without setting anything up", "Choose any command from a list and "
-           "run it from this folder. Installs nothing.")
-    option("3", "Set up the Python environment", "This folder's .venv (the desktop app needs it), "
-           "then a check.")
+    option("2", "Set up one part", "Pick one part to set up, change or repair on its own: the gitso "
+           "command, library folders, protection, the fleet, and the rest.")
+    option("3", "Use the commands without installing anything", "Choose any command from a list and run "
+           "it from this folder. Any time: python gitso.py <command>.")
     option("4", "Check this computer", "Git, the GitHub CLI and uv: what is there and what each is "
            "for. Changes nothing.")
     option("0", "Exit")
@@ -179,7 +180,7 @@ def choose_action() -> str | None:
     except (EOFError, KeyboardInterrupt):
         print("\nSetup cancelled; nothing has been changed.")
         return None
-    return {"1": "walkthrough", "2": "run", "3": "environment", "4": "check"}.get(answer)
+    return {"1": "walkthrough", "2": "part", "3": "run", "4": "check"}.get(answer)
 
 
 def run_one_command(back: bool) -> int:
@@ -240,14 +241,17 @@ def menu_loop(parser, args) -> int:
 
 def perform(parser, args, action) -> int:
     """One setup action, from the menu or named on the command line."""
-    if action == "walkthrough":
+    if action in ("walkthrough", "part"):
         if not sys.stdin.isatty():
-            print("The walkthrough needs a person at a terminal; name another action.", file=sys.stderr)
+            print(f"The {action} item needs a person at a terminal; name another action.", file=sys.stderr)
             return 2
         sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from setup_walkthrough import Stop, walkthrough
+        from setup_walkthrough import Stop, choose_part, walkthrough
         try:
-            return walkthrough()
+            if action == "walkthrough":
+                return walkthrough()
+            part = choose_part()
+            return 0 if part is None else walkthrough(only=part)
         except (EOFError, KeyboardInterrupt, Stop):
             print("\nSetup cancelled; nothing has been changed.")
             return 0

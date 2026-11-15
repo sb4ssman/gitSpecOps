@@ -2655,3 +2655,16 @@ No code changed; decisions recorded where they govern.
   protection; a private value still in use is not, and setup says why.
 - Values are shown in full: masking hid from the user what was being asked. Setup writes no log.
 - `docs/SETUP.md` and `docs/ARCHIVES.md` used the pre-rename `archive --install` / `--list`.
+
+## 2026-11-15 15:20 - user (claude) - Setup: one part at a time; the Protection step explains itself (branch wave/setup-protection)
+- Setup's menu: 1 walk me through everything, 2 set up one part (any of the ten, to set up,
+  change or repair it alone, reviewed before anything changes), 3 use the commands without
+  installing anything, 4 check this computer. Building the .venv alone stays a named action
+  (`setup environment`); in the menu it is the Python environment part. New named action `part`.
+- Protection now says what is worth adding (full name, last name alone when uncommon, other
+  names, every email, other usernames, street address, phone numbers), what to leave out (the
+  GitHub handle and a public Git name or email), and where the list can be changed later: setup
+  again, the app's Security tab, or the settings file, whose path it shows.
+- The whole-word question appears only for a single short word, in plain words; a name with a
+  space or an email address is matched anywhere without asking.
+- The setup menu screenshot is out of date (recorded in WORKING-NOTES).

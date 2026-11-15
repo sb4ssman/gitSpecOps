@@ -69,11 +69,11 @@ cd gitSpecOps
 ./run_setup.sh          # Windows: run_setup.bat
 ```
 
-![Setup's menu in a terminal: the gitSpecOps banner, then "Walk me through everything", "Run one command, without setting anything up", and the individual setup items](docs/images/setup-menu.png)
+![Setup's menu in a terminal: the gitSpecOps banner, then "Walk me through everything", "Set up one part", "Use the commands without installing anything" and "Check this computer"](docs/images/setup-menu.png)
 
 Choose **Walk me through everything**: it finds what this computer already has, asks about each
-part, and changes nothing until you have reviewed the whole list. Or run a single command with
-nothing set up, or put the `gitso` command on your command path. [Setup in detail](docs/SETUP.md).
+part, and changes nothing until you have reviewed the whole list. Or set up, change or repair one
+part on its own, or use the commands without installing anything. [Setup in detail](docs/SETUP.md).
 
 ---
 

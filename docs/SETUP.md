@@ -13,17 +13,21 @@ cd gitSpecOps
 ./run_setup.sh          # Windows: run_setup.bat
 ```
 
-![Setup's menu in a terminal: the gitSpecOps banner, then "Walk me through everything", "Run one command, without setting anything up", and the individual setup items](images/setup-menu.png)
+![Setup's menu in a terminal: the gitSpecOps banner, then "Walk me through everything", "Set up one part", "Use the commands without installing anything" and "Check this computer"](images/setup-menu.png)
 
-Setup offers three ways in:
+Setup's menu:
 
 1. **Walk me through everything.** It finds what this computer already has (Git, the GitHub
    CLI and its sign-in, the desktop app, library folders, start at sign-in, a desktop Git app,
    protected values, secret scanners, archives, Tailscale, a fleet), asks about each part, and
    changes nothing until you have reviewed the whole list.
-2. **Run one command, without setting anything up.** Any Basic, Special or Elaborate command,
-   straight from the folder, installing nothing: registering archive folders to keep updated, say.
-3. **The `gitso` command.** A command of its own, beside `git` and `gh`, in any terminal. The
+2. **Set up one part.** Any one of those ten parts on its own: set it up, change it, or repair
+   it. It shows what is there now, and nothing changes until you review it.
+3. **Use the commands without installing anything.** Any Basic, Special or Elaborate command,
+   straight from the folder: registering archive folders to keep updated, say.
+4. **Check this computer.** Git, the GitHub CLI and uv: what is there and what each is for.
+
+**The `gitso` command** is a command of its own, beside `git` and `gh`, in any terminal. The
    walkthrough can put it on your command path (small text launchers in `~/.gitspecops/bin`, on
    every system), and optionally add it to your shells as an alias; it removes both just as
    easily. Without it, every command runs as `python gitso.py <command>`.

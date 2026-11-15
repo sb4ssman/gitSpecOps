@@ -554,9 +554,17 @@ def area_protection(found: dict, plan: Plan) -> None:
     anywhere = found["protected"].get("never_publish", [])
     words = found["protected"].get("never_publish_words", [])
     row("Protected values", f"{len(anywhere) + len(words)}" + (f" ({len(words)} whole word only)" if words else ""))
-    line("Values that must never be published: your name, email addresses, usernames. A checked "
-         "commit or push holds anything that contains one, and scans report them. They stay on "
-         "this computer.", "muted")
+    line("Protected values are things that must never be published. A checked commit or push stops "
+         "anything that contains one, and scans report them. The list stays on this computer.", "muted")
+    say()
+    line("Worth adding:", "muted")
+    for tip in PROTECTION_TIPS:
+        bullet(tip, "muted")
+    line("Leave out your GitHub handle, and a Git name or email that is already public: every commit "
+         "carries those, so protecting one would stop every commit.", "muted")
+    say()
+    line(f"Change the list any time: run setup again (Set up one part, then Protection), use the "
+         f"Security tab in the app, or edit the never_publish lists in the \"security\" section of {settings_file()}.", "muted")
     retired = commit_identity(found, plan)
     if not plan.enrolled_after and not found["protected"]:
         line("Protected values are saved with this machine's settings, which a library folder "
@@ -576,7 +584,8 @@ def area_protection(found: dict, plan: Plan) -> None:
     for label, value in suggestions:
         short = len(value) < 6 or " " not in value and "@" not in value
         if yes_no(f"Protect {label.lower()}, {value}?", "y",
-                  "As a whole word only (it also occurs inside other words)." if short else "Anywhere in text."):
+                  f"Matched only as a separate word, so longer words that contain \"{value}\" are not "
+                  "flagged." if short else "Matched anywhere in text."):
             adding.append((value, short))
     while True:
         say()
@@ -600,6 +609,25 @@ def area_protection(found: dict, plan: Plan) -> None:
     for value, whole in adding:
         plan.add("Protected value", f"Protect {value} ({'whole word only' if whole else 'anywhere in text'})",
                  lambda value=value, whole=whole: _protect(value, whole))
+
+
+PROTECTION_TIPS = (
+    "Your full name as you write it, such as \"Pat Example\". Add your last name on its own too if it "
+    "is uncommon. Your first name alone usually matches too much ordinary text.",
+    "Other names: nicknames, a former name, family members' names.",
+    "Every email address you use, old ones included.",
+    "Usernames on other sites, and this computer's user name.",
+    "Your street address and phone numbers.",
+)
+
+
+def settings_file() -> str:
+    """Where the protected values are saved, for a person to open."""
+    from Special._settings import SETTINGS_NAME, SettingsError, select_home
+    try:
+        return str(Path(select_home()[0]) / SETTINGS_NAME)
+    except SettingsError:
+        return f"{SETTINGS_NAME} in your gitSpecOps settings folder"
 
 
 def commit_identity(found: dict, plan: Plan) -> list[tuple[str, str]]:
@@ -896,7 +924,7 @@ def _tailscale_transport(on: bool) -> str:
 
 
 # --------------------------------------------------------------------------- review and apply
-def review(plan: Plan, enrolled: bool) -> str:
+def review(plan: Plan, enrolled: bool, again: str = "Back to the start of the walkthrough") -> str:
     banner("Setup  /  Review", tagline=True)
     if not plan.changes:
         notice("Nothing to change", "Everything is as you chose.", "success")
@@ -912,7 +940,7 @@ def review(plan: Plan, enrolled: bool) -> str:
     say()
     key = "a" if enrolled else "i"
     option(key.upper(), "Apply" if enrolled else "Install")
-    option("B", "Back to the start of the walkthrough")
+    option("B", again)
     option("0", "Cancel", "Nothing has been changed.")
     answer = choose(key + "b0", "0")
     return "apply" if answer == key else answer
@@ -951,20 +979,59 @@ def start_app() -> None:
         line("Started.", "success")
 
 
-def walkthrough(detector=detect) -> int:
-    """The whole walkthrough. Returns 0 when it finished or was stopped, 1 when a step failed."""
+AREA_STEPS = (area_requirements, area_environment, area_gitso, area_machine, area_app,
+              area_client, area_protection, area_scanners, area_archives, area_fleet)
+PART_HINTS = (
+    "Git, the GitHub CLI and your GitHub sign-in.",
+    "This folder's .venv, and Qt for the desktop app.",
+    "gitso on your command path, and an optional shell alias.",
+    "Library folders: where your repositories are.",
+    "Start the tray icon when you sign in.",
+    "Open repositories from the map in Sourcetree or GitHub Desktop.",
+    "Values that must never be published.",
+    "Extra secret scanners: Gitleaks, Betterleaks, TruffleHog.",
+    "Folders of clones kept current.",
+    "Your machines watching each other, over Tailscale or a synced folder.",
+)
+
+
+def choose_part() -> int | None:
+    """One part of the walkthrough to set up, change or repair; None goes back."""
+    banner("Setup  /  One part", tagline=True)
+    line("Set up, change or repair one part on its own. It shows what is there now, and nothing "
+         "changes until you review it.", "muted")
+    say()
+    for number, (title, hint) in enumerate(zip(AREAS, PART_HINTS), 1):
+        option(str(number), title, hint)
+    option("0", "Back to the setup menu")
+    while True:
+        answer = ask(f"Part [1-{len(AREAS)}, or 0]:", "0")
+        if answer == "0":
+            return None
+        if answer.isdigit() and 1 <= int(answer) <= len(AREAS):
+            return int(answer) - 1
+        line("Choose a number from the list.", "warning")
+
+
+def walkthrough(detector=detect, only: int | None = None) -> int:
+    """The whole walkthrough, or one part of it (`only`, an index into AREAS). Returns 0 when it
+    finished or was stopped, 1 when a step failed."""
     while True:
         line("Looking at this computer (nothing changes)...", "detail")
         found = detector()
-        plan = Plan()
+        if only is None:
+            plan, steps = Plan(), AREA_STEPS
+        else:  # the parts before this one are as this computer has them
+            plan = Plan(enrolled_after=found["enrolled"], uv_after=bool(found["uv"]), venv_after=found["venv"])
+            steps = (AREA_STEPS[only],)
         try:
-            for area in (area_requirements, area_environment, area_gitso, area_machine, area_app,
-                         area_client, area_protection, area_scanners, area_archives, area_fleet):
+            for area in steps:
                 area(found, plan)
         except Stop:
             notice("Walkthrough stopped", "Nothing has been changed.", "warning")
             return 0
-        answer = review(plan, found["enrolled"])
+        answer = review(plan, found["enrolled"], "Back to the start of the walkthrough" if only is None
+                        else f"Back to the start of {AREAS[only]}")
         if answer == "b":
             continue
         if answer != "apply":
@@ -972,6 +1039,6 @@ def walkthrough(detector=detect) -> int:
                 notice("Cancelled", "Nothing has been changed.", "warning")
             return 0
         ok = apply(plan)
-        if ok:
+        if ok and only is None:
             start_app()
         return 0 if ok else 1

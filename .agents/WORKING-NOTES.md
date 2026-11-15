@@ -20,8 +20,9 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
    marked "experimental, untested".
 
 ## Waiting on the user
-- **Merge, in order:** PR #1 basic-and-secure-commands, #2 remove-legacy, #3 readme-docs,
-  #4 polish, #5 command-names, #6 cleanup. CI passed on all six (2026-11-14).
+- **Merge PR #7** (wave/setup-protection). PRs #1 to #6 were merged 2026-11-15.
+- **Screenshots to retake on the user's screen** (redact user and computer): `docs/images/setup-menu.png`
+  shows the old setup menu (the menu changed 2026-11-15); the org copy screenshot.
 - **Old archive registrations:** the current registry is empty. The pre-shared-settings registry
   (`old-settings.json` in the settings folder) still lists three archive folders; only one had a
   launcher file, and it was removed 2026-11-14 at the user's request. Register an archive again
