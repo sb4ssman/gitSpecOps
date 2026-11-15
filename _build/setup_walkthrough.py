@@ -58,7 +58,7 @@ HOME_PAGES = {
 SCANNERS = {
     "gitleaks": "The most widely used secret scanner: keys and tokens in files and full history. "
                 "Runs offline. Recommended.",
-    "betterleaks": "The successor to Gitleaks, by its original author. Setup installs version 1, "
+    "betterleaks": "From the makers of Gitleaks, including its original author. Setup installs version 1, "
                    "which gitSpecOps supports; version 2 changes its output and is not supported yet.",
     "trufflehog": "Hundreds of credential detectors. gitSpecOps runs it with verification off, so "
                   "nothing found is sent to any provider.",
@@ -263,8 +263,8 @@ def offer_install(plan: Plan, name: str, label: str, why: str) -> bool:
     """Ask to install a missing program; returns whether it will be installed."""
     command = install_command(name)
     if not command:
-        line(f"Setup cannot install {label} on this system. Get it at {HOME_PAGES[name]}, then run "
-             "setup again.", "muted")
+        line(f"Setup cannot install {label} on this system, so there is nothing to decide here. To add "
+             f"it later, get it at {HOME_PAGES[name]} and run setup again.", "muted")
         return False
     if not yes_no(f"Install {label}?", "y", f"{why} Runs: {' '.join(command)}".strip()):
         return False
@@ -701,23 +701,26 @@ def area_scanners(found: dict, plan: Plan) -> None:
     line("gitSpecOps' own checks always run. A scanner adds hundreds of kinds of keys and tokens, "
          "across full history. Only use what is installed: a chosen scanner that is missing makes "
          "every scan incomplete, and an incomplete scan holds a publish.", "muted")
-    will_have = {name for name in SCANNERS if found[name]}
+    installing = []  # a scanner you choose to install is used in every scan: one decision, not two
     for name, about in SCANNERS.items():
         if found[name]:
             continue
         say()
         line(f"{name}: {about}", "muted")
-        if offer_install(plan, name, name, ""):
-            will_have.add(name)
-    if not will_have:
+        if offer_install(plan, name, name, "Every scan will use it."):
+            installing.append(name)
+    installed = [name for name in SCANNERS if found[name]]
+    if not (installed or installing):
         return
     if not plan.enrolled_after and not found["protected"]:
         line("Which scanners to use is saved with this machine's settings (step 4).", "warning")
         return
-    chosen = []
-    for name in SCANNERS:
-        if name in will_have and yes_no(f"Use {name} in every scan?", "y" if name in found["engines"] or name == "gitleaks" else "n"):
+    chosen = list(installing)
+    for name in installed:
+        if yes_no(f"{name} is already installed. Use it in every scan?",
+                  "y" if name in found["engines"] or name == "gitleaks" else "n"):
             chosen.append(name)
+    chosen = [name for name in SCANNERS if name in chosen]
     if sorted(chosen) != sorted(found["engines"]):
         plan.add("Scanners used", "Scanners used in scans: " + (", ".join(chosen) or "gitSpecOps' own checks only"),
                  lambda: _select_engines(chosen))

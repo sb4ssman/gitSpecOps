@@ -2668,3 +2668,12 @@ No code changed; decisions recorded where they govern.
 - The whole-word question appears only for a single short word, in plain words; a name with a
   space or an email address is matched anywhere without asking.
 - The setup menu screenshot is out of date (recorded in WORKING-NOTES).
+
+## 2026-11-15 15:50 - user (claude) - Setup's Scanners step: one decision per scanner (branch wave/setup-protection)
+- In the user's install, saying yes to installing Gitleaks was followed by "Use gitleaks in every
+  scan?", which read as being asked again. A scanner chosen for installing is now used in every
+  scan without a second question; only one that is already installed gets "Use it in every scan?".
+- TruffleHog has no winget package (checked 2026-11-15; Gitleaks and Betterleaks do), so setup
+  cannot install it on Windows. It now says there is nothing to decide, and how to add it later.
+- Betterleaks is described as its README does ("maintained by the folks who made Gitleaks,
+  including the original author"), not as "the successor".

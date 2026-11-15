@@ -328,6 +328,23 @@ class WalkthroughTests(unittest.TestCase):
             self.assertEqual(self.walk.choose_part(), 6)
         self.assertEqual(self.output.getvalue().count("Choose a number from the list."), 2)
 
+    def test_saying_yes_to_installing_a_scanner_is_the_only_question_about_it(self):
+        def command(name):
+            return None if name == "trufflehog" else ["installer", name]
+        with patch.object(self.walk, "install_command", side_effect=command):
+            plan = self.area(self.walk.area_scanners, ["y", "n"])
+        out = self.output.getvalue()
+        self.assertNotIn("in every scan?", out)
+        self.assertIn("Setup cannot install trufflehog on this system", out)
+        self.assertEqual([c.review for c in plan.changes],
+                         ["gitleaks: installer gitleaks", "Scanners used in scans: gitleaks"])
+
+    def test_an_installed_scanner_is_asked_about_once(self):
+        with patch.object(self.walk, "install_command", return_value=None):
+            plan = self.area(self.walk.area_scanners, ["y"], gitleaks="gitleaks")
+        self.assertIn("gitleaks is already installed. Use it in every scan?", self.output.getvalue())
+        self.assertEqual([c.review for c in plan.changes], ["Scanners used in scans: gitleaks"])
+
     def test_public_identity_rules(self):
         self.assertTrue(self.walk.public_git_name("Someone@Box", "someone"))
         self.assertTrue(self.walk.public_git_name("someone", "someone"))
