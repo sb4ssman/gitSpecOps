@@ -74,6 +74,7 @@ class Change:
     title: str
     review: str
     apply: object  # callable() -> short detail
+    loud: bool = False  # runs another program that prints (an installer, uv, gh)
 
 
 @dataclass
@@ -84,8 +85,8 @@ class Plan:
     uv_after: bool = False
     venv_after: bool = False
 
-    def add(self, title, review, apply):
-        self.changes.append(Change(title, review, apply))
+    def add(self, title, review, apply, loud=False):
+        self.changes.append(Change(title, review, apply, loud))
 
 
 # --------------------------------------------------------------------------- detection
@@ -266,7 +267,7 @@ def offer_install(plan: Plan, name: str, label: str, why: str) -> bool:
     if command:
         if not yes_no(f"Install {label}?", "y", f"{why} Runs: {' '.join(command)}".strip()):
             return False
-        plan.add(f"Install {label}", f"{label}: {' '.join(command)}", lambda: _install(command, name))
+        plan.add(f"Install {label}", f"{label}: {' '.join(command)}", lambda: _install(command, name), loud=True)
         return True
     from _build import release_install  # no package here: the project's own release, checked
     if release_install.available(name):
@@ -306,7 +307,7 @@ def area_requirements(found: dict, plan: Plan) -> None:
     if will_have_gh and not found["gh_signed_in"]:
         if yes_no("Sign in to GitHub?", "y", "Runs gh auth login during setup; you answer its questions. "
                   "gitSpecOps never sees or stores your credentials."):
-            plan.add("Sign in to GitHub", "GitHub sign-in: gh auth login (you answer its questions)", _gh_login)
+            plan.add("Sign in to GitHub", "GitHub sign-in: gh auth login (you answer its questions)", _gh_login, loud=True)
 
 
 def _gh_login() -> str:
@@ -337,7 +338,7 @@ def area_environment(found: dict, plan: Plan) -> None:
         question = "Install the desktop app?"
         hint = "Installs Qt into a .venv in this folder only; nothing system-wide (uv sync --extra app)."
     if yes_no(question, "n" if found["desktop"] else "y", hint):
-        plan.add("Python environment", "Desktop app: Qt in this folder's .venv (uv sync --extra app)", _build_env)
+        plan.add("Python environment", "Desktop app: Qt in this folder's .venv (uv sync --extra app)", _build_env, loud=True)
         plan.venv_after = True
     else:
         plan.venv_after = found["venv"]
@@ -403,6 +404,9 @@ def area_gitso(found: dict, plan: Plan) -> None:
         warn = ("" if found["powershell_profiles_run"] is not False else
                 " PowerShell's execution policy here does not run profiles, so PowerShell would not "
                 "see it; the command path works there anyway.")
+        if any("/onedrive" in Path(t).as_posix().casefold() for t in targets):  # also "OneDrive - Work"
+            warn += (" A profile here is in OneDrive, which copies it to your other PCs: there the "
+                     "alias would point at this PC's folder and hide their own gitso command.")
         if yes_no("Also add gitso to your shell profiles, as an alias?", "n",
                   "Optional: the command path above is enough. Adds a marked block to: "
                   + ", ".join(targets) + "." + warn):
@@ -963,7 +967,7 @@ def apply(plan: Plan) -> bool:
     say()
     steps = Steps(len(plan.changes))
     for change in plan.changes:
-        steps.run(change.title, lambda change=change: ("changed", str(change.apply())))
+        steps.run(change.title, lambda change=change: ("changed", str(change.apply())), loud=change.loud)
     failed = [label for label, status, _detail in steps.results if status == "FAILED"]
     section("Summary")
     for label, status, detail in steps.results:

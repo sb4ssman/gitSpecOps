@@ -204,6 +204,19 @@ class WalkthroughTests(unittest.TestCase):
         self.assertEqual(self.applied, [1, 2])
         self.assertIn("[2/2] Second", self.output.getvalue())
 
+    def test_a_step_running_a_program_keeps_its_number_and_name_beside_the_result(self):
+        plan = self.walk.Plan()
+        plan.add("Install gitleaks", "gitleaks", lambda: print("\rDownloading 8 MB") or "installed", loud=True)
+        self.assertTrue(self.walk.apply(plan))
+        lines = self.output.getvalue().splitlines()
+        result = next(line for line in lines if "installed" in line and "changed" in line)
+        self.assertIn("[1/1] Install gitleaks", result)
+
+    def test_the_alias_offer_warns_about_a_profile_in_onedrive(self):
+        self.area(self.walk.area_gitso, ["a", "n"],
+                  alias_targets=["C:/Users/x/OneDrive/Documents/PowerShell/profile.ps1"])
+        self.assertIn("in OneDrive", self.output.getvalue())
+
     def test_a_failed_step_is_reported_and_the_rest_still_run(self):
         plan = self.walk.Plan()
         plan.add("Breaks", "breaks", lambda: (_ for _ in ()).throw(RuntimeError("no network")))

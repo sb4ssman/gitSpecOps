@@ -183,16 +183,24 @@ class Steps:
     def __init__(self, total: int):
         self.total, self.index, self.results = total, 0, []
 
-    def run(self, label: str, action) -> str:
-        """`action()` returns (status, detail); an exception is a FAILED step, never a traceback."""
+    def run(self, label: str, action, loud: bool = False) -> str:
+        """`action()` returns (status, detail); an exception is a FAILED step, never a traceback.
+        A `loud` action runs a program that prints: the step gets a line of its own first, and
+        its number and name again with the result, so that output cannot hide either."""
         import time
         self.index += 1
-        say(f"  [{self.index}/{self.total}] {label:<30}", "strong", end="")
+        head = f"  [{self.index}/{self.total}] {label:<30}"
+        if loud:
+            say(head.rstrip(), "strong")
+        else:
+            say(head, "strong", end="")
         started = time.monotonic()
         try:
             status, detail = action()
         except Exception as exc:  # noqa: BLE001 - a step reports its failure; the run goes on honestly
             status, detail = "FAILED", clean(str(exc)).strip()[:160] or type(exc).__name__
+        if loud:
+            say(head, "strong", end="")
         say(f" {status:<8}", STATUS_TONES[status], end="")
         say(f"{time.monotonic() - started:5.1f}s  {clean(detail)}", "detail")
         self.results.append((label, status, detail))

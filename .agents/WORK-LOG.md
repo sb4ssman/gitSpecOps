@@ -2690,3 +2690,19 @@ No code changed; decisions recorded where they govern.
   then deleted.
 - Setup now asks "Install trufflehog?" like the others; the "cannot install" note remains only
   for a system with neither a package nor a release.
+
+## 2026-11-15 16:50 - user (claude) - The user's first install applied; what went wrong in it (branch wave/setup-protection)
+- Applied on the user's machine: .venv with Qt, the gitso command on the user Path, one library
+  folder, start at sign-in, Sourcetree, five protected values, Gitleaks (winget; its package
+  folder is on the user Path for new terminals) used in every scan, a fleet over Tailscale, the
+  map on the tailnet. Checked afterwards from the settings file and the system.
+- The alias step failed: Windows Defender's Controlled Folder Access (on) refused python.exe
+  writing the PowerShell profile in OneDrive\Documents (Defender event 1123, 15:38:09); Python
+  reports that as "No such file or directory". Nothing was written to either profile. Setup now
+  names the refused file, says Controlled Folder Access is the usual cause on Windows, still
+  writes the other profiles, and warns before offering an alias into a OneDrive profile.
+- Setup's closing line said "Nothing else was changed" after a walkthrough had applied fourteen
+  steps; removed.
+- winget's and uv's own output overwrote the step's number and name ([12/15] was missing). A
+  step that runs another program now gets its own line, and its number and name again with the
+  result.

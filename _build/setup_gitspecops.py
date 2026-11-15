@@ -229,8 +229,7 @@ def menu_loop(parser, args) -> int:
             code = stop.code if isinstance(stop.code, int) else (1 if stop.code else 0)
         if code:
             say()
-            line("That item did not finish; what it said is above. Nothing else was changed.",
-                 "warning")
+            line("That item did not finish; what it said is above.", "warning")
         say()
         try:
             input("  Press Enter to go back to the setup menu: ")
