@@ -2635,3 +2635,11 @@ No code changed; decisions recorded where they govern.
   interpreter startup), and installing as a package would put Basic, Special, Elaborate and App
   into site-packages as top-level names. It needs one `gitspecops` package (or a zipapp) first.
   The user's second Windows machine has no SSH server, so it cannot be inspected from here.
+
+## 2026-11-14 15:10 - sb4ssman (claude) - Old archive launcher removed; CI green on all waves
+- At the user's request, removed the one remaining archive launcher file from an old archive
+  folder. It ran `gitArchiveUpdater/archive_updater.py`, which no longer exists. The other two
+  archives in the old registry had no launcher files. The current registry is empty.
+- CI passed on PRs #1 to #6, including the new Ruff job.
+- Why setup says the desktop app is installed: this checkout's `.venv` has had PySide6 since
+  2026-10-23. Setup checks the folder, so a fresh clone is the honest first-run test.

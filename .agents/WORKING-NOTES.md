@@ -21,9 +21,11 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
 
 ## Waiting on the user
 - **Merge, in order:** PR #1 basic-and-secure-commands, #2 remove-legacy, #3 readme-docs,
-  #4 polish, #5 command-names; then the cleanup wave (branch wave/cleanup).
-- **His three archive launchers** were made before the shared settings and the command renames;
-  they run files that no longer exist. Regenerate each with `gitso archive add <folder>`.
+  #4 polish, #5 command-names, #6 cleanup. CI passed on all six (2026-11-14).
+- **Old archive registrations:** the current registry is empty. The pre-shared-settings registry
+  (`old-settings.json` in the settings folder) still lists three archive folders; only one had a
+  launcher file, and it was removed 2026-11-14 at the user's request. Register an archive again
+  with `gitso archive add <folder>` if wanted.
 - **Protected values:** copy them back from `settings.json.before-first-run` after the first-run
   test. Its old `output.mode`/`output.format` keys no longer exist (now `{save, directory}`).
 - **The state repository, before first use:** how a repository-only machine proves it is alive
@@ -33,7 +35,11 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
 - **The folder mapper:** `.agents/tools/README.md` fetches it from `sb4ssman/PythonTools`, which
   now redirects to a private repository (checked 2026-11-14), so a fresh machine cannot fetch it.
 - **Whether a machine's own map view may show real library paths** (kept private for now).
-- **One-command install** (`pipx install`): needs a package layout first; see the 2026-11-14 log.
+- **Packaging and distribution** (ruling 2026-11-15): clone plus setup stays for now. A more
+  professional package and distribution (pipx, PyPI or a release download) stays under
+  consideration; any of them needs one package layout first; see the 2026-11-14 log.
+- **The shelf lists gitSpecOps as an outside entry** (ruling 2026-11-15); the repository stays
+  at its own home. Recording it is the shelf's job, not this repository's.
 - **Code signing** for release builds.
 
 ## Not built yet
