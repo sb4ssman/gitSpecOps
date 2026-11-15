@@ -590,8 +590,11 @@ def area_protection(found: dict, plan: Plan) -> None:
             break
         value = ask("Value:")
         if value:
-            whole = ask("Only as a whole word, for a short value that also occurs inside other words? "
-                        "[Y/N] [N]:", "n").lower() == "y"
+            # A name with a space or an email address is matched anywhere. Only a single short
+            # word needs the choice: "pat" anywhere would also match "pattern".
+            whole = (len(value) < 6 or " " not in value and "@" not in value) and yes_no(
+                f"Match {value} only as a separate word?", "y",
+                f"Yes: \"{value}\" on its own. No: also inside longer words, which flags much more text.")
             adding.append((value, whole))
             line("Will be added when you apply.", "success")
     for value, whole in adding:

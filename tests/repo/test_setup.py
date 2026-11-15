@@ -304,6 +304,14 @@ class WalkthroughTests(unittest.TestCase):
             "Git name: commit as someone (git config --global user.name)",
             "Protect Pat Example (anywhere in text)"])
 
+    def test_an_added_name_needs_no_matching_question_and_a_short_word_gets_a_plain_one(self):
+        plan = self.area(self.walk.area_protection, ["a", "Pat Example", "a", "pat", "y", "n"])
+        self.assertEqual([c.review for c in plan.changes],
+                         ["Protect Pat Example (anywhere in text)", "Protect pat (whole word only)"])
+        out = self.output.getvalue()
+        self.assertEqual(out.count("only as a separate word?"), 1)
+        self.assertIn("Match pat only as a separate word?", out)
+
     def test_public_identity_rules(self):
         self.assertTrue(self.walk.public_git_name("Someone@Box", "someone"))
         self.assertTrue(self.walk.public_git_name("someone", "someone"))
