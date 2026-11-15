@@ -60,7 +60,7 @@ Every part of the walkthrough is also a command, for scripts and for agents:
 | Part | Command |
 |---|---|
 | This machine's library folders | `gitso machine add FOLDER` (`find` suggests some) |
-| Archives | `gitso archive --install FOLDER --mode update` |
+| Archives | `gitso archive add FOLDER --mode update` |
 | A monthly archive refresh | `gitso archive schedule --install-monthly-task` |
 | Start at sign-in | `gitso start-at-sign-in enable` |
 | A fleet | `gitso fleet` (guided), or `fleet transports ...` |

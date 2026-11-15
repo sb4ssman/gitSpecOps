@@ -15,8 +15,8 @@ continues instead of restarting.
 
 ```sh
 gitso archive update --root /path/to/archive
-gitso archive --list
-gitso archive --install /path/to/archive --mode update
+gitso archive list
+gitso archive add /path/to/archive --mode update
 ```
 
 **Fast-forward pulls only.** A repository that is dirty, diverged, or on an unapproved remote is

@@ -155,7 +155,9 @@ def detect() -> dict:
              "desktop": (VENV_DIR / "Lib/site-packages/PySide6").exists()
              or any(VENV_DIR.glob("lib/python*/site-packages/PySide6"))}
     found["gh_signed_in"] = bool(found["gh"]) and _run(["gh", "auth", "status"])[0] == 0
-    found["gh_login"] = _run(["gh", "api", "user", "--jq", ".login"])[1] if found["gh_signed_in"] else ""
+    account = _run(["gh", "api", "user", "--jq", '.login + " " + (.id | tostring)'])[1].split() \
+        if found["gh_signed_in"] else []
+    found["gh_login"], found["gh_id"] = account if len(account) == 2 else ("", "")
     found["git_name"] = _run(["git", "config", "--global", "user.name"])[1] if found["git"] else ""
     found["git_email"] = _run(["git", "config", "--global", "user.email"])[1] if found["git"] else ""
     import getpass
@@ -233,11 +235,24 @@ def yes_no(question: str, default: str = "y", explanation: str = "") -> bool:
     return answer == "y"
 
 
-def masked(value: str) -> str:
-    """A protected value as it appears on screen: enough to recognise, not to copy."""
-    if len(value) <= 3:
-        return "*" * len(value)
-    return value[:2] + "*" * (len(value) - 3) + value[-1]
+NOREPLY_DOMAIN = "@users.noreply.github.com"
+
+
+def public_git_name(name: str, login: str) -> bool:
+    """A Git name made from the public GitHub login (the login, or login@machine) is public."""
+    name, login = name.casefold(), login.casefold()
+    return bool(name and login) and (name == login or name.startswith(login + "@"))
+
+
+def public_git_email(email: str) -> bool:
+    """GitHub's no-reply addresses are public by design; any other address is treated as private."""
+    email = email.casefold()
+    return email.endswith(NOREPLY_DOMAIN) or email == "noreply@github.com"
+
+
+def noreply_address(login: str, user_id: str) -> str:
+    """GitHub's no-reply address for an account: ID+LOGIN@users.noreply.github.com."""
+    return f"{user_id}+{login}{NOREPLY_DOMAIN}" if login and user_id.isdigit() else ""
 
 
 def tool_row(label: str, path: str | None, missing: str) -> None:
@@ -542,22 +557,26 @@ def area_protection(found: dict, plan: Plan) -> None:
     line("Values that must never be published: your name, email addresses, usernames. A checked "
          "commit or push holds anything that contains one, and scans report them. They stay on "
          "this computer.", "muted")
+    retired = commit_identity(found, plan)
     if not plan.enrolled_after and not found["protected"]:
         line("Protected values are saved with this machine's settings, which a library folder "
              "creates (step 4).", "warning")
         return
     known = {v.casefold() for v in anywhere + words}
     suggestions = []
-    # Not the GitHub login: it is public by design, and protecting it would hold every publish.
-    for label, value in (("Your Git name", found["git_name"]), ("Your Git email", found["git_email"]),
-                         ("This computer's user name", found["user"])):
-        if value and value.casefold() not in known and value not in [v for _l, v in suggestions]:
+    login = found.get("gh_login", "").casefold()
+    # Never the public GitHub login or a commit identity still in use: every commit carries those,
+    # so protecting one would hold every commit. A private name or email is suggested once commits
+    # stop carrying it (commit_identity above).
+    for label, value in retired + [("This computer's user name", found["user"])]:
+        if value and value.casefold() not in known and value.casefold() != login \
+                and value not in [v for _l, v in suggestions]:
             suggestions.append((label, value))
     adding = []
     for label, value in suggestions:
         short = len(value) < 6 or " " not in value and "@" not in value
-        if yes_no(f"Protect {label.lower()} ({masked(value)})?", "y",
-                  "As a whole word only (it also occurs inside other words)" if short else "Anywhere in text."):
+        if yes_no(f"Protect {label.lower()}, {value}?", "y",
+                  "As a whole word only (it also occurs inside other words)." if short else "Anywhere in text."):
             adding.append((value, short))
     while True:
         say()
@@ -576,8 +595,64 @@ def area_protection(found: dict, plan: Plan) -> None:
             adding.append((value, whole))
             line("Will be added when you apply.", "success")
     for value, whole in adding:
-        plan.add("Protected value", f"Protect {masked(value)} ({'whole word only' if whole else 'anywhere in text'})",
+        plan.add("Protected value", f"Protect {value} ({'whole word only' if whole else 'anywhere in text'})",
                  lambda value=value, whole=whole: _protect(value, whole))
+
+
+def commit_identity(found: dict, plan: Plan) -> list[tuple[str, str]]:
+    """Show the name and email every commit carries; offer public ones in place of private ones.
+
+    Returns the private values commits will stop carrying, for protection. A private value still
+    in use is not offered for protection: every commit would then be held.
+    """
+    login, name, email = found.get("gh_login", ""), found["git_name"], found["git_email"]
+    if not (name or email):
+        return []
+    say()
+    line("Every commit carries your Git name and email, and history keeps them for good. Commit "
+         "under public ones: your GitHub handle and GitHub's no-reply address.", "muted")
+    retired = []
+    if name:
+        if public_git_name(name, login):
+            row("Git name", f"{name}  (public)", "success")
+        else:
+            row("Git name", name, "warning")
+            if login and yes_no(f"Commit as {login} instead of {name}?", "y",
+                                "Sets Git's user.name for your account (git config --global). Commits "
+                                "already made keep the name they were made with."):
+                plan.add("Git name", f"Git name: commit as {login} (git config --global user.name)",
+                         lambda: _git_identity("user.name", login))
+                retired.append(("Your old Git name", name))
+            else:
+                line("Not protected while commits carry it: that would hold every commit.", "muted")
+    if email:
+        if public_git_email(email):
+            row("Git email", f"{email}  (public)", "success")
+        else:
+            row("Git email", email, "warning")
+            address = noreply_address(login, found.get("gh_id", ""))
+            if not address:
+                line("Your no-reply address is on https://github.com/settings/emails, with \"Keep my "
+                     "email addresses private\" turned on. It ends in " + NOREPLY_DOMAIN + ".", "muted")
+                typed = ask("Paste it to commit with it, or press Enter to keep your current email:")
+                address = typed if public_git_email(typed) else ""
+                if typed and not address:
+                    line("That is not a GitHub no-reply address; your email is unchanged.", "warning")
+            if address and yes_no(f"Commit as {address} instead of {email}?", "y",
+                                  "Sets Git's user.email for your account (git config --global). Commits "
+                                  "already made keep the email they were made with."):
+                plan.add("Git email", f"Git email: commit as {address} (git config --global user.email)",
+                         lambda: _git_identity("user.email", address))
+                retired.append(("Your old Git email", email))
+            else:
+                line("Not protected while commits carry it: that would hold every commit.", "muted")
+    return retired
+
+
+def _git_identity(key: str, value: str) -> str:
+    if subprocess.call(["git", "config", "--global", key, value]) != 0:
+        raise RuntimeError(f"git config --global {key} did not finish")
+    return "set"
 
 
 def _protect(value: str, whole: bool) -> str:

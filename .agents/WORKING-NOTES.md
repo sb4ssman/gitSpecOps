@@ -77,4 +77,5 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
 ## Notes to bring up to date
 - `knowledge/settings-schema.md`, and parts of `product-contract.md` and
   `architecture-layers.md`, still describe settings migration and older files removed on
-  2026-11-13. `.agents/README.md`'s Sync Suggester sections predate the layer move.
+  2026-11-13. `.agents/README.md`'s Sync Suggester sections predate the layer move, and its smoke checks
+  still name the old scripts (`update_archive.py`, `sync_archive.py`, `duplicate_org.py`).

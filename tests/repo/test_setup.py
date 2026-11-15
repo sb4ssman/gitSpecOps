@@ -155,7 +155,7 @@ class WalkthroughTests(unittest.TestCase):
         self.applied = []
 
     def found(self, **overrides):
-        base = {"git": "git", "gh": "gh", "gh_signed_in": True, "gh_login": "someone", "uv": "uv",
+        base = {"git": "git", "gh": "gh", "gh_signed_in": True, "gh_login": "someone", "gh_id": "", "uv": "uv",
                 "gitso": None, "tailscale": None, "venv": True, "desktop": True, "git_name": "",
                 "git_email": "", "user": "", "enrolled": True, "machine": "Box", "libraries": ["/code"],
                 "web": "loopback", "face": "web", "fleet": {}, "tailnet": False, "synced_folders": [],
@@ -263,8 +263,56 @@ class WalkthroughTests(unittest.TestCase):
         plan = self.area(self.walk.area_gitso, ["r", "n"], gitso_command=here)
         self.assertEqual([c.review.split(":")[0] for c in plan.changes], ["gitso command", "gitso alias"])
 
-    def test_protected_values_are_masked_on_screen(self):
-        self.assertEqual(self.walk.masked("someone@example.invalid"), "so" + "*" * 20 + "d")
+    def test_public_commit_identity_is_shown_and_never_offered_for_protection(self):
+        # The handle@machine name and the no-reply email are on every commit: protecting either
+        # would hold every commit. Only the computer's user name is offered, shown in full.
+        plan = self.area(self.walk.area_protection, ["y", "n"], git_name="someone@Box",
+                         git_email="42+someone@users.noreply.github.com", user="pat", gh_id="42")
+        out = self.output.getvalue()
+        self.assertEqual(out.count("(public)"), 2)
+        self.assertNotIn("Protect your git", out)
+        self.assertIn("Protect this computer's user name, pat?", out)
+        self.assertEqual([c.review for c in plan.changes], ["Protect pat (whole word only)"])
+
+    def test_a_private_email_can_be_swapped_for_the_no_reply_address_and_then_protected(self):
+        plan = self.area(self.walk.area_protection, ["y", "y", "n"], git_name="someone",
+                         git_email="pat@example.invalid", gh_id="42")
+        self.assertEqual([c.review for c in plan.changes], [
+            "Git email: commit as 42+someone@users.noreply.github.com (git config --global user.email)",
+            "Protect pat@example.invalid (anywhere in text)"])
+
+    def test_a_private_email_kept_in_use_is_not_protected(self):
+        plan = self.area(self.walk.area_protection, ["n", "n"], git_email="pat@example.invalid", gh_id="42")
+        self.assertEqual(plan.changes, [])
+        self.assertIn("that would hold every commit", self.output.getvalue())
+
+    def test_without_a_github_sign_in_the_no_reply_address_can_be_pasted(self):
+        plan = self.area(self.walk.area_protection, ["7+pat@users.noreply.github.com", "y", "y", "n"],
+                         gh_login="", git_email="pat@example.invalid")
+        self.assertIn("https://github.com/settings/emails", self.output.getvalue())
+        self.assertEqual([c.title for c in plan.changes], ["Git email", "Protected value"])
+
+    def test_a_pasted_address_that_is_not_a_no_reply_address_changes_nothing(self):
+        plan = self.area(self.walk.area_protection, ["pat@example.invalid", "n"], gh_login="",
+                         git_email="pat@example.invalid")
+        self.assertEqual(plan.changes, [])
+        self.assertIn("not a GitHub no-reply address", self.output.getvalue())
+
+    def test_a_private_git_name_can_be_swapped_for_the_github_handle(self):
+        plan = self.area(self.walk.area_protection, ["y", "y", "n"], git_name="Pat Example")
+        self.assertEqual([c.review for c in plan.changes], [
+            "Git name: commit as someone (git config --global user.name)",
+            "Protect Pat Example (anywhere in text)"])
+
+    def test_public_identity_rules(self):
+        self.assertTrue(self.walk.public_git_name("Someone@Box", "someone"))
+        self.assertTrue(self.walk.public_git_name("someone", "someone"))
+        self.assertFalse(self.walk.public_git_name("someone-else", "someone"))
+        self.assertFalse(self.walk.public_git_name("Pat", ""))
+        self.assertTrue(self.walk.public_git_email("noreply@github.com"))
+        self.assertFalse(self.walk.public_git_email("pat@example.invalid"))
+        self.assertEqual(self.walk.noreply_address("someone", "42"), "42+someone@users.noreply.github.com")
+        self.assertEqual(self.walk.noreply_address("someone", ""), "")
 
     def test_an_archive_is_planned_after_reading_its_folder_and_changes_nothing_yet(self):
         folder = Path(__file__).resolve().parent

@@ -2643,3 +2643,15 @@ No code changed; decisions recorded where they govern.
 - CI passed on PRs #1 to #6, including the new Ruff job.
 - Why setup says the desktop app is installed: this checkout's `.venv` has had PySide6 since
   2026-10-23. Setup checks the folder, so a fresh clone is the honest first-run test.
+
+## 2026-11-15 14:30 - user (claude) - Setup's Protection step: public identity left alone, values shown (branch wave/setup-protection)
+- Found in the user's first install: setup offered to protect the Git name and Git email. Commit
+  identities are scanned, so protecting a name or email every commit carries would hold every
+  commit. Setup now shows both and marks the public ones (a name made from the GitHub login, a
+  GitHub no-reply email); it never offers those for protection.
+- A private Git name or email gets an offer to commit under the GitHub handle or the no-reply
+  address (`ID+LOGIN@users.noreply.github.com`, from `gh api user`; without a sign-in, setup
+  says where to find it and accepts a pasted one). Only then is the old value offered for
+  protection; a private value still in use is not, and setup says why.
+- Values are shown in full: masking hid from the user what was being asked. Setup writes no log.
+- `docs/SETUP.md` and `docs/ARCHIVES.md` used the pre-rename `archive --install` / `--list`.
