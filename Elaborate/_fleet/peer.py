@@ -40,7 +40,15 @@ from Special._sync.observer import fetch_repositories
 from Elaborate._transport.repo import RepoTransport
 from Elaborate._fleet.watcher import semantic_fingerprint
 
-PEER_POLL_SECONDS = 30.0
+# How often Tailscale peers are asked for their reports, unless the machine's tailnet
+# connection says otherwise (`seconds`). Every 30 seconds was far more often than anyone looks
+# (the user, 2026-11-15); setup offers 1, 5 or 30 minutes.
+PEER_POLL_SECONDS = 300.0
+
+
+def poll_seconds(config: dict) -> float:
+    tailnet = (config.get("transports") or {}).get("tailnet") or {}
+    return float(tailnet.get("seconds") or PEER_POLL_SECONDS)
 # How often each transport is re-read for other machines' manifests. The tray and the browser
 # ask for the dashboard every few seconds, and every GitHub read is an API call: reading on
 # every request spent most of the account's hourly API budget on one idle machine.
@@ -66,7 +74,7 @@ def stale_after(config: dict) -> float:
     transports = config.get("transports") or {}
     slowest = float(config.get("heartbeat") or 30)
     if transports.get("tailnet"):
-        slowest = max(slowest, PEER_POLL_SECONDS)
+        slowest = max(slowest, poll_seconds(config))
     for name in ("folder", "repo"):
         entry = transports.get(name)
         if entry:
@@ -400,7 +408,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                     network.poll()
                 except Exception as exc:  # noqa: BLE001 - the tailnet tier may never stop the peer
                     log(f"Tailnet poll failed: {exc}")
-                if stopping.wait(PEER_POLL_SECONDS):
+                if stopping.wait(poll_seconds(config)):
                     return
 
         threading.Thread(target=poll_loop, name="fleet-poll", daemon=True).start()

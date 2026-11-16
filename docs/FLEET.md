@@ -176,7 +176,7 @@ content is never published by this release.
   commits; `--withhold-names` (or "no" at setup) publishes salted ids only. Creating it requires an explicit setup choice or `--create-repo`.
 - **Medium:** an existing folder managed by your own sync client. No particular client is
   required; gitSpecOps does not install or configure one.
-- **Live:** optional Tailscale peer discovery and pulls every 30 seconds. Peers expose GET-only
+- **Live:** optional Tailscale peer discovery and pulls, every 5 minutes by default (setup asks: 1, 5 or 30 minutes; stored as `transports.tailnet.seconds`). Peers expose GET-only
   reports and an authenticated session endpoint. Nothing is pushed to another peer. The live
   report includes readable repository identities within the authorized personal fleet.
 

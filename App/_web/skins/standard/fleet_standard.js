@@ -1,6 +1,6 @@
 /* The standard skin. It renders display v1 and never decides what Git state means. */
 import {FleetConnection} from './fleet_client.js';
-import {ageLabel, GroupExpansion, groupRows, selectRows} from './fleet_view.js';
+import {ageLabel, GroupExpansion, groupRows, regroup, selectRows} from './fleet_view.js';
 import {renderMap, VIEWS} from './fleet_map.js';
 import {renderSecurity} from './fleet_security.js';
 
@@ -11,7 +11,8 @@ const node = (tag, text, className) => {
   if (className) element.className = className;
   return element;
 };
-const state = {data: null, selected: null, receivedAt: null, expansion: new GroupExpansion(savedCollapsedGroups())};
+const state = {data: null, raw: null, selected: null, receivedAt: null,
+               expansion: new GroupExpansion(savedCollapsedGroups()), grouping: savedGrouping()};
 const desktopMessages = new Map();
 const desktopPending = new Set();
 // Session memory only: no report, browser storage, notification or fleet publication.
@@ -23,6 +24,11 @@ const controls = {
   sort: byId('sort'), refresh: byId('refresh'), warning: byId('connection-warning'),
 };
 
+// Group by where repositories live (library, then folder) or by GitHub owner. Every view reads
+// `groups` and each row's `group_id`, so one regrouping here regroups them all (2026-11-15).
+function savedGrouping() {
+  try { return localStorage.getItem('gitso.grouping') === 'owner' ? 'owner' : 'place'; } catch { return 'place'; }
+}
 function option(value, label) {
   const item = node('option', label); item.value = value; return item;
 }
@@ -80,7 +86,8 @@ function renderSummary() {
     [summary.attention, 'Need attention', `${summary.repositories} repositories observed`],
     [summary.machines, 'Reporting machines', `${summary.current_machines} current`],
     [summary.stale_machines, 'Stale machines', summary.stale_machines ? 'Review before acting' : 'All reports current'],
-    [state.data.groups.length, 'Organizations observed', 'Grouped by owner'],
+    [state.data.groups.length, state.grouping === 'place' ? 'Folders observed' : 'Organizations observed',
+     state.grouping === 'place' ? 'Grouped by library and folder' : 'Grouped by owner'],
   ];
   byId('summary').replaceChildren(...values.map(([value, label, detail]) => {
     const card = node('article', undefined, 'metric');
@@ -393,6 +400,12 @@ function selectTab(tab) {
 }
 
 for (const control of [controls.query, controls.status, controls.machine, controls.sort]) control.addEventListener('input', renderRepositories);
+byId('grouping').value = state.grouping;
+byId('grouping').onchange = () => {
+  state.grouping = byId('grouping').value;
+  try { localStorage.setItem('gitso.grouping', state.grouping); } catch { /* a remembered choice only */ }
+  if (state.raw) { state.data = regroup(state.raw, state.grouping); renderAll(); }
+};
 byId('clear-filters').onclick = () => { controls.query.value = ''; controls.status.value = 'attention'; controls.machine.value = 'all'; controls.sort.value = 'attention'; renderRepositories(); };
 byId('expand').onclick = () => {
   state.expansion.expandAll();
@@ -414,7 +427,8 @@ connection.addEventListener('loading', () => { controls.refresh.disabled = true;
 connection.addEventListener('idle', () => { controls.refresh.disabled = false; });
 connection.addEventListener('display', event => {
   if (event.detail.data.setup_required) { window.location.href = '/setup'; return; }
-  state.data = event.detail.data; state.receivedAt = event.detail.receivedAt;
+  state.raw = event.detail.data; state.data = regroup(state.raw, state.grouping);
+  state.receivedAt = event.detail.receivedAt;
   controls.warning.hidden = true; byId('connection').textContent = 'Dashboard connected'; renderMark(); renderAll();
 });
 connection.addEventListener('unavailable', event => {

@@ -917,7 +917,8 @@ SCANS = ("before a checked commit or push, in gitso scan and gitso history scan,
 
 CONNECTIONS = (  # (name, what kind, what it does): the list and each question use the same words
     ("Tailscale", "Live",
-     "Your machines pull each other's status every 30 seconds, directly, between your own devices."),
+     "Your machines ask each other for their status every few minutes (you choose), directly, "
+     "between your own devices."),
     ("A synced folder", "In between",
      "A small status file every 5 minutes, in a folder a sync service already copies to your "
      "machines: OneDrive, Syncthing, an Obsidian Sync vault and others. The service's provider can "
@@ -976,15 +977,16 @@ def area_fleet(found: dict, plan: Plan) -> None:
             chosen = _choose_connections(found, has_tailscale, current)
             if chosen is None:
                 return
-            tailnet, folder, repo, create = chosen
+            tailnet, folder, repo, create, seconds = chosen
             if not (tailnet or folder or repo):
                 plan.add("Fleet", "Fleet: no connections left; this machine leaves the fleet",
                          lambda: (leave_fleet(), "left")[1])
                 _browser_reach(found, plan, False)
                 return
             names = _ask_names(tailnet, folder, repo, current)
-            plan.add("Fleet", "Fleet: connect by " + ", ".join(_described(tailnet, folder, repo, create, names)),
-                     lambda: _set_connections(current, tailnet, folder, repo, create, names))
+            plan.add("Fleet", "Fleet: connect by " + ", ".join(_described(tailnet, folder, repo, create, names,
+                                                                          seconds)),
+                     lambda: _set_connections(current, tailnet, folder, repo, create, names, seconds))
             _browser_reach(found, plan, tailnet)
             return
         _browser_reach(found, plan, "tailnet" in current)
@@ -1007,14 +1009,14 @@ def area_fleet(found: dict, plan: Plan) -> None:
     chosen = _choose_connections(found, has_tailscale, {})
     if chosen is None:
         return
-    tailnet, folder, repo, create = chosen
+    tailnet, folder, repo, create, seconds = chosen
     if not (tailnet or folder or repo):
         line("A fleet needs at least one connection. Nothing will change.", "warning")
         return
     names = _ask_names(tailnet, folder, repo, {})
-    ways = ", ".join(_described(tailnet, folder, repo, create, names))
+    ways = ", ".join(_described(tailnet, folder, repo, create, names, seconds))
     plan.add("Fleet", f"Fleet: {'join' if key else 'start'} a fleet, connected by {ways}",
-             lambda: _start_fleet(key, tailnet, folder, repo, create, names))
+             lambda: _start_fleet(key, tailnet, folder, repo, create, names, seconds))
     _browser_reach(found, plan, tailnet)
 
 
@@ -1023,13 +1025,14 @@ def _connection_names(transports: dict) -> list[str]:
              "repo": "the state repository (experimental)"}.get(name, name) for name in transports]
 
 
-def _described(tailnet, folder, repo, create, names=None) -> list[str]:
+def _described(tailnet, folder, repo, create, names=None, seconds=None) -> list[str]:
     names = names or {}
 
     def carried(key):
         return "" if key not in names else ", with names" if names[key] else ", ids only"
+    every = (f" every {seconds // 60} minute{'s' if seconds != 60 else ''}" if seconds else "")
     return [part for part in (
-        f"Tailscale{carried('tailnet')}" if tailnet else "",
+        f"Tailscale{every}{carried('tailnet')}" if tailnet else "",
         f"a synced folder ({folder}{carried('folder')})" if folder else "",
         (f"the state repository {repo} ({'create it, private' if create else 'existing'}; experimental"
          f"{carried('repo')})" if repo else "")) if part]
@@ -1069,6 +1072,7 @@ def _choose_connections(found: dict, has_tailscale: bool, current: dict):
     if tailnet and not found["tailnet"]:
         line("Tailscale is installed but not connected; sign in to Tailscale for your machines to see "
              "each other.", "warning")
+    seconds = _ask_poll_seconds((current.get("tailnet") or {}).get("seconds")) if tailnet else None
     folder = (current.get("folder") or {}).get("path", "")
     if yes_no("Connect through a synced folder?", "y" if folder or (not current and not tailnet) else "n",
               f"{CONNECTIONS[1][1]}. {CONNECTIONS[1][2]}"):
@@ -1086,7 +1090,25 @@ def _choose_connections(found: dict, has_tailscale: bool, current: dict):
         repo = ""
     else:
         repo = ""
-    return bool(tailnet), folder, repo, create
+    return bool(tailnet), folder, repo, create, seconds
+
+
+POLL_CHOICES = (("1", "Every minute", 60), ("5", "Every 5 minutes", 300), ("3", "Every 30 minutes", 1800))
+
+
+def _ask_poll_seconds(current) -> int:
+    """How often machines ask each other for their status over Tailscale."""
+    say()
+    line("How often should your machines ask each other for their status? Each ask is a small "
+         "request over Tailscale, never a Git command.", "muted")
+    for key, label, seconds in POLL_CHOICES:
+        option(key, label, "Recommended." if seconds == 300 else "")
+    option("0", "Stop the walkthrough", "Nothing has been changed.")
+    default = {seconds: key for key, _label, seconds in POLL_CHOICES}.get(current, "5")
+    answer = choose("1530", default)
+    if answer == "0":
+        raise Stop
+    return next(seconds for key, _label, seconds in POLL_CHOICES if key == answer)
 
 
 def _pick_synced_folder(found: dict, current: str) -> str:
@@ -1126,16 +1148,16 @@ def _pick_state_repo(found: dict, current: str) -> tuple[str, bool]:
     return name, True
 
 
-def _start_fleet(key, tailnet, folder, repo, create, names) -> str:
+def _start_fleet(key, tailnet, folder, repo, create, names, seconds=None) -> str:
     from Elaborate._fleet.setup_state import join_fleet
     if folder:
         Path(folder).mkdir(parents=True, exist_ok=True)
     join_fleet(key=key, folder=folder or None, tailnet=tailnet, repo=repo or None, create_repo=create,
-               names=names)
+               names=names, tailnet_seconds=seconds)
     return "joined"
 
 
-def _set_connections(current: dict, tailnet, folder, repo, create, names=None) -> str:
+def _set_connections(current: dict, tailnet, folder, repo, create, names=None, seconds=None) -> str:
     from Elaborate._fleet.cli import load_saved
     from Elaborate._fleet.setup_state import apply_transports
     from Special._settings.fleet import fleet_directory
@@ -1145,8 +1167,8 @@ def _set_connections(current: dict, tailnet, folder, repo, create, names=None) -
     apply_transports(load_saved(directory), tailnet=tailnet, clear_tailnet=not tailnet,
                      folder=folder or None, clear_folder=not folder and "folder" in current,
                      repo=repo or None, create_repo=create, clear_repo=not repo and "repo" in current,
-                     directory=directory, names=names)
-    return "connected by " + ", ".join(_described(tailnet, folder, repo, create, names))
+                     directory=directory, names=names, tailnet_seconds=seconds)
+    return "connected by " + ", ".join(_described(tailnet, folder, repo, create, names, seconds))
 
 
 def _browser_reach(found: dict, plan: Plan, over_tailscale: bool) -> None:

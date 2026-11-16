@@ -12,6 +12,20 @@ export function selectRows(data, {query = '', status = 'attention', machine = 'a
   return rows.sort((a, b) => (sort === 'attention' ? b.severity - a.severity : 0)
     || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
+/** Group by where repositories live (library, then folder) or by GitHub owner: every view reads
+ *  `groups` and each row's `group_id`, so regrouping here regroups them all (2026-11-15). */
+export function regroup(data, mode) {
+  if (mode !== 'place' || !data.place_groups) {
+    return {...data, rows: data.rows.map(row => ({...row, group_host: (row.identity || {}).host}))};
+  }
+  const byId = new Map(data.place_groups.map(group => [group.id, group]));
+  return {...data, owner_groups: data.groups, groups: data.place_groups,
+          rows: data.rows.map(row => {
+            const group = byId.get(row.place_id) || {label: 'Folder not shared', host: 'Other machines'};
+            return {...row, group_id: row.place_id, namespace: group.label, group_host: group.host};
+          })};
+}
+
 export function groupRows(data, rows) {
   return data.groups.map(group => ({...group, rows: rows.filter(row => row.group_id === group.id)}))
     .filter(group => group.rows.length);

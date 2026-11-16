@@ -18,7 +18,7 @@ from Basic._facts import (git_stdout, remote_urls, repo_facts, root_commit,  # n
 from Basic._identity import parse_remote_url  # noqa: E402
 from Basic._run import run_git  # noqa: E402
 
-from Special._sync.manifest import (branch_id, local_repository_id, repository_id,  # noqa: E402
+from Special._sync.manifest import (branch_id, local_repository_id, place_of, repository_id,  # noqa: E402
                       root_repository_id, utc_now)
 
 DEFAULT_FETCH_WORKERS = 4
@@ -231,13 +231,14 @@ def observe_roots(roots: list[RootSpec], secret: str | None = None, fetch: bool 
     if fetch and paths:
         fetched_at, fetch_issues = fetch_repositories(paths, fetch_workers, fetch_timeout, fetcher)
         issues.extend(fetch_issues)
-    observed = observe_paths(paths, secret, fetched_at=fetched_at, progress=progress)
+    observed = observe_paths(paths, secret, fetched_at=fetched_at, progress=progress,
+                             roots=[spec.path for spec in roots])
     observed.issues = issues + observed.issues
     return observed
 
 
 def observe_paths(paths: list[Path], secret: str | None = None,
-                  fetched_at: dict[Path, str] | None = None, progress=None) -> Observation:
+                  fetched_at: dict[Path, str] | None = None, progress=None, roots=None) -> Observation:
     """Inspect known repository roots without rediscovering their parent libraries.
 
     This is the event-driven observer's targeted path: a filesystem event identifies the
@@ -301,6 +302,7 @@ def observe_paths(paths: list[Path], secret: str | None = None,
             "name": {"host": host, "owner": owner, "name": name},
             "branch": facts.get("branch"),
             "head": git_stdout(path, ["rev-parse", "--verify", "-q", "HEAD"]),
+            "place": place_of(path, roots),
         })
         # Local-only: the catalog is never published, so it may hold the full identity.
         # host/owner are what let `fleet converge` ask a provider to name a peer's hash; `identity`
