@@ -15,6 +15,7 @@ that the upstream does not have (not a fast-forward) each stop it with what to d
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -135,10 +136,34 @@ def _stop_app() -> bool:
     return request_stop()
 
 
+#: What a Linux desktop app needs to find the screen and the session's message bus.
+DESKTOP_KEYS = ("DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XDG_SESSION_TYPE",
+                "DBUS_SESSION_BUS_ADDRESS", "XAUTHORITY")
+
+
+def _desktop_environment() -> dict:
+    """On Linux, run over SSH: borrow the signed-in desktop session's screen settings, so the
+    restarted app can draw its icon (without them Qt aborted at once, 2026-11-16). Elsewhere, or
+    with a screen already known, this process's own environment, unchanged."""
+    env = dict(os.environ)
+    if not sys.platform.startswith("linux") or env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"):
+        return env
+    try:
+        shown = subprocess.run(["systemctl", "--user", "show-environment"], capture_output=True,
+                               text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return env
+    for line in shown.splitlines():
+        key, _, value = line.partition("=")
+        if key in DESKTOP_KEYS and value:
+            env[key] = value
+    return env
+
+
 def _start_app() -> None:
     """Started by the new code, in a new process, on its own (App/_detach.py)."""
     python = VENV_PYTHON if VENV_PYTHON.exists() else Path(sys.executable)
-    subprocess.call([str(python), str(ROOT / "gitso.py"), "tray"], cwd=ROOT)
+    subprocess.call([str(python), str(ROOT / "gitso.py"), "tray"], cwd=ROOT, env=_desktop_environment())
 
 
 def main(argv=None) -> int:
