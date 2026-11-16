@@ -2717,3 +2717,29 @@ No code changed; decisions recorded where they govern.
   folder's lock says so, without starting anything), start at sign-in, and "Start the app when
   setup finishes?". Starting is the plan's last step and runs whether or not another step
   failed; setup then checks it is still running five seconds later and reports if it stopped.
+
+## 2026-11-15 16:40 - user (claude) - The tray's window storm: cause, fix, and setup's Uninstall (branch wave/setup-protection)
+- **What happened.** The agent started the tray (15:58:21, through setup's new start step) to
+  show it to the user. Every program gitSpecOps starts on Windows used Windows' defaults
+  (`_os/windows/process.spawn_options` returned nothing). From a terminal, which is where every
+  test and the agent's 20-second check ran, a child shares the terminal. The tray runs under
+  pythonw.exe with no console, so Windows gave each git call a new console window that took the
+  keyboard. The peer scans every repository in the library (175 under the user's library folder)
+  each minute, several git calls each: a continuous storm of windows. The user could not type or
+  open Task Manager and had to hold the power button. A second tray started at 16:03:34. After
+  the reboot, start at sign-in started the tray again; its peer exited with code 1 at once
+  (reason not logged), so there was no second storm.
+- **Fix.** Without a console, programs start with CREATE_NO_WINDOW (`spawn_options`, used by
+  `Basic._run`); the direct `subprocess.run` callers (tailscale in `_fleet/net.py`, git in
+  `_recovery/*`, schtasks) use the same through `window_options`. From a terminal nothing
+  changes. Proven under pythonw.exe on the user's machine: a started child has no window
+  (window handle 0) and git still works.
+- **Done on the user's machine:** the tray stopped (its two processes; no git was running), and
+  start at sign-in turned off with gitSpecOps' own command.
+- **Uninstall** (setup menu 5, action `uninstall`): stops the app, then removes start at sign-in,
+  the monthly refresh task, fleet membership, the gitso alias and command, and downloaded
+  scanners, after a review; the settings folder only when asked. Dry run on the user's machine
+  (cancelled) listed exactly what is there.
+- **Not gitSpecOps:** the DesktopOpener "Bad Image" at sign-in is Smart App Control (enforcing)
+  blocking an unsigned DLL (`libextrafont.dll`, intact: its SHA-256 matches its install record),
+  Code Integrity event 3077 at 16:07:09. The fleet database survived (integrity check ok).

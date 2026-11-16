@@ -9,13 +9,15 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from _os.windows import process as _process
+
 SUPPORTED = True
 _TIMEOUT = 60
 
 
 def _schtasks(*args: str) -> int:
     try:
-        return subprocess.run(["schtasks", *args], text=True, timeout=_TIMEOUT).returncode
+        return subprocess.run(["schtasks", *args], text=True, timeout=_TIMEOUT, **_process.window_options()).returncode
     except FileNotFoundError:
         print("schtasks was not found on this system.")
         return 127

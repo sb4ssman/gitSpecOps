@@ -71,6 +71,10 @@ class SetupTests(unittest.TestCase):
         self.prerequisites.assert_called_once()
         self.environment.assert_not_called()
 
+    def test_uninstall_is_on_the_menu(self):
+        self.assertEqual(self.interactive(["0"]), 0)
+        self.assertIn("[5] Uninstall", self.output.getvalue())
+
     def test_menu_item_two_lists_every_part_and_zero_goes_back(self):
         self.assertEqual(self.interactive(["2", "0", "", "0"]), 0)
         out = self.output.getvalue()
@@ -226,7 +230,7 @@ class WalkthroughTests(unittest.TestCase):
         self.assertEqual(self.applied, ["works"])
         out = self.output.getvalue()
         self.assertIn("FAILED", out)
-        self.assertIn("Setup incomplete", out)
+        self.assertIn("Not finished", out)
 
     def area(self, area, answers, **overrides):
         plan = self.walk.Plan(enrolled_after=True, venv_after=True, desktop_after=True)
@@ -410,6 +414,45 @@ class WalkthroughTests(unittest.TestCase):
             plan = self.area(self.walk.area_scanners, ["y"], gitleaks="gitleaks")
         self.assertIn("gitleaks is already installed. Use it in every scan?", self.output.getvalue())
         self.assertEqual([c.review for c in plan.changes], ["Scanners used in scans: gitleaks"])
+
+    def uninstall_found(self):
+        return self.found(login="on", fleet={"tailnet": {}},
+                          gitso_command={"launcher": "here", "on_path": True, "folder": "/home/x/.gitspecops/bin",
+                                         "aliases": ["/home/x/.bashrc"], "in_this_terminal": True})
+
+    def run_uninstall(self, answers, settings_exist=True):
+        import os
+        import tempfile
+        temp = Path(tempfile.mkdtemp())
+        self.addCleanup(__import__("shutil").rmtree, temp, ignore_errors=True)
+        home = temp / "settings"
+        if settings_exist:
+            home.mkdir()
+        with patch.dict(os.environ, {"GITSPECOPS_HOME": str(home), "GITSPECOPS_TOOLS": str(temp / "tools")}), \
+                patch.object(self.walk, "find_app_processes", return_value=[11]), \
+                patch.object(self.walk, "_archive_task_present", return_value=False), \
+                patch.object(self.walk, "apply", return_value=True) as applied, \
+                patch("builtins.input", side_effect=answers):
+            code = self.walk.uninstall(detector=self.uninstall_found)
+        return code, applied
+
+    def test_uninstall_lists_every_removal_and_cancel_changes_nothing(self):
+        code, applied = self.run_uninstall(["n", "0"])
+        self.assertEqual(code, 0)
+        applied.assert_not_called()
+        out = self.output.getvalue()
+        for text in ("Stop the app: end its 1 process(es)", "Start at sign-in: remove the entry",
+                     "Fleet: leave", "gitso alias: remove", "gitso command: delete it", "Not removed:"):
+            self.assertIn(text, out)
+        self.assertNotIn("Settings: delete", out)
+
+    def test_uninstall_deletes_settings_only_when_asked_and_stops_the_app_first(self):
+        _code, applied = self.run_uninstall(["y", "u"])
+        plan = applied.call_args.args[0]
+        titles = [c.title for c in plan.changes]
+        self.assertEqual(titles[0], "Stop the app")
+        self.assertEqual(titles[-1], "Settings")
+        self.assertNotIn("Fleet", titles, "deleting the settings leaves the fleet with them")
 
     def test_public_identity_rules(self):
         self.assertTrue(self.walk.public_git_name("Someone@Box", "someone"))

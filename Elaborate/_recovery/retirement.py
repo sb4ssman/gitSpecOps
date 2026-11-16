@@ -14,6 +14,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
+from _os.current import process as _process
 from Elaborate._recovery.capture import NO_HELPERS, SAFE_GIT_ENV
 from Elaborate._recovery.snapshot_store import StoreRefused, verify_bundle
 
@@ -24,7 +25,7 @@ class RetirementRefused(Exception):
 
 def _run(repository: Path, args, *, data=None, env=None) -> subprocess.CompletedProcess:
     try:
-        return subprocess.run(["git", *NO_HELPERS, *args], cwd=repository, input=data,
+        return subprocess.run(["git", *NO_HELPERS, *args], cwd=repository, input=data, **_process.window_options(),
                               capture_output=True, timeout=120, check=False,
                               env={**os.environ, **SAFE_GIT_ENV, **(env or {})})
     except (OSError, subprocess.TimeoutExpired) as exc:

@@ -982,8 +982,9 @@ def review(plan: Plan, enrolled: bool, again: str = "Back to the start of the wa
     return "apply" if answer == key else answer
 
 
-def apply(plan: Plan) -> bool:
-    banner("Setup  /  Applying", f"folder: {ROOT}")
+def apply(plan: Plan, done: tuple[str, str] = ("Setup complete", "gitSpecOps is set up on this computer."),
+          title: str = "Applying") -> bool:
+    banner(f"Setup  /  {title}", f"folder: {ROOT}")
     say()
     steps = Steps(len(plan.changes))
     for change in plan.changes:
@@ -993,11 +994,126 @@ def apply(plan: Plan) -> bool:
     for label, status, detail in steps.results:
         bullet(f"{label}: {detail}", "error" if status == "FAILED" else "text")
     if failed:
-        notice("Setup incomplete", f"{', '.join(failed)} did not finish; the other steps are done. "
+        notice("Not finished", f"{', '.join(failed)} did not finish; the other steps are done. "
                "Run setup again to finish.", "error")
         return False
-    notice("Setup complete", "gitSpecOps is set up on this computer.", "success")
+    notice(*done, "success")
     return True
+
+
+# --------------------------------------------------------------------------- uninstall
+def find_app_processes() -> list[int]:
+    """Process ids of this folder's tray app (its peer included). Only looks."""
+    target = str(ROOT / "App" / "tray.py")
+    if WINDOWS:
+        script = ("Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" | Where-Object { "
+                  f"$_.CommandLine -like '*{target.replace(chr(39), chr(39) * 2)}*' }} | "
+                  "ForEach-Object { $_.ProcessId }")
+        code, out = _run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script])
+    else:
+        code, out = _run(["ps", "-ax", "-o", "pid=,command="])
+        out = "\n".join(entry.split(None, 1)[0] for entry in out.splitlines() if target in entry)
+    return sorted({int(word) for word in out.split() if word.isdigit()}) if code == 0 else []
+
+
+def _stop_app(pids: list[int]) -> str:
+    import signal
+    for pid in pids:
+        if WINDOWS:
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=30)
+        else:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+    left = find_app_processes()
+    if left:
+        raise RuntimeError(f"still running: process {', '.join(map(str, left))}; quit it from its tray menu")
+    return f"stopped ({len(pids)} process{'es' if len(pids) != 1 else ''})"
+
+
+def _delete_folder(path: Path) -> str:
+    shutil.rmtree(path)
+    parent = path.parent
+    if parent.name == ".gitspecops" and parent.is_dir() and not any(parent.iterdir()):
+        parent.rmdir()  # nothing of ours is left in ~/.gitspecops
+    return "deleted"
+
+
+def _archive_task_present() -> bool:
+    if not WINDOWS:
+        return False
+    from Elaborate.archive_schedule import DEFAULT_TASK_NAME
+    return _run(["schtasks", "/Query", "/TN", DEFAULT_TASK_NAME])[0] == 0
+
+
+def _remove_archive_task() -> str:
+    from Elaborate.archive_schedule import DEFAULT_TASK_NAME, remove_task
+    if remove_task(DEFAULT_TASK_NAME):
+        raise RuntimeError("the scheduled task was not removed")
+    return "removed"
+
+
+def uninstall(detector=detect) -> int:
+    """Stop the app and remove what setup added, after a review. Your settings only on request."""
+    from _build import gitso_command as command
+    from Basic._paths import config_home, tools_home
+    from Elaborate._fleet.setup_state import leave_fleet
+    banner("Setup  /  Uninstall", tagline=True)
+    line("Looking at this computer (nothing changes)...", "detail")
+    found, pids = detector(), find_app_processes()
+    state, settings, tools = found["gitso_command"], config_home(), tools_home()
+    task = _archive_task_present()
+    say()
+    row("App running", f"yes ({len(pids)} process{'es' if len(pids) != 1 else ''})" if pids else "no")
+    row("Start at sign-in", {"on": "on", "elsewhere": "turned off elsewhere"}.get(found["login"], "no"))
+    row("gitso command", {"here": state["folder"], "elsewhere": "another gitSpecOps folder's (left alone)"}.get(
+        state["launcher"], "none"))
+    row("gitso alias", ", ".join(state["aliases"]) or "none")
+    row("Monthly refresh", "scheduled" if task else "none")
+    row("Downloaded tools", str(tools) if tools.exists() else "none")
+    row("Settings", str(settings) if settings.exists() else "none")
+    delete_settings = settings.exists() and yes_no(
+        "Also delete your gitSpecOps settings?", "n",
+        f"{settings}: your protected values, library folders, fleet membership, logs and reports. "
+        "Keep them and setup finds them again next time.")
+    plan = Plan()
+    if pids:
+        plan.add("Stop the app", f"Stop the app: end its {len(pids)} process(es)", lambda: _stop_app(pids))
+    if found["login"] in ("on", "elsewhere"):
+        plan.add("Start at sign-in", "Start at sign-in: remove the entry", lambda: _start_at_login(False))
+    if task:
+        plan.add("Monthly refresh", "Monthly archive refresh: delete the scheduled task", _remove_archive_task)
+    if found["fleet"] and not delete_settings:
+        plan.add("Fleet", "Fleet: leave (this machine's settings are kept)", lambda: (leave_fleet(), "left")[1])
+    if state["aliases"]:
+        plan.add("gitso alias", "gitso alias: remove the marked lines from " + ", ".join(state["aliases"]),
+                 command.remove_aliases)
+    if state["launcher"] == "here":
+        plan.add("The gitso command", f"gitso command: delete it from {state['folder']} and take the folder off "
+                 "PATH", command.remove_launchers)
+    if tools.exists():
+        plan.add("Downloaded tools", f"Downloaded tools: delete {tools}", lambda: _delete_folder(tools))
+    if delete_settings:
+        plan.add("Settings", f"Settings: delete {settings}", lambda: _delete_folder(settings))
+    say()
+    line("Not removed: this folder and its .venv (delete the folder yourself), your repositories, and "
+         "programs installed with your package manager, such as Gitleaks (winget uninstall "
+         "Gitleaks.Gitleaks), Git, the GitHub CLI and uv.", "muted")
+    if not plan.changes:
+        notice("Nothing to remove", "Setup has nothing installed on this computer.", "success")
+        return 0
+    notice("These changes will be made", "", "accent")
+    for change in plan.changes:
+        bullet(change.review)
+    say()
+    option("U", "Uninstall")
+    option("0", "Cancel", "Nothing has been changed.")
+    if choose("u0", "0") != "u":
+        notice("Cancelled", "Nothing has been changed.", "warning")
+        return 0
+    return 0 if apply(plan, ("Uninstalled", "What setup added is gone. Delete this folder to remove gitSpecOps "
+                             "completely."), title="Uninstalling") else 1
 
 
 def app_running() -> bool:

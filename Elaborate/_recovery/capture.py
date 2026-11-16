@@ -38,6 +38,7 @@ import subprocess
 
 import Elaborate._recovery.secret_scan as secret_scan
 from Basic._run import run_git
+from _os.current import process as _process
 
 FORMAT = "gitspecops.recovery.bundle"
 FORMAT_VERSION = 1
@@ -143,7 +144,7 @@ def _run_bytes(repository: Path, args, what: str, data: bytes | None = None,
                ok_codes=(0,)) -> bytes:
     try:
         result = subprocess.run(["git", *NO_HELPERS, *args], cwd=repository, input=data,
-                                capture_output=True, timeout=30,
+                                capture_output=True, timeout=30, **_process.window_options(),
                                 env={**os.environ, **SAFE_GIT_ENV}, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise CaptureRefused(f"could not read {what} from this repository") from exc

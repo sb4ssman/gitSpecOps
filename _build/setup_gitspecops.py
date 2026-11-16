@@ -11,6 +11,7 @@ With no arguments, a person at a terminal gets the setup menu. Named actions:
     run           choose one command from a list and run it, without setting anything up
     environment   build this folder's .venv (with uv when it is installed), then check
     check         show what this computer has: Git, the GitHub CLI, uv. Changes nothing.
+    uninstall     stop the app and remove what setup added, after a review; settings on request
 
 gitSpecOps needs no setup to run: every command works straight from this folder through
 `gitso`, e.g. `python gitso.py commands`. Sign-ins are never touched here: you sign in to your
@@ -148,7 +149,7 @@ def bootstrap() -> int:
     return 0 if ok else 1
 
 
-ACTIONS = ("walkthrough", "part", "run", "environment", "check")
+ACTIONS = ("walkthrough", "part", "run", "environment", "check", "uninstall")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -174,13 +175,15 @@ def choose_action() -> str | None:
            "it from this folder. Any time: python gitso.py <command>.")
     option("4", "Check this computer", "Git, the GitHub CLI and uv: what is there and what each is "
            "for. Changes nothing.")
+    option("5", "Uninstall", "Stop the app and remove what setup added: start at sign-in, the gitso "
+           "command, the fleet. Asks before deleting your settings; shows everything before it acts.")
     option("0", "Exit")
     try:
-        answer = choose("12340", "1")
+        answer = choose("123450", "1")
     except (EOFError, KeyboardInterrupt):
         print("\nSetup cancelled; nothing has been changed.")
         return None
-    return {"1": "walkthrough", "2": "part", "3": "run", "4": "check"}.get(answer)
+    return {"1": "walkthrough", "2": "part", "3": "run", "4": "check", "5": "uninstall"}.get(answer)
 
 
 def run_one_command(back: bool) -> int:
@@ -240,15 +243,17 @@ def menu_loop(parser, args) -> int:
 
 def perform(parser, args, action) -> int:
     """One setup action, from the menu or named on the command line."""
-    if action in ("walkthrough", "part"):
+    if action in ("walkthrough", "part", "uninstall"):
         if not sys.stdin.isatty():
             print(f"The {action} item needs a person at a terminal; name another action.", file=sys.stderr)
             return 2
         sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from setup_walkthrough import Stop, choose_part, walkthrough
+        from setup_walkthrough import Stop, choose_part, uninstall, walkthrough
         try:
             if action == "walkthrough":
                 return walkthrough()
+            if action == "uninstall":
+                return uninstall()
             part = choose_part()
             return 0 if part is None else walkthrough(only=part)
         except (EOFError, KeyboardInterrupt, Stop):

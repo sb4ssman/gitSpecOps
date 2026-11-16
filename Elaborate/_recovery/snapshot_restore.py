@@ -37,6 +37,7 @@ import os
 from pathlib import Path
 import subprocess
 
+from _os.current import process as _process
 from Elaborate._recovery.capture import NO_HELPERS, SAFE_GIT_ENV, in_progress_operation
 from Elaborate._recovery.snapshot_preview import base_available, preview
 
@@ -54,7 +55,7 @@ class RestoreRefused(Exception):
 
 def _git(repository: Path, args, data: bytes | None = None) -> subprocess.CompletedProcess:
     try:
-        return subprocess.run(["git", *PINNED, *args], cwd=repository, input=data,
+        return subprocess.run(["git", *PINNED, *args], cwd=repository, input=data, **_process.window_options(),
                               capture_output=True, timeout=GIT_TIMEOUT_SECONDS,
                               env={**os.environ, **SAFE_GIT_ENV}, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:

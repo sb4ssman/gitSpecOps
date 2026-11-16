@@ -26,6 +26,11 @@ Setup's menu:
 3. **Use the commands without installing anything.** Any Basic, Special or Elaborate command,
    straight from the folder: registering archive folders to keep updated, say.
 4. **Check this computer.** Git, the GitHub CLI and uv: what is there and what each is for.
+5. **Uninstall.** Stops the app and removes what setup added (start at sign-in, the `gitso`
+   command and alias, the monthly refresh task, downloaded scanners, fleet membership), after
+   showing the list. Your settings (protected values, library folders, logs) are deleted only if
+   you say so. This folder, your repositories and programs installed with your package manager
+   stay; it says which.
 
 **The `gitso` command** is a command of its own, beside `git` and `gh`, in any terminal. The
    walkthrough can put it on your command path (small text launchers in `~/.gitspecops/bin`, on

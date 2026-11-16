@@ -43,6 +43,16 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
   at its own home. Recording it is the shelf's job, not this repository's.
 - **Code signing** for release builds.
 
+## Before the tray runs on any machine again (the 2026-11-15 window storm; see the work log)
+- **Prove it on the user's machine first, watched:** start the tray with the window fix, a
+  small library and the user present, and stop it at the first window that appears.
+- **One tray per profile:** a second tray started at 16:03:34 while the first was running. The
+  tray should refuse to start when the app lock is held, not only the peer.
+- **Log why the peer stops:** after the forced shutdown the peer exited with code 1 at sign-in
+  and nothing recorded why. Write its error to `app_tray.log`.
+- **A test that runs the peer under pythonw.exe on Windows CI**, so the tray's real conditions
+  are tested, not only a terminal's.
+
 ## Not built yet
 - **The gitso alias in a synced profile (found 2026-11-15):** on Windows the PowerShell profiles
   can live in OneDrive's Documents, which syncs to the user's other PCs. The alias is a function
