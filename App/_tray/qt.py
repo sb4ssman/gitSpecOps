@@ -385,7 +385,15 @@ def _record_process(config_dir, settings_home) -> None:
     if os.name == "nt":
         import ctypes
         console = bool(ctypes.windll.kernel32.GetConsoleWindow())
-    record = {"pid": os.getpid(), "interpreter": Path(sys.executable).name, "console_window": console}
+    import subprocess
+    try:  # the code this tray runs, so `gitso update` can tell an app older than its checkout
+        commit = subprocess.run(["git", "-C", str(TRAY_SCRIPT.parents[1]), "rev-parse", "HEAD"],
+                                capture_output=True, text=True, timeout=10,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        commit = ""
+    record = {"pid": os.getpid(), "interpreter": Path(sys.executable).name, "console_window": console,
+              "commit": commit}
     try:
         atomic_write_bytes(fleet_directory(config_dir, home=settings_home) / "tray-process.json",
                            json.dumps(record).encode())

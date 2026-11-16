@@ -64,6 +64,15 @@ def update(answer=None) -> int:
     if not behind:
         notice("Up to date", f"gitSpecOps is current ({git('log', '-1', '--format=%h %s').stdout.strip()}).",
                "success")
+        # The folder can be current while the running app is not (it started before the folder
+        # moved forward): restart it, so what you see is what is here (the user, 2026-11-16).
+        if _app_running() and _app_commit() != git("rev-parse", "HEAD").stdout.strip():
+            line("The running app is an older version than this folder: restarting it...", "detail")
+            if not _stop_app():
+                notice("Not restarted", "The app did not stop within 15 seconds; quit it from its tray "
+                       "menu, then run gitso tray.", "warning")
+                return 1
+            _start_app()
         return 0
     line(f"{behind} new change(s):", "text")
     for entry in git("log", "--format=%h %s", "-n", "15", "HEAD..@{u}").stdout.splitlines():
@@ -109,6 +118,16 @@ def _app_running() -> bool:
         return running()
     except Exception:  # noqa: BLE001 - no app here: nothing to stop
         return False
+
+
+def _app_commit() -> str:
+    """The commit the running app started from; "" when it did not say (an app older than this)."""
+    import json
+    try:
+        from Special._settings.fleet import fleet_directory
+        return str(json.loads((fleet_directory() / "tray-process.json").read_text()).get("commit") or "")
+    except Exception:  # noqa: BLE001 - unknown: treated as older, so it is restarted
+        return ""
 
 
 def _stop_app() -> bool:

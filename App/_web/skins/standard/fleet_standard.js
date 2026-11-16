@@ -454,6 +454,8 @@ function renderAll() {
 function selectTab(tab) {
   for (const button of document.querySelectorAll('[data-tab]')) button.setAttribute('aria-pressed', String(button.dataset.tab === tab));
   for (const id of ['repositories', 'map', 'security', 'machines', 'about']) byId(`${id}-panel`).hidden = id !== tab;
+  // The address always names the tab on screen, so reloading stays on it (the user, 2026-11-16).
+  if (location.hash !== `#${tab}`) history.replaceState(null, '', `#${tab}`);
 }
 
 for (const control of [controls.query, controls.status, controls.machine, controls.sort]) control.addEventListener('input', renderRepositories);
