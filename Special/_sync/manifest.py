@@ -81,9 +81,16 @@ MANIFEST_KEYS = frozenset({
 #: Readable fields, present only in a manifest whose `carries_names` is true.
 # `place`: the library's and the folder's names on that machine (never a path); the user
 # approved sharing them 2026-11-15, as names, wherever names are shared.
-NAME_KEYS = frozenset({"name", "branch", "head", "place"})
+# `upstream_head`: the commit its provider branch was on at the last fetch, so a page can show
+# GitHub's commit beside each copy's (the user, 2026-11-16). `copies`: when one machine holds a
+# repository in more than one folder, each folder's own facts, so every library gets its own column.
+NAME_KEYS = frozenset({"name", "branch", "head", "place", "upstream_head", "copies"})
 PLACE_LIMIT = 120
 IDENTITY_NAME_KEYS = ("host", "owner", "name")
+#: What each entry of `copies` holds: one folder's facts, never a path.
+COPY_KEYS = frozenset({"place", "head", "upstream_head", "branch", "ahead", "behind", "staged",
+                       "unstaged", "untracked", "stashes", "has_upstream"})
+COPY_LIMIT = 16
 REPOSITORY_KEYS = frozenset({
     "repo_id", "branch_id", "has_upstream", "upstream_observed_at", "ahead", "behind",
     "staged", "unstaged", "untracked", "stashes", "operation",
@@ -219,7 +226,11 @@ def merge_checkouts(repositories: list[dict]) -> list[dict]:
                if any("place" in repo for repo in group) else {}),
             "checkouts": sum(int(repo.get("checkouts") or 1) for repo in group),
         })
-        for key in ("branch", "head"):
+        if any("place" in repo for repo in group):
+            # Names are carried: keep each folder's own facts beside the combined ones.
+            record["copies"] = [{key: repo[key] for key in COPY_KEYS if key in repo}
+                                for repo in group][:COPY_LIMIT]
+        for key in ("branch", "head", "upstream_head"):
             if key in record and len({repo.get(key) for repo in group}) > 1:
                 record[key] = None
         merged.append(record)
@@ -327,14 +338,32 @@ def _validate_names(repo: dict, label: str) -> None:
     branch = repo.get("branch")
     if branch is not None and (not isinstance(branch, str) or not branch):
         raise ValueError(f"{label}.branch must be a non-empty string or null")
-    head = repo.get("head")
-    if head is not None:
-        if not isinstance(head, str) or len(head) not in (40, 64):
-            raise ValueError(f"{label}.head must be a full commit id or null")
-        try:
-            int(head, 16)
-        except ValueError as exc:
-            raise ValueError(f"{label}.head is not hexadecimal") from exc
+    for key in ("head", "upstream_head"):
+        head = repo.get(key)
+        if head is not None:
+            if not isinstance(head, str) or len(head) not in (40, 64):
+                raise ValueError(f"{label}.{key} must be a full commit id or null")
+            try:
+                int(head, 16)
+            except ValueError as exc:
+                raise ValueError(f"{label}.{key} is not hexadecimal") from exc
+    copies = repo.get("copies")
+    if copies is None:
+        return
+    if not isinstance(copies, list) or not 1 < len(copies) <= COPY_LIMIT:
+        raise ValueError(f"{label}.copies must list 2 to {COPY_LIMIT} folders")
+    for index, copy in enumerate(copies):
+        where = f"{label}.copies[{index}]"
+        if not isinstance(copy, dict) or set(copy) - COPY_KEYS:
+            raise ValueError(f"{where} must hold only {sorted(COPY_KEYS)}")
+        _validate_names({key: copy[key] for key in ("branch", "head", "upstream_head") if key in copy}, where)
+        _validate_place(copy.get("place"), f"{where}.place")
+        for key in ("ahead", "behind", "staged", "unstaged", "untracked", "stashes"):
+            value = copy.get(key)
+            if value is not None and (type(value) is not int or value < 0):
+                raise ValueError(f"{where}.{key} must be a non-negative integer or null")
+        if not isinstance(copy.get("has_upstream", False), bool):
+            raise ValueError(f"{where}.has_upstream must be a boolean")
 
 
 def validate_manifest(value: object) -> dict:

@@ -168,11 +168,22 @@ def run_request(request: dict, local_checkouts, libraries: list[str]) -> str:
         return render_catchup(apply_catchup(plan_catchup(paths)), applied=True)
     lines = []
     for item in request["items"]:
-        host, owner, name, folder = (str(item.get(key) or "") for key in ("host", "owner", "name", "folder"))
+        host, owner, name, folder, wanted = (str(item.get(key) or "") for key in (
+            "host", "owner", "name", "folder", "library"))
         if not all(part and "/" not in part and "\\" not in part and ".." not in part for part in (host, owner, name)):
             lines.append(f"{name or 'a repository'}: its name is not known here (the asking machine withholds names)")
             continue
-        library = Path(libraries[0])
+        if folder and any(mark in folder for mark in ("/", "\\", "..", ":")):
+            lines.append(f"{name}: the folder it names is not a plain folder name, so nothing was cloned")
+            continue
+        # The library the asking page's column named (one machine may keep several); the first
+        # library when it names none.
+        from Special._sync.manifest import library_name
+        chosen = [root for root in libraries if library_name(root, libraries) == wanted] if wanted else libraries[:1]
+        if not chosen:
+            lines.append(f"{name}: no library called {wanted} here, so nothing was cloned")
+            continue
+        library = Path(chosen[0])
         target = library / (folder or owner) / name
         if target.exists():
             lines.append(f"{name}: already here, left as it is")

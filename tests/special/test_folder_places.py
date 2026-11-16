@@ -64,6 +64,29 @@ class PlaceTests(unittest.TestCase):
         self.assertEqual(same[0]["place"], {"library": "L", "folder": "A"})
         self.assertEqual(apart[0]["place"], {"library": "L", "folder": "A"})
 
+    def test_two_libraries_keep_each_copys_own_commit_and_place(self):
+        # Prime: one repository in two libraries; the page gives each library its own column.
+        manifest = build_manifest(FLEET, "m", "m", [
+            repo({"library": "Github (one)", "folder": "Org"}, head="1" * 40),
+            {**repo({"library": "Github (two)", "folder": "Org"}, head="2" * 40), "behind": 3,
+             "upstream_head": "3" * 40}], carries_names=True)
+        validate_manifest(manifest)
+        copies = manifest["repositories"][0]["copies"]
+        self.assertEqual([copy["place"]["library"] for copy in copies], ["Github (one)", "Github (two)"])
+        self.assertEqual([copy["head"] for copy in copies], ["1" * 40, "2" * 40])
+        self.assertEqual(copies[1]["behind"], 3)
+        self.assertNotIn("copies", without_names(manifest)["repositories"][0])
+
+    def test_a_copy_carrying_a_path_or_extra_field_is_refused(self):
+        manifest = build_manifest(FLEET, "m", "m", [repo({"library": "A", "folder": "Org"}),
+                                                    repo({"library": "B", "folder": "Org"})], carries_names=True)
+        manifest["repositories"][0]["copies"][0]["place"] = {"library": "C:/Users/x", "folder": "Org"}
+        with self.assertRaises(ValueError):
+            validate_manifest(manifest)
+        manifest["repositories"][0]["copies"][0] = {"path": "/home/x"}
+        with self.assertRaises(ValueError):
+            validate_manifest(manifest)
+
 
 class PlaceGroupTests(unittest.TestCase):
     def test_the_page_gets_a_group_for_each_library_folder(self):

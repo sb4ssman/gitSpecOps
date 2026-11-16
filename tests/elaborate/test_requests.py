@@ -87,6 +87,16 @@ class ApplyTests(unittest.TestCase):
         result = run_request({"kind": "clone", "items": [{"repo_id": "r1", "name": "x"}]}, lambda _id: [], ["/nowhere"])
         self.assertIn("not known here", result)
 
+    def test_a_clone_naming_a_folder_path_is_refused(self):
+        item = {"host": "github.com", "owner": "o", "name": "x", "folder": "../outside"}
+        result = run_request({"kind": "clone", "items": [item]}, lambda _id: [], ["/nowhere"])
+        self.assertIn("not a plain folder name", result)
+
+    def test_a_clone_naming_an_unknown_library_clones_nothing(self):
+        item = {"host": "github.com", "owner": "o", "name": "x", "folder": "o", "library": "Elsewhere"}
+        result = run_request({"kind": "clone", "items": [item]}, lambda _id: [], ["/nowhere/Github"])
+        self.assertIn("no library called Elsewhere", result)
+
 
 class ChangesTests(unittest.TestCase):
     def test_line_endings_only_is_said_so_and_contents_never_appear(self):

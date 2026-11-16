@@ -251,9 +251,66 @@ const providerUrl = row => {
   return id.host && id.host !== 'local' && id.owner && id.name ? `https://${id.host}/${id.owner}/${id.name}` : null;
 };
 
+/** Each folder a machine keeps a repository in: its `copies` when it has several, else itself. */
+const copiesOf = cell => (cell.copies && cell.copies.length ? cell.copies : [{...(cell.facts || {}), place: cell.place}]);
+
+/** Libraries under machines: one column per library a machine keeps this organization in (two
+ *  libraries, two columns; the user, 2026-11-16), one column when it keeps it in one or none. */
+function columnsOf(machines, rows) {
+  const columns = [];
+  for (const machine of machines) {
+    const libraries = [];
+    for (const row of rows) {
+      const cell = row.cells[machine.id];
+      if (!cell || !cell.present) continue;
+      for (const copy of copiesOf(cell)) {
+        const library = (copy.place || {}).library;
+        if (library && !libraries.includes(library)) libraries.push(library);
+      }
+    }
+    libraries.sort((a, b) => a.localeCompare(b));
+    if (libraries.length <= 1) columns.push({machine, library: libraries[0] || null, split: false});
+    else for (const library of libraries) columns.push({machine, library, split: true});
+  }
+  return columns;
+}
+
+/** A copy's own colour, by the same rule Python uses for a whole cell. */
+function copyTone(facts) {
+  if (dirtyOf({facts}) || (facts.ahead && facts.behind)) return 'danger';
+  if (facts.ahead || facts.behind || facts.stashes) return 'warning';
+  return facts.has_upstream ? 'success' : 'neutral';
+}
+
+/** The repository's copy in one column: the machine's cell, or its copy in that column's library. */
+function cellIn(row, column) {
+  const cell = row.cells[column.machine.id];
+  if (!cell || !cell.present) return null;
+  if (!column.split) return cell;
+  const copy = copiesOf(cell).find(item => (item.place || {}).library === column.library);
+  if (!copy) return null;
+  const facts = {...copy, checkouts: 1, has_remote: (cell.facts || {}).has_remote, identity: (cell.facts || {}).identity};
+  return {...cell, copies: null, place: copy.place, facts, tone: cell.freshness === 'current' ? copyTone(facts) : 'warning'};
+}
+
+/** The provider's commit, from the machine that fetched most recently. */
+function providerHead(row) {
+  let best = null;
+  for (const cell of Object.values(row.cells)) {
+    if (!cell || !cell.present) continue;
+    const stamp = (cell.facts || {}).upstream_observed_at || '';
+    for (const copy of copiesOf(cell)) {
+      if (copy.upstream_head && (!best || stamp > best.stamp)) best = {head: copy.upstream_head, stamp};
+    }
+  }
+  return best && best.head;
+}
+const shortCommit = head => (head ? head.slice(0, 7) : '');
+
 function organizationView(container, data, perspective, group, onPick, actions) {
   const machines = orderedMachines(data, perspective);
   const rows = rowsOf(data, group);
+  const columns = columnsOf(machines, rows);
   const label = group.startsWith('org:') ? group.slice(4) : (data.groups.find(item => item.id === group) || {label: 'All organizations'}).label;
   container.append(html('p', `${label}: every repository, its copy on each machine lined up in one row, and where it lives online.`, 'map-note'));
   // In words first: what is in sync everywhere, and what needs a decision, from the advice Python
@@ -271,8 +328,14 @@ function organizationView(container, data, perspective, group, onPick, actions) 
   }
   container.append(verdict);
   const table = html('table', undefined, 'map-grid');
-  const head = gridHead(machines, perspective, 'Repository');
-  head.insertBefore(html('th', 'Online'), head.children[1]);
+  const head = html('tr');
+  head.append(html('th', 'Repository'), html('th', 'Online'));
+  for (const column of columns) {
+    const th = html('th', column.machine.id === perspective ? `${column.machine.label} (perspective)` : column.machine.label);
+    th.className = `tone-${toneOfFreshness(column.machine.freshness)}`;
+    if (column.library) th.append(html('span', column.library, 'host-note'));
+    head.append(th);
+  }
   table.append(head);
   if (actions) {
     // Ask a machine to bring this organization's copies forward, or to clone the ones it lacks.
@@ -281,15 +344,14 @@ function organizationView(container, data, perspective, group, onPick, actions) 
     // The note's style on the text, not the cell: a block-level cell broke the header row's borders.
     const askLabel = html('td'); askLabel.append(html('span', 'Ask a machine:', 'host-note'));
     asks.append(askLabel, html('td'));
-    for (const machine of machines) {
+    for (const column of columns) {
+      const machine = column.machine;
       const cell = html('td');
       // Only copies that are behind GitHub: a fast-forward is all this button can do. A copy on a
       // different commit that is not behind (ahead, diverged) needs a decision, not this button.
-      const held = rows.filter(row => {
-        const cell = row.cells[machine.id] || {};
-        return cell.present && ((cell.facts || {}).behind || 0) > 0;
-      });
-      const missing = rows.filter(row => !(row.cells[machine.id] || {}).present && providerUrl(row));
+      const held = rows.filter(row => ((cellIn(row, column) || {}).facts || {}).behind > 0);
+      // Missing from this column: from this library when the machine has several.
+      const missing = rows.filter(row => !cellIn(row, column) && providerUrl(row));
       // This machine's own column runs here and now (you are at it); another machine's is a request
       // it shows on its own page (the user, 2026-11-16).
       const here = machine.id === data.this_machine;
@@ -299,7 +361,8 @@ function organizationView(container, data, perspective, group, onPick, actions) 
         try {
           const done = await actions.send({to: machine.id, to_label: machine.label, kind, items: list.map(row => ({
             repo_id: row.id, name: (row.identity || {}).name || row.name, host: (row.identity || {}).host,
-            owner: (row.identity || {}).owner, folder: (row.place || {}).folder || ''}))});
+            owner: (row.identity || {}).owner, folder: (row.place || {}).folder || '',
+            ...(column.library ? {library: column.library} : {})}))});
           orgState.message = done.message;
         } catch (error) { orgState.message = error.message; }
         onPick({});
@@ -319,9 +382,12 @@ function organizationView(container, data, perspective, group, onPick, actions) 
     const online = html('td'); const url = providerUrl(row);
     if (url) { const link = html('a', `${(row.identity || {}).host} ↗`); link.href = url; link.target = '_blank'; link.rel = 'noopener'; online.append(link); }
     else online.append(html('span', 'no remote', 'host-note'));
+    const upstream = providerHead(row);
+    if (upstream) online.append(html('span', shortCommit(upstream), 'host-note'));
     line.append(online);
-    for (const machine of machines) {
-      const cell = row.cells[machine.id];
+    for (const column of columns) {
+      const machine = column.machine;
+      const cell = cellIn(row, column);
       const td = html('td', undefined, cell && cell.present ? `tone-${cell.tone}` : 'tone-muted');
       if (actions && dirtyOf(cell)) {
         // Uncommitted work: ask that machine what it is (names and line counts, never contents).
@@ -335,7 +401,11 @@ function organizationView(container, data, perspective, group, onPick, actions) 
           onPick({});
         };
         td.append(show);
-      } else td.textContent = copyText(cell, row, row.cells[perspective]);
+      } else td.textContent = !cell && column.split && (row.cells[machine.id] || {}).present
+        ? `not in ${column.library}` : copyText(cell, row, row.cells[perspective]);
+      // This copy's commit, faded, under its words; "not here" has none.
+      const commit = cell && cell.present && shortCommit((cell.facts || {}).head);
+      if (commit) td.append(html('span', commit, 'host-note'));
       line.append(td);
     }
     table.append(line);

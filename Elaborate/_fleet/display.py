@@ -95,11 +95,13 @@ def _cell(cell):
     return {"present": True, "freshness": cell.freshness, "state": cell.effective_state,
             "description": description, "tone": tone, "tags": tags,
             "place": cell.repo.get("place"),  # where this machine keeps its copy (names only)
+            # Each folder's own facts when this machine keeps it in more than one library.
+            "copies": cell.repo.get("copies"),
             "needs_attention": SEVERITY.get(cell.effective_state, 0) >= SEVERITY["stashed"],
             "facts": {key: cell.repo.get(key) for key in (
                 "staged", "unstaged", "untracked", "stashes", "ahead", "behind",
                 "operation", "has_upstream", "upstream_observed_at", "has_remote", "unpushed",
-                "branch", "head", "checkouts",
+                "branch", "head", "upstream_head", "checkouts",
                 "identity")}}
 
 
