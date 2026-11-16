@@ -102,7 +102,7 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
                         "security-policy": fleet_action, "security-policy-change": fleet_action,
                         # Requests between machines and uncommitted-work summaries (Elaborate/_fleet/requests.py).
                         "request-send": fleet_action, "request-withdraw": fleet_action,
-                        "request-answer": fleet_action, "changes": fleet_action}
+                        "request-answer": fleet_action, "request-clear": fleet_action, "changes": fleet_action}
             if setup is not None and action.startswith("setup/"):
                 handlers[action] = lambda name, payload: setup.act(name.removeprefix("setup/"), payload)
             def refuse(status, message):

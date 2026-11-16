@@ -25,6 +25,14 @@ export function renderRequests(block, data, act) {
   }
   block.hidden = false;
   if (message) block.append(el('p', message, 'host-note'));
+  const finished = requests.answered.length + requests.sent.filter(r => r.status === 'done' || r.status === 'dismissed').length;
+  if (finished) {
+    const clear = el('button', `Clear ${finished} finished`); clear.type = 'button';
+    clear.onclick = async () => {
+      try { await act('request-clear', {}); message = 'Cleared; the task log (App & setup) keeps the record.'; } catch (error) { message = error.message; }
+    };
+    block.append(clear);
+  }
   for (const request of requests.waiting) {
     const item = el('div', undefined, 'request request-waiting');
     item.append(el('strong', `${request.from_label} asks this machine to ${KIND[request.kind]} ${request.items.length} repositor${request.items.length === 1 ? 'y' : 'ies'}`),

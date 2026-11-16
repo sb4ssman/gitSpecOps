@@ -98,6 +98,19 @@ class RequestBook:
         with self.lock:
             self._write(self.out_path, [item for item in self._read(self.out_path) if item.get("id") != request_id])
 
+    def clear(self, everything_sent: bool = False) -> int:
+        """Drop finished requests here: this machine's answered ones and the answers it gave; with
+        `everything_sent`, also what it is still waiting on (stale requests, the user, 2026-11-16).
+        The task log keeps the record. Returns how many were dropped."""
+        with self.lock:
+            sent = self._read(self.out_path)
+            kept_sent = [] if everything_sent else [item for item in sent if item.get("status") not in ("done", "dismissed")]
+            book = self._read(self.in_path)
+            kept_in = {key: value for key, value in book.items() if value.get("status") == "waiting"}
+            self._write(self.out_path, kept_sent)
+            self._write(self.in_path, kept_in)
+            return len(sent) - len(kept_sent) + len(book) - len(kept_in)
+
     # ---------------------------------------------------------------- answering
     def receive(self, requests, from_machine: str) -> int:
         """Keep the requests a machine publishes that are addressed here. Returns how many are new."""

@@ -39,8 +39,17 @@ export function orderedMachines(data, perspective) {
 
 /** Rows of one organization (group), attention first; the same order every machine sees. */
 export function rowsOf(data, groupId) {
-  return data.rows.filter(row => groupId === 'all' || row.group_id === groupId)
+  // "org:<name>" is every folder of that name, in every library on every machine: one machine's
+  // two Sb4ssport-Alpha folders (a working library and a backup) showed one repository (2026-11-16).
+  const name = groupId.startsWith('org:') ? groupId.slice(4) : null;
+  return data.rows.filter(row => groupId === 'all' || (name ? row.namespace === name : row.group_id === groupId))
     .sort((a, b) => (b.needs_attention - a.needs_attention) || a.name.localeCompare(b.name));
+}
+
+/** The organization menu: each organization once, by name. */
+export function organizationChoices(data) {
+  return [...new Set(data.groups.map(group => group.label))].sort((a, b) => a.localeCompare(b))
+    .map(label => [`org:${label}`, label]);
 }
 
 /** Per organization per machine: copies present and how many need attention. */
@@ -180,7 +189,7 @@ function librariesView(container, data, perspective, onPick) {
       cell.append(toggle(`${group.label} (${group.count})`, groupOpen,
                          () => { groupOpen ? openGroups.delete(group.id) : openGroups.add(group.id); redraw(); }, 'group'));
       const across = html('button', 'across machines', 'repo-link tree-open');
-      across.onclick = () => onPick({view: 'organization', group: group.id});
+      across.onclick = () => onPick({view: 'organization', group: `org:${group.label}`});
       cell.append(across);
       row.append(cell);
       for (const machine of machines) {
@@ -229,7 +238,7 @@ const providerUrl = row => {
 function organizationView(container, data, perspective, group, onPick, actions) {
   const machines = orderedMachines(data, perspective);
   const rows = rowsOf(data, group);
-  const label = (data.groups.find(item => item.id === group) || {label: 'All organizations'}).label;
+  const label = group.startsWith('org:') ? group.slice(4) : (data.groups.find(item => item.id === group) || {label: 'All organizations'}).label;
   container.append(html('p', `${label}: every repository, its copy on each machine lined up in one row, and where it lives online.`, 'map-note'));
   const table = html('table', undefined, 'map-grid');
   const head = gridHead(machines, perspective, 'Repository');
@@ -242,7 +251,12 @@ function organizationView(container, data, perspective, group, onPick, actions) 
     asks.append(html('td', 'Ask a machine:', 'host-note'), html('td'));
     for (const machine of machines) {
       const cell = html('td');
-      const held = rows.filter(row => (row.cells[machine.id] || {}).present);
+      // Only copies with something to catch up: behind, or not on the commit the other copies are
+      // on. A column of clean, matching copies gets no button (the user, 2026-11-16).
+      const held = rows.filter(row => {
+        const cell = row.cells[machine.id] || {};
+        return cell.present && (((cell.facts || {}).behind || 0) > 0 || (row.copies || {}).heads_agree === false);
+      });
       const missing = rows.filter(row => !(row.cells[machine.id] || {}).present && providerUrl(row));
       // This machine's own column runs here and now (you are at it); another machine's is a request
       // it shows on its own page (the user, 2026-11-16).

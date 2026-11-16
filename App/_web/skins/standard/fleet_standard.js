@@ -1,7 +1,7 @@
 /* The standard skin. It renders display v1 and never decides what Git state means. */
 import {FleetConnection} from './fleet_client.js';
 import {ageLabel, GroupExpansion, groupRows, regroup, selectRows} from './fleet_view.js';
-import {renderMap, VIEWS} from './fleet_map.js';
+import {organizationChoices, renderMap, VIEWS} from './fleet_map.js';
 import {renderSecurity} from './fleet_security.js';
 import {renderSettings} from './fleet_settings.js';
 import {renderRequests} from './fleet_requests.js';
@@ -432,7 +432,7 @@ function renderMapPanel() {
   const data = state.data;
   fillSelect(byId('map-view'), VIEWS, mapOptions.view);
   fillSelect(byId('map-perspective'), data.machines.map(m => [m.id, m.label]), mapOptions.perspective);
-  fillSelect(byId('map-group'), [['all', 'All organizations'], ...data.groups.map(g => [g.id, g.label])], mapOptions.group);
+  fillSelect(byId('map-group'), [['all', 'All organizations'], ...organizationChoices(data)], mapOptions.group);
   fillSelect(byId('map-repo'), data.rows.map(r => [r.id, r.name]), mapOptions.repo);
   mapOptions.perspective = byId('map-perspective').value || null;
   mapOptions.repo = byId('map-repo').value || null;

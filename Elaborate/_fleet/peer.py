@@ -441,7 +441,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             with action_lock:
                 home, snapshot = security_settings()
                 return inspect_registered(payload, observer.local_checkouts, settings_home=home, expected_settings=snapshot)
-        if action in ("request-send", "request-withdraw", "request-answer", "changes"):
+        if action in ("request-send", "request-withdraw", "request-answer", "request-clear", "changes"):
             return request_action(action, payload)
         if action != "catchup-preview" or payload:
             raise ValueError("unsupported fleet dashboard action")
@@ -500,6 +500,9 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         if action == "request-withdraw":
             book.withdraw(text(payload.get("id")))
             return {"message": "Withdrawn."}
+        if action == "request-clear":
+            dropped = book.clear(everything_sent=bool(payload.get("everything_sent")))
+            return {"message": f"Cleared {dropped}. The task log keeps the record."}
         if action == "changes":
             repo_id, machine_id = text(payload.get("repo_id")), text(payload.get("machine_id"))
             if machine_id == config["machine_id"]:
