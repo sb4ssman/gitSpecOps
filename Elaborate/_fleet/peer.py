@@ -434,6 +434,8 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             return audits.start(payload)
         if action == "security-status":
             return audits.status()
+        if action == "security-reveal":
+            return audits.reveal(payload)
         if action == "security-stop":
             return audits.stop()
         if action == "security-preview":

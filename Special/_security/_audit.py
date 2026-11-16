@@ -79,7 +79,8 @@ def _without_path(record: dict) -> dict:
     return record
 
 
-def audit_checkout(repo, *, history=True, engines=(), settings_home=None, expected_settings=None) -> dict:
+def audit_checkout(repo, *, history=True, engines=(), settings_home=None, expected_settings=None,
+                   values: dict | None = None) -> dict:
     """One checkout: working files, then (optionally) every reachable commit. Never clearance."""
     result = {"scope": "local-audit", "action_clearance": False,
               "observed_at": datetime.now(timezone.utc).isoformat(), "check_status": "incomplete",
@@ -96,10 +97,16 @@ def audit_checkout(repo, *, history=True, engines=(), settings_home=None, expect
         policy = load_policy(repo, home=home)
         tree = scan(repo, policy, material="tree", engines=list(engines))
         result["working_tree"] = _without_path(tree.record())
+        # Each finding's real value, in finding order, into the caller's own holder (never the
+        # masked result): the person at this machine may reveal one at a time (the user, 2026-11-16).
+        if values is not None:
+            values["working_tree"] = [finding.value for finding in tree.findings]
         statuses = [tree.check_status]
         if history:
             past = scan(repo, policy, material="history", engines=list(engines))
             result["history"] = _without_path(past.record())
+            if values is not None:
+                values["history"] = [finding.value for finding in past.findings]
             statuses.append(past.check_status)
         if any(item.get("severity") == "high"
                for record in (result["working_tree"], result["history"]) if record
@@ -154,6 +161,7 @@ class AuditJobs:
             self.serial += 1
             self.job = {"id": self.serial, "state": "running", "history": history, "engines": engines,
                         "total": len(ids), "done": 0, "current": None, "results": [], "stop": False,
+                        "values": [],
                         "started_at": datetime.now(timezone.utc).isoformat(), "finished_at": None}
             job = self.job
         threading.Thread(target=self._run, args=(job, ids), name="security-audit", daemon=True).start()
@@ -171,13 +179,17 @@ class AuditJobs:
             except (OSError, ValueError, KeyError):
                 paths = []
             if not paths:
-                job["results"].append({"repo_id": repo_id, "checkout": 0, "security": {
+                job["values"].append({})
+                job["results"].append({"repo_id": repo_id, "checkout": 0, "index": len(job["results"]), "security": {
                     "check_status": "incomplete", "working_tree": None, "history": None,
                     "gaps": [{"where": "audit", "reason": "No checkout of this repository on this machine."}]}})
             for number, path in enumerate(paths, 1):
+                found: dict = {}
                 record = self.runner(path, history=job["history"], engines=job["engines"],
-                                     settings_home=home, expected_settings=expected)
-                job["results"].append({"repo_id": repo_id, "checkout": number, "security": record})
+                                     settings_home=home, expected_settings=expected, values=found)
+                job["values"].append(found)
+                job["results"].append({"repo_id": repo_id, "checkout": number,
+                                       "index": len(job["results"]), "security": record})
             job["done"] += 1
         else:
             job["state"] = "finished"
@@ -188,9 +200,28 @@ class AuditJobs:
         with self.lock:
             if self.job is None:
                 return {"audit": None}
-            view = {key: value for key, value in self.job.items() if key not in ("stop", "results")}
+            view = {key: value for key, value in self.job.items() if key not in ("stop", "results", "values")}
             view["results"] = list(self.job["results"])
             return {"audit": view}
+
+    def reveal(self, payload) -> dict:
+        """One finding's unmasked value, for the person at this machine's own page. Answered from
+        memory (the audit just run), only through the local, token-checked actions; never logged,
+        never published, gone when the app restarts."""
+        if not isinstance(payload, dict) or set(payload) != {"index", "material", "finding_id"}:
+            raise ValueError("send index, material and finding_id")
+        index, material, finding_id = payload["index"], payload["material"], payload["finding_id"]
+        if (type(index) is not int or material not in ("working_tree", "history")
+                or not isinstance(finding_id, str) or not finding_id.startswith("finding-")
+                or not finding_id[8:].isdigit()):
+            raise ValueError("that finding is not in this audit")
+        with self.lock:
+            values = (self.job or {}).get("values", [])
+            found = values[index].get(material, []) if 0 <= index < len(values) else []
+            number = int(finding_id[8:]) - 1
+            if not 0 <= number < len(found):
+                raise ValueError("that finding is not in this audit")
+            return {"value": found[number]}
 
     def stop(self, payload=None) -> dict:
         with self.lock:
