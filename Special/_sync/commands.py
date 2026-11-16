@@ -53,7 +53,7 @@ def _observer(args):
 
 # --------------------------------------------------------------------------- suggest_sync
 
-def _root_specs(args, config):
+def _root_specs(args, config, app=None):
     from Special._sync.observer import RootSpec
 
     cli_roots = [RootSpec(Path(root), args.recursive) for root in (args.root or [])]
@@ -63,6 +63,10 @@ def _root_specs(args, config):
     if config and config.get("roots"):
         return ([RootSpec(Path(root["path"]), bool(root.get("recursive")))
                  for root in config["roots"]], "saved configuration")
+    # The library folders setup and `gitso machine add` keep (the app's section), read the way
+    # the app reads them: recursively. Without this, a machine set up by setup had "no folders".
+    if app and app.get("roots"):
+        return [RootSpec(Path(root), True) for root in app["roots"]], "library folders on this machine"
     return [], "nowhere"
 
 
@@ -76,8 +80,10 @@ def suggest_sync(args) -> int:
     home = args.settings_home
     config_dir = fleet_directory(args.config_dir, home=home)
     config = load_config(config_dir, home=home)
-    specs, source = _root_specs(args, config)
     snapshot = config.snapshot if hasattr(config, "snapshot") else load_fleet_settings(home)
+    app = snapshot.config("app") if snapshot is not None and not (config and config.get("roots")) else None
+    specs, source = _root_specs(args, config, app)
+    identity = config or app or {}  # repository ids salted like the app's, so they match the fleet
     if snapshot is not None:
         snapshot.check_roots("sync", [spec.path for spec in specs])
     if not specs:
@@ -90,7 +96,8 @@ def suggest_sync(args) -> int:
             line(f"Fetching remote refs for the repositories in {len(specs)} folder(s): the only network "
                  "activity, and it never touches your working tree.", "detail")
     # Repository ids only need a salt inside this run; nothing here leaves the machine.
-    secret = (config or {}).get("fleet_secret") or new_fleet_secret()
+    secret = identity.get("fleet_secret") or new_fleet_secret()
+
     def reading(done, total, _path):
         # One line, rewritten in place: a person sees the library being read, not a still screen.
         print(f"\r  Reading Git status: {done} of {total} repositories", end="" if done < total else "\n",
@@ -98,12 +105,16 @@ def suggest_sync(args) -> int:
 
     observation = observe_roots(specs, secret, fetch=args.fetch, fetch_workers=args.fetch_workers,
                                 fetch_timeout=args.fetch_timeout, progress=reading if screen else None)
+    # The secret check reads every working file and the outgoing history of each repository:
+    # about 20 seconds a repository, over an hour for a library of 188 (2026-11-15). It is asked
+    # for, not part of the status read: --security here, or the app's Security tab.
     security = inspect_paths(zip((repo["repo_id"] for repo in observation.repositories),
                                  observation.locations),
-                             settings_home=home, expected_settings=snapshot)
-    machine = (config or {}).get("machine_id") or "this-machine"
+                             settings_home=home, expected_settings=snapshot) if args.security else []
+    machine = identity.get("machine_id") or "this-machine"
     manifest = build_manifest(fleet_id_for(secret), machine,
-                              (config or {}).get("machine_label") or machine, observation.repositories)
+                              identity.get("machine_label") or identity.get("label") or machine,
+                              observation.repositories)
     merged = merge_catalog(load_catalog(config_dir), observation.catalog)
     branches = {**load_branches(config_dir), **observation.branches}
     if config and not args.no_catalog:
@@ -118,8 +129,12 @@ def suggest_sync(args) -> int:
         for text in render_table(manifest, merged, branches, security=security).splitlines():
             line(text)
         say()
-        for text in render_advice(security).splitlines():
-            line(text)
+        if args.security:
+            for text in render_advice(security).splitlines():
+                line(text)
+        else:
+            line("Secrets were not checked: that reads every file (about 20 seconds a repository). Add "
+                 "--security, or use the app's Security tab on the repositories you choose.", "muted")
         for issue in observation.issues:
             line(f"warning: {issue}", "warning")
         notice("Done", message, "success")
@@ -141,6 +156,9 @@ def suggest_sync_main(argv=None) -> int:
     parser.add_argument("--fetch-workers", type=int, default=DEFAULT_FETCH_WORKERS)
     parser.add_argument("--fetch-timeout", type=int, default=DEFAULT_FETCH_TIMEOUT_SECONDS)
     parser.add_argument("--no-catalog", action="store_true", help="do not update the local catalog")
+    parser.add_argument("--security", action="store_true",
+                        help="also check every working file and the outgoing history for secrets and "
+                             "protected values (slow: about 20 seconds a repository)")
     return _run("machine check", suggest_sync, parser, argv)
 
 

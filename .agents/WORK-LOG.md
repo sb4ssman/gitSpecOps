@@ -2821,3 +2821,15 @@ No code changed; decisions recorded where they govern.
   when asked (the tray's Preview catch-up). The first fetch comes one full interval after the app
   starts, not a minute after. `Special._sync.enrollment.set_fetch_minutes` saves the choice.
   Machines already enrolled keep their saved interval until setup changes it.
+
+## 2026-11-15 20:30 - user (claude) - The first scan reads the library setup keeps, in about a minute (branch wave/machine-check-libraries)
+- Setup's terminal first scan ran `gitso machine check`, which said "no folders to look at": it
+  read library folders only from the command-line fleet section, while setup and `gitso machine
+  add` keep them in the app's section. It now falls back to those, read recursively as the app
+  reads them, with the app's fleet key and machine name so repository ids match the fleet.
+- Checked on the user's library: the secret check `machine check` ran on every repository took
+  about 20 seconds each (116 seconds for 5), over an hour for the library. It is now asked for
+  (`--security`), as the app's Security tab already is; the status read alone took 72 seconds for
+  181 repositories, read-only. The screen says how to check secrets when it was not asked for.
+- The agent's own timing run of the old behaviour outlived its 10-minute limit and moved to the
+  background; it was stopped at once and nothing was left running.
