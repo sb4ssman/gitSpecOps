@@ -2706,3 +2706,14 @@ No code changed; decisions recorded where they govern.
 - winget's and uv's own output overwrote the step's number and name ([12/15] was missing). A
   step that runs another program now gets its own line, and its number and name again with the
   result.
+
+## 2026-11-15 17:20 - user (claude) - Setup names the tray app and starts it as its last step (branch wave/setup-protection)
+- The user: step 2 talked about uv, the Python environment and Qt without saying it installs a
+  tray app, and no tray appeared. The tray itself starts fine (checked with a console for 20
+  seconds: dashboard, tailnet map and fleet peer all came up). Setup only offered to start it
+  after a run with no failed step, and the alias step had failed.
+- Step 2 is now "The desktop app": the tray icon and the map, drawn with Qt, installed with uv
+  into this folder's .venv. Step 5 is "Running the app": whether it is running now (the fleet
+  folder's lock says so, without starting anything), start at sign-in, and "Start the app when
+  setup finishes?". Starting is the plan's last step and runs whether or not another step
+  failed; setup then checks it is still running five seconds later and reports if it stopped.

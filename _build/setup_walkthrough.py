@@ -7,7 +7,7 @@ Reads:        Git, the GitHub CLI and its sign-in, uv, this folder's .venv, the 
               the secret scanners, Tailscale, synced folders. Never a repository's contents.
 May change:   nothing until the review is accepted. Then exactly what was chosen, in order:
               installs (with the system's package tool, the command shown first), the GitHub
-              sign-in, the Python environment, the gitso command, library folders, the web
+              sign-in, the desktop app, the gitso command, library folders, the web
               view's reach, start at sign-in, the desktop Git app, protected values, the
               scanners used in scans, the fleet.
 Results:      the walkthrough screens, the review, a run screen of numbered steps.
@@ -39,7 +39,7 @@ WINDOWS = sys.platform == "win32"
 MAC = sys.platform == "darwin"
 VENV_DIR = ROOT / ".venv"
 VENV_PYTHON = VENV_DIR / ("Scripts/python.exe" if WINDOWS else "bin/python")
-AREAS = ("Requirements", "Python environment", "The gitso command", "This machine", "The app",
+AREAS = ("Requirements", "The desktop app", "The gitso command", "This machine", "Running the app",
          "Desktop Git app", "Protection", "Scanners", "Archives", "Fleet")
 
 from Special._security._audit import INSTALL_PACKAGES  # noqa: E402  the Security tab suggests the same
@@ -84,6 +84,8 @@ class Plan:
     enrolled_after: bool = False
     uv_after: bool = False
     venv_after: bool = False
+    desktop_after: bool = False  # the tray app (Qt) will be installed
+    start_app: bool = False      # start the tray app as the last step
 
     def add(self, title, review, apply, loud=False):
         self.changes.append(Change(title, review, apply, loud))
@@ -194,6 +196,7 @@ def detect() -> dict:
     for name in SCANNERS:
         found[name] = find_program(name)
     found["archives"] = _archives()
+    found["app_running"] = app_running()
     return found
 
 
@@ -317,29 +320,34 @@ def _gh_login() -> str:
 
 
 def area_environment(found: dict, plan: Plan) -> None:
-    screen(2, "Python environment")
-    tool_row("uv", found["uv"], "not installed")
-    row("Environment", "ready (.venv in this folder)" if found["venv"] else "not built",
-        "success" if found["venv"] else "warning")
+    screen(2, "The desktop app")
     row("Desktop app", "installed" if found["desktop"] else "not installed",
         "success" if found["desktop"] else "warning")
-    line("The desktop app (tray icon and map) needs uv to install its one dependency, Qt. The "
-         "command-line tools need only Python.", "muted")
-    plan.uv_after = bool(found["uv"]) or offer_install(plan, "uv", "uv", "")
+    tool_row("uv", found["uv"], "not installed")
+    line("The desktop app is gitSpecOps' tray icon, by the clock, and the map of your repositories it "
+         "opens: its colour says whether everything is in order. It is drawn with Qt, which setup "
+         "installs with uv into this folder's .venv; nothing system-wide. The gitso commands need "
+         "only Python.", "muted")
+    plan.desktop_after = found["desktop"]
+    plan.uv_after = bool(found["uv"]) or offer_install(plan, "uv", "uv", "The desktop app is installed with it.")
     if not plan.uv_after:
-        line("Without uv the desktop app cannot be installed; the command-line tools still work.", "warning")
+        line("Without uv the desktop app cannot be installed; the gitso commands still work.", "warning")
+        plan.venv_after = found["venv"]
         return
     # `uv sync --extra app`: make this folder's .venv exactly what uv.lock lists, plus the "app"
     # extra (Qt). Without --extra app, a sync would remove Qt.
     if found["desktop"]:
-        question = "The desktop app is installed. Update Qt to the version this gitSpecOps expects?"
-        hint = "Only needed after updating gitSpecOps. Changes this folder's .venv only (uv sync --extra app)."
+        question = "The desktop app is installed. Update it?"
+        hint = ("Only needed after updating gitSpecOps: brings Qt in this folder's .venv to the version "
+                "gitSpecOps expects (uv sync --extra app).")
+        summary = "Desktop app (tray icon and map): update Qt in this folder's .venv (uv sync --extra app)"
     else:
-        question = "Install the desktop app?"
-        hint = "Installs Qt into a .venv in this folder only; nothing system-wide (uv sync --extra app)."
+        question = "Install the desktop app, the tray icon and map?"
+        hint = "Installs Qt into this folder's .venv with uv; nothing system-wide (uv sync --extra app)."
+        summary = "Desktop app (tray icon and map): install Qt into this folder's .venv (uv sync --extra app)"
     if yes_no(question, "n" if found["desktop"] else "y", hint):
-        plan.add("Python environment", "Desktop app: Qt in this folder's .venv (uv sync --extra app)", _build_env, loud=True)
-        plan.venv_after = True
+        plan.add("Desktop app", summary, _build_env, loud=True)
+        plan.venv_after = plan.desktop_after = True
     else:
         plan.venv_after = found["venv"]
 
@@ -477,18 +485,30 @@ LOGIN_SWITCH = ("Task Manager > Startup apps" if WINDOWS else "System Settings >
 
 
 def area_app(found: dict, plan: Plan) -> None:
-    screen(5, "The app")
+    screen(5, "Running the app")
     state, where = found["login"], found.get("login_elsewhere") or LOGIN_SWITCH
+    row("Running now", "yes" if found.get("app_running") else "no",
+        "success" if found.get("app_running") else "text")
     row("Start at sign-in", {None: "not available on this system", "on": "on", "off": "off"}.get(
         state, f"off: turned off in {where}"), "success" if state == "on" else "text")
-    line("The app is a tray icon and a map of your repositories, on this computer. Starting it at "
+    line("The app is the tray icon and the map of your repositories, on this computer. Starting it at "
          f"sign-in keeps it watching. It appears in {LOGIN_SWITCH} like any other start-up item; "
          "switching it there is noticed here and in the tray menu.", "muted")
-    if state is None:
+    if not plan.desktop_after:
+        line("The app needs the desktop app (step 2).", "warning")
         return
-    if not plan.venv_after:
-        line("Start at sign-in needs the Python environment (step 2).", "warning")
-        return
+    if state is not None:
+        _sign_in_choice(plan, state, where)
+    if found.get("app_running"):
+        line("The app is running. To use what setup changes, quit it from its tray menu and start it "
+             "again (gitso tray).", "muted")
+    elif yes_no("Start the app when setup finishes?", "y",
+                "The last step, whether or not every other step succeeds. Its icon appears by the clock "
+                "(Windows may tuck it under the ^ arrow); double-click it for your map."):
+        plan.start_app = True
+
+
+def _sign_in_choice(plan: Plan, state: str, where: str) -> None:
     say()
     if state == "on":
         option("K", "Keep starting at sign-in")
@@ -980,29 +1000,45 @@ def apply(plan: Plan) -> bool:
     return True
 
 
-def start_app() -> None:
+def app_running() -> bool:
+    """Whether the app is running for this profile: it holds the fleet folder's lock. Only looks;
+    no lock file yet means it is not running."""
+    from Special._settings.fleet import fleet_directory
+    from Special._sync.lock import app_lock
+    try:
+        directory = fleet_directory()
+        if not (directory / "fleet-app.lock").exists():
+            return False
+        with app_lock(directory):
+            return False
+    except (ValueError, OSError):
+        return True
+    except Exception:  # noqa: BLE001 - unreadable settings: say not running; never stop setup here
+        return False
+
+
+def _start_app(wait: float = 5.0) -> str:
+    """Start the tray app detached, then make sure it is still running a few seconds later."""
     pythonw = VENV_PYTHON.with_name("pythonw.exe")
-    if not VENV_PYTHON.exists():
-        return
-    say()
-    option("1", "Start gitSpecOps now", "Its tray icon appears; double-click it for your map.")
-    option("0", "Close")
-    if choose("10", "1") == "1":
-        command = [str(pythonw if WINDOWS and pythonw.exists() else VENV_PYTHON), str(ROOT / "App" / "tray.py")]
-        flags = (subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP) if WINDOWS else 0
-        subprocess.Popen(command, cwd=ROOT, creationflags=flags, start_new_session=not WINDOWS,
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        line("Started.", "success")
+    command = [str(pythonw if WINDOWS and pythonw.exists() else VENV_PYTHON), str(ROOT / "App" / "tray.py")]
+    flags = (subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP) if WINDOWS else 0
+    process = subprocess.Popen(command, cwd=ROOT, creationflags=flags, start_new_session=not WINDOWS,
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        code = process.wait(timeout=wait)
+    except subprocess.TimeoutExpired:
+        return "running: its icon is by the clock"
+    raise RuntimeError(f"the app stopped at once (exit code {code}); run gitso tray in a terminal to see why")
 
 
 AREA_STEPS = (area_requirements, area_environment, area_gitso, area_machine, area_app,
               area_client, area_protection, area_scanners, area_archives, area_fleet)
 PART_HINTS = (
     "Git, the GitHub CLI and your GitHub sign-in.",
-    "This folder's .venv, and Qt for the desktop app.",
+    "The tray icon and map: Qt in this folder's .venv, installed with uv.",
     "gitso on your command path, and an optional shell alias.",
     "Library folders: where your repositories are.",
-    "Start the tray icon when you sign in.",
+    "Start the tray app now, and when you sign in.",
     "Open repositories from the map in Sourcetree or GitHub Desktop.",
     "Values that must never be published.",
     "Extra secret scanners: Gitleaks, Betterleaks, TruffleHog.",
@@ -1038,7 +1074,8 @@ def walkthrough(detector=detect, only: int | None = None) -> int:
         if only is None:
             plan, steps = Plan(), AREA_STEPS
         else:  # the parts before this one are as this computer has them
-            plan = Plan(enrolled_after=found["enrolled"], uv_after=bool(found["uv"]), venv_after=found["venv"])
+            plan = Plan(enrolled_after=found["enrolled"], uv_after=bool(found["uv"]), venv_after=found["venv"],
+                        desktop_after=found["desktop"])
             steps = (AREA_STEPS[only],)
         try:
             for area in steps:
@@ -1046,6 +1083,8 @@ def walkthrough(detector=detect, only: int | None = None) -> int:
         except Stop:
             notice("Walkthrough stopped", "Nothing has been changed.", "warning")
             return 0
+        if plan.start_app:  # last, so it starts with everything else in place
+            plan.add("Start the app", "Start the app (tray icon and map) after the other steps", _start_app)
         answer = review(plan, found["enrolled"], "Back to the start of the walkthrough" if only is None
                         else f"Back to the start of {AREAS[only]}")
         if answer == "b":
@@ -1055,6 +1094,4 @@ def walkthrough(detector=detect, only: int | None = None) -> int:
                 notice("Cancelled", "Nothing has been changed.", "warning")
             return 0
         ok = apply(plan)
-        if ok and only is None:
-            start_app()
         return 0 if ok else 1

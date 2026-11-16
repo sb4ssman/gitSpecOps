@@ -166,7 +166,8 @@ class WalkthroughTests(unittest.TestCase):
                 "engines": [], "gitleaks": None, "betterleaks": None, "trufflehog": None,
                 "gitso_command": {"launcher": "none", "on_path": False, "folder": "/home/x/.gitspecops/bin",
                                   "aliases": [], "in_this_terminal": False},
-                "alias_targets": ["/home/x/.bashrc"], "powershell_profiles_run": None, "archives": []}
+                "alias_targets": ["/home/x/.bashrc"], "powershell_profiles_run": None, "archives": [],
+                "app_running": False}
         base.update(overrides)
         return base
 
@@ -228,13 +229,13 @@ class WalkthroughTests(unittest.TestCase):
         self.assertIn("Setup incomplete", out)
 
     def area(self, area, answers, **overrides):
-        plan = self.walk.Plan(enrolled_after=True, venv_after=True)
+        plan = self.walk.Plan(enrolled_after=True, venv_after=True, desktop_after=True)
         with patch("builtins.input", side_effect=answers):
             area(self.found(**overrides), plan)
         return plan
 
     def test_start_at_sign_in_turned_off_elsewhere_is_shown_and_can_be_turned_back_on(self):
-        plan = self.area(self.walk.area_app, ["t"], login="elsewhere", login_elsewhere="Task Manager (Startup apps)")
+        plan = self.area(self.walk.area_app, ["t", "n"], login="elsewhere", login_elsewhere="Task Manager (Startup apps)")
         out = self.output.getvalue()
         self.assertIn("off: turned off in Task Manager (Startup apps)", out)
         self.assertIn("[T] Turn it back on", out)
@@ -242,11 +243,50 @@ class WalkthroughTests(unittest.TestCase):
                          ["Start at sign-in: turn it back on in Task Manager (Startup apps)"])
 
     def test_start_at_sign_in_can_be_removed(self):
-        plan = self.area(self.walk.area_app, ["r"], login="on")
+        plan = self.area(self.walk.area_app, ["r", "n"], login="on")
         self.assertEqual([c.review for c in plan.changes], ["Start at sign-in: remove the entry"])
 
     def test_keeping_start_at_sign_in_changes_nothing(self):
-        self.assertEqual(self.area(self.walk.area_app, [""], login="on").changes, [])
+        self.assertEqual(self.area(self.walk.area_app, ["", "n"], login="on").changes, [])
+
+    def test_starting_the_app_is_offered_and_is_the_last_step(self):
+        with patch("builtins.input", side_effect=["", "y", "0"]):
+            self.walk.walkthrough(detector=lambda: self.found(), only=4)
+        out = self.output.getvalue()
+        self.assertIn("Start the app when setup finishes?", out)
+        bullets = [line for line in out.splitlines() if line.strip().startswith(". ")]
+        self.assertIn("Start the app (tray icon and map)", bullets[-1])
+
+    def test_a_running_app_is_not_started_again(self):
+        plan = self.area(self.walk.area_app, [""], login="on", app_running=True)
+        self.assertFalse(plan.start_app)
+        self.assertIn("The app is running", self.output.getvalue())
+
+    def test_without_the_desktop_app_there_is_no_app_to_start(self):
+        plan = self.walk.Plan(enrolled_after=True, venv_after=True, desktop_after=False)
+        with patch("builtins.input", side_effect=[]):
+            self.walk.area_app(self.found(), plan)
+        self.assertFalse(plan.start_app)
+        self.assertIn("needs the desktop app (step 2)", self.output.getvalue())
+
+    def test_the_app_is_checked_to_be_still_running_after_it_starts(self):
+        import subprocess
+        alive = type("P", (), {"wait": lambda self, timeout: (_ for _ in ()).throw(subprocess.TimeoutExpired("x", 1))})()
+        dead = type("P", (), {"wait": lambda self, timeout: 1})()
+        with patch.object(self.walk.subprocess, "Popen", return_value=alive):
+            self.assertIn("running", self.walk._start_app(wait=0))
+        with patch.object(self.walk.subprocess, "Popen", return_value=dead):
+            with self.assertRaisesRegex(RuntimeError, "stopped at once"):
+                self.walk._start_app(wait=0)
+
+    def test_the_desktop_app_question_says_it_is_the_tray_icon_and_map(self):
+        plan = self.walk.Plan()
+        with patch("builtins.input", side_effect=["y"]):
+            self.walk.area_environment(self.found(desktop=False), plan)
+        out = self.output.getvalue()
+        self.assertIn("Install the desktop app, the tray icon and map?", out)
+        self.assertTrue(plan.desktop_after)
+        self.assertIn("tray icon and map", plan.changes[0].review)
 
     def test_without_tailscale_the_fleet_does_not_ask_about_it(self):
         self.area(self.walk.area_fleet, ["n"], tailscale=None, tailnet=False)
