@@ -200,6 +200,8 @@ def detect() -> dict:
         found[name] = find_program(name)
     found["archives"] = _archives()
     found["app_running"] = app_running()
+    from Special._sync.enrollment import current_fetch_minutes
+    found["fetch_minutes"] = current_fetch_minutes()
     return found
 
 
@@ -428,19 +430,30 @@ def area_gitso(found: dict, plan: Plan) -> None:
         if not yes_no("Keep the gitso alias in your shell profiles?", "y"):
             plan.add("gitso alias", "gitso alias: remove the marked lines from " + ", ".join(state["aliases"]),
                      lambda: command.remove_aliases())
-    elif targets and WINDOWS:
-        # Not offered on Windows (2026-11-15): the command path already reaches cmd, PowerShell
-        # and Git Bash. PowerShell profiles live in Documents, which Controlled Folder Access
-        # refuses to let Python write and OneDrive copies to the user's other PCs, where the
-        # alias would point at this PC's folder and hide their own gitso command.
-        line("No shell alias is needed on Windows: the gitso command works in cmd, PowerShell and "
-             "Git Bash.", "muted")
     elif targets:
+        warn = ""
+        if any("/onedrive" in Path(t).as_posix().casefold() for t in targets):  # also "OneDrive - Work"
+            warn += (" A profile here is in OneDrive, which copies it to your other PCs: there the "
+                     "alias would point at this PC's folder.")
+        if WINDOWS:
+            warn += (" Windows may refuse the change (Controlled Folder Access protects Documents); "
+                     "then setup shows the line to add yourself.")
         if yes_no("Also add gitso to your shell profiles, as an alias?", "n",
                   "Optional: the command path above is enough. Adds a marked block to: "
-                  + ", ".join(targets) + "."):
-            plan.add("gitso alias", "gitso alias: a marked block in " + ", ".join(targets),
-                     lambda: command.install_aliases())
+                  + ", ".join(targets) + "." + warn):
+            plan.add("gitso alias", "gitso alias: a marked block in " + ", ".join(targets), _install_alias)
+
+
+class Skipped(Exception):
+    """A change that could not be made and is not a failure: the step says why and what to do."""
+
+
+def _install_alias() -> str:
+    from _build import gitso_command as command
+    try:
+        return command.install_aliases()
+    except command.ProfileRefused as refused:
+        raise Skipped(str(refused)) from None
 
 
 def area_machine(found: dict, plan: Plan) -> None:
@@ -520,11 +533,47 @@ def area_app(found: dict, plan: Plan) -> None:
         return
     if state is not None:
         _sign_in_choice(plan, state, where)
+    if plan.enrolled_after:
+        _fetch_choice(plan, found.get("fetch_minutes"))
     if found.get("app_running"):
         line("The app is running. To use what setup changes, quit it from its tray menu and start it "
              "again (gitso tray).", "muted")
     else:
         line("Starting it is offered once setup has applied your choices: the first scan.", "muted")
+
+
+FETCH_CHOICES = (("d", "Once a day", 1440, "Recommended."),
+                 ("h", "Every hour", 60, ""),
+                 ("n", "Only when you ask", 0, "From the tray's menu: Preview catch-up (fresh fetch)."))
+
+
+def fetch_words(minutes: int) -> str:
+    return {0: "only when you ask", 60: "every hour", 1440: "once a day"}.get(minutes, f"every {minutes} minutes")
+
+
+def _fetch_choice(plan: Plan, current: int | None) -> None:
+    """How often the app checks GitHub for new commits (a read-only fetch of every repository)."""
+    say()
+    line("Checking GitHub for new commits: the app fetches each repository's remote, read-only "
+         "(your branches and files never change), so the map can say what is behind. How often?"
+         + (f" Now: {fetch_words(current)}." if current is not None else ""), "muted")
+    for key, label, _minutes, hint in FETCH_CHOICES:
+        option(key.upper(), label, hint)
+    option("0", "Stop the walkthrough", "Nothing has been changed.")
+    default = {minutes: key for key, _label, minutes, _hint in FETCH_CHOICES}.get(current, "d")
+    answer = choose("dhn0", default)
+    if answer == "0":
+        raise Stop
+    minutes = next(minutes for key, _label, minutes, _hint in FETCH_CHOICES if key == answer)
+    if minutes != current:
+        plan.add("Checking GitHub", f"Checking GitHub for new commits: {fetch_words(minutes)}",
+                 lambda: _set_fetch(minutes))
+
+
+def _set_fetch(minutes: int) -> str:
+    from Special._sync.enrollment import set_fetch_minutes
+    set_fetch_minutes(minutes)
+    return fetch_words(minutes)
 
 
 def _sign_in_choice(plan: Plan, state: str, where: str) -> None:
@@ -1146,8 +1195,13 @@ def apply(plan: Plan, done: tuple[str, str] = ("Setup complete", "gitSpecOps is 
     banner(f"Setup  /  {title}", f"folder: {ROOT}")
     say()
     steps = Steps(len(plan.changes))
+    def run(change):
+        try:
+            return "changed", str(change.apply())
+        except Skipped as skipped:
+            return "skipped", str(skipped)
     for change in plan.changes:
-        steps.run(change.title, lambda change=change: ("changed", str(change.apply())), loud=change.loud)
+        steps.run(change.title, lambda change=change: run(change), loud=change.loud)
     failed = [label for label, status, _detail in steps.results if status == "FAILED"]
     section("Summary")
     for label, status, detail in steps.results:

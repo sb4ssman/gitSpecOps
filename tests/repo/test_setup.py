@@ -181,7 +181,7 @@ class WalkthroughTests(unittest.TestCase):
                 "gitso_command": {"launcher": "none", "on_path": False, "folder": "/home/x/.gitspecops/bin",
                                   "aliases": [], "in_this_terminal": False},
                 "alias_targets": ["/home/x/.bashrc"], "powershell_profiles_run": None, "archives": [],
-                "app_running": False}
+                "app_running": False, "fetch_minutes": 1440}
         base.update(overrides)
         return base
 
@@ -227,16 +227,31 @@ class WalkthroughTests(unittest.TestCase):
         result = next(line for line in lines if "installed" in line and "changed" in line)
         self.assertIn("[1/1] Install gitleaks", result)
 
-    def test_on_windows_no_alias_is_offered_and_nothing_can_fail_there(self):
-        # 2026-11-15: Controlled Folder Access refused the profile write twice, and the profile
-        # was in OneDrive. The command path already works in every Windows shell.
+    def test_on_windows_the_alias_stays_optional_and_says_what_may_happen(self):
         with patch.object(self.walk, "WINDOWS", True):
-            plan = self.area(self.walk.area_gitso, ["a"],
+            plan = self.area(self.walk.area_gitso, ["a", "y"],
                              alias_targets=["C:/Users/x/OneDrive/Documents/PowerShell/profile.ps1"])
-        self.assertEqual([c.title for c in plan.changes], ["The gitso command"])
+        self.assertEqual([c.title for c in plan.changes], ["The gitso command", "gitso alias"])
+        out = " ".join(self.output.getvalue().split())
+        self.assertIn("in OneDrive", out)
+        self.assertIn("Controlled Folder Access", out)
+
+    def test_a_refused_alias_is_a_skipped_step_not_a_failure(self):
+        from _build import gitso_command
+        plan = self.walk.Plan()
+        plan.add("gitso alias", "alias", self.walk._install_alias)
+        with patch.object(gitso_command, "install_aliases",
+                          side_effect=gitso_command.ProfileRefused("Windows refused writing the profile.")):
+            self.assertTrue(self.walk.apply(plan))
         out = self.output.getvalue()
-        self.assertNotIn("as an alias?", out)
-        self.assertIn("No shell alias is needed on Windows", out)
+        self.assertIn("skipped", out)
+        self.assertNotIn("Not finished", out)
+
+    def test_how_often_to_check_github_is_asked_and_saved(self):
+        plan = self.area(self.walk.area_app, ["", "h"], login="on")
+        self.assertEqual([c.review for c in plan.changes], ["Checking GitHub for new commits: every hour"])
+        self.assertIn("[D] Once a day", self.output.getvalue())
+        self.assertEqual(self.walk.fetch_words(0), "only when you ask")
 
     def test_a_failed_step_is_reported_and_the_rest_still_run(self):
         plan = self.walk.Plan()
@@ -255,7 +270,7 @@ class WalkthroughTests(unittest.TestCase):
         return plan
 
     def test_start_at_sign_in_turned_off_elsewhere_is_shown_and_can_be_turned_back_on(self):
-        plan = self.area(self.walk.area_app, ["t"], login="elsewhere", login_elsewhere="Task Manager (Startup apps)")
+        plan = self.area(self.walk.area_app, ["t", ""], login="elsewhere", login_elsewhere="Task Manager (Startup apps)")
         out = self.output.getvalue()
         self.assertIn("off: turned off in Task Manager (Startup apps)", out)
         self.assertIn("[T] Turn it back on", out)
@@ -263,11 +278,11 @@ class WalkthroughTests(unittest.TestCase):
                          ["Start at sign-in: turn it back on in Task Manager (Startup apps)"])
 
     def test_start_at_sign_in_can_be_removed(self):
-        plan = self.area(self.walk.area_app, ["r"], login="on")
+        plan = self.area(self.walk.area_app, ["r", ""], login="on")
         self.assertEqual([c.review for c in plan.changes], ["Start at sign-in: remove the entry"])
 
     def test_keeping_start_at_sign_in_changes_nothing(self):
-        self.assertEqual(self.area(self.walk.area_app, [""], login="on").changes, [])
+        self.assertEqual(self.area(self.walk.area_app, ["", ""], login="on").changes, [])
 
     def first_scan(self, answers, enrolled=True, desktop=True, running=False):
         plan = self.walk.Plan(enrolled_after=enrolled, desktop_after=desktop)
@@ -306,7 +321,7 @@ class WalkthroughTests(unittest.TestCase):
         self.assertNotIn("First scan", self.output.getvalue())
 
     def test_a_running_app_is_not_offered_again(self):
-        self.area(self.walk.area_app, [""], login="on", app_running=True)
+        self.area(self.walk.area_app, ["", ""], login="on", app_running=True)
         self.assertIn("The app is running", self.output.getvalue())
         start, _call = self.first_scan([""], running=True)
         self.assertIn("it already watches your library", self.output.getvalue())

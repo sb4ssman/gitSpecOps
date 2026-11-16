@@ -46,8 +46,6 @@ PEER_POLL_SECONDS = 30.0
 # every request spent most of the account's hourly API budget on one idle machine.
 READ_SECONDS = {"folder": 15.0, "repo": 300.0}
 READ_RETRY_SECONDS = 30.0
-# Let the initial inventory and first publish finish before the network work starts.
-FETCH_START_DELAY_SECONDS = 60.0
 WATCH_RESTART_SECONDS = 5.0
 
 
@@ -439,7 +437,10 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         never a branch, the index, or a file. It never prompts for credentials. A repository that
         cannot be fetched keeps its last-known counts, and the dashboard lists the failure.
         """
-        delay = FETCH_START_DELAY_SECONDS
+        # The first fetch comes one full interval after start, not at start: starting the app
+        # is not a reason to fetch every repository (the user, 2026-11-15). "Fetch now" is on
+        # the tray's menu for when it is wanted.
+        delay = fetch_minutes * 60
         while not stopping.wait(delay):
             delay = fetch_minutes * 60
             paths = list(latest["paths"])

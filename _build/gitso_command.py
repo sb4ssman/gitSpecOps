@@ -137,12 +137,40 @@ def _without_block(text: str, kind: str) -> str:
     return "".join(out).rstrip("\n") + ("\n" if "".join(out).strip() else "")
 
 
+class ProfileRefused(RuntimeError):
+    """Windows refused every way of writing a shell profile (Controlled Folder Access)."""
+
+
 def write_block(path: Path, kind: str, body: str) -> None:
     start, end = _markers(kind)
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     text = _without_block(text, kind)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text((text + "\n" if text.strip() else "") + f"{start}\n{body}\n{end}\n", encoding="utf-8")
+    content = (text + "\n" if text.strip() else "") + f"{start}\n{body}\n{end}\n"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    except OSError:
+        if os.name != "nt":
+            raise
+        _write_through_powershell(path, content, kind)
+
+
+def _write_through_powershell(path: Path, content: str, kind: str) -> None:
+    """Windows' Controlled Folder Access protects Documents, where PowerShell keeps its profiles,
+    and refuses Python; PowerShell itself may be let through. Path and text travel in environment
+    variables, never in the command line. Raises ProfileRefused when this is refused too."""
+    from _os.current import process as _process
+    script = ("New-Item -ItemType Directory -Force -Path (Split-Path -Parent $env:GITSO_PROFILE) | Out-Null; "
+              "Set-Content -LiteralPath $env:GITSO_PROFILE -Value $env:GITSO_TEXT -Encoding utf8 -NoNewline")
+    shell = shutil.which("powershell") or "powershell"
+    try:
+        done = subprocess.run([shell, "-NoProfile", "-NonInteractive", "-Command", script],
+                              env={**os.environ, "GITSO_PROFILE": str(path), "GITSO_TEXT": content},
+                              capture_output=True, timeout=30, **_process.window_options())
+    except (OSError, subprocess.SubprocessError):
+        raise ProfileRefused(str(path)) from None
+    if done.returncode != 0 or not has_block(path, kind):
+        raise ProfileRefused(str(path))
 
 
 def remove_block(path: Path, kind: str) -> bool:
@@ -318,20 +346,25 @@ def remove_launchers(home: Path | None = None, osname: str | None = None, which=
 
 
 def install_aliases(home: Path | None = None, osname: str | None = None, which=shutil.which) -> str:
+    """Add the alias to each shell's profile. Raises ProfileRefused, naming each refused profile
+    and the line to paste into it, when the system refused them all."""
     done, refused = [], []
     for path, shell in alias_files(home, which, osname).items():
         try:
             write_block(path, "alias", alias_line(shell))
             done.append(str(path))
-        except OSError:
-            refused.append(str(path))
-    if refused:
-        blocked = ("; on Windows this is usually Controlled Folder Access protecting Documents"
-                   if (osname or os.name) == "nt" else "")
-        raise RuntimeError(f"could not write {', '.join(refused)}{blocked}. "
-                           f"Written: {len(done)}. The gitso command works without the alias")
-    if not done:
+        except (OSError, ProfileRefused):
+            refused.append((path, shell))
+    if not done and not refused:
         raise RuntimeError("no shell profile found to add an alias to")
+    if refused:
+        blocked = (" (Controlled Folder Access protects Documents)" if (osname or os.name) == "nt" else "")
+        steps = "; ".join(f"open {path} in Notepad and paste: {alias_line(shell)}" for path, shell in refused)
+        message = (f"Windows refused writing the profile{'s' if len(refused) > 1 else ''}{blocked}. "
+                   f"The gitso command works without the alias. To add it yourself: {steps}")
+        if not done:
+            raise ProfileRefused(message)
+        return f"alias in {len(done)} profile(s); not in {len(refused)}. {message}"
     return f"alias in {len(done)} profile(s); open a new terminal"
 
 

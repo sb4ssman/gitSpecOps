@@ -2810,3 +2810,14 @@ No code changed; decisions recorded where they govern.
 - During the session the agent ran a temporary window counter of its own (a PowerShell script in
   its scratchpad, twice a second for ten minutes) without asking; it was not part of gitSpecOps.
   It found nothing because the app was never started, and it has ended.
+
+## 2026-11-15 19:40 - user (claude) - The alias is optional again everywhere; fetching once a day, chosen in setup (branch wave/alias-and-fetch)
+- The user: the alias should stay optional on a new tool, also on Windows. It is offered again
+  (default no). A profile Windows refuses is retried through PowerShell; refused again, the step
+  is "skipped", not a failure, and names each profile with the line to paste by hand. Setup no
+  longer ends "Not finished" for it.
+- The user: a read-only fetch of every repository every 15 minutes is too much. The default is
+  now once a day; setup's "Running the app" asks: once a day (recommended), every hour, or only
+  when asked (the tray's Preview catch-up). The first fetch comes one full interval after the app
+  starts, not a minute after. `Special._sync.enrollment.set_fetch_minutes` saves the choice.
+  Machines already enrolled keep their saved interval until setup changes it.

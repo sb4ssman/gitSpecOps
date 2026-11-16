@@ -28,7 +28,9 @@ from Special._sync.manifest import new_fleet_secret
 
 CONFIG_VERSION = 5
 DEFAULT_LOCAL_PORT = 8760
-DEFAULT_FETCH_MINUTES = 15
+# Once a day (the user, 2026-11-15): every 15 minutes was far more network work than "behind"
+# needs. Setup asks: once a day, every hour, or only when asked (the tray's menu). 0 is off.
+DEFAULT_FETCH_MINUTES = 1440
 #: The usual setup: double-clicking the tray opens the web view, served on this machine only.
 DEFAULT_PRESENTATION = {"face": "web", "web": "loopback"}
 
@@ -135,6 +137,31 @@ def remove_library(path, *, home=None) -> list[str]:
     config["roots"] = [root for root in config["roots"] if root != target]
     save_fleet_config(config, component="app", home=home)
     return config["roots"]
+
+
+def set_fetch_minutes(minutes: int, *, home=None) -> int:
+    """How often the app fetches every repository's remote, read-only: minutes, 0 for never."""
+    if type(minutes) is not int or minutes < 0:
+        raise ValueError("fetch minutes must be a whole number, 0 or more")
+    snapshot = _snapshot(home)
+    config = snapshot.config("app")
+    if config is None:
+        raise ValueError("this machine is not enrolled; add a library first")
+    config["fetch_minutes"] = minutes
+    try:
+        save_fleet_config(config, component="app", home=home)
+    except SettingsError as exc:
+        raise ValueError(str(exc)) from None
+    return minutes
+
+
+def current_fetch_minutes(home=None) -> int | None:
+    """The saved interval, or None when the machine is not enrolled. Only reads."""
+    try:
+        config = _snapshot(home).config("app")
+    except Exception:  # noqa: BLE001 - unreadable settings: nothing to show
+        return None
+    return None if config is None else int(config.get("fetch_minutes", DEFAULT_FETCH_MINUTES))
 
 
 def set_presentation(*, face=None, web=None, home=None) -> dict:
