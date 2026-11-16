@@ -489,7 +489,39 @@ def main(argv=None) -> int:
         return run_tray(args.config_dir, args.settings_home, view=args.view, web=args.web,
                         open_on_start=args.open_on_start, remote=args.remote)
     except TrayUnavailable as exc:
+        if args.detached or sys.stdout is None:
+            # Started on its own or at sign-in, on a system without Qt for it (macOS 10.15 has no
+            # Qt 6 build, 2026-11-16): run the same app without an icon rather than not at all.
+            return _run_without_icon(args)
         return _cli.fail(args, "tray", f"{exc}. Without a tray, gitso serve-web serves the web view.")
     except (OSError, ValueError) as exc:
         return _cli.fail(args, "tray", f"{failure_reason(str(exc))}.")
+
+
+def _run_without_icon(args) -> int:
+    """The app with no tray icon: the same peer and web view. It holds the tray's lock, so
+    `gitso tray` (status, --follow, --open, --stop) treats it as the running app."""
+    import signal
+
+    from App._launch import run_app
+    from App._tray.control import QUIT_REQUEST
+    from Special._settings.fleet import fleet_directory
+    from Special._sync.lock import TRAY_LOCK, app_lock
+    directory = fleet_directory(args.config_dir, home=args.settings_home)
+    stopping = threading.Event()
+    for name in ("SIGINT", "SIGTERM"):
+        signal.signal(getattr(signal, name), lambda *_: stopping.set())
+    with app_lock(directory, TRAY_LOCK):
+        quit_request = directory / QUIT_REQUEST
+        quit_request.unlink(missing_ok=True)
+
+        def watch_for_quit():
+            while not stopping.wait(1.0):
+                if quit_request.exists():
+                    quit_request.unlink(missing_ok=True)
+                    stopping.set()
+        threading.Thread(target=watch_for_quit, name="quit-request", daemon=True).start()
+        _record_process(args.config_dir, args.settings_home)
+        return run_app(args.config_dir, args.settings_home, stopping=stopping, face="web",
+                       web=args.web, remote=args.remote)
 
