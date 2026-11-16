@@ -8,7 +8,7 @@
 <script type="module" src="/assets/fleet_setup.js"></script>
 </head>
 <body>
-<header class="app-header"><div class="brand-row"><img class="mark" src="/v1/mark.svg?machine=attention&amp;fleet=none&amp;size=64" width="48" height="48" alt=""><div><div class="brand">gitSpecOps</div><h1>Set up</h1></div></div><div class="connection-tools"><a id="to-map" href="/" hidden>Open the map</a><button id="theme" type="button">Light mode</button><span id="message" role="status"></span></div></header>
+<header class="app-header"><div class="brand-row"><img class="mark" src="/v1/mark.svg?machine=attention&amp;fleet=none&amp;size=64" width="48" height="48" alt=""><div><a class="home-link" href="/#repositories" title="Back to the repositories"><span class="brand">gitSpecOps</span><h1>Libraries</h1></a></div></div><div class="connection-tools"><a id="to-map" href="/#map" hidden>Map</a><a id="to-setup" href="/#about" hidden>App &amp; setup</a><button id="theme" type="button">Light mode</button><span id="message" role="status"></span></div></header>
 <main id="workspace">
 <section aria-label="What you can do">
 <div class="section-title"><h2>Grow as you go</h2><p>gitSpecOps works the moment it is installed. Each step you add makes everything before it reach further.</p></div>
@@ -49,6 +49,7 @@
 </div>
 </section>
 
+<section aria-label="Your fleet" class="setup-section" id="fleet-pointer" hidden><div class="section-title"><h2>Your fleet</h2><p>Joining, starting and changing a fleet is on the map's <a href="/#about">App &amp; setup</a> tab, the one place for it.</p></div></section>
 <section aria-label="A fleet" class="setup-section" id="fleet-section" hidden>
 <div class="section-title"><h2>Your fleet</h2><p id="fleet-summary">Join this machine to your others: a key from a machine already in your fleet, or a new fleet; then any ways to share.</p></div>
 <button id="readiness" type="button" class="quiet">Check what this machine can use</button>

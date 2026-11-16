@@ -54,6 +54,83 @@ def _profile(home, config_dir):
     return load_fleet_settings(home), fleet_directory(config_dir, home=home)
 
 
+# --------------------------------------------------------------------------- fleets by name
+# People find and join a fleet by its name on their own tailnet ("Home-Fleet"), not by
+# copying a key (the user, 2026-11-16: a pasted key failed twice). The key still exists, as a
+# background detail: it salts repository ids for the synced folder and the state repository and
+# seals shared values. A machine already in the fleet hands it over to a joining machine of the
+# same Tailscale user (GET /v1/session); nobody copies it unless a machine has no Tailscale.
+
+DEFAULT_FLEET_NAME = "My fleet"
+
+
+def _now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def fleet_name(config) -> str | None:
+    named = (config or {}).get("fleet_name")
+    return named.get("name") if isinstance(named, dict) else None
+
+
+def name_fleet(home=None, config_dir=None, *, name: str, at: str | None = None) -> dict:
+    """Give this machine's fleet a name. `at` (when the name was given) lets the newest name win
+    when machines compare (Elaborate/_fleet/peer.py)."""
+    from Elaborate._fleet.cli import load_saved, save_saved
+    name = " ".join(str(name or "").split())
+    if not name or len(name) > 60 or not name.isprintable():
+        raise ValueError("a fleet name is 1 to 60 ordinary characters")
+    _snapshot, directory = _profile(home, config_dir)
+    config = load_saved(directory, home=home)
+    config["fleet_name"] = {"name": name, "at": at or _now()}
+    save_saved(directory, config, home=home)
+    return config["fleet_name"]
+
+
+def fleets_on_tailnet(port: int = 8765) -> list[dict]:
+    """The fleets your own machines on this tailnet are in, by name: [{fleet_id, name, machines}].
+    Only machines running the app with Tailscale on answer; each says only its fleet's name and id."""
+    from Elaborate._fleet.net import FleetClient, discover_hosts
+    fleets: dict = {}
+    for host in discover_hosts(port=port):
+        if not host.get("serving"):
+            continue
+        try:
+            about = FleetClient(host["url"]).request("/v1/fleet")
+        except (OSError, ValueError):
+            continue
+        if not isinstance(about, dict) or not isinstance(about.get("fleet_id"), str):
+            continue
+        entry = fleets.setdefault(about["fleet_id"], {"fleet_id": about["fleet_id"], "name": None, "at": "",
+                                                      "machines": []})
+        entry["machines"].append(host["label"])
+        named = about.get("fleet_name") if isinstance(about.get("fleet_name"), dict) else {}
+        if named.get("name") and str(named.get("at", "")) >= entry["at"]:
+            entry["name"], entry["at"] = str(named["name"])[:60], str(named.get("at", ""))
+    return [{"fleet_id": f["fleet_id"], "name": f["name"] or f"Unnamed fleet {f['fleet_id'][:6]}",
+             "machines": sorted(f["machines"], key=str.casefold)} for f in fleets.values()]
+
+
+def key_from_fleet(fleet_id: str, port: int = 8765) -> tuple[str, dict | None]:
+    """(fleet key, fleet name) handed over by a running machine of fleet `fleet_id` on this
+    tailnet, which checks that the asking device is its own user's."""
+    from Elaborate._fleet.net import FleetClient, discover_hosts
+    from Special._sync.manifest import fleet_id_for, is_fleet_secret
+    for host in discover_hosts(port=port):
+        if not host.get("serving"):
+            continue
+        try:
+            session = FleetClient(host["url"]).request("/v1/session")
+        except (OSError, ValueError):
+            continue
+        secret = session.get("fleet_secret") if isinstance(session, dict) else None
+        if is_fleet_secret(secret) and fleet_id_for(secret) == fleet_id:
+            named = session.get("fleet_name")
+            return secret, named if isinstance(named, dict) else None
+    raise ValueError("no machine of that fleet is answering on Tailscale right now; start its app")
+
+
 def setup_state(home=None, config_dir=None, *, readiness: bool = False) -> dict:
     """Everything a setup screen or an agent needs, in one document."""
     from Special._sync.enrollment import DEFAULT_PRESENTATION
@@ -72,7 +149,8 @@ def setup_state(home=None, config_dir=None, *, readiness: bool = False) -> dict:
             "presentation": {**DEFAULT_PRESENTATION, **(config.get("presentation") or {})},
             "local_port": int(config["local_port"])},
         "fleet": None if not transports else {
-            "fleet_id": fleet_id_for(config["fleet_secret"]), "share_names": config.get("share_names", True),
+            "fleet_id": fleet_id_for(config["fleet_secret"]), "name": fleet_name(config),
+            "share_names": config.get("share_names", True),
             "transports": {name: {key: value for key, value in entry.items() if key != "allowed_login"}
                            for name, entry in transports.items()}},
         "tiers": [{"id": tier["id"], "title": tier["title"], "needs": tier["needs"],
@@ -156,7 +234,8 @@ def apply_transports(config, *, folder=None, clear_folder=False, folder_seconds=
 
 
 def join_fleet(home=None, config_dir=None, *, key=None, folder=None, tailnet=False, repo=None,
-               create_repo=False, share_names=None, names=None, tailnet_seconds=None) -> dict:
+               create_repo=False, share_names=None, names=None, tailnet_seconds=None,
+               name: str | None = None, named_at: str | None = None) -> dict:
     """Join this enrolled machine to a fleet: an existing key, or a new fleet of its own; then any
     combination of transports. Returns the new setup state."""
     from Elaborate._fleet.cli import load_saved, save_saved
@@ -181,6 +260,11 @@ def join_fleet(home=None, config_dir=None, *, key=None, folder=None, tailnet=Fal
         config = load_saved(directory, home=home)
         config["share_names"] = bool(share_names)
         save_saved(directory, config, home=home)
+    if name or not fleet_name(load_saved(directory, home=home)):
+        # Unnamed: a placeholder dated as early as possible, so the fleet's real name wins as
+        # soon as another machine says it.
+        name_fleet(home, config_dir, name=name or DEFAULT_FLEET_NAME,
+                   at=named_at or (None if name else "1970-01-01T00:00:00+00:00"))
     return setup_state(home, config_dir)
 
 

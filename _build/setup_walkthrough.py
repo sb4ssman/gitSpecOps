@@ -177,6 +177,7 @@ def detect() -> dict:
     found["web"] = (machine.get("presentation") or {}).get("web", "loopback")
     found["face"] = (machine.get("presentation") or {}).get("face", "web")
     found["fleet"] = dict((state["fleet"] or {}).get("transports") or {})
+    found["fleet_name"] = (state["fleet"] or {}).get("name")
     found["tailnet"] = bool(state["readiness"]["tailnet"])
     found["synced_folders"] = list(state["readiness"]["folders"])
     found["login"], found["login_elsewhere"] = None, ""
@@ -940,7 +941,8 @@ def area_fleet(found: dict, plan: Plan) -> None:
         else "not installed (optional)", "success" if found["tailnet"] else "text")
     row("Synced folders", ", ".join(found["synced_folders"]) or "none found")
     if current:
-        row("This machine", "in a fleet, connected by " + ", ".join(_connection_names(current)), "success")
+        row("This machine", f"in the fleet {found.get('fleet_name') or '(unnamed)'}, connected by "
+            + ", ".join(_connection_names(current)), "success")
     else:
         row("This machine", "on its own")
     line("A fleet is your machines watching each other: every machine's map shows every copy of every "
@@ -959,10 +961,17 @@ def area_fleet(found: dict, plan: Plan) -> None:
     if current:
         option("K", "Keep the fleet as it is")
         option("C", "Change how this machine connects", "Tailscale, a synced folder, the state repository.")
-        option("S", "Show this machine's fleet key", "To add another machine. It appears in this window only.")
+        option("R", "Rename the fleet", "Every machine in it takes the new name.")
+        option("S", "Show this machine's fleet key", "Only for a machine without Tailscale: on Tailscale, "
+               "other machines join the fleet by its name. It appears in this window only.")
         option("L", "Leave the fleet", "This machine keeps its libraries and map.")
         option("0", "Stop the walkthrough", "Nothing has been changed.")
-        answer = choose("kcsl0", "k")
+        answer = choose("kcrsl0", "k")
+        if answer == "r":
+            name = ask("New name for the fleet:", found.get("fleet_name") or "")
+            if name.strip():
+                plan.add("Fleet", f"Fleet: rename to {name.strip()}", lambda: _rename_fleet(name))
+            return
         if answer == "0":
             raise Stop
         if answer == "s":
@@ -994,8 +1003,9 @@ def area_fleet(found: dict, plan: Plan) -> None:
         _offer_sealing(plan, "folder" in current)
         _browser_reach(found, plan, "tailnet" in current)
         return
-    option("1", "Start a fleet with this machine", "Then add your other machines with this machine's key.")
-    option("2", "Join a fleet", "Needs the key shown on a machine already in the fleet.")
+    option("1", "Start a fleet with this machine", "You name it; your other machines then join it by "
+           "that name over Tailscale.")
+    option("2", "Join a fleet", "One your other machines are in: found by name on Tailscale.")
     option("N", "Not now")
     option("0", "Stop the walkthrough", "Nothing has been changed.")
     answer = choose("12n0", "n")
@@ -1003,12 +1013,17 @@ def area_fleet(found: dict, plan: Plan) -> None:
         raise Stop
     if answer == "n":
         return
-    key = None
+    key, name, named_at = None, None, None
+    if answer == "1":
+        name = " ".join(ask("Name the fleet:", "My fleet").split())[:60] or "My fleet"
     if answer == "2":
-        key = _ask_join(found)
-        if key is None:
+        joined = _ask_join(found)
+        if joined is None:
             line("Not joining a fleet; nothing will change. Run setup again to join.", "warning")
             return
+        key, named = joined
+        if named:
+            name, named_at = named.get("name"), named.get("at")
     chosen = _choose_connections(found, has_tailscale, {})
     if chosen is None:
         return
@@ -1018,8 +1033,9 @@ def area_fleet(found: dict, plan: Plan) -> None:
         return
     names = _ask_names(tailnet, folder, repo, {})
     ways = ", ".join(_described(tailnet, folder, repo, create, names, seconds))
-    plan.add("Fleet", f"Fleet: {'join' if key else 'start'} a fleet, connected by {ways}",
-             lambda: _start_fleet(key, tailnet, folder, repo, create, names, seconds))
+    which = f"join {name}" if key and name else "join the fleet of that key" if key else f"start {name}"
+    plan.add("Fleet", f"Fleet: {which}, connected by {ways}",
+             lambda: _start_fleet(key, tailnet, folder, repo, create, names, seconds, name, named_at))
     _offer_sealing(plan, bool(folder))
     _browser_reach(found, plan, tailnet)
 
@@ -1076,33 +1092,48 @@ def _show_fleet_key() -> None:
     say()
 
 
-def _ask_join(found: dict) -> str | None:
-    """The fleet key to join with, through a machine on Tailscale or pasted; None to not join.
+def _ask_join(found: dict) -> tuple[str, dict | None] | None:
+    """(fleet key, fleet name) to join, or None to not join.
 
-    A pasted key used to be dropped with one warning line when it was not exactly 64 characters,
-    and setup went on as though nothing had happened (one machine, 2026-11-16, joined nothing). A
-    key copied from a narrow window arrives over two lines: each part is collected until it is
-    whole, and anything wrong is asked again."""
+    On Tailscale the fleets your machines are in are listed by name and one is chosen: a machine
+    in it hands over the key (setup_state.key_from_fleet). Nobody copies a key (the user,
+    2026-11-16: a pasted key failed twice). Pasting stays for a machine without Tailscale; a key
+    copied over two lines is collected in parts, and anything wrong is asked again."""
     if found.get("tailnet"):
-        option("T", "Through a machine on Tailscale", "No key to copy: a machine already in the fleet, "
-               "with its app running and Tailscale on, hands it over. Only your own devices can ask.")
-        option("K", "Paste the fleet key", "Shown on a machine already in the fleet: setup, Fleet, "
-               "Show this machine's fleet key.")
+        from Elaborate._fleet.setup_state import fleets_on_tailnet, key_from_fleet
+        try:
+            fleets = fleets_on_tailnet()
+        except (OSError, ValueError) as exc:
+            line(f"Could not look on Tailscale ({exc}).", "warning")
+            fleets = []
+        if not fleets:
+            line("No fleet is answering on your tailnet. On a machine in the fleet, the app must be "
+                 "running with Tailscale as one of its connections; then run this again.", "warning")
+        for number, fleet in enumerate(fleets[:9], 1):
+            option(str(number), fleet["name"], "on " + ", ".join(fleet["machines"]))
+        option("K", "Paste a fleet key instead", "Only needed without Tailscale.")
         option("0", "Do not join")
-        answer = choose("tk0", "t")
+        answer = choose("".join(str(n) for n in range(1, min(len(fleets), 9) + 1)) + "k0",
+                        "1" if fleets else "0")
         if answer == "0":
             return None
-        if answer == "t":
-            secret = _join_over_tailnet()
-            if secret is not None:
-                return secret
-            line("Paste the key instead, or press Enter to not join.", "muted")
-    return _ask_fleet_key()
+        if answer != "k":
+            fleet = fleets[int(answer) - 1]
+            try:
+                secret, named = key_from_fleet(fleet["fleet_id"])
+            except ValueError as exc:
+                line(str(exc), "warning")
+                return None
+            line(f"Joining {fleet['name']}: {fleet['machines'][0]} handed over what is needed.", "success")
+            return secret, named
+    key = _ask_fleet_key()
+    return None if key is None else (key, None)
 
 
 def _ask_fleet_key() -> str | None:
     import re
-    collected, prompt = "", "Paste the fleet key (64 letters and digits; Enter alone: do not join):"
+    collected, prompt = "", ("Paste the fleet key: 64 characters, not the 16-character fleet ID "
+                             "(Enter alone: do not join):")
     while True:
         text = re.sub(r"[\s-]", "", ask(prompt))
         if not text:
@@ -1120,41 +1151,6 @@ def _ask_fleet_key() -> str | None:
             continue
         prompt = (f"{len(collected)} of 64 so far: a key copied over two lines arrives in parts. "
                   "Paste the rest (Enter alone: do not join):")
-
-
-def _join_over_tailnet() -> str | None:
-    """The fleet key from a running machine on this tailnet; it authorizes the request by its
-    Tailscale identity. None when no machine could hand it over (said why)."""
-    try:
-        from Elaborate._fleet.net import FleetClient, discover_hosts
-        from Special._sync.manifest import fleet_id_for
-        hosts = [host for host in discover_hosts() if host.get("serving")]
-    except (OSError, ValueError) as exc:
-        line(f"Could not look for machines on Tailscale ({exc}).", "warning")
-        return None
-    if not hosts:
-        line("No machine on your tailnet is sharing a fleet right now. On a machine in the fleet, "
-             "the app must be running with Tailscale as one of its connections.", "warning")
-        return None
-    for number, host in enumerate(hosts, 1):
-        option(str(number), host["label"])
-    option("0", "None of these")
-    answer = choose("".join(str(n) for n in range(1, min(len(hosts), 9) + 1)) + "0", "1")
-    if answer == "0":
-        return None
-    host = hosts[int(answer) - 1]
-    try:
-        session = FleetClient(host["url"]).request("/v1/session")
-    except (OSError, ValueError) as exc:
-        line(f"{host['label']} did not hand over the key ({exc}).", "warning")
-        return None
-    secret = session.get("fleet_secret") if isinstance(session, dict) else None
-    if not (isinstance(secret, str) and len(secret) == 64):
-        line(f"{host['label']} did not hand over a fleet key.", "warning")
-        return None
-    line(f"Got the key for fleet {fleet_id_for(secret)} from {host['label']}; it is joined when you "
-         "apply the plan.", "success")
-    return secret
 
 
 def _connection_names(transports: dict) -> list[str]:
@@ -1285,13 +1281,19 @@ def _pick_state_repo(found: dict, current: str) -> tuple[str, bool]:
     return name, True
 
 
-def _start_fleet(key, tailnet, folder, repo, create, names, seconds=None) -> str:
+def _start_fleet(key, tailnet, folder, repo, create, names, seconds=None, name=None, named_at=None) -> str:
     from Elaborate._fleet.setup_state import join_fleet
     if folder:
         Path(folder).mkdir(parents=True, exist_ok=True)
-    join_fleet(key=key, folder=folder or None, tailnet=tailnet, repo=repo or None, create_repo=create,
-               names=names, tailnet_seconds=seconds)
-    return "joined"
+    state = join_fleet(key=key, folder=folder or None, tailnet=tailnet, repo=repo or None, create_repo=create,
+                       names=names, tailnet_seconds=seconds, name=name, named_at=named_at)
+    fleet = state.get("fleet") or {}
+    return f"in the fleet {fleet.get('name') or ''} ({fleet.get('fleet_id')})".replace("  ", " ")
+
+
+def _rename_fleet(name: str) -> str:
+    from Elaborate._fleet.setup_state import name_fleet
+    return f"renamed to {name_fleet(name=name)['name']}; the other machines take it on their next round"
 
 
 def _set_connections(current: dict, tailnet, folder, repo, create, names=None, seconds=None) -> str:

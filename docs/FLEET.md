@@ -67,8 +67,18 @@ carries; setup says so beside the question. Details:
   unfinished work keeps its warning.
 - **Machine freshness and remote freshness are separate clocks**, and the map says which is which.
 
-The fleet key is shown only when you ask: `gitso fleet key --show`. Anyone, or any
-program, that reads it can join your fleet.
+**A fleet has a name, and machines join it by that name.** You name a fleet when you start it
+("Home-Fleet"). On another of your machines, setup's Fleet step or the App & setup tab lists
+the fleets your machines on Tailscale are in, by name; choosing one joins it, and a machine
+already in it hands over what joining needs, after Tailscale confirms the asking device is one of
+your own. Renaming on any machine renames it everywhere (the newest name wins).
+
+Behind the name is the fleet key: it makes repository ids unreadable to anyone else on the
+synced folder and the state repository, and seals shared protected values. You only ever see it
+for a machine without Tailscale, which joins by pasting it: it is shown when you ask
+(`gitso fleet key --show`, or "For a machine without Tailscale" on the App & setup tab), and it
+is 64 characters long. The 16-character Fleet ID only identifies a fleet; it is not the key.
+Anyone, or any program, that reads the key can join your fleet.
 
 **Protected values are shared across the fleet.** A value you must never publish, added on any
 machine, is added on every machine. What would loosen protection (a never-publish value removed

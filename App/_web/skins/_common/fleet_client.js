@@ -32,7 +32,7 @@ export class FleetConnection extends EventTarget {
     if (!['git-client', 'open-git-client', 'catchup-preview', 'security-preview', 'security-engines',
          'security-start', 'security-status', 'security-stop', 'security-policy',
          'security-policy-change', 'setup/open-folder', 'setup/settings', 'setup/connections', 'setup/fetch',
-         'setup/sign-in', 'setup/peers', 'setup/show-key', 'setup/join', 'setup/leave', 'setup/shared-answer',
+         'setup/sign-in', 'setup/fleets', 'setup/name-fleet', 'setup/show-key', 'setup/join', 'setup/leave', 'setup/shared-answer',
          'setup/seal'].includes(action) || !token) {
       throw new Error('Desktop actions are unavailable in this dashboard.');
     }

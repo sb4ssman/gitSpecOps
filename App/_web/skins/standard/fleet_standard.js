@@ -209,7 +209,35 @@ function renderRepositories() {
     list.append(node('p', 'No repositories match these filters.', 'empty'));
     byId('detail').hidden = true; return;
   }
+  // By library and folder: each library is a section, its folders inside it (the user,
+  // 2026-11-16). By owner: one level, as before.
+  const libraries = new Map();
   for (const group of groups) {
+    const key = state.grouping === 'place' ? (group.host || 'Other machines') : '';
+    if (!libraries.has(key)) libraries.set(key, []);
+    libraries.get(key).push(group);
+  }
+  for (const [library, folders] of libraries) {
+    let target = list;
+    if (library) {
+      const outer = node('details', undefined, 'repo-library');
+      const outerId = `library/${library}`;
+      outer.open = state.expansion.isOpen(outerId);
+      outer.addEventListener('toggle', () => { state.expansion.record(outerId, outer.open); saveCollapsedGroups(); });
+      const count = folders.reduce((sum, group) => sum + group.rows.length, 0);
+      const attention = folders.reduce((sum, group) => sum + group.attention, 0);
+      const head = node('summary'); head.append(document.createTextNode(library));
+      head.append(node('span', `${folders.length} folder${folders.length === 1 ? '' : 's'} · ${count} shown · ${attention} need attention`, 'group-meta'));
+      outer.append(head); list.append(outer); target = outer;
+    }
+    for (const group of folders) renderGroup(target, group, data);
+  }
+  const selected = rows.find(row => row.id === state.selected);
+  if (selected) showDetail(selected); else { state.selected = null; byId('detail').hidden = true; }
+}
+
+function renderGroup(list, group, data) {
+  {
     const details = node('details', undefined, 'repo-group');
     details.open = state.expansion.isOpen(group.id);
     details.addEventListener('toggle', () => {
@@ -219,7 +247,14 @@ function renderRepositories() {
     const summary = node('summary'); summary.append(document.createTextNode(group.label));
     summary.append(node('span', `${group.rows.length} shown · ${group.attention} need attention`, 'group-meta'));
     details.append(summary);
-    const scroll = node('div', undefined, 'table-scroll'); const table = node('table');
+    const scroll = node('div', undefined, 'table-scroll'); const table = node('table', undefined, 'repo-table');
+    // The same column widths in every group, so the columns line up down the page.
+    const columns = node('colgroup');
+    const share = data.machines.length ? Math.floor(36 / data.machines.length) : 0;
+    for (const width of [28, ...data.machines.map(() => share), 72 - share * data.machines.length]) {
+      const col = node('col'); col.style.width = `${width}%`; columns.append(col);
+    }
+    table.append(columns);
     const header = node('tr');
     for (const title of ['Repository', ...data.machines.map(machine => machine.label), 'Advice']) header.append(node('th', title));
     const thead = node('thead'); thead.append(header); table.append(thead); const body = node('tbody');
@@ -240,8 +275,6 @@ function renderRepositories() {
     }
     table.append(body); scroll.append(table); details.append(scroll); list.append(details);
   }
-  const selected = rows.find(row => row.id === state.selected);
-  if (selected) showDetail(selected); else { state.selected = null; byId('detail').hidden = true; }
 }
 
 function renderMachines() {
@@ -268,7 +301,13 @@ function renderAbout() {
   byId('product-version').textContent = `${product.name} ${product.version} · ${product.channel} channel`;
   const facts = byId('app-facts'); facts.replaceChildren();
   for (const [term, value] of [['Display contract', `${state.data.contract.name} v${state.data.contract.version}`],
-    ['Fleet ID', fleetId], ['Interface', 'Standard']]) facts.append(node('dt', term), node('dd', value));
+    ['Fleet', state.data.fleet_name || 'not in a fleet'],
+    ['Fleet ID (identifies it; not the key)', fleetId], ['Interface', 'Standard']]) facts.append(node('dt', term), node('dd', value));
+  if (state.data.local_actions) {
+    const libraries = node('a', 'Library folders and how the app shows itself'); libraries.href = '/setup';
+    const value = node('dd'); value.append(libraries);
+    facts.append(node('dt', 'Libraries'), value);
+  }
   if (state.data.local_actions) {  // this computer only: never on the Tailscale view
     const open = node('button', 'Open settings folder');
     open.type = 'button';
@@ -415,18 +454,22 @@ byId('clear-filters').onclick = () => { controls.query.value = ''; controls.stat
 byId('expand').onclick = () => {
   state.expansion.expandAll();
   saveCollapsedGroups();
-  document.querySelectorAll('.repo-group').forEach(item => { item.open = true; });
+  document.querySelectorAll('.repo-group, .repo-library').forEach(item => { item.open = true; });
 };
 byId('collapse').onclick = () => {
-  state.expansion.collapseAll(state.data.groups.map(group => group.id));
+  state.expansion.collapseAll([...state.data.groups.map(group => group.id),
+    ...new Set(state.data.groups.map(group => `library/${group.host || 'Other machines'}`))]);
   saveCollapsedGroups();
-  document.querySelectorAll('.repo-group').forEach(item => { item.open = false; });
+  document.querySelectorAll('.repo-group, .repo-library').forEach(item => { item.open = false; });
 };
 byId('theme').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 for (const button of document.querySelectorAll('[data-tab]')) button.onclick = () => selectTab(button.dataset.tab);
-// An address ending in #map (gitso tray --open) or another tab's name opens at that tab.
-const startTab = location.hash.slice(1);
-if (['repositories', 'map', 'security', 'machines', 'about'].includes(startTab)) selectTab(startTab);
+// An address ending in #map (gitso tray --open) or another tab's name opens at that tab, on load
+// and when a link on the page (the header's home and App & setup links) changes it.
+const TABS = ['repositories', 'map', 'security', 'machines', 'about'];
+function tabFromAddress() { const tab = location.hash.slice(1); if (TABS.includes(tab)) selectTab(tab); }
+tabFromAddress();
+window.addEventListener('hashchange', tabFromAddress);
 
 setTheme(savedTheme());
 const connection = new FleetConnection();

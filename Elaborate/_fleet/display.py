@@ -157,6 +157,8 @@ def mark_state(rows, machines, reports, settings) -> dict:
                      "text": f"{len(others) - len(needy)} of {len(others)} clear; {first['label']}: {why}{more}"}
         else:
             fleet = {"state": "ok", "text": f"all {_plural(len(others), 'other machine', 'other machines')} clear"}
+    if settings.get("fleet_name") and settings.get("transport_config"):
+        fleet["text"] = f"{settings['fleet_name']}: {fleet['text']}"  # the fleet by its name
     return {"machine": machine, "fleet": fleet}
 
 
@@ -290,6 +292,7 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
         "contract": {"name": CONTRACT_NAME, "version": CONTRACT_VERSION},
         "product": {"name": PRODUCT_NAME, "version": VERSION, "channel": "development"},
         "generated_at": now.isoformat(), "fleet_id": fleet_id,
+        "fleet_name": settings.get("fleet_name") if transport_config else None,
         "summary": {"repositories": len(rows), "attention": sum(r["needs_attention"] for r in rows),
                     "machines": len(machines),
                     "current_machines": sum(m["freshness"] == "current" for m in machines),

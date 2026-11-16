@@ -59,7 +59,7 @@ class SetupControlsTests(unittest.TestCase):
     def test_turning_on_a_connection_starts_a_fleet_and_shows_the_plan_first(self):
         plan = self.routes.act("connections", {"folder": str(self.synced)})
         self.assertFalse(plan["applied"])
-        self.assertIn("start a fleet", plan["plan"]["changes"][0])
+        self.assertIn("start the fleet My fleet", plan["plan"]["changes"][0])
         self.assertEqual(self.transports(), {})
         self.routes.act("connections", {"folder": str(self.synced), "apply": plan["plan_id"]})
         self.assertEqual(Path(self.transports()["folder"]["path"]), self.synced.resolve())
@@ -123,12 +123,23 @@ class SetupControlsTests(unittest.TestCase):
         self.routes.act("shared-answer", {"id": questions[0]["id"], "accept": True})
         self.assertIn("example.invalid", policy_view(self.home)["lists"]["safe_values"])
 
-    def test_joining_through_a_machine_on_tailscale(self):
-        with patch.object(SetupRoutes, "_key_from_peer", return_value=KEY) as handed:
-            joined = self.approved("join", {"via": "desk", "tailnet": True, "tailnet_seconds": 300})
-        handed.assert_called_once_with("desk")
+    def test_joining_a_fleet_by_its_name_on_tailscale(self):
+        named = {"name": "Home-Fleet", "at": "2026-11-16T10:00:00+00:00"}
+        with patch.object(SetupRoutes, "_key_from_fleet", return_value=(KEY, named)) as handed:
+            joined = self.approved("join", {"fleet_id": "f" * 16, "fleet_label": "Home-Fleet",
+                                            "tailnet": True, "tailnet_seconds": 300})
+        handed.assert_called_once_with("f" * 16)
         self.assertNotIn(KEY, json.dumps(joined))
         self.assertIn("tailnet", self.transports())
+        self.assertEqual(self.routes.act("settings", {})["settings"]["fleet_name"], "Home-Fleet")
+
+    def test_renaming_the_fleet(self):
+        self.approved("connections", {"folder": str(self.synced), "fleet_name": "First"})
+        self.assertEqual(self.routes.act("settings", {})["settings"]["fleet_name"], "First")
+        self.routes.act("name-fleet", {"name": "  Home   Fleet "})
+        self.assertEqual(self.routes.act("settings", {})["settings"]["fleet_name"], "Home Fleet")
+        with self.assertRaises(ValueError):
+            self.routes.act("name-fleet", {"name": ""})
 
 
 if __name__ == "__main__":

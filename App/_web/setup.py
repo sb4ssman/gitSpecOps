@@ -22,7 +22,8 @@ from __future__ import annotations
 from pathlib import Path
 
 ACTIONS = ("find", "add", "remove", "presentation", "join", "leave", "open-folder",
-           "settings", "connections", "fetch", "sign-in", "peers", "show-key", "shared-answer", "seal")
+           "settings", "connections", "fetch", "sign-in", "fleets", "show-key", "shared-answer", "seal",
+           "name-fleet")
 PLANNED = ("find", "add", "join", "leave", "connections", "show-key", "seal")
 QUESTIONS = {"find": "Look in these folders?", "add": "Enroll these library folders?",
              "join": "Join with these choices?", "leave": "Leave the fleet?",
@@ -57,6 +58,7 @@ class SetupRoutes:
         return {
             "enrolled": state.get("machine") is not None,
             "fleet_id": (state.get("fleet") or {}).get("fleet_id"),
+            "fleet_name": (state.get("fleet") or {}).get("name"),
             "connections": {
                 "tailnet": {"on": bool(tailnet), "seconds": int((tailnet or {}).get("seconds") or 300),
                             "names": (tailnet or {}).get("names", True), "choices": list(POLL_CHOICES)},
@@ -121,14 +123,16 @@ class SetupRoutes:
             if (tailnet if key == "tailnet" else folder if key == "folder" else repo) and value != now[key]["names"]:
                 changes.append(f"{key}: {'with' if value else 'without'} repository names")
         starts = not current["fleet_id"] and bool(tailnet or folder or repo)
+        name = " ".join(str(payload.get("fleet_name") or "").split())[:60] or "My fleet"
         if starts:
-            changes.insert(0, "start a fleet with this machine (add others with its key, or through it on Tailscale)")
+            changes.insert(0, f"start the fleet {name} with this machine (your other machines join it "
+                              "by that name on Tailscale)")
         elif current["fleet_id"] and not (tailnet or folder or repo):
             changes.append("no connection left: this machine leaves the fleet (it keeps its libraries)")
         return {"action": "connections", "changes": changes or ["nothing changes"],
                 "tailnet": tailnet, "tailnet_seconds": seconds, "folder": folder or None,
                 "repo": repo or None, "create_repo": bool(payload.get("create_repo")), "names": names,
-                "starts_fleet": starts}
+                "starts_fleet": starts, "fleet_name": name if starts else None}
 
     def _apply_connections(self, plan: dict) -> None:
         from Elaborate._fleet import setup_state as fleet_setup
@@ -140,7 +144,7 @@ class SetupRoutes:
         if plan["starts_fleet"]:
             fleet_setup.join_fleet(self.home, self.config_dir, folder=plan["folder"], tailnet=plan["tailnet"],
                                    repo=plan["repo"], create_repo=plan["create_repo"], names=plan["names"],
-                                   tailnet_seconds=plan["tailnet_seconds"])
+                                   tailnet_seconds=plan["tailnet_seconds"], name=plan["fleet_name"])
             return
         directory = fleet_directory(self.config_dir, home=self.home)
         config = load_saved(directory, home=self.home)
@@ -156,23 +160,15 @@ class SetupRoutes:
             tailnet_seconds=plan["tailnet_seconds"] if plan["tailnet"] else None,
             names=plan["names"], directory=directory, home=self.home)
 
-    def _peers(self) -> list[dict]:
-        """Machines on this tailnet that are sharing a fleet right now (names only)."""
-        from Elaborate._fleet.net import discover_hosts
-        return [{"label": host["label"]} for host in discover_hosts() if host.get("serving")]
+    def _fleets(self) -> list[dict]:
+        """The fleets your machines on this tailnet are in, by name (setup_state.fleets_on_tailnet)."""
+        from Elaborate._fleet.setup_state import fleets_on_tailnet
+        return fleets_on_tailnet()
 
-    def _key_from_peer(self, label: str) -> str:
-        """The fleet key from the running machine `label` on this tailnet; it checks who asks."""
-        from Elaborate._fleet.net import FleetClient, discover_hosts
-        from Special._sync.manifest import is_fleet_secret
-        host = next((item for item in discover_hosts() if item.get("serving") and item["label"] == label), None)
-        if host is None:
-            raise ValueError(f"{label} is not sharing a fleet on Tailscale right now")
-        session = FleetClient(host["url"]).request("/v1/session")
-        secret = session.get("fleet_secret") if isinstance(session, dict) else None
-        if not is_fleet_secret(secret):
-            raise ValueError(f"{label} did not hand over a fleet key")
-        return secret
+    def _key_from_fleet(self, fleet_id: str) -> tuple[str, dict | None]:
+        """The key and name, handed over by a running machine of that fleet; it checks who asks."""
+        from Elaborate._fleet.setup_state import key_from_fleet
+        return key_from_fleet(fleet_id)
 
     def plan(self, action: str, payload: dict, paths: list[str]) -> tuple[dict, dict]:
         """(what the page shows, what the id covers). A fleet key is covered but never shown."""
@@ -212,8 +208,9 @@ class SetupRoutes:
             return shown, shown
         if action == "join":
             key = payload.get("key") or ""
-            via = str(payload.get("via") or "")
-            shown = {"action": "join", "fleet": f"the fleet {via} is in (it hands over the key)" if via
+            via = str(payload.get("fleet_id") or "")
+            label = str(payload.get("fleet_label") or "")[:60]
+            shown = {"action": "join", "fleet": f"{label or 'the fleet'} (a machine in it hands over what is needed)" if via
                      else "the fleet of that key" if key else "a new fleet",
                      "tailnet_seconds": payload.get("tailnet_seconds"),
                      "folder": payload.get("folder") or None, "repo": payload.get("repo") or None,
@@ -260,8 +257,13 @@ class SetupRoutes:
             enrollment.set_seal_settings(bool(shown["enabled"]), home=self.home)
         if action == "settings":
             return {"settings": self.settings(), "applied": True}
-        if action == "peers":
-            return {"peers": self._peers(), "applied": True}
+        if action == "fleets":
+            return {"fleets": self._fleets(), "applied": True}
+        if action == "name-fleet":
+            named = fleet_setup.name_fleet(self.home, self.config_dir, name=str(payload.get("name") or ""))
+            self.on_change(self.state())
+            return {"applied": True, "settings": self.settings(),
+                    "notice": f"The fleet is called {named['name']}; your other machines take the name on their next round."}
         if action == "show-key":
             config = self._config()
             if config is None:
@@ -295,13 +297,18 @@ class SetupRoutes:
         elif action == "presentation":
             enrollment.set_presentation(face=payload.get("face"), web=payload.get("web"), home=self.home)
         elif action == "join":
-            key = self._key_from_peer(covered["via"]) if covered.get("via") else payload.get("key") or None
+            named = None
+            if covered.get("via"):
+                key, named = self._key_from_fleet(covered["via"])
+            else:
+                key = payload.get("key") or None
             seconds = payload.get("tailnet_seconds")
             fleet_setup.join_fleet(self.home, self.config_dir, key=key,
                                    folder=payload.get("folder") or None, tailnet=bool(payload.get("tailnet")),
                                    repo=payload.get("repo") or None, create_repo=bool(payload.get("create_repo")),
                                    share_names=payload.get("share_names"),
-                                   tailnet_seconds=int(seconds) if seconds in POLL_CHOICES else None)
+                                   tailnet_seconds=int(seconds) if seconds in POLL_CHOICES else None,
+                                   name=(named or {}).get("name"), named_at=(named or {}).get("at"))
         elif action == "leave":
             fleet_setup.leave_fleet(self.home, self.config_dir)
         state = self.state()

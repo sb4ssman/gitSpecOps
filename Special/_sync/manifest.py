@@ -213,8 +213,10 @@ def merge_checkouts(repositories: list[dict]) -> list[dict]:
             "upstream_observed_at": None if None in stamps else min(stamps),
             "operation": next((repo["operation"] for repo in group if repo.get("operation")),
                               None),
-            **({"place": group[0]["place"] if all(repo.get("place") == group[0].get("place") for repo in group)
-                else None} if any("place" in repo for repo in group) else {}),
+            # Copies in two places (a working copy and a backup library): the first one's place,
+            # not none at all, which grouped every such repository as "folder not shared".
+            **({"place": next((repo["place"] for repo in group if repo.get("place")), None)}
+               if any("place" in repo for repo in group) else {}),
             "checkouts": sum(int(repo.get("checkouts") or 1) for repo in group),
         })
         for key in ("branch", "head"):
@@ -286,8 +288,12 @@ def _validate_place(place, label: str) -> None:
 
 
 def place_of(path, roots) -> dict | None:
-    """Where a checkout sits: its library's name and the folder inside that library holding it
-    ("" when it sits directly in the library). Names only: a path never leaves the machine."""
+    """Where a checkout sits: its library's name and the folder that holds it, its parent ("" when
+    it sits directly in the library). Names only: a path never leaves the machine.
+
+    The parent, not the first folder under the library: a library holding Github/<org>/<repo>
+    (a backup drive, 2026-11-16) put every repository in one "Github" folder. The folder that
+    contains a repository is its organization's folder (the user)."""
     from pathlib import Path
     path = Path(path)
     owners = [Path(root) for root in roots or [] if Path(root) == path or Path(root) in path.parents]
@@ -296,7 +302,7 @@ def place_of(path, roots) -> dict | None:
     root = max(owners, key=lambda r: len(r.parts))  # the innermost library holding it
     parts = path.relative_to(root).parts
     library = (root.name or str(root).rstrip("\\/:")).replace(":", "")[:PLACE_LIMIT]
-    return {"library": library, "folder": parts[0][:PLACE_LIMIT] if len(parts) > 1 else ""}
+    return {"library": library, "folder": parts[-2][:PLACE_LIMIT] if len(parts) > 1 else ""}
 
 
 def _validate_names(repo: dict, label: str) -> None:
