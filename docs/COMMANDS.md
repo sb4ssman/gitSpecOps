@@ -252,8 +252,9 @@ Status:       working
 This machine's libraries as a folder map, each repository's state on its line.
 
 Why:          see the whole library at a glance: folders, repositories and what each one needs.
-Reads:        Git status of the repositories under the library folders; Orbital-Workshop's folder
-              mapper when present (--mapper, or found inside a library).
+Reads:        Git status of the repositories under the library folders. Shows only libraries,
+              the folders that hold repositories, and the repositories. --mapper PATH draws with
+              Orbital-Workshop's folder mapper instead: everything, files included.
 May change:   nothing.
 Results:      JSON without a terminal (or with --json); a screen at one. Nothing is published.
 Layer:        Special: this machine, once.

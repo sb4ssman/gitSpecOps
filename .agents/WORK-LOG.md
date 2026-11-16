@@ -2883,3 +2883,18 @@ No code changed; decisions recorded where they govern.
   otherwise gitSpecOps draws it. Read-only, nothing fetched.
 - Not built: the master list and network library (which org folders go on which machines). It
   removes things from machines, so it is designed with the user first.
+
+## 2026-11-16 00:10 - user (claude) - The tray belongs to no window; the map shows only folders and repositories (branch wave/tray-own-process)
+- node1: the tray started from setup's command menu died when setup closed, again. Its log shows
+  it started and connected, then nothing: no stop was logged, so it was ended from outside. node1's
+  default terminal is Windows Terminal. On Windows the tray is now started by Windows itself (WMI
+  Win32_Process.Create, through a windowless PowerShell): its parent is a Windows service, never
+  setup, a terminal or `gitso tray`. Checked under `uv run` with a test process (not the tray):
+  desktop session, no job, no console, still running after its starter ended. The detached start
+  remains the fallback, and is kept when GITSPECOPS_* overrides are set (WMI would drop them).
+- `gitso tray` says the app does not belong to the window, and where its log is.
+- `gitso machine map` prints its header at once and counts repositories as it reads them. The map
+  shows only libraries, folders that hold repositories (any depth) and repositories. The folder
+  mapper is used only when asked for (--mapper), as the everything view.
+- Not yet explained: the empty window the user saw when starting the tray. Every program the
+  tray runs already hides its window; the next start shows whether it still appears.

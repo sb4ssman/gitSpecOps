@@ -373,8 +373,11 @@ def main(argv=None) -> int:
         except (OSError, RuntimeError) as exc:
             return _cli.fail(args, "tray", str(exc))
         _cli.emit(args, _cli.document("tray", message=message),
-                  lambda: print(f"gitSpecOps {message}. Closing this window leaves it running; quit it "
-                                "from its tray menu. To watch its output instead: gitso tray --foreground"))
+                  lambda: print(f"gitSpecOps {message}.\nIt does not belong to this window: closing this "
+                                "window, or setup, leaves it running. Quit it from its tray menu.\n"
+                                "What it does is written to logs/app_tray.log in the settings folder (the "
+                                "app's About page opens that folder). To run it here and watch its output "
+                                "instead: gitso tray --foreground"))
         return 0
     try:
         return run_tray(args.config_dir, args.settings_home, view=args.view, web=args.web,
