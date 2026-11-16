@@ -11,7 +11,7 @@ path. A subject's actions share a section (`archive add`, `archive remove`, ...)
 - **Special: this machine, once:** [machine show](#machine-show--add--remove--find--presentation), [machine add](#machine-show--add--remove--find--presentation), [machine remove](#machine-show--add--remove--find--presentation), [machine find](#machine-show--add--remove--find--presentation), [machine presentation](#machine-show--add--remove--find--presentation), [machine check](#machine-check), [machine map](#machine-map), [machine catch-up](#machine-catch-up), [machine audit](#machine-audit), [machine materialize](#machine-materialize), [machine buffers](#machine-buffers), [repo name](#repo-name--list), [repo list](#repo-name--list), [archive add](#archive-add--remove--list--status--refresh--check), [archive remove](#archive-add--remove--list--status--refresh--check), [archive list](#archive-add--remove--list--status--refresh--check), [archive status](#archive-add--remove--list--status--refresh--check), [archive refresh](#archive-add--remove--list--status--refresh--check), [archive check](#archive-add--remove--list--status--refresh--check), [archive update](#archive-update), [archive sync](#archive-sync), [inventory export](#inventory-export), [inventory restore](#inventory-restore), [org copy](#org-copy), [scan](#scan), [review](#review), [history scan](#history-scan), [history clean](#history-clean), [history follow](#history-follow--relink), [history relink](#history-follow--relink), [secure-commit](#secure-commit), [secure-push](#secure-push)
 - **Elaborate: other machines, or over time:** [machine safe-to-wipe](#machine-safe-to-wipe), [archive schedule](#archive-schedule), [fleet setup](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet status](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet transports](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet leave](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet key](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet baskets](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet git-client](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet join](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet doctor](#fleet-doctor), [fleet preflight](#fleet-preflight), [fleet publish](#fleet-publish), [fleet suggest](#fleet-suggest), [fleet converge](#fleet-converge), [peer run](#peer-run--rescan), [peer rescan](#peer-run--rescan), [recovery](#recovery), [start-at-sign-in](#start-at-sign-in)
 - **App: presence and presentation:** [tray](#tray), [serve-web](#serve-web)
-- **Setup:** [setup](#setup)
+- **Setup:** [setup](#setup), [update](#update)
 
 ## Basic: one Git or host operation
 
@@ -65,6 +65,7 @@ Layer:        Basic: one Git or host operation.
 Status:       working
 
     gitso fetch <repo> [--remote origin] [--dry-run]
+    gitso fetch <org folder>     every repository directly inside it, one after another
 
 With no refspec, `git fetch` updates `refs/remotes/*` and never a local branch or the working
 tree -- nothing the user would have to undo. That is why observation may fetch at all.
@@ -1004,4 +1005,25 @@ With no arguments, a person at a terminal gets the setup menu. Named actions:
 gitSpecOps needs no setup to run: every command works straight from this folder through
 `gitso`, e.g. `python gitso.py commands`. Sign-ins are never touched here: you sign in to your
 own tools (`gh auth login`).
+```
+
+### update
+
+`gitso update`; or `_build/setup_update.py`.
+
+```text
+Update gitSpecOps in place, keeping every setting: fetch, fast-forward, refresh what depends on it.
+
+Why:          after the first setup, updating should be one step that changes nothing already
+              chosen (the user, 2026-11-15), not a walkthrough again.
+Reads:        this folder's Git state: its branch, its upstream, uncommitted changes, what is new.
+May change:   only after a yes: this folder fast-forwarded to its upstream; then, from the new
+              code, the desktop app's Qt (when installed) and the gitso launchers (when present).
+              Never a setting, a library, the fleet, protected values or a repository.
+Results:      the screens; exit 0 when up to date or updated, 1 when it could not.
+Layer:        setup (_build).
+Status:       working
+
+It refuses rather than guesses: uncommitted changes in this folder, no upstream, or commits here
+that the upstream does not have (not a fast-forward) each stop it with what to do instead.
 ```

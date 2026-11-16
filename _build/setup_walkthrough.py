@@ -468,7 +468,7 @@ def area_machine(found: dict, plan: Plan) -> None:
         row("Library folder", path)
     line("Library folders hold your Git repositories. gitSpecOps watches the repositories in them: "
          "their names and Git status, never file contents.", "muted")
-    picked, found_dirs = [], []
+    picked, found_dirs, removed = [], [], []
     while True:
         say()
         for number, item in enumerate(found_dirs, 1):
@@ -476,14 +476,26 @@ def area_machine(found: dict, plan: Plan) -> None:
         option("L", "Look for library folders in your home folder")
         option("W", "Look on every drive" if WINDOWS else "Look everywhere in your home folder")
         option("P", "Add a folder by its path")
+        kept = [path for path in found["libraries"] if path not in removed]
+        if kept:
+            option("R", "Stop watching a library folder", "Nothing in it is changed or deleted.")
         option("N", "Done" if (picked or found["libraries"]) else "No library folders now")
         option("0", "Stop the walkthrough", "Nothing has been changed.")
         numbers = "".join(str(n) for n in range(1, len(found_dirs) + 1))
-        answer = choose("lwpn0" + numbers, "n")
+        answer = choose("lwpn0" + ("r" if kept else "") + numbers, "n")
         if answer == "0":
             raise Stop
         if answer == "n":
             break
+        if answer == "r":
+            for number, path in enumerate(kept[:9], 1):
+                option(str(number), path)
+            option("0", "Keep them all")
+            which = choose("".join(str(n) for n in range(1, min(len(kept), 9) + 1)) + "0", "0")
+            if which != "0":
+                removed.append(kept[int(which) - 1])
+                line(f"Will stop watching {removed[-1]}.", "success")
+            continue
         if answer in ("l", "w"):
             line("Reading folder names only...", "detail")
             starts = [Path.home()] if answer == "l" else whole_machine_starts()
@@ -503,12 +515,28 @@ def area_machine(found: dict, plan: Plan) -> None:
             picked.append(chosen)
             found_dirs = [d for d in found_dirs if d["path"] != chosen]
             line(f"Will add {chosen}.", "success")
-    if picked:
+    # Removals and additions in one step: replacing a library with a folder inside it (Memory
+    # Gamma for Memory Gamma/Github, 2026-11-16) overlapped when the addition went first.
+    if removed and picked and found["enrolled"]:
+        plan.libraries = picked
+        plan.add("Library folders", "Library folders: stop watching " + "; ".join(removed) + " and add "
+                 + "; ".join(picked) + ". Nothing in them is changed; the new ones are read for folder "
+                 "names and Git status, never file contents.", lambda: _change_libraries(removed, picked))
+    elif removed:
+        plan.add("Library folders", "Library folders: stop watching " + "; ".join(removed)
+                 + ". Nothing in them is changed or deleted.", lambda: _change_libraries(removed, []))
+    elif picked:
         plan.libraries = picked
         plan.add("Library folders", "Library folders: add " + "; ".join(picked)
                  + ". Reads folder names and each repository's Git status, never file contents.",
                  lambda: _add_libraries(picked))
     plan.enrolled_after = found["enrolled"] or bool(picked)
+
+
+def _change_libraries(removed, picked) -> str:
+    from Special._sync.enrollment import change_libraries
+    roots = change_libraries(removed, picked)
+    return f"now watching {len(roots)} library folder(s); the app reads them again when it restarts"
 
 
 def _add_libraries(paths) -> str:

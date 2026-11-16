@@ -144,6 +144,7 @@ COMMANDS = (
     Command("tray", "App/tray.py", "App.tray"),
     Command("serve-web", "App/serve_web.py", "App.serve_web"),
     Command("setup", "_build/setup_gitspecops.py", "_build.setup_gitspecops"),
+    Command("update", "_build/setup_update.py", "_build.setup_update"),
 )
 
 #: Subjects: the first word of a two-word command (`archive` for `archive add`).

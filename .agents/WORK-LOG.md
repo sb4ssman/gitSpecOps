@@ -2999,3 +2999,31 @@ No code changed; decisions recorded where they govern.
   files change and fetches on the schedule set on the tab).
 - "Fleet" in the facts list said "not in a fleet" for an unnamed fleet; it now says so only when
   the machine is in none.
+
+## 2026-11-16 21:30 - user (claude) - Fleet sync from one screen: requests, uncommitted work, steady counts (branch dev)
+- Iterated on dev with the user, machine by machine (node1 and the Debian machine track dev).
+- Counts: IncrementalObserver.refresh took a repository out of its table while Git re-read it, so
+  views asked for in between missed it (Security counted 10 of 11; counts flickered). It now
+  swaps the record in after the read. A machine's own page groups its repositories by its own
+  folder (the fleet-wide most common place split one folder into two cards: a three-way tie went
+  to another machine's backup library).
+- Header says what it means ("170 repositories, 44 need attention"; "Home-Fleet: 3 machines;
+  …: 7 need attention"; folders versus repositories). The address names the tab on screen.
+- Machines that start or join knock (GET /v1/knock) so the others pull them at once.
+- Map: "building" or the error instead of blank; the zoom map groups by GitHub owner always (the
+  GitHub cloud came up empty under library grouping); labels spread out and outlined.
+- `gitso update` (setup's update as a command) stops the app before a fast-forward and starts it
+  after, and restarts an app older than its folder even when nothing was new (the tray records
+  the commit it started from).
+- Setup: stop watching a library; a removal and an addition (a library replaced by a folder inside
+  it) are one change (enrollment.change_libraries), which the user hit on the Debian machine.
+- `gitso fetch <org folder>` fetches every repository directly inside it.
+- Requests between machines (Elaborate/_fleet/requests.py): asked on one page, published at
+  GET /v1/requests, pulled by the named machine, applied there only on Apply with the existing
+  safe operations (catch-up's fast-forward after a fresh fetch; a clone that replaces nothing).
+- Uncommitted work (Special/_sync/changes.py, GET /v1/changes/<repo>): file names, kind of change,
+  line counts, and whether a change is only line endings; never contents. On the Debian machine
+  the backup drive's "dirty 16" copies were line endings only (a Windows copy).
+- The organization view shows each repository's provider link, the request buttons per machine,
+  and the uncommitted-work summary.
+- The "What to audit" list resizes vertically on desktop.

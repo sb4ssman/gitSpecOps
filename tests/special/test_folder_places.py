@@ -73,6 +73,15 @@ class PlaceGroupTests(unittest.TestCase):
                          [("place/Github/Archive", "Archive", "Github", 1)])
         self.assertEqual(document["rows"][0]["place_id"], "place/Github/Archive")
 
+    def test_each_machine_groups_a_repository_where_it_keeps_it(self):
+        reports = [report("one", {"library": "Github", "folder": "Org"}),
+                   report("two", {"library": "Backup", "folder": "Org"}),
+                   report("three", {"library": "Backup", "folder": "Org"})]
+        here = build_display(reports, FLEET, settings={"machine_id": "one"})
+        self.assertEqual(here["rows"][0]["place_id"], "place/Github/Org")
+        elsewhere = build_display(reports, FLEET, settings={"machine_id": "four"})
+        self.assertEqual(elsewhere["rows"][0]["place_id"], "place/Backup/Org", "no copy here: the most common")
+
     def test_a_repository_without_a_place_is_grouped_as_not_shared(self):
         document = build_display([report("one", None)], FLEET)
         self.assertEqual(document["place_groups"][0]["label"], "Folder not shared")

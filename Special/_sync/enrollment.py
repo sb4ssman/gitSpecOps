@@ -124,6 +124,31 @@ def add_libraries(paths, *, home=None, label=None, local_port=None) -> list[str]
     return roots
 
 
+def change_libraries(remove=(), add=(), *, home=None) -> list[str]:
+    """Stop watching some libraries and add others in one save, checked once: replacing a library
+    with a folder inside it (or the only library with another) needs both at once (2026-11-16)."""
+    snapshot = _snapshot(home)
+    config = snapshot.config("app")
+    if config is None:
+        return add_libraries(add, home=home) if add else []
+    dropping = {str(Path(path).expanduser().resolve()) for path in remove}
+    adding = [Path(path).expanduser().resolve() for path in add]
+    missing = [str(path) for path in adding if not path.is_dir()]
+    if missing:
+        raise ValueError(f"not an existing folder: {', '.join(missing)}")
+    unknown = sorted(dropping - set(config["roots"]))
+    if unknown:
+        raise ValueError(f"not an enrolled library: {', '.join(unknown)}")
+    roots = [root for root in config["roots"] if root not in dropping]
+    roots += [str(path) for path in adding if str(path) not in roots]
+    if not roots:
+        raise ValueError("an enrolled machine keeps at least one library")
+    _check_nesting(roots)
+    config["roots"] = roots
+    save_fleet_config(config, component="app", home=home)
+    return roots
+
+
 def remove_library(path, *, home=None) -> list[str]:
     snapshot = _snapshot(home)
     config = snapshot.config("app")

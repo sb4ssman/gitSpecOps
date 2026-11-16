@@ -22,8 +22,18 @@ export function regroup(data, mode) {
   return {...data, owner_groups: data.groups, groups: data.place_groups,
           rows: data.rows.map(row => {
             const group = byId.get(row.place_id) || {label: 'Folder not shared', host: 'Other machines'};
-            return {...row, group_id: row.place_id, namespace: group.label, group_host: group.host};
+            return {...row, group_id: row.place_id, namespace: group.label, group_host: group.host,
+                    owner_group_id: row.group_id, owner_namespace: row.namespace};
           })};
+}
+
+/** The GitHub-owner grouping whatever the page is set to: the zoom map goes provider, owner,
+ *  repository, and a library folder is not an owner (an empty GitHub cloud, 2026-11-16). */
+export function byOwner(data) {
+  if (!data.owner_groups) return data;
+  return {...data, groups: data.owner_groups,
+          rows: data.rows.map(row => ({...row, group_id: row.owner_group_id ?? row.group_id,
+                                       namespace: row.owner_namespace ?? row.namespace}))};
 }
 
 export function groupRows(data, rows) {

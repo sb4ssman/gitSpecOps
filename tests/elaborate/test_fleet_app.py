@@ -190,7 +190,7 @@ def main():
     assert set(assets) == {"/", "/assets/fleet_standard.css", "/assets/fleet_client.js",
                            "/assets/fleet_view.js", "/assets/fleet_standard.js",
                            "/assets/fleet_map.js", "/assets/fleet_zoom.js", "/assets/fleet_security.js",
-                           "/assets/fleet_settings.js", "/setup", "/assets/fleet_setup.js"}
+                           "/assets/fleet_settings.js", "/assets/fleet_requests.js", "/setup", "/assets/fleet_setup.js"}
     assert all(isinstance(value[0], bytes) for value in assets.values())
     print("ALL-FLEET-APP-TESTS-PASS")
 
