@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-ACTIONS = ("find", "add", "remove", "presentation", "join", "leave")
+ACTIONS = ("find", "add", "remove", "presentation", "join", "leave", "open-folder")
 PLANNED = ("find", "add", "join", "leave")
 QUESTIONS = {"find": "Look in these folders?", "add": "Enroll these library folders?",
              "join": "Join with these choices?", "leave": "Leave the fleet?"}
@@ -83,6 +83,11 @@ class SetupRoutes:
                 return {"plan": shown, "plan_id": identity, "applied": False, "question": QUESTIONS[action],
                         **({"notice": "The plan changed since you saw it; nothing was done. Here is the "
                                       "plan as it is now."} if given else {})}
+        if action == "open-folder":
+            # The settings folder in the system's file manager. The page never receives the path.
+            from Special._settings.fleet import fleet_home
+            open_folder(fleet_home(self.home))
+            return {"applied": True, "notice": "Opened your settings folder."}
         if action == "find":
             return {"found": enrollment.find_libraries(shown["look_in"], max_depth=shown["depth"])[:40],
                     "looked_in": shown["look_in"], "applied": True}
@@ -102,6 +107,22 @@ class SetupRoutes:
         state = self.state()
         self.on_change(state)
         return {"state": state, "notice": NOTICES.get(action, ""), "applied": True}
+
+
+def open_folder(folder) -> None:
+    """Open a folder in Explorer, Finder or the desktop's file manager."""
+    import os
+    import subprocess
+    import sys
+    folder = Path(folder)
+    if not folder.is_dir():
+        raise ValueError("the settings folder does not exist yet; run setup first")
+    if sys.platform == "win32":
+        os.startfile(folder)  # noqa: S606 - a folder the app itself names, never input
+    else:
+        subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(folder)],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
 
 
 NOTICES = {

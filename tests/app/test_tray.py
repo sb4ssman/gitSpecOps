@@ -276,7 +276,7 @@ def test_without_a_system_tray_the_command_steps_aside():
         return
     said = io.StringIO()
     with redirect_stdout(said):
-        code = qt.main([])
+        code = qt.main(["--foreground"])
     check(code == 2 and "serve-web" in said.getvalue(), said.getvalue())
     del app
 
