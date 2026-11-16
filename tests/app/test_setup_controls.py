@@ -133,6 +133,17 @@ class SetupControlsTests(unittest.TestCase):
         self.assertIn("tailnet", self.transports())
         self.assertEqual(self.routes.act("settings", {})["settings"]["fleet_name"], "Home-Fleet")
 
+    def test_libraries_display_and_baskets_are_set_from_the_page(self):
+        settings = self.routes.act("settings", {})["settings"]
+        self.assertEqual([Path(p) for p in settings["libraries"]], [self.library.resolve()])
+        self.routes.act("baskets", {"scope": "publish", "mode": "except", "namespaces": "github.com/private-org"})
+        published = self.routes.act("settings", {})["settings"]["baskets"]["publish"]
+        self.assertEqual(published, {"mode": "except", "namespaces": ["github.com/private-org"]})
+        with self.assertRaises(ValueError):
+            self.routes.act("baskets", {"scope": "capture", "mode": "all"})
+        self.routes.act("presentation", {"face": "web", "web": "tailnet"})
+        self.assertEqual(self.routes.act("settings", {})["settings"]["presentation"]["web"], "tailnet")
+
     def test_renaming_the_fleet(self):
         self.approved("connections", {"folder": str(self.synced), "fleet_name": "First"})
         self.assertEqual(self.routes.act("settings", {})["settings"]["fleet_name"], "First")

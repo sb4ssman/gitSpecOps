@@ -22,7 +22,7 @@ const securityPending = new Set();
 let desktopDraft = null;
 const controls = {
   query: byId('search'), status: byId('status-filter'), machine: byId('machine-filter'),
-  sort: byId('sort'), refresh: byId('refresh'), warning: byId('connection-warning'),
+  sort: byId('sort'), warning: byId('connection-warning'),
 };
 
 // Group by where repositories live (library, then folder) or by GitHub owner. Every view reads
@@ -301,13 +301,12 @@ function renderAbout() {
   byId('product-version').textContent = `${product.name} ${product.version} · ${product.channel} channel`;
   const facts = byId('app-facts'); facts.replaceChildren();
   for (const [term, value] of [['Display contract', `${state.data.contract.name} v${state.data.contract.version}`],
-    ['Fleet', state.data.fleet_name || 'not in a fleet'],
+    ['Fleet', state.data.mark?.fleet?.state === 'none' ? 'not in a fleet' : (state.data.fleet_name || 'in a fleet, not named yet')],
     ['Fleet ID (identifies it; not the key)', fleetId], ['Interface', 'Standard']]) facts.append(node('dt', term), node('dd', value));
-  if (state.data.local_actions) {
-    const libraries = node('a', 'Library folders and how the app shows itself'); libraries.href = '/setup';
-    const value = node('dd'); value.append(libraries);
-    facts.append(node('dt', 'Libraries'), value);
-  }
+  // On this computer the setup card holds every setting; the read-only summaries are for the
+  // Tailscale view, where nothing can be changed.
+  byId('integrations-card').hidden = Boolean(state.data.local_actions);
+  byId('features-card').hidden = Boolean(state.data.local_actions);
   if (state.data.local_actions) {  // this computer only: never on the Tailscale view
     const open = node('button', 'Open settings folder');
     open.type = 'button';
@@ -473,14 +472,18 @@ window.addEventListener('hashchange', tabFromAddress);
 
 setTheme(savedTheme());
 const connection = new FleetConnection();
-controls.refresh.onclick = () => connection.refresh();
-connection.addEventListener('loading', () => { controls.refresh.disabled = true; });
-connection.addEventListener('idle', () => { controls.refresh.disabled = false; });
+// What the page does, said plainly (the user, 2026-11-16): every 3 seconds it asks the app on this
+// computer what it already knows. That reads no repository and fetches nothing: the app itself
+// checks a repository when its files change, and fetches on the schedule set in App & setup.
+const LIVE = 'Live: updated every 3 seconds from this computer\'s gitSpecOps';
+const LIVE_DETAIL = 'The page asks the app on this computer for what it already knows. That reads no repository and fetches nothing. The app checks a repository when its files change, and fetches from GitHub on the schedule set in App & setup.';
 connection.addEventListener('display', event => {
   if (event.detail.data.setup_required) { window.location.href = '/setup'; return; }
   state.raw = event.detail.data; state.data = regroup(state.raw, state.grouping);
   state.receivedAt = event.detail.receivedAt;
-  controls.warning.hidden = true; byId('connection').textContent = 'Dashboard connected'; renderMark(); renderAll();
+  controls.warning.hidden = true;
+  byId('connection').textContent = LIVE; byId('connection').title = LIVE_DETAIL;
+  renderMark(); renderAll();
 });
 connection.addEventListener('unavailable', event => {
   byId('connection').textContent = 'Dashboard unavailable'; controls.warning.hidden = false;

@@ -112,6 +112,9 @@ function renderFleet(state) {
 }
 
 function render(state) {
+  // A machine already set up is set up from the map's App & setup tab, under the same menu as
+  // every other page (the user, 2026-11-16); this page is the first run only.
+  if (wasEnrolled === null && state.machine) { window.location.replace('/#about'); return; }
   if (state.error) say(state.error, 'danger');
   renderTiers(state);
   renderMachine(state);

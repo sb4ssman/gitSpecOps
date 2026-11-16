@@ -14,6 +14,25 @@ const choice = (value, label) => { const o = el('option', label); o.value = Stri
 const every = seconds => seconds % 3600 === 0 && seconds >= 3600
   ? `every ${seconds / 3600} hour${seconds === 3600 ? '' : 's'}` : `every ${seconds / 60} minute${seconds === 60 ? '' : 's'}`;
 const FETCH_LABELS = {0: 'Never (behind counts use the last fetch you made)', 60: 'Every hour', 360: 'Every 6 hours', 1440: 'Once a day'};
+// Form pieces that read as controls: a checkbox beside its words, a field under its label, a row.
+const section = (title, text) => {
+  const box = el('div', undefined, 'capability setup-section-box');
+  box.append(el('h4', title));
+  if (text) box.append(el('p', text, 'host-note'));
+  return box;
+};
+const row = (...items) => { const line = el('div', undefined, 'setting-row'); line.append(...items); return line; };
+const check = (text, checked) => {
+  const input = el('input'); input.type = 'checkbox'; input.checked = Boolean(checked);
+  const label = el('label', undefined, 'setting-check'); label.append(input, el('span', text));
+  return {label, input};
+};
+const field = (text, control) => {
+  const label = el('label', undefined, 'setting-field'); label.append(el('span', text), control); return label;
+};
+const textInput = (value, placeholder) => {
+  const input = el('input'); input.type = 'text'; input.value = value || ''; input.placeholder = placeholder || ''; return input;
+};
 
 export function renderSettings(block, connection, token) {
   if (block.dataset.built === '1') return;
@@ -29,6 +48,12 @@ export function renderSettings(block, connection, token) {
     try { state.settings = (await call('settings')).settings; }
     catch (error) { state.message = error.message; }
     draw();
+  }
+
+  // A setting made at once: say what happened, then read the settings back.
+  async function act(action, payload, message) {
+    try { const done = await call(action, payload); await load(done.notice || message); }
+    catch (error) { state.message = error.message; draw(); }
   }
 
   // A planned action: show its plan and question; "Apply" sends it back with the plan's id.
@@ -63,16 +88,16 @@ export function renderSettings(block, connection, token) {
   }
 
   function fleetSection(s) {
-    const box = el('div', undefined, 'capability');
+    const box = el('div', undefined, 'capability setup-section-box');
     if (s.fleet_id) {
-      box.append(el('strong', `In the fleet ${s.fleet_name || '(unnamed)'}`),
-        el('p', 'Your other machines join it by this name: in setup, or on this tab, "Look for your fleets on Tailscale".'));
-      const name = el('input'); name.type = 'text'; name.value = s.fleet_name || ''; name.maxLength = 60;
-      box.append(el('label', 'Name '), name, button('Rename', async () => {
+      box.append(el('h4', `In the fleet ${s.fleet_name || '(not named yet: name it below)'}`),
+        el('p', 'Your other machines join it by this name: in setup, or on this tab, "Look for your fleets on Tailscale".', 'host-note'));
+      const name = textInput(s.fleet_name || '', 'For example: Home-Fleet'); name.maxLength = 60;
+      box.append(row(field('Fleet name', name), button(s.fleet_name ? 'Rename' : 'Name it', async () => {
         try { const done = await call('name-fleet', {name: name.value}); state.settings = done.settings; state.message = done.notice; }
         catch (error) { state.message = error.message; }
         draw();
-      }));
+      })));
       // The key belongs in a box of its own state: redrawing the tab must not lose it.
       const advanced = el('details'); advanced.append(el('summary', 'For a machine without Tailscale'));
       advanced.append(el('p', 'It joins with the fleet key instead. The key is 64 characters; the 16-character Fleet ID is not the key.', 'host-note'));
@@ -85,8 +110,8 @@ export function renderSettings(block, connection, token) {
       box.append(advanced, button('Leave the fleet', () => planned('leave', {}, () => load('Left the fleet. This machine keeps its libraries.'))));
       return box;
     }
-    box.append(el('strong', 'Not in a fleet'),
-      el('p', 'Join the fleet your other machines are in, found by its name on Tailscale. Or start one: name it under Connections and turn a connection on.'));
+    box.append(el('h4', 'Not in a fleet'),
+      el('p', 'Join the fleet your other machines are in, found by its name on Tailscale. Or start one: name it under Connections and turn a connection on.', 'host-note'));
     const found = el('div');
     box.append(button('Look for your fleets on Tailscale', async () => {
       found.replaceChildren(el('p', 'Looking…', 'host-note'));
@@ -116,40 +141,75 @@ export function renderSettings(block, connection, token) {
 
   function connectionsSection(s) {
     const c = s.connections;
-    const box = el('div', undefined, 'capability');
-    box.append(el('strong', 'Connections'), el('p', 'How this machine shares its report with the others. Any combination; each is another way a report arrives.'));
-    const tailnet = el('input'); tailnet.type = 'checkbox'; tailnet.checked = c.tailnet.on;
+    const box = section('Connections', 'How this machine and the others reach each other. Any combination; each is one more way a report arrives.');
+    const fleetName = textInput('', 'My fleet'); fleetName.maxLength = 60;
+    if (!s.fleet_id) box.append(field('Name for the new fleet (used when you turn a connection on)', fleetName));
+    const tailnet = check('Tailscale: live, between your own devices only', c.tailnet.on);
     const seconds = el('select'); for (const value of c.tailnet.choices) seconds.append(choice(value, every(value)));
     seconds.value = String(c.tailnet.seconds);
-    const tailnetNames = el('input'); tailnetNames.type = 'checkbox'; tailnetNames.checked = c.tailnet.names;
-    const row1 = el('label'); row1.append(tailnet, ' Tailscale (live; only your own devices) — ask the others ', seconds);
-    const row1b = el('label'); row1b.append(tailnetNames, ' with repository names');
-    const folder = el('input'); folder.type = 'text'; folder.placeholder = 'A folder your sync client replicates (empty: off)';
-    folder.value = c.folder.on ? c.folder.path : '';
-    const folderNames = el('input'); folderNames.type = 'checkbox'; folderNames.checked = c.folder.names;
-    const row2b = el('label'); row2b.append(folderNames, ' with repository names');
-    const repo = el('input'); repo.type = 'text'; repo.placeholder = 'owner/name of a private state repository (experimental; empty: off)';
-    repo.value = c.repo.on ? c.repo.name : '';
-    const create = el('input'); create.type = 'checkbox';
-    const row3b = el('label'); row3b.append(create, ' create it (private) if it does not exist');
-    const repoNames = el('input'); repoNames.type = 'checkbox'; repoNames.checked = c.repo.names;
-    const row3c = el('label'); row3c.append(repoNames, ' with repository names');
-    const fleetName = el('input'); fleetName.type = 'text'; fleetName.placeholder = 'My fleet'; fleetName.maxLength = 60;
-    if (!s.fleet_id) box.append(el('p', 'Name for the new fleet (when you turn a connection on):', 'host-note'), fleetName);
-    box.append(row1, row1b, el('p', 'Synced folder', 'host-note'), folder, row2b,
-      el('p', 'State repository', 'host-note'), repo, row3b, row3c,
-      button('Review the change', () => planned('connections', {
-        tailnet: tailnet.checked, tailnet_seconds: Number(seconds.value), folder: folder.value.trim(),
-        repo: repo.value.trim(), create_repo: create.checked, fleet_name: fleetName.value.trim(),
-        names: {tailnet: tailnetNames.checked, folder: folderNames.checked, repo: repoNames.checked},
-      }, done => load(done.notice || 'Saved.'))));
+    const tailnetNames = check('Show repository names to the other machines', c.tailnet.names);
+    box.append(tailnet.label, row(field('Ask the other machines', seconds)), tailnetNames.label);
+    const folder = textInput(c.folder.on ? c.folder.path : '', 'Empty: off');
+    const folderNames = check('Carry repository names (the sync service can read them)', c.folder.names);
+    box.append(el('h5', 'Synced folder'), field('A folder your sync client (OneDrive, Dropbox, Syncthing…) replicates', folder), folderNames.label);
+    const repo = textInput(c.repo.on ? c.repo.name : '', 'owner/name; empty: off');
+    const create = check('Create it, private, if it does not exist', false);
+    const repoNames = check('Carry repository names', c.repo.names);
+    box.append(el('h5', 'State repository (experimental)'), field('A private GitHub repository gitSpecOps keeps status in', repo),
+      create.label, repoNames.label);
+    box.append(row(button('Review the change', () => planned('connections', {
+      tailnet: tailnet.input.checked, tailnet_seconds: Number(seconds.value), folder: folder.value.trim(),
+      repo: repo.value.trim(), create_repo: create.input.checked, fleet_name: fleetName.value.trim(),
+      names: {tailnet: tailnetNames.input.checked, folder: folderNames.input.checked, repo: repoNames.input.checked},
+    }, done => load(done.notice || 'Saved.')))));
+    return box;
+  }
+
+  function librariesSection(s) {
+    const box = section('Library folders', 'The folders gitSpecOps watches for repositories. A repository\'s parent folder is its group on the Repositories tab.');
+    for (const path of s.libraries) {
+      box.append(row(el('code', path), button('Remove', () => {
+        if (window.confirm(`Stop watching ${path}? Nothing in it is changed.`)) act('remove', {path}, 'Removed. The app reads its libraries again now.');
+      })));
+    }
+    const add = textInput('', 'Full path of a folder that holds repositories');
+    box.append(row(field('Add a library folder', add), button('Add', () => planned('add', {paths: [add.value.trim()]}, done => load(done.notice || 'Added.')))));
+    return box;
+  }
+
+  function displaySection(s) {
+    const box = section('How the app shows itself');
+    const shown = s.presentation || {face: 'web', web: 'loopback'};
+    const face = el('select'); face.append(choice('web', 'This web view'), choice('window', 'The app window'));
+    face.value = shown.face;
+    const web = el('select');
+    web.append(choice('loopback', 'On this computer only'), choice('tailnet', 'Also on my Tailscale devices'), choice('off', 'Off'));
+    web.value = shown.web;
+    box.append(field('Double-clicking the tray icon opens', face), field('The web view is served', web),
+      row(button('Save', () => act('presentation', {face: face.value, web: web.value}, 'Saved. Takes effect when the app restarts.'))));
+    return box;
+  }
+
+  function basketsSection(s) {
+    const box = section('What this machine watches and shares', 'By GitHub owner, written host/owner (github.com/your-org), separated by commas.');
+    const MODES = [['all', 'Everything'], ['none', 'Nothing'], ['only', 'Only these owners'], ['except', 'Everything except these owners']];
+    for (const [scope, title] of [['observe', 'Watch on this machine'], ['publish', 'Share with the other machines']]) {
+      const current = (s.baskets || {})[scope] || {mode: 'all'};
+      const mode = el('select'); for (const [value, label] of MODES) mode.append(choice(value, label));
+      mode.value = current.mode;
+      const names = textInput((current.namespaces || []).join(', '), 'github.com/owner, …');
+      box.append(el('h5', title), row(mode, names, button('Save', () => act('baskets',
+        {scope, mode: mode.value, namespaces: names.value}, 'Saved.'))));
+    }
+    const capture = ((s.baskets || {}).capture || {}).mode || 'none';
+    box.append(el('p', `Recovery snapshots of unfinished work: ${capture === 'none' ? 'off' : capture}. They need a recovery location first (gitso recovery).`, 'host-note'));
     return box;
   }
 
   function sharedSection(s) {
     const shared = s.shared;
-    const box = el('div', undefined, 'capability');
-    box.append(el('strong', 'Shared protected values'),
+    const box = el('div', undefined, 'capability setup-section-box');
+    box.append(el('h4', 'Shared protected values'),
       el('p', s.fleet_id
         ? 'Shared with your other machines over Tailscale. A value added on any machine is added here; a removal, or a newly allowed value, waits for your answer below.'
         : 'Shared once this machine is in a fleet.'));
@@ -168,33 +228,26 @@ export function renderSettings(block, connection, token) {
       box.append(item);
     }
     if (shared.has_folder) {
-      const seal = el('input'); seal.type = 'checkbox'; seal.checked = shared.sealed;
-      const label = el('label'); label.append(seal, ' Also through the synced folder, sealed with a key from the fleet key');
-      box.append(label);
+      const seal = check('Also through the synced folder, sealed with a key from the fleet key', shared.sealed);
+      box.append(seal.label);
       if (!shared.encryption_installed) box.append(el('p', 'Turning this on installs the cryptography package into this folder\'s .venv.', 'host-note'));
-      box.append(button('Review the change', () => planned('seal', {enabled: seal.checked}, done => load(done.notice || 'Saved.'))));
+      box.append(row(button('Review the change', () => planned('seal', {enabled: seal.input.checked}, done => load(done.notice || 'Saved.')))));
     }
     return box;
   }
 
   function fetchSection(s) {
-    const box = el('div', undefined, 'capability');
-    box.append(el('strong', 'Fetch from GitHub'), el('p', 'Read-only git fetch of every repository, so "behind" means behind the remote now. Moves no branch and no file.'));
+    const box = section('Fetch from GitHub', 'How often the app runs a read-only git fetch on every repository, so "behind" means behind GitHub now. It moves no branch and no file.');
     const select = el('select'); for (const value of s.fetch_choices) select.append(choice(value, FETCH_LABELS[value] || `${value} minutes`));
     select.value = String(s.fetch_minutes);
-    box.append(select, button('Save', async () => {
-      try { await call('fetch', {minutes: Number(select.value)}); await load('Saved. The app uses the new schedule now.'); }
-      catch (error) { state.message = error.message; draw(); }
-    }));
+    box.append(row(field('Fetch every repository', select), button('Save', () => act('fetch', {minutes: Number(select.value)}, 'Saved. The app uses the new schedule now.'))));
     return box;
   }
 
   function signInSection(s) {
-    const box = el('div', undefined, 'capability');
-    box.append(el('strong', 'Start at sign-in'));
+    const box = section('Start at sign-in');
     if (!s.sign_in.supported) { box.append(el('p', s.sign_in.reason || 'Not available on this system.', 'host-note')); return box; }
-    const toggle = el('input'); toggle.type = 'checkbox'; toggle.checked = s.sign_in.enabled;
-    const label = el('label'); label.append(toggle, ' Start gitSpecOps when I sign in to this computer');
+    const {label, input: toggle} = check('Start gitSpecOps when I sign in to this computer', s.sign_in.enabled);
     toggle.onchange = async () => {
       try { const done = await call('sign-in', {enabled: toggle.checked}); state.settings = done.settings; state.message = done.notice; }
       catch (error) { state.message = error.message; }
@@ -213,7 +266,10 @@ export function renderSettings(block, connection, token) {
     const s = state.settings;
     if (!s) { block.append(el('p', 'Reading this machine\'s setup…', 'host-note')); return; }
     if (!s.enrolled) { block.append(el('p', 'This machine has no library yet: run setup first.', 'host-note')); return; }
-    block.append(fleetSection(s), connectionsSection(s), sharedSection(s), fetchSection(s), signInSection(s));
+    const grid = el('div', undefined, 'setup-sections');
+    grid.append(fleetSection(s), connectionsSection(s), librariesSection(s), sharedSection(s), fetchSection(s),
+      basketsSection(s), displaySection(s), signInSection(s));
+    block.append(grid);
   }
 
   draw();
