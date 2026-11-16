@@ -42,7 +42,23 @@ def launch_command(argv=None, script=None) -> list[str]:
     if getattr(sys, "frozen", False):
         return [str(Path(sys.executable).resolve()), *argv]
     target = Path(script).resolve() if script else Path(__file__).resolve().parents[2] / "App" / "tray.py"
-    return [str(Path(sys.executable).resolve()), str(target), *argv]
+    # The interpreter `gitso tray` itself uses: this folder's .venv (where Qt is installed),
+    # windowless on Windows. Not sys.executable resolved: on Linux that follows the venv's link to
+    # the system Python, and from setup (run by uv) it is uv's own Python; neither has Qt, so the
+    # entry failed at every sign-in without a word (2026-11-16).
+    return [str(app_interpreter()), str(target), *argv]
+
+
+def app_interpreter() -> Path:
+    """This folder's windowless Python on Windows, its Python elsewhere; the running one if none.
+    Its .venv is where the desktop app's Qt is installed."""
+    root = Path(__file__).resolve().parents[2]
+    scripts = root / ".venv" / ("Scripts" if os.name == "nt" else "bin")
+    for candidate in ((scripts / "pythonw.exe", Path(sys.executable).with_name("pythonw.exe"))
+                      if os.name == "nt" else (scripts / "python",)):
+        if candidate.exists():
+            return candidate
+    return Path(sys.executable)
 
 
 def _quote(command: list[str]) -> str:

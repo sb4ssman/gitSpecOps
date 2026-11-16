@@ -2922,3 +2922,15 @@ No code changed; decisions recorded where they govern.
   `gitso tray` reports, warning when a window is tied to it.
 - `gitso tray` while running: how it runs, what it is doing now, recent events in words;
   --follow, --open (web view at the map), --stop (a quit request the tray sees within a second).
+
+## 2026-11-16 11:00 - user (claude) - The App & setup tab sets things up; start at sign-in registers the app's own Python (branch wave/app-setup)
+- The user: the app's setup page should set up, enable and disable integrations and features.
+  The App & setup tab now has "Set up this machine" (this computer only): fleet (join through a
+  machine on Tailscale or with a key, show the key, leave), connections (Tailscale and its interval,
+  synced folder, state repository, names for each), the fetch schedule, start at sign-in. New
+  setup routes in App/_web/setup.py call the same functions as setup; fleet changes return a plan
+  and apply only with its id; the key is never in a plan and is shown only after approval.
+- Found while there: start at sign-in registered sys.executable resolved. On Linux that follows
+  the venv's link to the system Python, and from setup it is uv's Python; neither has Qt, so the
+  login entry failed silently. It now registers the app's own interpreter (the .venv's, windowless
+  on Windows), the same one `gitso tray` starts.

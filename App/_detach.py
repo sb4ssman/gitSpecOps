@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,13 +38,10 @@ ALREADY = "already running: its icon is by the clock (Windows may tuck it under 
 
 
 def interpreter() -> Path:
-    """This folder's windowless Python on Windows, its Python elsewhere; the running one if none."""
-    scripts = ROOT / ".venv" / ("Scripts" if os.name == "nt" else "bin")
-    for candidate in ((scripts / "pythonw.exe", Path(sys.executable).with_name("pythonw.exe"))
-                      if os.name == "nt" else (scripts / "python",)):
-        if candidate.exists():
-            return candidate
-    return Path(sys.executable)
+    """This folder's windowless Python on Windows, its Python elsewhere; the running one if none.
+    The same one start-at-sign-in registers."""
+    from Elaborate._fleet.autostart import app_interpreter
+    return app_interpreter()
 
 
 def running(config_dir=None, settings_home=None) -> bool:
