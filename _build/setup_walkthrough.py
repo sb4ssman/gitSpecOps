@@ -933,8 +933,9 @@ def area_fleet(found: dict, plan: Plan) -> None:
                          lambda: (leave_fleet(), "left")[1])
                 _browser_reach(found, plan, False)
                 return
-            plan.add("Fleet", "Fleet: connect by " + ", ".join(_described(tailnet, folder, repo, create)),
-                     lambda: _set_connections(current, tailnet, folder, repo, create))
+            names = _ask_names(tailnet, folder, repo, current)
+            plan.add("Fleet", "Fleet: connect by " + ", ".join(_described(tailnet, folder, repo, create, names)),
+                     lambda: _set_connections(current, tailnet, folder, repo, create, names))
             _browser_reach(found, plan, tailnet)
             return
         _browser_reach(found, plan, "tailnet" in current)
@@ -961,15 +962,8 @@ def area_fleet(found: dict, plan: Plan) -> None:
     if not (tailnet or folder or repo):
         line("A fleet needs at least one connection. Nothing will change.", "warning")
         return
-    readers = ["your own devices" if tailnet else "", "the synced folder's provider" if folder else "",
-               "GitHub" if repo else ""]
-    names = yes_no(
-        "Show repository names on your other machines' maps?", "y",
-        "Yes: each map shows which repository is which, with its branch and commit. No: your machines "
-        "still see what is ahead, behind or unpushed, but as unnamed ids. Never shared either way: "
-        "folder paths, web addresses, file names, contents, commit messages. Who can read the names: "
-        + ", ".join(r for r in readers if r) + ".")
-    ways = ", ".join(_described(tailnet, folder, repo, create))
+    names = _ask_names(tailnet, folder, repo, {})
+    ways = ", ".join(_described(tailnet, folder, repo, create, names))
     plan.add("Fleet", f"Fleet: {'join' if key else 'start'} a fleet, connected by {ways}",
              lambda: _start_fleet(key, tailnet, folder, repo, create, names))
     _browser_reach(found, plan, tailnet)
@@ -980,12 +974,42 @@ def _connection_names(transports: dict) -> list[str]:
              "repo": "the state repository (experimental)"}.get(name, name) for name in transports]
 
 
-def _described(tailnet, folder, repo, create) -> list[str]:
+def _described(tailnet, folder, repo, create, names=None) -> list[str]:
+    names = names or {}
+
+    def carried(key):
+        return "" if key not in names else ", with names" if names[key] else ", ids only"
     return [part for part in (
-        "Tailscale" if tailnet else "",
-        f"a synced folder ({folder})" if folder else "",
-        (f"the state repository {repo} ({'create it, private' if create else 'existing'}; experimental)"
-         if repo else "")) if part]
+        f"Tailscale{carried('tailnet')}" if tailnet else "",
+        f"a synced folder ({folder}{carried('folder')})" if folder else "",
+        (f"the state repository {repo} ({'create it, private' if create else 'existing'}; experimental"
+         f"{carried('repo')})" if repo else "")) if part]
+
+
+# Repository names per connection: over Tailscale only your own devices see them; a synced
+# folder's provider and GitHub could read them, so those carry unnamed ids unless chosen.
+NAMES_DEFAULT = {"tailnet": True, "folder": False, "repo": False}
+
+
+def _ask_names(tailnet, folder, repo, current: dict) -> dict:
+    """Whether each chosen connection carries repository names. The current choice is the default."""
+    asked = [(key, label, reader) for key, on, label, reader in (
+        ("tailnet", tailnet, "over Tailscale", "only your own devices"),
+        ("folder", folder, "through the synced folder", "the sync service's provider, too"),
+        ("repo", repo, "to the state repository", "GitHub, too")) if on]
+    if not asked:
+        return {}
+    say()
+    line("Repository names: Yes shows other maps which repository is which, with its branch and "
+         "commit. No sends unnamed ids: your machines still see what is ahead, behind or unpushed. "
+         "Never sent either way: folder paths, web addresses, file names, contents, commit messages.",
+         "muted")
+    names = {}
+    for key, label, reader in asked:
+        default = (current.get(key) or {}).get("names", NAMES_DEFAULT[key])
+        names[key] = yes_no(f"Send repository names {label}?", "y" if default else "n",
+                            f"Who could read them: {reader}.")
+    return names
 
 
 def _choose_connections(found: dict, has_tailscale: bool, current: dict):
@@ -1058,11 +1082,11 @@ def _start_fleet(key, tailnet, folder, repo, create, names) -> str:
     if folder:
         Path(folder).mkdir(parents=True, exist_ok=True)
     join_fleet(key=key, folder=folder or None, tailnet=tailnet, repo=repo or None, create_repo=create,
-               share_names=names)
+               names=names)
     return "joined"
 
 
-def _set_connections(current: dict, tailnet, folder, repo, create) -> str:
+def _set_connections(current: dict, tailnet, folder, repo, create, names=None) -> str:
     from Elaborate._fleet.cli import load_saved
     from Elaborate._fleet.setup_state import apply_transports
     from Special._settings.fleet import fleet_directory
@@ -1072,8 +1096,8 @@ def _set_connections(current: dict, tailnet, folder, repo, create) -> str:
     apply_transports(load_saved(directory), tailnet=tailnet, clear_tailnet=not tailnet,
                      folder=folder or None, clear_folder=not folder and "folder" in current,
                      repo=repo or None, create_repo=create, clear_repo=not repo and "repo" in current,
-                     directory=directory)
-    return "connected by " + ", ".join(_described(tailnet, folder, repo, create))
+                     directory=directory, names=names)
+    return "connected by " + ", ".join(_described(tailnet, folder, repo, create, names))
 
 
 def _browser_reach(found: dict, plan: Plan, over_tailscale: bool) -> None:
@@ -1261,17 +1285,20 @@ def app_running() -> bool:
     """Whether the app is running for this profile: it holds the fleet folder's lock. Only looks;
     no lock file yet means it is not running."""
     from Special._settings.fleet import fleet_directory
-    from Special._sync.lock import app_lock
+    from Special._sync.lock import PEER_LOCK, TRAY_LOCK, app_lock
     try:
         directory = fleet_directory()
-        if not (directory / "fleet-app.lock").exists():
-            return False
-        with app_lock(directory):
-            return False
-    except (ValueError, OSError):
-        return True
     except Exception:  # noqa: BLE001 - unreadable settings: say not running; never stop setup here
         return False
+    for name in (TRAY_LOCK, PEER_LOCK):  # a tray whose peer stopped is still running
+        if not (directory / name).exists():
+            continue
+        try:
+            with app_lock(directory, name):
+                pass
+        except (ValueError, OSError):
+            return True
+    return False
 
 
 def _start_app(wait: float = 5.0) -> str:

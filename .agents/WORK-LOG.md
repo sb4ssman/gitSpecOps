@@ -2782,3 +2782,21 @@ No code changed; decisions recorded where they govern.
   map follows), read it here in the terminal (`gitso machine check`), or not now (the default).
   "Running the app" keeps only start at sign-in.
 - `gitso machine check` shows "Reading Git status: N of M repositories" on screen while it reads.
+
+## 2026-11-15 18:40 - user (claude) - Names per connection; one tray per profile; why the peer stopped (branch wave/setup-protection)
+- **Names per connection** (the user's choice of defaults): each connection may carry its own
+  `names` (true/false) in the fleet settings; without one it follows the fleet-wide
+  `share_names`, so an existing fleet behaves as before. The report is built with names when
+  any connection carries them; the Tailscale report and each published copy (synced folder,
+  state repository) are stripped by their own connection's choice
+  (`Special/_sync/manifest.names_over`, `without_names`). Setup asks once per chosen
+  connection: Tailscale Yes, the synced folder No, the state repository No by default; the
+  review says "with names" or "ids only" for each.
+- **One tray per profile:** the tray holds its own lock (`tray.lock`) for its whole life; a
+  second start shows "already running" and leaves. Setup's running check looks at the tray's
+  lock as well as the peer's, so a tray whose peer stopped still counts as running.
+- **Why the peer stopped:** the tray's log records a reason code with `peer_stopped` (the log
+  takes numbers only): 0 none recorded, 1-4 the known causes, 9 anything else.
+- node1 and Prime were fast-forwarded to `main` at the user's permission (node1 was current).
+  On Prime, four dead launcher scripts from September were deleted (they ran folders that no
+  longer exist) and the unreferenced pre-rewrite objects were purged (reflog expire, gc).

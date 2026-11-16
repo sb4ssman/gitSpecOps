@@ -140,6 +140,9 @@ def validate(config: dict) -> dict:
             raise ValueError("the repo transport needs an owner/name")
         if int(repo.get("seconds", 0)) < 1:
             raise ValueError("repo transport interval must be positive")
+    for name, entry in transports.items():
+        if "names" in entry and not isinstance(entry["names"], bool):
+            raise ValueError(f"transport {name!r}: names must be true or false")
     tailnet = transports.get("tailnet")
     if tailnet and not 1024 <= int(tailnet.get("port") or 0) <= 65535:
         raise ValueError("tailnet port must be between 1024 and 65535")
@@ -196,5 +199,7 @@ def describe(config: dict) -> str:
 
 
 def shares_names(config: dict) -> bool:
-    """Whether this machine publishes readable names (manifest v5). On unless turned off."""
-    return config.get("share_names", True) is True
+    """Whether this machine publishes readable names anywhere (manifest v5): over any of its
+    connections. With no connections, the fleet-wide setting. On unless turned off."""
+    from Special._sync.manifest import names_anywhere
+    return names_anywhere(config)

@@ -239,6 +239,35 @@ def build_manifest(fleet_id: str, machine_id: str, machine_label: str, repositor
     return manifest
 
 
+def names_over(config: dict, transport: str) -> bool:
+    """Whether readable names go out over one connection: its own `names` setting, or the
+    fleet-wide `share_names` when it has none, so an existing fleet behaves as before."""
+    entry = (config.get("transports") or {}).get(transport) or {}
+    if "names" in entry:
+        return entry["names"] is True
+    return config.get("share_names", True) is True
+
+
+def names_anywhere(config: dict) -> bool:
+    """Whether any connection carries readable names; with none, the fleet-wide setting."""
+    transports = config.get("transports") or {}
+    if not transports:
+        return config.get("share_names", True) is True
+    return any(names_over(config, name) for name in transports)
+
+
+def without_names(manifest: dict) -> dict:
+    """The same manifest without readable names: what a connection that withholds names carries.
+    Identities, counts and freshness stay; only `name`, `branch` and `head` go."""
+    if not manifest.get("carries_names"):
+        return manifest
+    stripped = {**manifest, "carries_names": False,
+                "repositories": [{key: value for key, value in repo.items() if key not in NAME_KEYS}
+                                 for repo in manifest["repositories"]]}
+    validate_manifest(stripped)
+    return stripped
+
+
 def _validate_names(repo: dict, label: str) -> None:
     name = repo.get("name")
     if name is not None:

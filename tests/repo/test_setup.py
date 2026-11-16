@@ -345,14 +345,15 @@ class WalkthroughTests(unittest.TestCase):
             self.assertIn(text, out)
 
     def test_a_fleet_member_can_change_how_it_connects(self):
-        plan = self.area(self.walk.area_fleet, ["c", "y", "n", "n", "n"], tailscale="tailscale", tailnet=True,
+        plan = self.area(self.walk.area_fleet, ["c", "y", "n", "n", "y", "n"], tailscale="tailscale", tailnet=True,
                          fleet={"folder": {"path": "/sync/fleet"}})
-        self.assertEqual([c.review for c in plan.changes], ["Fleet: connect by Tailscale"])
+        self.assertEqual([c.review for c in plan.changes], ["Fleet: connect by Tailscale, with names"])
         self.assertIn("Let your other Tailscale devices, such as a phone, open", self.output.getvalue())
 
     def test_starting_a_fleet_over_tailscale(self):
         plan = self.area(self.walk.area_fleet, ["1", "y", "n", "n", "y", "n"], tailscale="tailscale", tailnet=True)
-        self.assertEqual([c.review for c in plan.changes], ["Fleet: start a fleet, connected by Tailscale"])
+        self.assertEqual([c.review for c in plan.changes],
+                         ["Fleet: start a fleet, connected by Tailscale, with names"])
 
     def test_the_state_repository_defaults_to_no(self):
         # Enter at the state repository question: experimental, so it is declined.
@@ -362,16 +363,26 @@ class WalkthroughTests(unittest.TestCase):
 
     def test_the_state_repository_is_created_only_when_chosen_and_says_experimental(self):
         with patch.object(self.walk, "_run", return_value=(1, "")):
-            plan = self.area(self.walk.area_fleet, ["1", "y", "n", "y", "", "y", "n"], tailscale="tailscale",
+            plan = self.area(self.walk.area_fleet, ["1", "y", "n", "y", "", "y", "", "n"], tailscale="tailscale",
                              tailnet=True)
-        self.assertIn("the state repository someone/gitspecops-state (create it, private; experimental)",
+        self.assertIn("the state repository someone/gitspecops-state (create it, private; experimental, ids only)",
                       plan.changes[0].review)
 
     def test_a_synced_folder_gets_a_folder_of_its_own(self):
-        plan = self.area(self.walk.area_fleet, ["1", "y", "1", "n", "y"], tailscale=None, tailnet=False,
+        plan = self.area(self.walk.area_fleet, ["1", "y", "1", "n", ""], tailscale=None, tailnet=False,
                          synced_folders=["/home/x/OneDrive"])
         expected = str(Path("/home/x/OneDrive") / "gitSpecOps fleet")
-        self.assertIn(f"a synced folder ({expected})", plan.changes[0].review)
+        self.assertIn(f"a synced folder ({expected}, ids only)", plan.changes[0].review)
+
+    def test_names_default_to_yes_over_tailscale_and_no_elsewhere(self):
+        # Enter at every names question: Tailscale with names, the folder and the repository without.
+        with patch.object(self.walk, "_run", return_value=(0, "")):
+            plan = self.area(self.walk.area_fleet, ["1", "y", "y", "1", "y", "", "", "", "", "n"],
+                             tailscale="tailscale", tailnet=True, synced_folders=["/home/x/OneDrive"])
+        review = plan.changes[0].review
+        self.assertIn("Tailscale, with names", review)
+        self.assertIn("gitSpecOps fleet, ids only)", review)
+        self.assertIn("existing; experimental, ids only)", review)
 
     def test_gitso_can_be_put_on_the_command_path_with_an_optional_alias(self):
         plan = self.area(self.walk.area_gitso, ["a", "y"])

@@ -61,20 +61,22 @@ def transports(value):
     obj(value, ("folder", "repo", "tailnet"))
     for name, entry in value.items():
         if name == "folder":
-            obj(entry, ("path", "seconds"), ("path",))
+            obj(entry, ("path", "seconds", "names"), ("path",))
             path(entry["path"])
         elif name == "repo":
-            obj(entry, ("name", "seconds"), ("name",))
+            obj(entry, ("name", "seconds", "names"), ("name",))
             require(isinstance(entry["name"], str) and re.fullmatch(
                 r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9._-]{1,100}", entry["name"]) is not None,
                 "invalid state repository name")
         else:
-            obj(entry, ("port", "allowed_login"), ("port",))
+            obj(entry, ("port", "allowed_login", "names"), ("port",))
             integer(entry["port"], 1024, 65535)
             if entry.get("allowed_login") is not None:
                 text(entry["allowed_login"])
         if "seconds" in entry:
             integer(entry["seconds"], 1)
+        if "names" in entry:
+            boolean(entry["names"])
 
 
 def baskets(value):

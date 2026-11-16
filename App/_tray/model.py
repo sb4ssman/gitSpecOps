@@ -130,6 +130,17 @@ def error_snapshot(url: str, label: str) -> Snapshot:
                     activity="idle", activity_text="cannot read the fleet dashboard")
 
 
+def failure_code(reason: str | None) -> int:
+    """The reason a peer stopped, as a number for the log, which takes numbers only: 0 none
+    recorded, 1-4 the known causes in KNOWN_FAILURES order, 9 anything else."""
+    if not reason:
+        return 0
+    for number, (_needles, message) in enumerate(KNOWN_FAILURES, 1):
+        if reason == message:
+            return number
+    return 9
+
+
 def failure_reason(error_line: str | None) -> str:
     """A start that failed says why for the known causes, and nothing raw ever."""
     text = (error_line or "").casefold()

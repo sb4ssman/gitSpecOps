@@ -53,9 +53,12 @@ Tailscale devices, and only those.
 
 **What crosses the wire.** Repositories are identified by `HMAC-SHA256(fleet key,
 host/owner/name)`, or for one with no usable remote, an HMAC of its root commit, so the only copy
-of something is still on the map. By default each record also names the repository, its branch
-and its commit, so every machine can show what the others hold. One setting (`--withhold-names`,
-or "no" during setup) turns that off. Never shared, either way: local paths, URLs, file names,
+of something is still on the map. A record can also name the repository, its branch and its
+commit, so every machine can show what the others hold, and that is chosen **per connection**:
+setup asks for each one, with Tailscale named by default (only your own devices) and a synced
+folder and the state repository carrying unnamed ids by default (their provider could read
+names). A fleet set up before this keeps its one fleet-wide setting (`--withhold-names` turns it
+off) until a connection is given its own. Never shared, either way: local paths, URLs, file names,
 diffs, commit messages or contents. A synced folder's provider can read whatever the status
 carries; setup says so beside the question. Details:
 [`.agents/knowledge/manifest-privacy.md`](../.agents/knowledge/manifest-privacy.md).
