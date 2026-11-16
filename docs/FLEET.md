@@ -216,6 +216,10 @@ gitso peer rescan
 
 Startup performs one inventory. Linux inotify or Windows `ReadDirectoryChangesW` then triggers
 targeted Git status checks only for changed repositories. There is no periodic repository scan.
+On Linux only the repositories and the folders leading to them are watched, since Linux allows a
+fixed number of watches (often about 120,000) and a large drive has more folders than that. If
+even that runs out, the app keeps running, rereads the library every 10 minutes, and says so on
+the page with the command that raises the limit.
 New checkouts raise a notice; `Elaborate/peer.py rescan` explicitly refreshes membership. The current peer
 runtime does not implement the retired host/client timestamp-heartbeat protocol; a quiet
 report's observation time can age even while its process remains reachable.
@@ -351,11 +355,18 @@ under a root, and remote branches deleted since the last fetch.
 ## Tray and start-at-sign-in
 
 ```sh
-gitso tray
+gitso tray            # start it on its own; while it runs: what it is doing and did last
+gitso tray --follow   # keep showing what it does (Ctrl+C stops following, not the app)
+gitso tray --open     # open the web view at the map
+gitso tray --stop     # quit it
 gitso start-at-sign-in status
 gitso start-at-sign-in enable
 gitso start-at-sign-in disable
 ```
+
+`gitso tray` starts the app on its own: on Windows, Windows itself starts it (WMI), hidden, so
+no terminal, setup window or Windows Terminal tab is its parent, and it lets go of any console it
+was given. `gitso tray` also says how the running app runs, and warns if a window is tied to it.
 
 The Windows tray reads the local display contract, opens the dashboard, requests a rescan,
 controls per-user start-at-sign-in, and can run the same read-only catch-up preview as the

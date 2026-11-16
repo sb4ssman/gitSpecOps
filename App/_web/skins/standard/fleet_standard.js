@@ -419,6 +419,9 @@ byId('collapse').onclick = () => {
 };
 byId('theme').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 for (const button of document.querySelectorAll('[data-tab]')) button.onclick = () => selectTab(button.dataset.tab);
+// An address ending in #map (gitso tray --open) or another tab's name opens at that tab.
+const startTab = location.hash.slice(1);
+if (['repositories', 'map', 'security', 'machines', 'about'].includes(startTab)) selectTab(startTab);
 
 setTheme(savedTheme());
 const connection = new FleetConnection();

@@ -37,6 +37,23 @@ def _duration(seconds: float) -> str:
     return f"{seconds // 3600} hours"
 
 
+def staleness_text(stale_seconds: float, transports: dict) -> str:
+    """When a machine counts as stale, said from the intervals chosen in setup (the user,
+    2026-11-16: the page's fixed wording did not match the choice)."""
+    if not transports:
+        return ("This machine is not in a fleet, so only its own report is shown. Setup's Fleet "
+                "step, or the App & setup tab, starts or joins one.")
+    ways = []
+    if "tailnet" in transports:
+        ways.append(f"over Tailscale every {_duration((transports['tailnet'] or {}).get('seconds') or 300)}")
+    for name, label in (("folder", "through the synced folder"), ("repo", "through the state repository")):
+        if transports.get(name, {}).get("seconds"):
+            ways.append(f"{label} every {_duration(transports[name]['seconds'])}")
+    checked = f"Machines check in {' and '.join(ways)}, as chosen in setup. " if ways else ""
+    return (f"{checked}A machine that has not reported for {_duration(stale_seconds)} (two missed "
+            "check-ins and a minute) is stale. Its last-known unfinished work stays visible.")
+
+
 def _cell(cell):
     if not cell.present:
         return {"present": False, "freshness": "absent", "state": "absent",
@@ -301,9 +318,8 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
         "notices": [{"id": "cached-refs", "tone": "neutral", "text": remote_notice},
                     {"id": "security-scope", "tone": "neutral",
                      "text": "Fleet status is not security clearance. Check security on a local repository for masked advice; commit/push actions must recheck current material."},
-                    {"id": "staleness", "tone": "warning",
-                     "text": f"A machine that has not reported for {_duration(stale_seconds)} is "
-                             "stale. Its last-known unfinished work stays visible."},
+                    {"id": "staleness", "tone": "warning" if transport_config else "neutral",
+                     "text": staleness_text(stale_seconds, transport_config)},
                     *basket_notices],
         "baskets": {"configured": bool(scopes),
                     "scopes": {scope: dict(scopes[scope]) for scope in scopes},

@@ -2898,3 +2898,27 @@ No code changed; decisions recorded where they govern.
   mapper is used only when asked for (--mapper), as the everything view.
 - Not yet explained: the empty window the user saw when starting the tray. Every program the
   tray runs already hides its window; the next start shows whether it still appears.
+
+## 2026-11-16 09:30 - user (claude) - Prime: a large drive stopped the app; joining a fleet; the tray's window; gitso tray controls (branch wave/prime-fixes)
+- Prime's web view spun at "putting this machine's state together" forever. Diagnosed on the
+  machine: the second library is a 2.7 TB NTFS drive; the Linux watcher walked every folder on it
+  (20 minutes cold), ran out of inotify watches (limit 123,237) and the peer stopped. The page's
+  server outlived the peer (the failure came before the loop's try/finally), so the page kept the
+  last state; the tray logged "peer_stopped exit_code 2" with no reason. The desktop's notice about
+  inotify capacity was the same exhaustion.
+  Now: Linux watches only the repositories and the folders leading to them; a limit reached keeps
+  the watches that fit, rereads the library every 10 minutes and says so on the page with the
+  sysctl command; a failure before the loop stops the page's server and says why.
+- "Not in a fleet": no two machines shared a fleet key (each had its own fleet id). The key was
+  printed with line wrapping, and setup dropped a pasted key that was not 64 characters with one
+  warning line. Setup now collects a key pasted in parts, asks again when it is wrong, prints the
+  key alone on one unwrapped line, and on Tailscale offers joining through a running machine
+  (no key to copy; that machine checks the Tailscale identity).
+- The stale notice names the check-in interval chosen in setup; outside a fleet it says so.
+- node1 (Windows 10) still had a console window tied to the tray. Not reachable to inspect (asleep).
+  Now Windows starts the tray hidden (Win32_ProcessStartup ShowWindow=0, checked on a console
+  Python: console present, window not visible), the tray started that way lets go of any console
+  (FreeConsole; checked: console gone, output still safe), and records how it runs, which
+  `gitso tray` reports, warning when a window is tied to it.
+- `gitso tray` while running: how it runs, what it is doing now, recent events in words;
+  --follow, --open (web view at the map), --stop (a quit request the tray sees within a second).
