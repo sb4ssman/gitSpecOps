@@ -42,6 +42,8 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
 - **The shelf lists gitSpecOps as an outside entry** (ruling 2026-11-15); the repository stays
   at its own home. Recording it is the shelf's job, not this repository's.
 - **Code signing** for release builds.
+- **A GUI installer app, eventually** (the user, 2026-11-16): setup as a window, for people who
+  will not open a terminal. Today: the terminal walkthrough, then the App & setup tab.
 
 ## Before the tray runs on any machine again (the 2026-11-15 window storm; see the work log)
 - **Prove it on the user's machine first, watched:** start the tray with the window fix, a
