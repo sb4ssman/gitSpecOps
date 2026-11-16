@@ -312,7 +312,7 @@ class WalkthroughTests(unittest.TestCase):
         plan = self.area(self.walk.area_fleet, ["t", "n"], tailscale="tailscale", tailnet=True,
                          fleet={"folder": {}})
         self.assertEqual([c.review for c in plan.changes], ["Fleet: operate over Tailscale"])
-        self.assertIn("Also open this machine's map in a browser", self.output.getvalue())
+        self.assertIn("Let your other Tailscale devices, such as a phone, open", self.output.getvalue())
 
     def test_starting_a_fleet_over_tailscale(self):
         plan = self.area(self.walk.area_fleet, ["1", "y", "y", "n"], tailscale="tailscale", tailnet=True)
@@ -405,7 +405,7 @@ class WalkthroughTests(unittest.TestCase):
         out = self.output.getvalue()
         self.assertEqual(out.count("Install "), 3)
         self.assertIn("Install trufflehog?", out)
-        self.assertNotIn("in every scan?", out)
+        self.assertNotIn("is already installed", out)
         self.assertEqual([c.title for c in plan.changes],
                          ["Install gitleaks", "Install trufflehog", "Scanners used"])
         self.assertIn("checks its SHA-256", plan.changes[1].review)
@@ -422,7 +422,7 @@ class WalkthroughTests(unittest.TestCase):
         from _build import release_install
         with patch.object(self.walk, "install_command", return_value=None),                 patch.object(release_install, "available", return_value=False):
             plan = self.area(self.walk.area_scanners, ["y"], gitleaks="gitleaks")
-        self.assertIn("gitleaks is already installed. Use it in every scan?", self.output.getvalue())
+        self.assertIn("gitleaks is already installed. Use it whenever gitSpecOps checks for", self.output.getvalue())
         self.assertEqual([c.review for c in plan.changes], ["Scanners used in scans: gitleaks"])
 
     def uninstall_found(self):

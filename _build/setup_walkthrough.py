@@ -759,7 +759,7 @@ def area_scanners(found: dict, plan: Plan) -> None:
             continue
         say()
         line(f"{name}: {about}", "muted")
-        if offer_install(plan, name, name, "Every scan will use it."):
+        if offer_install(plan, name, name, f"gitSpecOps will use it whenever it checks for secrets: {SCANS}."):
             installing.append(name)
     installed = [name for name in SCANNERS if found[name]]
     if not (installed or installing):
@@ -769,8 +769,8 @@ def area_scanners(found: dict, plan: Plan) -> None:
         return
     chosen = list(installing)
     for name in installed:
-        if yes_no(f"{name} is already installed. Use it in every scan?",
-                  "y" if name in found["engines"] or name == "gitleaks" else "n"):
+        if yes_no(f"{name} is already installed. Use it whenever gitSpecOps checks for secrets?",
+                  "y" if name in found["engines"] or name == "gitleaks" else "n", f"That is: {SCANS}."):
             chosen.append(name)
     chosen = [name for name in SCANNERS if name in chosen]
     if sorted(chosen) != sorted(found["engines"]):
@@ -863,6 +863,8 @@ def _schedule_archives() -> str:
     return "1st of each month, 09:00"
 
 
+SCANS = ("before a checked commit or push, in gitso scan and gitso history scan, and in the "
+         "app's Security tab")
 TAILSCALE_WHY = ("Your machines exchange repository status directly over your own tailnet, "
                  "and every machine's map shows the whole fleet. Nothing passes through anyone else.")
 
@@ -947,7 +949,12 @@ def area_fleet(found: dict, plan: Plan) -> None:
     if not (tailnet or folder):
         line("A fleet needs a way to share: Tailscale or a synced folder. Nothing will change.", "warning")
         return
-    names = yes_no("Share repository names, branches and commit counts with your machines?", "y")
+    names = yes_no(
+        "Show repository names on your other machines' maps?", "y",
+        "Yes: each map shows which repository is which, with its branch and commit. No: your machines "
+        "still see what is ahead, behind or unpushed, but as unnamed ids. Never shared either way: "
+        "folder paths, web addresses, file names, contents, commit messages. Over Tailscale this "
+        "stays between your own devices" + ("; the synced folder's provider can read it." if folder else "."))
     ways = " and ".join(w for w in ("Tailscale" if tailnet else "", f"a synced folder ({folder})" if folder else "") if w)
     plan.add("Fleet", f"Fleet: {'join' if key else 'start'} a fleet, operating over {ways}",
              lambda: (join_fleet(key=key, folder=folder or None, tailnet=tailnet, share_names=names), "joined")[1])
@@ -960,9 +967,11 @@ def _browser_reach(found: dict, plan: Plan, over_tailscale: bool) -> None:
     from Special._sync.enrollment import set_presentation
     now = found["web"] == "tailnet"
     want = over_tailscale and yes_no(
-        "Also open this machine's map in a browser on your other Tailscale devices?", "y" if now else "n",
-        "For a phone, or a computer without gitSpecOps. Your fleet machines do not need this; each "
-        "shows the fleet on its own map. Only devices in your own tailnet can reach it.")
+        "Let your other Tailscale devices, such as a phone, open this machine's map in a browser?",
+        "y" if now else "n",
+        "Nothing opens by itself: the map is served at this machine's Tailscale address, port 8770, "
+        "for your devices to visit when you choose. Your fleet machines do not need this; each shows "
+        "the fleet on its own map. Only devices in your own tailnet can reach it.")
     if want != now:
         web = "tailnet" if want else "loopback"
         plan.add("Map in a browser", "Map in a browser: " + ("this computer and your Tailscale devices" if want

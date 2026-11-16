@@ -2753,3 +2753,15 @@ No code changed; decisions recorded where they govern.
   the gitso command), Special (this machine, protection, scanners, archives), Elaborate (fleet),
   App (the desktop app, the desktop Git app, running the app). Every "step N" is computed from
   that order. Uninstall shows and removes in the reverse order.
+
+## 2026-11-15 17:10 - user (claude) - Setup's scanner, names and browser questions say what they mean (branch wave/setup-protection)
+- "Use it in every scan?" now says which scans: before a checked commit or push, gitso scan and
+  history scan, and the app's Security tab.
+- The names question says what Yes and No show on the other maps, what is never shared, and who
+  can read it (only the user's devices over Tailscale; the provider of a synced folder).
+- The browser question no longer reads as if it opens browsers: it lets the user's other
+  Tailscale devices visit the map at this machine's Tailscale address, port 8770.
+- Correction to the incident entry above: the peer does one full inventory at startup, then
+  status checks only for repositories whose files change, and a read-only fetch of every
+  repository every 15 minutes (the first a minute after start). There is no periodic full scan.
+- The user's larger setup design questions are recorded in WORKING-NOTES.
