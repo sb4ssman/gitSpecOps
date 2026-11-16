@@ -72,7 +72,7 @@ def _root_specs(args, config, app=None):
 
 def suggest_sync(args) -> int:
     from Special._security._advice import inspect_paths, render_advice
-    from Special._sync.advice import render_table
+    from Special._sync.advice import library_tree, render_table
     from Special._sync.config import load_branches, load_catalog, load_config, merge_catalog, save_catalog
     from Special._sync.manifest import build_manifest, fleet_id_for, new_fleet_secret
     from Special._sync.observer import observe_roots
@@ -125,9 +125,16 @@ def suggest_sync(args) -> int:
 
     def show():
         from Basic._station import line, notice, say
-        say()
-        for text in render_table(manifest, merged, branches, security=security).splitlines():
-            line(text)
+        if args.security:
+            say()
+            for text in render_table(manifest, merged, branches, security=security).splitlines():
+                line(text)
+        else:
+            for text, tone in library_tree([spec.path for spec in specs], observation, everything=args.all):
+                line(text, tone) if text else say()
+            if not args.all:
+                say()
+                line("Clean repositories are counted, not listed: add --all to list every one.", "muted")
         say()
         if args.security:
             for text in render_advice(security).splitlines():
@@ -156,6 +163,8 @@ def suggest_sync_main(argv=None) -> int:
     parser.add_argument("--fetch-workers", type=int, default=DEFAULT_FETCH_WORKERS)
     parser.add_argument("--fetch-timeout", type=int, default=DEFAULT_FETCH_TIMEOUT_SECONDS)
     parser.add_argument("--no-catalog", action="store_true", help="do not update the local catalog")
+    parser.add_argument("--all", action="store_true",
+                        help="list every repository on the screen, not only those that need something")
     parser.add_argument("--security", action="store_true",
                         help="also check every working file and the outgoing history for secrets and "
                              "protected values (slow: about 20 seconds a repository)")

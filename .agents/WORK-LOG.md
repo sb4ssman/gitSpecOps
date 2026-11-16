@@ -2833,3 +2833,12 @@ No code changed; decisions recorded where they govern.
   181 repositories, read-only. The screen says how to check secrets when it was not asked for.
 - The agent's own timing run of the old behaviour outlived its 10-minute limit and moved to the
   background; it was stopped at once and nothing was left running.
+
+## 2026-11-15 21:10 - user (claude) - machine check on screen: library, folder, repository (branch wave/machine-check-table)
+- On the user's library (188 checkouts) the four-column table was wider than the terminal and
+  wrapped into rows of dashes, with "security unchecked;" on every row. On screen, `gitso
+  machine check` now groups by library folder, then the folder inside it, then the repositories
+  that need something, with a count per folder (`library_tree`); `--all` lists the clean ones
+  too. The JSON output, and the table with `--security`, are unchanged.
+- The user's ideas for the fleet view (organise by where things live, the master list and the
+  network library, the folder mapper as an optional view) are recorded in WORKING-NOTES.
