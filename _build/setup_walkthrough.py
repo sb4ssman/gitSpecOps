@@ -16,8 +16,10 @@ Status:       working
 
 Screens follow the station script design (.agents/knowledge/station-script-design.md). Every
 area offers the same answers: yes, no, or stop (nothing changes). Run again, each area shows what
-is already set and asks whether to keep or change it. The fleet's status repository is
-experimental and untested, so setup does not offer it.
+is already set and asks whether to keep or change it. The fleet's state repository is
+experimental and untested: setup offers it, says so, and its answer defaults to no. After the
+review is applied, setup asks whether to read the library now (the first scan); nothing starts
+unless the person chooses it.
 """
 from __future__ import annotations
 
@@ -88,7 +90,6 @@ class Plan:
     uv_after: bool = False
     venv_after: bool = False
     desktop_after: bool = False  # the tray app (Qt) will be installed
-    start_app: bool = False      # start the tray app as the last step
 
     def add(self, title, review, apply, loud=False):
         self.changes.append(Change(title, review, apply, loud))
@@ -522,10 +523,8 @@ def area_app(found: dict, plan: Plan) -> None:
     if found.get("app_running"):
         line("The app is running. To use what setup changes, quit it from its tray menu and start it "
              "again (gitso tray).", "muted")
-    elif yes_no("Start the app when setup finishes?", "y",
-                "The last step, whether or not every other step succeeds. Its icon appears by the clock "
-                "(Windows may tuck it under the ^ arrow); double-click it for your map."):
-        plan.start_app = True
+    else:
+        line("Starting it is offered once setup has applied your choices: the first scan.", "muted")
 
 
 def _sign_in_choice(plan: Plan, state: str, where: str) -> None:
@@ -865,43 +864,53 @@ def _schedule_archives() -> str:
 
 SCANS = ("before a checked commit or push, in gitso scan and gitso history scan, and in the "
          "app's Security tab")
-TAILSCALE_WHY = ("Your machines exchange repository status directly over your own tailnet, "
-                 "and every machine's map shows the whole fleet. Nothing passes through anyone else.")
+
+
+CONNECTIONS = (  # (name, what kind, what it does): the list and each question use the same words
+    ("Tailscale", "Live",
+     "Your machines pull each other's status every 30 seconds, directly, between your own devices."),
+    ("A synced folder", "In between",
+     "A small status file every 5 minutes, in a folder a sync service already copies to your "
+     "machines: OneDrive, Syncthing, an Obsidian Sync vault and others. The service's provider can "
+     "read the file."),
+    ("A GitHub state repository", "Durable, kept while every machine is off; experimental and untested",
+     "A private repository written through your gh sign-in. GitHub can read it."),
+)
+FLEET_FOLDER = "gitSpecOps fleet"
 
 
 def area_fleet(found: dict, plan: Plan) -> None:
-    from Elaborate._fleet.setup_state import join_fleet, leave_fleet
+    from Elaborate._fleet.setup_state import leave_fleet
     screen("Fleet")
     has_tailscale = bool(found["tailscale"] or found["tailnet"])
-    over_tailscale = "tailnet" in found["fleet"]
+    current = found["fleet"]
     row("Tailscale", "connected" if found["tailnet"] else "installed, not connected" if found["tailscale"]
         else "not installed (optional)", "success" if found["tailnet"] else "text")
     row("Synced folders", ", ".join(found["synced_folders"]) or "none found")
-    if found["fleet"]:
-        ways = [{"tailnet": "Tailscale", "folder": "a synced folder"}.get(w, w) for w in found["fleet"]]
-        row("This machine", "in a fleet, over " + " and ".join(ways), "success")
+    if current:
+        row("This machine", "in a fleet, connected by " + ", ".join(_connection_names(current)), "success")
     else:
         row("This machine", "on its own")
-    line("A fleet is your machines watching each other: every machine's map shows every copy of "
-         "every repository. Machines share names, branches and counts only; never file contents or "
-         "folder paths. They share over Tailscale, a synced folder, or both; Tailscale is optional. "
-         "Experimental and untested: a status repository on GitHub (not offered here).", "muted")
+    line("A fleet is your machines watching each other: every machine's map shows every copy of every "
+         "repository. Never shared: file contents, folder paths, web addresses, commit messages. "
+         "Machines connect in up to three ways; choose any combination, each is another place a "
+         "machine leaves its last report:", "muted")
+    for name, kind, about in CONNECTIONS:
+        bullet(f"{name}. {kind}. {about}", "muted")
     if not has_tailscale:
         line(f"Tailscale is free for personal use: {HOME_PAGES['tailscale']}. Run setup again after "
-             "installing it to operate over it.", "muted")
+             "installing it to connect over it.", "muted")
     if not plan.enrolled_after:
         line(f"A fleet needs a library folder on this machine ({step('This machine')}).", "warning")
         return
     say()
-    if found["fleet"]:
+    if current:
         option("K", "Keep the fleet as it is")
-        if has_tailscale:
-            option("T", "Stop operating over Tailscale" if over_tailscale else "Operate over Tailscale",
-                   "" if over_tailscale else TAILSCALE_WHY)
+        option("C", "Change how this machine connects", "Tailscale, a synced folder, the state repository.")
         option("S", "Show this machine's fleet key", "To add another machine. It appears in this window only.")
         option("L", "Leave the fleet", "This machine keeps its libraries and map.")
         option("0", "Stop the walkthrough", "Nothing has been changed.")
-        answer = choose("k" + ("t" if has_tailscale else "") + "sl0", "k")
+        answer = choose("kcsl0", "k")
         if answer == "0":
             raise Stop
         if answer == "s":
@@ -914,14 +923,21 @@ def area_fleet(found: dict, plan: Plan) -> None:
             plan.add("Fleet", "Fleet: leave (this machine keeps its libraries)", lambda: (leave_fleet(), "left")[1])
             _browser_reach(found, plan, False)
             return
-        elif answer == "t":
-            on = not over_tailscale
-            others = [w for w in found["fleet"] if w != "tailnet"]
-            plan.add("Fleet", "Fleet: " + ("operate over Tailscale" if on else "stop operating over Tailscale"
-                                           + ("" if others else "; this machine leaves the fleet")),
-                     lambda: _tailscale_transport(on))
-            over_tailscale = on
-        _browser_reach(found, plan, over_tailscale)
+        elif answer == "c":
+            chosen = _choose_connections(found, has_tailscale, current)
+            if chosen is None:
+                return
+            tailnet, folder, repo, create = chosen
+            if not (tailnet or folder or repo):
+                plan.add("Fleet", "Fleet: no connections left; this machine leaves the fleet",
+                         lambda: (leave_fleet(), "left")[1])
+                _browser_reach(found, plan, False)
+                return
+            plan.add("Fleet", "Fleet: connect by " + ", ".join(_described(tailnet, folder, repo, create)),
+                     lambda: _set_connections(current, tailnet, folder, repo, create))
+            _browser_reach(found, plan, tailnet)
+            return
+        _browser_reach(found, plan, "tailnet" in current)
         return
     option("1", "Start a fleet with this machine", "Then add your other machines with this machine's key.")
     option("2", "Join a fleet", "Needs the key shown on a machine already in the fleet.")
@@ -938,27 +954,126 @@ def area_fleet(found: dict, plan: Plan) -> None:
         if len(key) != 64:
             line("A fleet key is 64 characters; nothing will be joined. Run setup again with the key.", "warning")
             return
-    tailnet = has_tailscale and yes_no("Let gitSpecOps operate over Tailscale?", "y", TAILSCALE_WHY)
-    if tailnet and not found["tailnet"]:
-        line("Tailscale is installed but not connected; sign in to Tailscale for your machines to "
-             "see each other.", "warning")
-    folder = ""
-    if found["synced_folders"] and yes_no("Also share through a synced folder?", "n" if tailnet else "y",
-                                          "One small status file there every 5 minutes; the folder's provider can read it."):
-        folder = found["synced_folders"][0]
-    if not (tailnet or folder):
-        line("A fleet needs a way to share: Tailscale or a synced folder. Nothing will change.", "warning")
+    chosen = _choose_connections(found, has_tailscale, {})
+    if chosen is None:
         return
+    tailnet, folder, repo, create = chosen
+    if not (tailnet or folder or repo):
+        line("A fleet needs at least one connection. Nothing will change.", "warning")
+        return
+    readers = ["your own devices" if tailnet else "", "the synced folder's provider" if folder else "",
+               "GitHub" if repo else ""]
     names = yes_no(
         "Show repository names on your other machines' maps?", "y",
         "Yes: each map shows which repository is which, with its branch and commit. No: your machines "
         "still see what is ahead, behind or unpushed, but as unnamed ids. Never shared either way: "
-        "folder paths, web addresses, file names, contents, commit messages. Over Tailscale this "
-        "stays between your own devices" + ("; the synced folder's provider can read it." if folder else "."))
-    ways = " and ".join(w for w in ("Tailscale" if tailnet else "", f"a synced folder ({folder})" if folder else "") if w)
-    plan.add("Fleet", f"Fleet: {'join' if key else 'start'} a fleet, operating over {ways}",
-             lambda: (join_fleet(key=key, folder=folder or None, tailnet=tailnet, share_names=names), "joined")[1])
+        "folder paths, web addresses, file names, contents, commit messages. Who can read the names: "
+        + ", ".join(r for r in readers if r) + ".")
+    ways = ", ".join(_described(tailnet, folder, repo, create))
+    plan.add("Fleet", f"Fleet: {'join' if key else 'start'} a fleet, connected by {ways}",
+             lambda: _start_fleet(key, tailnet, folder, repo, create, names))
     _browser_reach(found, plan, tailnet)
+
+
+def _connection_names(transports: dict) -> list[str]:
+    return [{"tailnet": "Tailscale", "folder": "a synced folder",
+             "repo": "the state repository (experimental)"}.get(name, name) for name in transports]
+
+
+def _described(tailnet, folder, repo, create) -> list[str]:
+    return [part for part in (
+        "Tailscale" if tailnet else "",
+        f"a synced folder ({folder})" if folder else "",
+        (f"the state repository {repo} ({'create it, private' if create else 'existing'}; experimental)"
+         if repo else "")) if part]
+
+
+def _choose_connections(found: dict, has_tailscale: bool, current: dict):
+    """Ask about each connection. Returns (tailnet, folder, repo, create_repo), or None to stop."""
+    say()
+    tailnet = has_tailscale and yes_no("Connect over Tailscale?", "y" if not current or "tailnet" in current
+                                       else "n", f"{CONNECTIONS[0][1]}. {CONNECTIONS[0][2]}")
+    if tailnet and not found["tailnet"]:
+        line("Tailscale is installed but not connected; sign in to Tailscale for your machines to see "
+             "each other.", "warning")
+    folder = (current.get("folder") or {}).get("path", "")
+    if yes_no("Connect through a synced folder?", "y" if folder or (not current and not tailnet) else "n",
+              f"{CONNECTIONS[1][1]}. {CONNECTIONS[1][2]}"):
+        folder = _pick_synced_folder(found, folder)
+    else:
+        folder = ""
+    repo, create = (current.get("repo") or {}).get("name", ""), False
+    if found.get("gh_signed_in") and yes_no(
+            "Also keep status in a GitHub state repository? Experimental and untested.",
+            "y" if repo else "n", f"Kept while every machine is off. {CONNECTIONS[2][2]} Say no unless "
+            "you want to test it."):
+        repo, create = _pick_state_repo(found, repo)
+    elif not found.get("gh_signed_in"):
+        line("The state repository needs a GitHub sign-in (step 1); not offered.", "muted")
+        repo = ""
+    else:
+        repo = ""
+    return bool(tailnet), folder, repo, create
+
+
+def _pick_synced_folder(found: dict, current: str) -> str:
+    """A folder of its own inside a synced folder: setup creates it when the change is applied."""
+    roots = found["synced_folders"]
+    say()
+    for number, root in enumerate(roots, 1):
+        option(str(number), str(Path(root) / FLEET_FOLDER), f"A new folder inside {root}.")
+    option("P", "Another folder, by its path", "Any folder your sync service copies, such as one in an "
+           "Obsidian Sync vault. It must already exist.")
+    keys = "".join(str(n) for n in range(1, min(len(roots), 9) + 1)) + "p"
+    default = "1" if roots else "p"
+    if current:
+        line(f"Now: {current}. Enter keeps it.", "muted")
+        answer = ask(f"Choose [{'Enter' if current else default.upper()}]:", "")
+        if not answer:
+            return current
+    else:
+        answer = choose(keys, default)
+    if answer.lower() == "p":
+        path = ask("Folder path:")
+        return path if path and Path(path).expanduser().is_dir() else ""
+    if answer.isdigit() and 1 <= int(answer) <= len(roots):
+        return str(Path(roots[int(answer) - 1]) / FLEET_FOLDER)
+    return ""
+
+
+def _pick_state_repo(found: dict, current: str) -> tuple[str, bool]:
+    """owner/name, and whether to create it. The suggestion creates nothing until applied."""
+    suggestion = current or f"{found.get('gh_login') or 'you'}/gitspecops-state"
+    name = ask(f"Repository [{suggestion}]:", suggestion)
+    exists = _run(["gh", "repo", "view", name, "--json", "name"])[0] == 0
+    if exists:
+        line(f"{name} exists: it is used only if it is private and you can write to it.", "muted")
+        return name, False
+    line(f"{name} does not exist yet: it will be created, private, when you apply.", "muted")
+    return name, True
+
+
+def _start_fleet(key, tailnet, folder, repo, create, names) -> str:
+    from Elaborate._fleet.setup_state import join_fleet
+    if folder:
+        Path(folder).mkdir(parents=True, exist_ok=True)
+    join_fleet(key=key, folder=folder or None, tailnet=tailnet, repo=repo or None, create_repo=create,
+               share_names=names)
+    return "joined"
+
+
+def _set_connections(current: dict, tailnet, folder, repo, create) -> str:
+    from Elaborate._fleet.cli import load_saved
+    from Elaborate._fleet.setup_state import apply_transports
+    from Special._settings.fleet import fleet_directory
+    if folder:
+        Path(folder).mkdir(parents=True, exist_ok=True)
+    directory = fleet_directory()
+    apply_transports(load_saved(directory), tailnet=tailnet, clear_tailnet=not tailnet,
+                     folder=folder or None, clear_folder=not folder and "folder" in current,
+                     repo=repo or None, create_repo=create, clear_repo=not repo and "repo" in current,
+                     directory=directory)
+    return "connected by " + ", ".join(_described(tailnet, folder, repo, create))
 
 
 def _browser_reach(found: dict, plan: Plan, over_tailscale: bool) -> None:
@@ -977,15 +1092,6 @@ def _browser_reach(found: dict, plan: Plan, over_tailscale: bool) -> None:
         plan.add("Map in a browser", "Map in a browser: " + ("this computer and your Tailscale devices" if want
                                                              else "this computer only"),
                  lambda: str(set_presentation(face=found["face"], web=web)["web"]))
-
-
-def _tailscale_transport(on: bool) -> str:
-    from Elaborate._fleet.cli import load_saved
-    from Elaborate._fleet.setup_state import apply_transports
-    from Special._settings.fleet import fleet_directory
-    directory = fleet_directory()
-    apply_transports(load_saved(directory), tailnet=on, clear_tailnet=not on, directory=directory)
-    return "over Tailscale" if on else "not over Tailscale"
 
 
 # --------------------------------------------------------------------------- review and apply
@@ -1235,15 +1341,45 @@ def walkthrough(detector=detect, only: int | None = None) -> int:
         except Stop:
             notice("Walkthrough stopped", "Nothing has been changed.", "warning")
             return 0
-        if plan.start_app:  # last, so it starts with everything else in place
-            plan.add("Start the app", "Start the app (tray icon and map) after the other steps", _start_app)
         answer = review(plan, found["enrolled"], "Back to the start of the walkthrough" if only is None
                         else f"Back to the start of {AREAS[only]}")
         if answer == "b":
             continue
-        if answer != "apply":
-            if plan.changes:
-                notice("Cancelled", "Nothing has been changed.", "warning")
+        if answer != "apply" and plan.changes:
+            notice("Cancelled", "Nothing has been changed.", "warning")
             return 0
-        ok = apply(plan)
+        ok = apply(plan) if answer == "apply" else True
+        if only is None:
+            first_scan(plan)
         return 0 if ok else 1
+
+
+def first_scan(plan: Plan) -> None:
+    """After setup: read the library now? Always asked, never automatic; nothing starts on No."""
+    if not plan.enrolled_after:
+        return
+    banner("Setup  /  First scan", tagline=True)
+    line("gitSpecOps reads the Git status of every repository in your library folders. It is "
+         "read-only: nothing in them changes, and nothing is fetched. Nothing starts until you choose.",
+         "muted")
+    running = app_running()
+    app = plan.desktop_after and not running
+    say()
+    if running:
+        line("The app is running: it already watches your library. Double-click its tray icon for the map.",
+             "success")
+    if app:
+        option("A", "Start the app", "It reads your library, then keeps watching it. Double-click its tray "
+               "icon (by the clock, or under the ^ arrow) for the map; quit it from the tray menu.")
+    option("T", "Read it here, in this terminal", "Each repository as it is read, then what each one "
+           "needs. Nothing keeps running afterwards.")
+    option("N", "Not now", "Later: gitso machine check, or gitso tray for the app.")
+    answer = choose(("a" if app else "") + "tn", "n")
+    if answer == "a":
+        try:
+            line(_start_app(), "success")
+        except RuntimeError as exc:
+            line(str(exc), "error")
+    elif answer == "t":
+        python = VENV_PYTHON if VENV_PYTHON.exists() else Path(sys.executable)
+        subprocess.call([str(python), str(ROOT / "gitso.py"), "machine", "check"], cwd=ROOT)

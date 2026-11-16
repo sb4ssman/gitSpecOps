@@ -249,7 +249,7 @@ class WalkthroughTests(unittest.TestCase):
         return plan
 
     def test_start_at_sign_in_turned_off_elsewhere_is_shown_and_can_be_turned_back_on(self):
-        plan = self.area(self.walk.area_app, ["t", "n"], login="elsewhere", login_elsewhere="Task Manager (Startup apps)")
+        plan = self.area(self.walk.area_app, ["t"], login="elsewhere", login_elsewhere="Task Manager (Startup apps)")
         out = self.output.getvalue()
         self.assertIn("off: turned off in Task Manager (Startup apps)", out)
         self.assertIn("[T] Turn it back on", out)
@@ -257,30 +257,59 @@ class WalkthroughTests(unittest.TestCase):
                          ["Start at sign-in: turn it back on in Task Manager (Startup apps)"])
 
     def test_start_at_sign_in_can_be_removed(self):
-        plan = self.area(self.walk.area_app, ["r", "n"], login="on")
+        plan = self.area(self.walk.area_app, ["r"], login="on")
         self.assertEqual([c.review for c in plan.changes], ["Start at sign-in: remove the entry"])
 
     def test_keeping_start_at_sign_in_changes_nothing(self):
-        self.assertEqual(self.area(self.walk.area_app, ["", "n"], login="on").changes, [])
+        self.assertEqual(self.area(self.walk.area_app, [""], login="on").changes, [])
 
-    def test_starting_the_app_is_offered_and_is_the_last_step(self):
-        with patch("builtins.input", side_effect=["", "y", "0"]):
-            self.walk.walkthrough(detector=lambda: self.found(), only=self.walk.AREAS.index("Running the app"))
+    def first_scan(self, answers, enrolled=True, desktop=True, running=False):
+        plan = self.walk.Plan(enrolled_after=enrolled, desktop_after=desktop)
+        with patch.object(self.walk, "app_running", return_value=running), \
+                patch.object(self.walk, "_start_app", return_value="running") as start, \
+                patch.object(self.walk.subprocess, "call", return_value=0) as call, \
+                patch("builtins.input", side_effect=answers):
+            self.walk.first_scan(plan)
+        return start, call
+
+    def test_the_first_scan_is_asked_and_nothing_starts_by_default(self):
+        start, call = self.first_scan([""])
         out = self.output.getvalue()
-        self.assertIn("Start the app when setup finishes?", out)
-        bullets = [line for line in out.splitlines() if line.strip().startswith(". ")]
-        self.assertIn("Start the app (tray icon and map)", bullets[-1])
+        self.assertIn("Setup  /  First scan", out)
+        self.assertIn("[A] Start the app", out)
+        self.assertIn("[T] Read it here, in this terminal", out)
+        start.assert_not_called()
+        call.assert_not_called()
 
-    def test_a_running_app_is_not_started_again(self):
-        plan = self.area(self.walk.area_app, [""], login="on", app_running=True)
-        self.assertFalse(plan.start_app)
+    def test_the_first_scan_in_the_terminal_runs_machine_check(self):
+        start, call = self.first_scan(["t"])
+        self.assertEqual(call.call_args.args[0][-2:], ["machine", "check"])
+        start.assert_not_called()
+
+    def test_the_first_scan_with_the_app_starts_it(self):
+        start, call = self.first_scan(["a"])
+        start.assert_called_once()
+        call.assert_not_called()
+
+    def test_without_the_desktop_app_the_first_scan_offers_the_terminal_only(self):
+        self.first_scan([""], desktop=False)
+        self.assertNotIn("[A] Start the app", self.output.getvalue())
+
+    def test_without_a_library_there_is_no_first_scan(self):
+        self.first_scan([], enrolled=False)
+        self.assertNotIn("First scan", self.output.getvalue())
+
+    def test_a_running_app_is_not_offered_again(self):
+        self.area(self.walk.area_app, [""], login="on", app_running=True)
         self.assertIn("The app is running", self.output.getvalue())
+        start, _call = self.first_scan([""], running=True)
+        self.assertIn("it already watches your library", self.output.getvalue())
+        start.assert_not_called()
 
     def test_without_the_desktop_app_there_is_no_app_to_start(self):
         plan = self.walk.Plan(enrolled_after=True, venv_after=True, desktop_after=False)
         with patch("builtins.input", side_effect=[]):
             self.walk.area_app(self.found(), plan)
-        self.assertFalse(plan.start_app)
         self.assertIn("needs the desktop app (step 8)", self.output.getvalue())
 
     def test_the_app_is_checked_to_be_still_running_after_it_starts(self):
@@ -306,17 +335,43 @@ class WalkthroughTests(unittest.TestCase):
         self.area(self.walk.area_fleet, ["n"], tailscale=None, tailnet=False)
         out = self.output.getvalue()
         self.assertIn("not installed (optional)", out)
-        self.assertNotIn("operate over Tailscale?", out)
+        self.assertNotIn("Connect over Tailscale?", out)
 
-    def test_a_fleet_member_can_start_operating_over_tailscale(self):
-        plan = self.area(self.walk.area_fleet, ["t", "n"], tailscale="tailscale", tailnet=True,
-                         fleet={"folder": {}})
-        self.assertEqual([c.review for c in plan.changes], ["Fleet: operate over Tailscale"])
+    def test_the_fleet_step_describes_all_three_connections(self):
+        self.area(self.walk.area_fleet, ["n"], tailscale="tailscale", tailnet=True)
+        out = " ".join(self.output.getvalue().split())
+        for text in ("Tailscale. Live.", "A synced folder. In between.", "Obsidian Sync vault",
+                     "A GitHub state repository. Durable", "experimental and untested."):
+            self.assertIn(text, out)
+
+    def test_a_fleet_member_can_change_how_it_connects(self):
+        plan = self.area(self.walk.area_fleet, ["c", "y", "n", "n", "n"], tailscale="tailscale", tailnet=True,
+                         fleet={"folder": {"path": "/sync/fleet"}})
+        self.assertEqual([c.review for c in plan.changes], ["Fleet: connect by Tailscale"])
         self.assertIn("Let your other Tailscale devices, such as a phone, open", self.output.getvalue())
 
     def test_starting_a_fleet_over_tailscale(self):
-        plan = self.area(self.walk.area_fleet, ["1", "y", "y", "n"], tailscale="tailscale", tailnet=True)
-        self.assertEqual([c.review for c in plan.changes], ["Fleet: start a fleet, operating over Tailscale"])
+        plan = self.area(self.walk.area_fleet, ["1", "y", "n", "n", "y", "n"], tailscale="tailscale", tailnet=True)
+        self.assertEqual([c.review for c in plan.changes], ["Fleet: start a fleet, connected by Tailscale"])
+
+    def test_the_state_repository_defaults_to_no(self):
+        # Enter at the state repository question: experimental, so it is declined.
+        plan = self.area(self.walk.area_fleet, ["1", "y", "n", "", "y", "n"], tailscale="tailscale", tailnet=True)
+        self.assertNotIn("state repository", plan.changes[0].review)
+        self.assertIn("Experimental and untested.", " ".join(self.output.getvalue().split()))
+
+    def test_the_state_repository_is_created_only_when_chosen_and_says_experimental(self):
+        with patch.object(self.walk, "_run", return_value=(1, "")):
+            plan = self.area(self.walk.area_fleet, ["1", "y", "n", "y", "", "y", "n"], tailscale="tailscale",
+                             tailnet=True)
+        self.assertIn("the state repository someone/gitspecops-state (create it, private; experimental)",
+                      plan.changes[0].review)
+
+    def test_a_synced_folder_gets_a_folder_of_its_own(self):
+        plan = self.area(self.walk.area_fleet, ["1", "y", "1", "n", "y"], tailscale=None, tailnet=False,
+                         synced_folders=["/home/x/OneDrive"])
+        expected = str(Path("/home/x/OneDrive") / "gitSpecOps fleet")
+        self.assertIn(f"a synced folder ({expected})", plan.changes[0].review)
 
     def test_gitso_can_be_put_on_the_command_path_with_an_optional_alias(self):
         plan = self.area(self.walk.area_gitso, ["a", "y"])

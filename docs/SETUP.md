@@ -20,8 +20,12 @@ Setup's menu:
 1. **Walk me through everything.** It finds what this computer already has and asks about each
    part, built up in gitSpecOps' own order: Basic (Git, the GitHub CLI and its sign-in, the
    `gitso` command), Special (library folders, protected values, secret scanners, archives),
-   Elaborate (a fleet, over Tailscale or a synced folder), then the App (the desktop app, a
-   desktop Git app, starting it). Nothing changes until you have reviewed the whole list.
+   Elaborate (a fleet: Tailscale, a synced folder, and the experimental state repository, which
+   defaults to no), then the App (the desktop app, a desktop Git app, start at sign-in). Nothing
+   changes until you have reviewed the whole list. Afterwards it asks about a **first scan**:
+   start the app, which reads your library and shows the map; read it right there in the
+   terminal (`gitso machine check`, with progress); or not now, the default. Nothing starts
+   unless you choose it.
 2. **Set up one part.** Any one of those ten parts on its own: set it up, change it, or repair
    it. It shows what is there now, and nothing changes until you review it.
 3. **Use the commands without installing anything.** Any Basic, Special or Elaborate command,

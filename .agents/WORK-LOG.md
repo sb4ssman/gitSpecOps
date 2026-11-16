@@ -2765,3 +2765,20 @@ No code changed; decisions recorded where they govern.
   status checks only for repositories whose files change, and a read-only fetch of every
   repository every 15 minutes (the first a minute after start). There is no periodic full scan.
 - The user's larger setup design questions are recorded in WORKING-NOTES.
+
+## 2026-11-15 17:50 - user (claude) - Setup: the three fleet connections, the state repository (experimental, default no), the first scan (branch wave/setup-protection)
+- The Fleet step describes the three connections side by side: Tailscale (live, every 30
+  seconds), a synced folder (in between, every 5 minutes; OneDrive, Syncthing, an Obsidian Sync
+  vault and others; the provider can read it), the GitHub state repository (durable; experimental
+  and untested). Each is asked; the state repository's answer defaults to no, as the user ruled.
+  It suggests `owner/gitspecops-state`, uses an existing one only if private and writable, and
+  creates a missing one, private, only when the review is applied.
+- A synced folder gets a folder of its own (`gitSpecOps fleet`) inside the synced folder, made
+  when applied, or any existing folder the user names. A fleet member can now change how it
+  connects (replacing the Tailscale-only switch).
+- The names question says who can read the names: the user's own devices, the folder's
+  provider, GitHub.
+- After the review is applied, a First scan screen: start the app (it reads the library and the
+  map follows), read it here in the terminal (`gitso machine check`), or not now (the default).
+  "Running the app" keeps only start at sign-in.
+- `gitso machine check` shows "Reading Git status: N of M repositories" on screen while it reads.

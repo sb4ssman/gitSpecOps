@@ -91,8 +91,13 @@ def suggest_sync(args) -> int:
                  "activity, and it never touches your working tree.", "detail")
     # Repository ids only need a salt inside this run; nothing here leaves the machine.
     secret = (config or {}).get("fleet_secret") or new_fleet_secret()
+    def reading(done, total, _path):
+        # One line, rewritten in place: a person sees the library being read, not a still screen.
+        print(f"\r  Reading Git status: {done} of {total} repositories", end="" if done < total else "\n",
+              flush=True)
+
     observation = observe_roots(specs, secret, fetch=args.fetch, fetch_workers=args.fetch_workers,
-                                fetch_timeout=args.fetch_timeout)
+                                fetch_timeout=args.fetch_timeout, progress=reading if screen else None)
     security = inspect_paths(zip((repo["repo_id"] for repo in observation.repositories),
                                  observation.locations),
                              settings_home=home, expected_settings=snapshot)

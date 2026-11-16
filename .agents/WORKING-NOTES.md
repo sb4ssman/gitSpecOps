@@ -43,18 +43,10 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
   at its own home. Recording it is the shelf's job, not this repository's.
 - **Code signing** for release builds.
 
-## Setup design, raised by the user 2026-11-15 (proposed; waiting on the user)
-- **One fleet step about how machines connect,** each connection described by what it gives:
-  Tailscale (live: machines pull from each other every 30 seconds), a synced folder (medium:
-  any sync client, a status file every 5 minutes; an Obsidian Sync vault folder would do), the
-  GitHub state repository (durable: kept while every machine is off). The user then chooses
-  which to combine. Setup does not offer the state repository today because it is experimental
-  and untested; whether setup offers it, marked so, is the user's call.
-- **Names per connection:** the names question already says what is shared and where; ask it
-  once per connection that leaves the user's own devices (synced folder, state repository).
-- **A first scan after setup, asked, never automatic:** without the app, `gitso` reads the
-  library in this terminal with visible progress; with the app, the app does it and opens the
-  map. Which command shows that progress needs choosing.
+## Setup design, open (raised by the user 2026-11-15)
+- **Names per connection:** whether repository names are shared is one setting for the whole
+  fleet (`share_names`). Asking it per connection (names over Tailscale, ids only in a synced
+  folder or the state repository) needs the manifest to support it per transport.
 
 ## Before the tray runs on any machine again (the 2026-11-15 window storm; see the work log)
 - **Prove it on the user's machine first, watched:** start the tray with the window fix, a
