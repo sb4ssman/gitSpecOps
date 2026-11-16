@@ -13,6 +13,10 @@ cd gitSpecOps
 ./run_setup.sh          # Windows: run_setup.bat
 ```
 
+Double-clicking works too. On Linux, choosing Execute in the file manager opens setup in a
+terminal window (the first of x-terminal-emulator, Konsole, GNOME Terminal, Xfce Terminal, MATE
+Terminal or xterm it finds), and the window waits for Enter before it closes.
+
 ![Setup's menu in a terminal: the gitSpecOps banner, then "Walk me through everything", "Set up one part", "Use the commands without installing anything" and "Check this computer"](images/setup-menu.png)
 
 Setup's menu:
@@ -57,6 +61,7 @@ menu: Preview catch-up). Setup asks; the first fetch comes one full interval aft
 gitso commands             # every command, by layer
 gitso docs machine check    # what a command reads, may change, and returns
 gitso machine check         # this machine: what needs attention
+gitso machine map           # the same, drawn as a folder tree
 ```
 
 ## Requirements and hard assumptions

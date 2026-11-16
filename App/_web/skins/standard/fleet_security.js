@@ -167,7 +167,7 @@ function renderScope() {
   const rows = localRows();
   const groups = new Map();
   for (const row of rows) {
-    if (!groups.has(row.group_id)) groups.set(row.group_id, {label: row.namespace, host: (row.identity || {}).host, rows: []});
+    if (!groups.has(row.group_id)) groups.set(row.group_id, {label: row.namespace, host: row.group_host || (row.identity || {}).host, rows: []});
     groups.get(row.group_id).rows.push(row);
   }
   box.replaceChildren();

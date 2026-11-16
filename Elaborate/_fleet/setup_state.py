@@ -92,7 +92,7 @@ def setup_state(home=None, config_dir=None, *, readiness: bool = False) -> dict:
 def apply_transports(config, *, folder=None, clear_folder=False, folder_seconds=None,
                      repo=None, create_repo=False, clear_repo=False, repo_seconds=None,
                      tailnet=False, clear_tailnet=False, tailnet_port=None, directory=None, home=None,
-                     names=None):
+                     names=None, tailnet_seconds=None):
     """Change which transports this machine shares through, and save. The terminal's
     `transports` command and the setup page both come here. `names`: per connection, whether
     it carries readable names; a connection re-set without one keeps the choice it had."""
@@ -123,11 +123,16 @@ def apply_transports(config, *, folder=None, clear_folder=False, folder_seconds=
     elif repo_seconds and transports.get("repo"):
         transports["repo"]["seconds"] = repo_seconds
     if tailnet:
-        transports["tailnet"] = {"port": tailnet_port or DEFAULT_TAILNET_PORT, "allowed_login": None}
+        previous = transports.get("tailnet") or {}
+        transports["tailnet"] = {"port": tailnet_port or previous.get("port") or DEFAULT_TAILNET_PORT,
+                                 "allowed_login": previous.get("allowed_login"),
+                                 **({"seconds": previous["seconds"]} if "seconds" in previous else {})}
     elif clear_tailnet:
         transports.pop("tailnet", None)
     elif tailnet_port and transports.get("tailnet"):
         transports["tailnet"]["port"] = tailnet_port
+    if tailnet_seconds and transports.get("tailnet"):
+        transports["tailnet"]["seconds"] = int(tailnet_seconds)
     for name, value in {**kept, **(names or {})}.items():
         if name in transports:
             transports[name] = {**transports[name], "names": bool(value)}
@@ -151,7 +156,7 @@ def apply_transports(config, *, folder=None, clear_folder=False, folder_seconds=
 
 
 def join_fleet(home=None, config_dir=None, *, key=None, folder=None, tailnet=False, repo=None,
-               create_repo=False, share_names=None, names=None) -> dict:
+               create_repo=False, share_names=None, names=None, tailnet_seconds=None) -> dict:
     """Join this enrolled machine to a fleet: an existing key, or a new fleet of its own; then any
     combination of transports. Returns the new setup state."""
     from Elaborate._fleet.cli import load_saved, save_saved
@@ -171,7 +176,7 @@ def join_fleet(home=None, config_dir=None, *, key=None, folder=None, tailnet=Fal
         raise ValueError("choose at least one way to share: a synced folder, a managed repository or Tailscale")
     config = load_saved(directory, home=home)
     apply_transports(config, folder=folder, tailnet=tailnet, repo=repo, create_repo=create_repo,
-                     directory=directory, home=home, names=names)
+                     directory=directory, home=home, names=names, tailnet_seconds=tailnet_seconds)
     if share_names is not None:
         config = load_saved(directory, home=home)
         config["share_names"] = bool(share_names)

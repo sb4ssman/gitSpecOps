@@ -83,6 +83,7 @@ COMMANDS = (
         ("presentation", "What double-clicking the tray opens, and whether the web view is served."),
     )),
     Command("machine check", "Special/machine_check.py", "Special._sync.commands", "suggest_sync_main"),
+    Command("machine map", "Special/machine_map.py", "Special._sync.folder_map", "folder_map_main"),
     Command("machine catch-up", "Special/machine_catch_up.py", "Special._sync.commands", "catch_up_main"),
     Command("machine audit", "Special/machine_audit.py", "Special._sync.commands", "audit_repos_main"),
     Command("machine materialize", "Special/machine_materialize.py", "Special._sync.commands", "materialize_main"),

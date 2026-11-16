@@ -223,6 +223,8 @@ def menu_loop(parser, args) -> int:
     while True:
         action = choose_action()
         if action is None:
+            say()
+            line("Setup closed.", "detail")  # said, so a closing window does not look like a crash
             return 0
         if action == "run":
             run_one_command(back=True)

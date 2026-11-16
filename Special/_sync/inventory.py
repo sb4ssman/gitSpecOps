@@ -133,7 +133,7 @@ class IncrementalObserver:
             return found
         # Only alert about checkouts this machine would actually observe. Nagging to rescan for
         # a namespace the user deliberately excluded would make the basket useless.
-        observation = observe_paths(sorted(found), self.config["fleet_secret"])
+        observation = observe_paths(sorted(found), self.config["fleet_secret"], roots=self.config["roots"])
         selected = {Path(catalog["path"]).resolve()
                     for catalog in observation.catalog.values() if self.observes(catalog)}
         # A candidate we could not read stays in the alert: unknown is never "not yours".
@@ -154,7 +154,7 @@ class IncrementalObserver:
             previous = self._repos.pop(path, None)
             previous_catalog = self._catalog.pop(path, None)
             observation = observe_paths([path], self.config["fleet_secret"],
-                                        fetched_at=self._fetched_at)
+                                        fetched_at=self._fetched_at, roots=self.config["roots"])
             if observation.repositories:
                 repo = observation.repositories[0]
                 catalog = observation.catalog[repo["repo_id"]]

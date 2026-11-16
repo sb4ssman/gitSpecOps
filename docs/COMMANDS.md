@@ -8,7 +8,7 @@ path. A subject's actions share a section (`archive add`, `archive remove`, ...)
 <subject>` lists them. `gitso docs <command>` prints the same text in a terminal.
 
 - **Basic: one Git or host operation:** [discover](#discover), [status](#status), [fetch](#fetch), [pull](#pull), [clone](#clone), [reset-keep](#reset-keep), [commit](#commit), [push](#push)
-- **Special: this machine, once:** [machine show](#machine-show--add--remove--find--presentation), [machine add](#machine-show--add--remove--find--presentation), [machine remove](#machine-show--add--remove--find--presentation), [machine find](#machine-show--add--remove--find--presentation), [machine presentation](#machine-show--add--remove--find--presentation), [machine check](#machine-check), [machine catch-up](#machine-catch-up), [machine audit](#machine-audit), [machine materialize](#machine-materialize), [machine buffers](#machine-buffers), [repo name](#repo-name--list), [repo list](#repo-name--list), [archive add](#archive-add--remove--list--status--refresh--check), [archive remove](#archive-add--remove--list--status--refresh--check), [archive list](#archive-add--remove--list--status--refresh--check), [archive status](#archive-add--remove--list--status--refresh--check), [archive refresh](#archive-add--remove--list--status--refresh--check), [archive check](#archive-add--remove--list--status--refresh--check), [archive update](#archive-update), [archive sync](#archive-sync), [inventory export](#inventory-export), [inventory restore](#inventory-restore), [org copy](#org-copy), [scan](#scan), [review](#review), [history scan](#history-scan), [history clean](#history-clean), [history follow](#history-follow--relink), [history relink](#history-follow--relink), [secure-commit](#secure-commit), [secure-push](#secure-push)
+- **Special: this machine, once:** [machine show](#machine-show--add--remove--find--presentation), [machine add](#machine-show--add--remove--find--presentation), [machine remove](#machine-show--add--remove--find--presentation), [machine find](#machine-show--add--remove--find--presentation), [machine presentation](#machine-show--add--remove--find--presentation), [machine check](#machine-check), [machine map](#machine-map), [machine catch-up](#machine-catch-up), [machine audit](#machine-audit), [machine materialize](#machine-materialize), [machine buffers](#machine-buffers), [repo name](#repo-name--list), [repo list](#repo-name--list), [archive add](#archive-add--remove--list--status--refresh--check), [archive remove](#archive-add--remove--list--status--refresh--check), [archive list](#archive-add--remove--list--status--refresh--check), [archive status](#archive-add--remove--list--status--refresh--check), [archive refresh](#archive-add--remove--list--status--refresh--check), [archive check](#archive-add--remove--list--status--refresh--check), [archive update](#archive-update), [archive sync](#archive-sync), [inventory export](#inventory-export), [inventory restore](#inventory-restore), [org copy](#org-copy), [scan](#scan), [review](#review), [history scan](#history-scan), [history clean](#history-clean), [history follow](#history-follow--relink), [history relink](#history-follow--relink), [secure-commit](#secure-commit), [secure-push](#secure-push)
 - **Elaborate: other machines, or over time:** [machine safe-to-wipe](#machine-safe-to-wipe), [archive schedule](#archive-schedule), [fleet setup](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet status](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet transports](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet leave](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet key](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet baskets](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet git-client](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet join](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet doctor](#fleet-doctor), [fleet preflight](#fleet-preflight), [fleet publish](#fleet-publish), [fleet suggest](#fleet-suggest), [fleet converge](#fleet-converge), [peer run](#peer-run--rescan), [peer rescan](#peer-run--rescan), [recovery](#recovery), [start-at-sign-in](#start-at-sign-in)
 - **App: presence and presentation:** [tray](#tray), [serve-web](#serve-web)
 - **Setup:** [setup](#setup)
@@ -242,6 +242,24 @@ Layer:        Special: this machine, once.
 Status:       working
 
     gitso machine check --help
+```
+
+### machine map
+
+`gitso machine map`; or `Special/machine_map.py`.
+
+```text
+This machine's libraries as a folder map, each repository's state on its line.
+
+Why:          see the whole library at a glance: folders, repositories and what each one needs.
+Reads:        Git status of the repositories under the library folders; Orbital-Workshop's folder
+              mapper when present (--mapper, or found inside a library).
+May change:   nothing.
+Results:      JSON without a terminal (or with --json); a screen at one. Nothing is published.
+Layer:        Special: this machine, once.
+Status:       working
+
+    gitso machine map --help
 ```
 
 ### machine catch-up

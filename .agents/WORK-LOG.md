@@ -2865,3 +2865,21 @@ No code changed; decisions recorded where they govern.
   shows what is new, and on a yes fast-forwards (`git merge --ff-only @{u}`), then runs
   `setup refresh` with the new code: Qt for the desktop app when installed, the gitso launchers
   when present. It says to restart the app when it is running. No setting is read or written.
+
+## 2026-11-15 23:30 - user (claude) - Where repositories live; the folder map; quieter peers (branch wave/fleet-views)
+- Linux launcher: run_setup.sh run by double-click (Execute) had no terminal, so nothing showed.
+  Without a terminal it now reopens itself in the first terminal it finds (x-terminal-emulator,
+  Konsole, GNOME Terminal, Xfce Terminal, MATE Terminal, xterm) and waits for Enter before the
+  window closes. Choosing 0 says "Setup closed." instead of ending silently.
+- Peers asked every 30 seconds was too often (the user). Default now 5 minutes; setup's Fleet
+  step asks (1, 5 or 30 minutes), stored as `transports.tailnet.seconds`; earlier choices kept.
+- Each report carries where a repository lives: `place` = {library, folder}, names only (the
+  library folder's name and the first folder inside it), never a path. The user approved sharing
+  these names. A connection that withholds names withholds places too.
+- The page groups by library and folder by default ("Group by" switches to GitHub owner; the
+  choice is remembered in the browser). Repositories, Security and the map all follow it.
+- `gitso machine map`: this machine's libraries as a tree, each repository's state on its line.
+  Uses Orbital-Workshop's folder mapper when present (found inside a library, or --mapper);
+  otherwise gitSpecOps draws it. Read-only, nothing fetched.
+- Not built: the master list and network library (which org folders go on which machines). It
+  removes things from machines, so it is designed with the user first.

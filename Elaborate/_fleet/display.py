@@ -17,6 +17,17 @@ CONTRACT_VERSION = 1
 PRODUCT_NAME = "gitSpecOps"
 
 
+def _row_place(row) -> dict | None:
+    """Where a repository lives: the place most machines report for it (names only)."""
+    from collections import Counter
+    places = Counter((cell.repo["place"]["library"], cell.repo["place"]["folder"])
+                     for cell in row.cells.values() if cell.present and cell.repo.get("place"))
+    if not places:
+        return None
+    (library, folder), _count = max(places.items(), key=lambda item: (item[1], item[0]))
+    return {"library": library, "folder": folder}
+
+
 def _duration(seconds: float) -> str:
     seconds = int(seconds)
     if seconds < 120:
@@ -56,6 +67,7 @@ def _cell(cell):
     # Every view counts a machine's attention from this, never from the whole row.
     return {"present": True, "freshness": cell.freshness, "state": cell.effective_state,
             "description": description, "tone": tone, "tags": tags,
+            "place": cell.repo.get("place"),  # where this machine keeps its copy (names only)
             "needs_attention": SEVERITY.get(cell.effective_state, 0) >= SEVERITY["stashed"],
             "facts": {key: cell.repo.get(key) for key in (
                 "staged", "unstaged", "untracked", "stashes", "ahead", "behind",
@@ -150,12 +162,18 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
     for report in reports:
         names.update(report["names"])
     catalog = {rid: {"display_name": f"{v['owner']}/{v['name']}"} for rid, v in names.items()}
-    rows, groups = [], {}
+    rows, groups, place_groups = [], {}, {}
     for row in build_rows(views, catalog):
         identity = names[row.repo_id]
         group_id = f"{identity['host']}/{identity['owner']}"
         group = groups.setdefault(group_id, {"id": group_id, "label": identity["owner"],
                                             "host": identity["host"], "count": 0, "attention": 0})
+        place = _row_place(row)
+        place_id = (f"place/{place['library']}/{place['folder']}" if place else "place/unknown")
+        place_group = place_groups.setdefault(place_id, {
+            "id": place_id, "label": (place["folder"] or "(directly in the library)") if place
+            else "Folder not shared", "host": place["library"] if place else "Other machines",
+            "count": 0, "attention": 0})
         cells = {mid: _cell(cell) for mid, cell in row.cells.items()}
         # Attention means unfinished work somewhere: stashed or worse, including work an old
         # report last showed (stale_work). A repository missing from a machine is normal, and a
@@ -172,12 +190,15 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
                 cell["tags"] = sorted(set(cell["tags"]) | {"attention"})
         group["count"] += 1
         group["attention"] += int(attention)
+        place_group["count"] += 1
+        place_group["attention"] += int(attention)
         advice = row.advice
         if row.severity_key == "synced":
             advice = ("✓ up to date with the remote" if _remote_checked(row, now, fetch_seconds)
                       else "Clean against cached refs; remote unverified")
         rows.append({"id": row.repo_id, "name": row.name, "identity": dict(identity),
                      "namespace": identity["owner"], "group_id": group_id,
+                     "place": place, "place_id": place_id,
                      "severity": row.severity, "needs_attention": attention,
                      "tags": sorted(tags), "cells": cells, "advice": advice})
     rows.sort(key=lambda r: (-r["severity"], r["name"].casefold(), r["id"]))
@@ -257,6 +278,9 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
                     "current_machines": sum(m["freshness"] == "current" for m in machines),
                     "stale_machines": sum(m["freshness"] != "current" for m in machines)},
         "machines": machines, "groups": sorted(groups.values(), key=lambda g: g["id"].casefold()),
+        # The same rows by where they live (library, then folder): the page's default grouping.
+        "place_groups": sorted(place_groups.values(), key=lambda g: (g["id"] == "place/unknown",
+                                                                      g["host"].casefold(), g["label"].casefold())),
         "rows": rows,
         "map": {"links": links},
         "mark": mark_state(rows, machines, reports, settings),
@@ -302,7 +326,8 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
             {"id": "tailscale", "label": "Tailscale live monitoring", "available": True,
              "enabled": bool(tailnet),
              "description": "Near-live reports between connected fleet machines.",
-             "detail": (f"Peers polled every 30 seconds on port {tailnet.get('port')}."
+             "detail": (f"Peers asked every {_duration(int(tailnet.get('seconds') or 300))} on port "
+                        f"{tailnet.get('port')}."
                         if tailnet else "Tailscale is not configured on this machine.")},
             {"id": "synced_folder", "label": "Synchronized folder", "available": True,
              "enabled": bool(folder),

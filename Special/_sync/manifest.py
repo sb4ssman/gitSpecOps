@@ -79,7 +79,10 @@ MANIFEST_KEYS = frozenset({
     "carries_names",
 })
 #: Readable fields, present only in a manifest whose `carries_names` is true.
-NAME_KEYS = frozenset({"name", "branch", "head"})
+# `place`: the library's and the folder's names on that machine (never a path); the user
+# approved sharing them 2026-11-15, as names, wherever names are shared.
+NAME_KEYS = frozenset({"name", "branch", "head", "place"})
+PLACE_LIMIT = 120
 IDENTITY_NAME_KEYS = ("host", "owner", "name")
 REPOSITORY_KEYS = frozenset({
     "repo_id", "branch_id", "has_upstream", "upstream_observed_at", "ahead", "behind",
@@ -210,6 +213,8 @@ def merge_checkouts(repositories: list[dict]) -> list[dict]:
             "upstream_observed_at": None if None in stamps else min(stamps),
             "operation": next((repo["operation"] for repo in group if repo.get("operation")),
                               None),
+            **({"place": group[0]["place"] if all(repo.get("place") == group[0].get("place") for repo in group)
+                else None} if any("place" in repo for repo in group) else {}),
             "checkouts": sum(int(repo.get("checkouts") or 1) for repo in group),
         })
         for key in ("branch", "head"):
@@ -258,7 +263,7 @@ def names_anywhere(config: dict) -> bool:
 
 def without_names(manifest: dict) -> dict:
     """The same manifest without readable names: what a connection that withholds names carries.
-    Identities, counts and freshness stay; only `name`, `branch` and `head` go."""
+    Identities, counts and freshness stay; only `name`, `branch`, `head` and `place` go."""
     if not manifest.get("carries_names"):
         return manifest
     stripped = {**manifest, "carries_names": False,
@@ -266,6 +271,32 @@ def without_names(manifest: dict) -> dict:
                                  for repo in manifest["repositories"]]}
     validate_manifest(stripped)
     return stripped
+
+
+def _validate_place(place, label: str) -> None:
+    """None, or {"library": name, "folder": name}: names only, never a path."""
+    if place is None:
+        return
+    if not isinstance(place, dict) or set(place) != {"library", "folder"}:
+        raise ValueError(f"{label} must hold exactly library and folder")
+    for key in ("library", "folder"):
+        value = place[key]
+        if not isinstance(value, str) or len(value) > PLACE_LIMIT or any(c in value for c in "/\\:\0"):
+            raise ValueError(f"{label}.{key} must be a folder name, not a path")
+
+
+def place_of(path, roots) -> dict | None:
+    """Where a checkout sits: its library's name and the folder inside that library holding it
+    ("" when it sits directly in the library). Names only: a path never leaves the machine."""
+    from pathlib import Path
+    path = Path(path)
+    owners = [Path(root) for root in roots or [] if Path(root) == path or Path(root) in path.parents]
+    if not owners:
+        return None
+    root = max(owners, key=lambda r: len(r.parts))  # the innermost library holding it
+    parts = path.relative_to(root).parts
+    library = (root.name or str(root).rstrip("\\/:")).replace(":", "")[:PLACE_LIMIT]
+    return {"library": library, "folder": parts[0][:PLACE_LIMIT] if len(parts) > 1 else ""}
 
 
 def _validate_names(repo: dict, label: str) -> None:
@@ -319,6 +350,7 @@ def validate_manifest(value: object) -> dict:
             raise ValueError(f"repositories[{index}] carries {sorted(named)} in a manifest that "
                              "does not carry names")
         _validate_names(repo, f"repositories[{index}]")
+        _validate_place(repo.get("place"), f"repositories[{index}].place")
         _require_digest(repo.get("repo_id"), REPO_ID_HEX, f"repositories[{index}].repo_id")
         if repo.get("branch_id") is not None:
             _require_digest(repo["branch_id"], BRANCH_ID_HEX,

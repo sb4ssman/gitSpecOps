@@ -4,6 +4,7 @@
 
 ```sh
 gitso machine check                 # this machine: what needs attention
+gitso machine map                   # this machine's libraries as a tree, each repository's state
 gitso fleet suggest           # every machine
 gitso scan <repo>             # findings, masked
 gitso secure-commit <repo> <files> -m "…"                   # a plan with an id; nothing happens yet

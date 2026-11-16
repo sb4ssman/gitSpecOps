@@ -465,7 +465,7 @@ host authority and no client enrollment dependency. `Elaborate/fleet.py` guides 
 to v3 while preserving the fleet key. `host` and `connect` are retired commands.
 
 `app/fleet_peer.py` observes locally, publishes to configured folder/GitHub transports,
-serves a loopback dashboard, and optionally pulls reports from tailnet peers every 30 seconds.
+serves a loopback dashboard, and optionally pulls reports from tailnet peers (every 5 minutes by default; setup asks).
 `app/fleet_config.py` owns peer configuration. SQLite is a local cache, never an authority.
 `gh` is required only for the GitHub transport; Tailscale is optional and independent.
 One acknowledged inventory is followed by native filesystem events and targeted checks;

@@ -10,7 +10,7 @@ Each peer serves its own loopback dashboard from local state, its SQLite peer ca
 configured transports. `gh` is needed only for GitHub; Tailscale is optional.
 
 Native filesystem events follow one acknowledged inventory. There is no periodic Git scan.
-Tailnet discovery/pulls run every 30 seconds. Folder/GitHub transports carry the same names-free
+Tailnet discovery/pulls run every 5 minutes by default (setup asks; `transports.tailnet.seconds`). Folder/GitHub transports carry the same names-free
 v3 status manifest. Recovery content is still planned, separately from that manifest.
 Use [FLEET.md](../../docs/FLEET.md) for current commands and
 [tiers-and-capture.md](tiers-and-capture.md) for the agreed next work.
