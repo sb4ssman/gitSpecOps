@@ -39,8 +39,9 @@ Setup's menu:
 
 **The `gitso` command** is a command of its own, beside `git` and `gh`, in any terminal. The
    walkthrough can put it on your command path (small text launchers in `~/.gitspecops/bin`, on
-   every system), and optionally add it to your shells as an alias; it removes both just as
-   easily. Without it, every command runs as `python gitso.py <command>`.
+   every system), and on macOS and Linux optionally add it to your shells as an alias (on
+   Windows the command path already reaches every shell); it removes both just as easily.
+   Without it, every command runs as `python gitso.py <command>`.
 
 ```sh
 gitso commands             # every command, by layer
