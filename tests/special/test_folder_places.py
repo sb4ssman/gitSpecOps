@@ -85,12 +85,13 @@ class PollIntervalTests(unittest.TestCase):
 
 
 class FolderMapTests(unittest.TestCase):
-    def test_the_built_in_map_is_library_folder_repository(self):
+    def test_the_map_shows_libraries_folders_and_repositories_only(self):
         root = Path(tempfile.gettempdir()) / "Library"
         lines = built_in_map(root, {root / "Org" / "a": "clean", root / "Org" / "b": "dirty 1: COMMIT",
-                                    root / "loose": "clean"})
-        self.assertEqual(lines, [str(root), "├── loose  ✓ clean", "└── Org/  (2, 1 needs something)",
-                                 "    ├── a  ✓ clean", "    └── b  ⚠ dirty 1: COMMIT"])
+                                    root / "Org" / "Deep" / "c": "clean", root / "loose": "clean"})
+        self.assertEqual(lines, [str(root), "├── loose  ✓ clean", "└── Org/  (3, 1 needs something)",
+                                 "    ├── a  ✓ clean", "    ├── b  ⚠ dirty 1: COMMIT",
+                                 "    └── Deep/  (1, all clean)", "        └── c  ✓ clean"])
 
     def test_the_mappers_tree_gets_each_repositorys_state(self):
         root = Path(tempfile.gettempdir()) / "Library"
