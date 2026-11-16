@@ -515,22 +515,28 @@ def area_machine(found: dict, plan: Plan) -> None:
             picked.append(chosen)
             found_dirs = [d for d in found_dirs if d["path"] != chosen]
             line(f"Will add {chosen}.", "success")
-    if picked:
+    # Removals and additions in one step: replacing a library with a folder inside it (Memory
+    # Gamma for Memory Gamma/Github, 2026-11-16) overlapped when the addition went first.
+    if removed and picked and found["enrolled"]:
+        plan.libraries = picked
+        plan.add("Library folders", "Library folders: stop watching " + "; ".join(removed) + " and add "
+                 + "; ".join(picked) + ". Nothing in them is changed; the new ones are read for folder "
+                 "names and Git status, never file contents.", lambda: _change_libraries(removed, picked))
+    elif removed:
+        plan.add("Library folders", "Library folders: stop watching " + "; ".join(removed)
+                 + ". Nothing in them is changed or deleted.", lambda: _change_libraries(removed, []))
+    elif picked:
         plan.libraries = picked
         plan.add("Library folders", "Library folders: add " + "; ".join(picked)
                  + ". Reads folder names and each repository's Git status, never file contents.",
                  lambda: _add_libraries(picked))
-    if removed:
-        plan.add("Library folders", "Library folders: stop watching " + "; ".join(removed)
-                 + ". Nothing in them is changed or deleted.", lambda: _remove_libraries(removed))
     plan.enrolled_after = found["enrolled"] or bool(picked)
 
 
-def _remove_libraries(paths) -> str:
-    from Special._sync.enrollment import remove_library
-    for path in paths:
-        remove_library(path)
-    return f"stopped watching {len(paths)} library folder(s); the app reads its libraries again when it restarts"
+def _change_libraries(removed, picked) -> str:
+    from Special._sync.enrollment import change_libraries
+    roots = change_libraries(removed, picked)
+    return f"now watching {len(roots)} library folder(s); the app reads them again when it restarts"
 
 
 def _add_libraries(paths) -> str:

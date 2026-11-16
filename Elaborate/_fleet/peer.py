@@ -191,13 +191,17 @@ class TransportPublisher:
 class PeerNetwork:
     """The optional tailnet tier: answer peers, and pull from them. Degrades to nothing."""
 
-    def __init__(self, config: dict, own_report, store: FleetStore, log=_log, shared=None, adopt_name=None):
+    def __init__(self, config: dict, own_report, store: FleetStore, log=_log, shared=None, adopt_name=None,
+                 requests=None, own_changes=None):
         self.log = log
         self.config = config
         self.store = store
         self.own_report = own_report
         self.shared = shared  # shared_policy.SharedPolicy: protected values pulled and served
         self.adopt_name = adopt_name  # saves a newer fleet name heard from a machine of this fleet
+        self.requests = requests  # requests.RequestBook: asked of others, asked of this machine
+        self.own_changes = own_changes  # repo_id -> this machine's uncommitted-work summary
+        self.addresses: dict[str, str] = {}  # machine_id -> its Tailscale address, from the last round
         self.server = None
         self.identity = None
         self.port = int((config.get("transports") or {}).get("tailnet", {}).get("port") or 0)
@@ -229,7 +233,9 @@ class PeerNetwork:
                                            self.config["fleet_secret"], allowed,
                                            own_settings=self.shared.record if self.shared else None,
                                            own_name=lambda: self.config.get("fleet_name"),
-                                           on_knock=self.knocked.set)
+                                           on_knock=self.knocked.set,
+                                           own_requests=self.requests.outgoing if self.requests else None,
+                                           own_changes=self.own_changes)
             threading.Thread(target=self.server.serve_forever, daemon=True).start()
         except OSError as exc:
             self.log(f"Could not listen for peers on port {self.port}: {exc}")
@@ -261,9 +267,33 @@ class PeerNetwork:
                 learned += 1
             except (ValueError, KeyError, OSError):
                 continue  # a peer on a different fleet, or a malformed report
+            machine_id = report["manifest"]["machine_id"]
+            self.addresses[machine_id] = host["ip"]
             self.merge_settings(host)
             self.merge_name(host)
+            self.merge_requests(host, machine_id)
         return learned
+
+    def merge_requests(self, host, machine_id) -> None:
+        """Take the requests this peer has addressed to this machine (requests.py)."""
+        if self.requests is None:
+            return
+        from Elaborate._fleet.net import FleetClient
+        try:
+            new = self.requests.receive(FleetClient(f"http://{host['ip']}:{self.port}").request("/v1/requests"),
+                                        machine_id)
+        except (OSError, ValueError, KeyError, TypeError):
+            return  # an older peer without requests
+        if new:
+            self.log(f"{new} request(s) from {host.get('label', 'another machine')} wait on this machine's page.")
+
+    def ask(self, machine_id: str, path: str):
+        """A read from one fleet machine by its id, through its Tailscale address."""
+        from Elaborate._fleet.net import FleetClient
+        address = self.addresses.get(machine_id)
+        if not address:
+            raise ValueError("that machine is not answering on Tailscale right now")
+        return FleetClient(f"http://{address}:{self.port}").request(path)
 
     def merge_name(self, host) -> None:
         """The fleet's name as the newest machine to name it says (a rename spreads)."""
@@ -411,6 +441,8 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             with action_lock:
                 home, snapshot = security_settings()
                 return inspect_registered(payload, observer.local_checkouts, settings_home=home, expected_settings=snapshot)
+        if action in ("request-send", "request-withdraw", "request-answer", "changes"):
+            return request_action(action, payload)
         if action != "catchup-preview" or payload:
             raise ValueError("unsupported fleet dashboard action")
         from Special._sync.actions import plan_catchup, render_catchup
@@ -428,7 +460,50 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     def adopt_name(named):
         from Elaborate._fleet.setup_state import name_fleet
         name_fleet(security_settings()[0], config_dir, name=named["name"], at=named["at"])
-    network = PeerNetwork(config, lambda: latest["report"], store, log=log, shared=shared, adopt_name=adopt_name)
+    # Requests between machines, and what a copy's uncommitted work is (requests.py, changes.py).
+    from Elaborate._fleet.requests import RequestBook, run_request
+    book = RequestBook(config_dir, config["machine_id"], config["label"])
+
+    def own_changes(repo_id):
+        from Special._sync.changes import working_changes
+        copies = []
+        for path in observer.local_checkouts(repo_id):
+            try:
+                copies.append(working_changes(path))
+            except ValueError as exc:
+                copies.append({"files": [], "count": 0, "summary": str(exc)})
+        return {"machine": config["label"], "copies": copies}
+
+    def text(value, limit=200):
+        return str(value or "")[:limit]
+
+    def request_action(action, payload):
+        if action == "request-send":
+            items = [{key: text(item.get(key)) for key in ("repo_id", "host", "owner", "name", "folder")}
+                     for item in payload.get("items") or [] if isinstance(item, dict)]
+            sent = book.send(text(payload.get("to")), text(payload.get("to_label")), text(payload.get("kind")), items)
+            threading.Thread(target=network.knock_others, daemon=True).start()  # so it is picked up now
+            return {"sent": sent, "message": f"Asked {sent['to_label']}; it shows on that machine's page."}
+        if action == "request-withdraw":
+            book.withdraw(text(payload.get("id")))
+            return {"message": "Withdrawn."}
+        if action == "changes":
+            repo_id, machine_id = text(payload.get("repo_id")), text(payload.get("machine_id"))
+            if machine_id == config["machine_id"]:
+                return own_changes(repo_id)
+            return network.ask(machine_id, f"/v1/changes/{repo_id}")
+        request = next((item for item in book.incoming() if item["id"] == payload.get("id")), None)
+        if request is None or request["status"] != "waiting":
+            raise ValueError("that request is no longer waiting; reload")
+        if not payload.get("accept"):
+            return book.settle(request["id"], "dismissed", "Dismissed here.")
+        with action_lock:
+            result = run_request(request, observer.local_checkouts, config["roots"])
+        atomic_write_bytes(config_dir / "fleet-rescan.request", b"request applied\n")  # see the result
+        return book.settle(request["id"], "done", result)
+
+    network = PeerNetwork(config, lambda: latest["report"], store, log=log, shared=shared, adopt_name=adopt_name,
+                          requests=book, own_changes=own_changes)
 
     def sealed_folder_loop():
         """The shared protected values through the synced folder, sealed (sealed.py)."""
@@ -510,6 +585,10 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                       "withheld_repo_ids": sorted(latest["withheld"]),
                       "unobserved_count": observer.excluded_from_observation})
         document["activity"] = dict(activity)
+        incoming = book.incoming()
+        document["requests"] = {"waiting": [item for item in incoming if item["status"] == "waiting"],
+                                "answered": [item for item in incoming if item["status"] != "waiting"][:10],
+                                "sent": book.outgoing()}
         return document
 
     dashboard, url = (serve(document, desktop.handle, dashboard_action) if serve is not None

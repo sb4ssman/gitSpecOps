@@ -19,6 +19,7 @@ ASSETS = {
     "/assets/fleet_zoom.js": ("fleet_zoom.js", "text/javascript; charset=utf-8"),
     "/assets/fleet_security.js": ("fleet_security.js", "text/javascript; charset=utf-8"),
     "/assets/fleet_settings.js": ("fleet_settings.js", "text/javascript; charset=utf-8"),
+    "/assets/fleet_requests.js": ("fleet_requests.js", "text/javascript; charset=utf-8"),
     "/setup": ("fleet_setup.html", "text/html; charset=utf-8"),
     "/assets/fleet_setup.js": ("fleet_setup.js", "text/javascript; charset=utf-8"),
 }

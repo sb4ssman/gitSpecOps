@@ -4,6 +4,7 @@ import {ageLabel, GroupExpansion, groupRows, regroup, selectRows} from './fleet_
 import {renderMap, VIEWS} from './fleet_map.js';
 import {renderSecurity} from './fleet_security.js';
 import {renderSettings} from './fleet_settings.js';
+import {renderRequests} from './fleet_requests.js';
 
 const byId = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -435,7 +436,7 @@ function renderMapPanel() {
     return;
   }
   try {
-    renderMap(box, data, mapOptions, change => { Object.assign(mapOptions, change); renderMapPanel(); });
+    renderMap(box, data, {...mapOptions, actions: fleetActions()}, change => { Object.assign(mapOptions, change); renderMapPanel(); });
   } catch (error) {
     box.replaceChildren(node('p', `The map could not be drawn (${error.message}). Switch to another map view above; `
       + 'if this one keeps failing, tell us the message.', 'tone-text-warning'));
@@ -446,8 +447,20 @@ for (const [id, key] of [['map-view', 'view'], ['map-perspective', 'perspective'
   byId(id).addEventListener('input', event => { mapOptions[key] = event.target.value; if (state.data) renderMapPanel(); });
 }
 
+/** Requests to other machines and their uncommitted-work summaries: this computer only. */
+function fleetActions() {
+  if (!state.data.local_actions) return null;
+  const act = (action, payload) => connection.desktopAction(action, payload, state.data.local_actions.token, {structured: true});
+  return {act, send: payload => act('request-send', payload),
+          changes: (repo_id, machine_id) => act('changes', {repo_id, machine_id})};
+}
+
 function renderAll() {
-  renderSummary(); renderFilters(); renderRepositories(); renderMapPanel(); renderSecurity(byId('security'), state.data, connection); renderMachines(); renderAbout(); renderNotices();
+  renderSummary();
+  renderRequests(byId('requests'), state.data, async (action, payload) => {
+    const done = await fleetActions().act(action, payload); await connection.refresh(); return done;
+  });
+  renderFilters(); renderRepositories(); renderMapPanel(); renderSecurity(byId('security'), state.data, connection); renderMachines(); renderAbout(); renderNotices();
   byId('last-updated').textContent = `View received ${state.receivedAt.toLocaleTimeString()}`;
 }
 

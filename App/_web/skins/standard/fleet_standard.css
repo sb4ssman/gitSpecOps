@@ -44,3 +44,13 @@ main{padding:0 32px}.section-title{margin:24px 0 18px}.section-title p{margin:5p
 .setting-row code{flex:1 1 auto;overflow-wrap:anywhere;align-self:center}
 .setting-row>input{flex:1 1 180px;min-width:0}
 .setup-section-box details{margin:10px 0}
+
+/* Requests between machines; the organization view's asks and uncommitted-work summary. */
+.requests-box{margin:14px 0;display:flex;flex-direction:column;gap:8px}
+.request{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--surface)}
+.request-waiting{border-color:var(--accent)}
+.request button{margin-right:8px}
+.map-asks td button{margin:2px 6px 2px 0;font-size:12px;min-height:30px;padding:4px 8px}
+.map-changes{margin-top:12px;border:1px solid var(--border);border-radius:8px;padding:10px 14px;background:var(--surface)}
+.map-changes button{float:right}
+.map-changes ul{max-height:320px;overflow:auto;font-size:12px}

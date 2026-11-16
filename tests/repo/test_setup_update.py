@@ -45,6 +45,11 @@ class UpdateTests(unittest.TestCase):
         run(temp, "clone", "-q", str(self.origin), str(self.other))
         stack.enter_context(patch.object(setup_update, "ROOT", self.here))
         self.refresh = stack.enter_context(patch.object(setup_update.subprocess, "call", return_value=0))
+        # Never the real app: these tests once stopped the tray running on the machine that ran
+        # them (2026-11-16). Every way update reaches the app is stood in for.
+        self.app_running = stack.enter_context(patch.object(setup_update, "_app_running", return_value=False))
+        self.stop_app = stack.enter_context(patch.object(setup_update, "_stop_app", return_value=True))
+        self.start_app = stack.enter_context(patch.object(setup_update, "_start_app"))
         self.output = io.StringIO()
         stack.enter_context(redirect_stdout(self.output))
 
@@ -89,6 +94,21 @@ class UpdateTests(unittest.TestCase):
         run(self.here, "switch", "-q", "-c", "local-only")
         self.assertEqual(setup_update.update(answer="u"), 1)
         self.assertIn("follows no branch", " ".join(self.output.getvalue().split()))
+
+    def test_a_running_app_older_than_this_folder_is_restarted_even_when_up_to_date(self):
+        self.app_running.return_value = True
+        with patch.object(setup_update, "_app_commit", return_value="older"):
+            self.assertEqual(setup_update.update("u"), 0)
+        self.stop_app.assert_called_once()
+        self.start_app.assert_called_once()
+
+    def test_a_running_app_on_this_folders_commit_is_left_alone(self):
+        self.app_running.return_value = True
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.here, capture_output=True,
+                              text=True, check=True).stdout.strip()
+        with patch.object(setup_update, "_app_commit", return_value=head):
+            setup_update.update("u")
+        self.stop_app.assert_not_called()
 
 
 if __name__ == "__main__":

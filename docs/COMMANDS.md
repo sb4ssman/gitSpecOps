@@ -65,6 +65,7 @@ Layer:        Basic: one Git or host operation.
 Status:       working
 
     gitso fetch <repo> [--remote origin] [--dry-run]
+    gitso fetch <org folder>     every repository directly inside it, one after another
 
 With no refspec, `git fetch` updates `refs/remotes/*` and never a local branch or the working
 tree -- nothing the user would have to undo. That is why observation may fetch at all.

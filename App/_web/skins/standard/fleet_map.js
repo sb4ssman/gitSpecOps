@@ -214,26 +214,102 @@ function copyText(cell, row, perspectiveCell) {
   return `${cell.description || cell.state}${relation}`;
 }
 
-function organizationView(container, data, perspective, group, onPick) {
+// What the organization view keeps across the page's refreshes: the last request's answer, and
+// the uncommitted-work summary being shown.
+const orgState = {message: '', changes: null};
+const dirtyOf = cell => {
+  const facts = (cell && cell.facts) || {};
+  return (facts.staged || 0) + (facts.unstaged || 0) + (facts.untracked || 0);
+};
+const providerUrl = row => {
+  const id = row.identity || {};
+  return id.host && id.host !== 'local' && id.owner && id.name ? `https://${id.host}/${id.owner}/${id.name}` : null;
+};
+
+function organizationView(container, data, perspective, group, onPick, actions) {
   const machines = orderedMachines(data, perspective);
   const rows = rowsOf(data, group);
   const label = (data.groups.find(item => item.id === group) || {label: 'All organizations'}).label;
-  container.append(html('p', `${label}: every repository, its copy on each machine lined up in one row.`, 'map-note'));
+  container.append(html('p', `${label}: every repository, its copy on each machine lined up in one row, and where it lives online.`, 'map-note'));
   const table = html('table', undefined, 'map-grid');
-  table.append(gridHead(machines, perspective, 'Repository'));
+  const head = gridHead(machines, perspective, 'Repository');
+  head.insertBefore(html('th', 'Online'), head.children[1]);
+  table.append(head);
+  if (actions) {
+    // Ask a machine to bring this organization's copies forward, or to clone the ones it lacks.
+    // The machine doing the work checks each one again and shows the request for approval.
+    const asks = html('tr', undefined, 'map-asks');
+    asks.append(html('td', 'Ask a machine:', 'host-note'), html('td'));
+    for (const machine of machines) {
+      const cell = html('td');
+      const held = rows.filter(row => (row.cells[machine.id] || {}).present);
+      const missing = rows.filter(row => !(row.cells[machine.id] || {}).present && providerUrl(row));
+      const ask = (kind, list) => async () => {
+        try {
+          const done = await actions.send({to: machine.id, to_label: machine.label, kind, items: list.map(row => ({
+            repo_id: row.id, name: (row.identity || {}).name || row.name, host: (row.identity || {}).host,
+            owner: (row.identity || {}).owner, folder: (row.place || {}).folder || ''}))});
+          orgState.message = done.message;
+        } catch (error) { orgState.message = error.message; }
+        onPick({});
+      };
+      if (held.length) { const b = html('button', `Fast-forward ${held.length}`); b.type = 'button'; b.onclick = ask('pull', held); cell.append(b); }
+      if (missing.length) { const b = html('button', `Clone ${missing.length} missing`); b.type = 'button'; b.onclick = ask('clone', missing); cell.append(b); }
+      asks.append(cell);
+    }
+    table.append(asks);
+  }
   for (const row of rows) {
     const line = html('tr', undefined, row.needs_attention ? 'map-attention' : '');
     const name = html('button', `${row.needs_attention ? '⚑ ' : ''}${row.name}`, 'repo-link');
     name.onclick = () => onPick({view: 'repository', repo: row.id});
     const first = html('td'); first.append(name); line.append(first);
+    const online = html('td'); const url = providerUrl(row);
+    if (url) { const link = html('a', `${(row.identity || {}).host} ↗`); link.href = url; link.target = '_blank'; link.rel = 'noopener'; online.append(link); }
+    else online.append(html('span', 'no remote', 'host-note'));
+    line.append(online);
     for (const machine of machines) {
       const cell = row.cells[machine.id];
-      line.append(html('td', copyText(cell, row, row.cells[perspective]),
-                       cell && cell.present ? `tone-${cell.tone}` : 'tone-muted'));
+      const td = html('td', undefined, cell && cell.present ? `tone-${cell.tone}` : 'tone-muted');
+      if (actions && dirtyOf(cell)) {
+        // Uncommitted work: ask that machine what it is (names and line counts, never contents).
+        const show = html('button', copyText(cell, row, row.cells[perspective]), 'repo-link'); show.type = 'button';
+        show.title = 'Show what the uncommitted work is';
+        show.onclick = async () => {
+          orgState.changes = {title: `${row.name} on ${machine.label}`, loading: true};
+          onPick({});
+          try { orgState.changes = {title: `${row.name} on ${machine.label}`, result: await actions.changes(row.id, machine.id)}; }
+          catch (error) { orgState.changes = {title: `${row.name} on ${machine.label}`, error: error.message}; }
+          onPick({});
+        };
+        td.append(show);
+      } else td.textContent = copyText(cell, row, row.cells[perspective]);
+      line.append(td);
     }
     table.append(line);
   }
+  if (orgState.message) container.append(html('p', orgState.message, 'host-note'));
   container.append(table);
+  if (orgState.changes) container.append(changesBox(orgState.changes));
+}
+
+function changesBox(view) {
+  const box = html('div', undefined, 'map-changes');
+  const close = html('button', 'Close'); close.type = 'button';
+  close.onclick = () => { orgState.changes = null; box.remove(); };
+  box.append(html('strong', `Uncommitted work: ${view.title}`), close);
+  if (view.loading) { box.append(html('p', 'Asking…', 'host-note')); return box; }
+  if (view.error) { box.append(html('p', view.error, 'tone-text-warning')); return box; }
+  for (const [index, copy] of (view.result.copies || []).entries()) {
+    box.append(html('p', `${view.result.copies.length > 1 ? `Copy ${index + 1}: ` : ''}${copy.summary}`));
+    const list = html('ul');
+    for (const file of copy.files || []) {
+      const lines = file.added >= 0 && (file.added || file.deleted) ? ` +${file.added} −${file.deleted}` : '';
+      list.append(html('li', `${file.name} · ${file.status}${lines}${file.line_endings_only ? ' · line endings only' : ''}`));
+    }
+    box.append(list);
+  }
+  return box;
 }
 
 function repositoryView(container, data, perspective, repo) {
@@ -275,7 +351,7 @@ export function renderMap(container, data, options, onPick) {
     ? options.perspective : (data.machines[0] || {}).id;
   if (!data.machines.length) { container.append(html('p', 'No machine has reported yet.', 'empty')); return; }
   if (options.view === 'libraries') librariesView(container, data, perspective, onPick);
-  else if (options.view === 'organization') organizationView(container, data, perspective, options.group || 'all', onPick);
+  else if (options.view === 'organization') organizationView(container, data, perspective, options.group || 'all', onPick, options.actions);
   else if (options.view === 'repository') repositoryView(container, data, perspective, options.repo);
   else machinesView(container, data, perspective, onPick);
 }

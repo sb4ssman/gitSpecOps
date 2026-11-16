@@ -258,6 +258,24 @@ the shared revision-checked writer and preserve unrelated settings. Setting up t
 machine with no settings file starts an empty profile first. An OS lock prevents concurrent
 peers using the same state directory.
 
+## Ask another machine to sync, and see its uncommitted work
+
+The map's "One organization across machines" view has, under each machine's name, **Fast-forward
+N** and **Clone N missing**. Pressing one records a request on this machine; the machine it names
+picks it up on its next round over Tailscale (at once, with the knock) and shows it at the top of
+its own page, with Apply and Dismiss. Nothing runs until someone presses Apply there. Applying uses
+the same safe operations as the terminal: each copy is fetched first and moved forward only when
+it is clean and simply behind (anything else is reported, not touched); a clone goes into the
+organization's folder in that machine's first library and never replaces anything. Requests are
+kept for seven days. Machines still never push to each other: a request is published like a
+report, and the machine that does the work reads it.
+
+A copy with uncommitted work is a button in that view: it asks that machine what the work is and
+shows each file's name, its kind of change and its line counts, and says when a change is only
+line endings (a Windows copy read on Linux, for one). Never the files' contents.
+
+    gitso fetch <org folder>      fetch every repository directly inside it
+
 ## Catch up a machine safely
 
 ```sh
