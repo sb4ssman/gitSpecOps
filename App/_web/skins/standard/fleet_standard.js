@@ -3,6 +3,7 @@ import {FleetConnection} from './fleet_client.js';
 import {ageLabel, GroupExpansion, groupRows, regroup, selectRows} from './fleet_view.js';
 import {renderMap, VIEWS} from './fleet_map.js';
 import {renderSecurity} from './fleet_security.js';
+import {renderSettings} from './fleet_settings.js';
 
 const byId = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -343,6 +344,10 @@ function renderAbout() {
       finally { preview.disabled = false; renderAbout(); }
     };
     section.append(preview, result); block.append(section);
+  }
+  if (state.data.local_actions) {  // this computer only: never on the Tailscale view
+    byId('setup-card').hidden = false;
+    renderSettings(byId('setup-controls'), connection, () => state.data.local_actions.token);
   }
   renderSettingCards(byId('integrations'), integrations);
   renderSettingCards(byId('features'), features);

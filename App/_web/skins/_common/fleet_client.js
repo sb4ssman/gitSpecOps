@@ -31,12 +31,13 @@ export class FleetConnection extends EventTarget {
   async desktopAction(action, payload, token, {structured = false} = {}) {
     if (!['git-client', 'open-git-client', 'catchup-preview', 'security-preview', 'security-engines',
          'security-start', 'security-status', 'security-stop', 'security-policy',
-         'security-policy-change', 'setup/open-folder'].includes(action) || !token) {
+         'security-policy-change', 'setup/open-folder', 'setup/settings', 'setup/connections', 'setup/fetch',
+         'setup/sign-in', 'setup/peers', 'setup/show-key', 'setup/join', 'setup/leave'].includes(action) || !token) {
       throw new Error('Desktop actions are unavailable in this dashboard.');
     }
     const response = await this.fetcher(`/v1/${action}`, {
       method: 'POST', headers: {'Content-Type': 'application/json', 'X-GitSpecOps-Token': token},
-      body: JSON.stringify(payload), signal: AbortSignal.timeout(action === 'security-preview' ? 120000 : 15000),
+      body: JSON.stringify(payload), signal: AbortSignal.timeout(action === 'security-preview' ? 120000 : action.startsWith('setup/') ? 60000 : 15000),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'The desktop action failed.');

@@ -124,6 +124,13 @@ def test_start_at_login_registers_the_tray_command():
     check(command[1].endswith(str(Path("App") / "tray.py")), command)
 
 
+def test_start_at_login_uses_the_apps_own_python_not_a_resolved_one():
+    # sys.executable resolved is the system Python on Linux (the venv's link followed) and uv's
+    # Python under setup: neither has Qt, so the login entry failed every time (2026-11-16).
+    command = fleet_autostart.launch_command([])
+    check(command[0] == str(fleet_autostart.app_interpreter()), command)
+
+
 class FakeBackend:
     """Stands in for the registry / XDG / LaunchAgent so tests never touch the real machine."""
 
