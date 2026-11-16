@@ -54,3 +54,6 @@ main{padding:0 32px}.section-title{margin:24px 0 18px}.section-title p{margin:5p
 .map-changes{margin-top:12px;border:1px solid var(--border);border-radius:8px;padding:10px 14px;background:var(--surface)}
 .map-changes button{float:right}
 .map-changes ul{max-height:320px;overflow:auto;font-size:12px}
+.map-verdict{margin:10px 0 14px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
+.map-verdict-open{border-color:var(--warning, #d29922)}
+.map-verdict ul{margin:6px 0 0;padding-left:18px;font-size:13px}

@@ -240,6 +240,20 @@ function organizationView(container, data, perspective, group, onPick, actions) 
   const rows = rowsOf(data, group);
   const label = group.startsWith('org:') ? group.slice(4) : (data.groups.find(item => item.id === group) || {label: 'All organizations'}).label;
   container.append(html('p', `${label}: every repository, its copy on each machine lined up in one row, and where it lives online.`, 'map-note'));
+  // In words first: what is in sync everywhere, and what needs a decision, from the advice Python
+  // writes for each repository (the user, 2026-11-16: "I can't decipher this").
+  const settled = rows.filter(row => !row.needs_attention && (row.copies || {}).heads_agree !== false);
+  const open = rows.filter(row => !settled.includes(row));
+  const verdict = html('div', undefined, open.length ? 'map-verdict map-verdict-open' : 'map-verdict');
+  verdict.append(html('strong', open.length
+    ? `${settled.length} of ${rows.length} are the same on every machine that has them. ${open.length} need${open.length === 1 ? 's' : ''} a decision:`
+    : `All ${rows.length} are the same on every machine that has them.`));
+  if (open.length) {
+    const list = html('ul');
+    for (const row of open) list.append(html('li', `${row.name}: ${row.advice}`));
+    verdict.append(list);
+  }
+  container.append(verdict);
   const table = html('table', undefined, 'map-grid');
   const head = gridHead(machines, perspective, 'Repository');
   head.insertBefore(html('th', 'Online'), head.children[1]);
@@ -248,14 +262,16 @@ function organizationView(container, data, perspective, group, onPick, actions) 
     // Ask a machine to bring this organization's copies forward, or to clone the ones it lacks.
     // The machine doing the work checks each one again and shows the request for approval.
     const asks = html('tr', undefined, 'map-asks');
-    asks.append(html('td', 'Ask a machine:', 'host-note'), html('td'));
+    // The note's style on the text, not the cell: a block-level cell broke the header row's borders.
+    const askLabel = html('td'); askLabel.append(html('span', 'Ask a machine:', 'host-note'));
+    asks.append(askLabel, html('td'));
     for (const machine of machines) {
       const cell = html('td');
-      // Only copies with something to catch up: behind, or not on the commit the other copies are
-      // on. A column of clean, matching copies gets no button (the user, 2026-11-16).
+      // Only copies that are behind GitHub: a fast-forward is all this button can do. A copy on a
+      // different commit that is not behind (ahead, diverged) needs a decision, not this button.
       const held = rows.filter(row => {
         const cell = row.cells[machine.id] || {};
-        return cell.present && (((cell.facts || {}).behind || 0) > 0 || (row.copies || {}).heads_agree === false);
+        return cell.present && ((cell.facts || {}).behind || 0) > 0;
       });
       const missing = rows.filter(row => !(row.cells[machine.id] || {}).present && providerUrl(row));
       // This machine's own column runs here and now (you are at it); another machine's is a request
