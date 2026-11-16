@@ -49,6 +49,27 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
 - **A test that runs the peer under pythonw.exe on Windows CI**, so the tray's real conditions
   are tested, not only a terminal's.
 
+## The user's view of the fleet (raised 2026-11-15; to design with him, then build)
+- **Organise by where things live:** in the app's Repositories tab, Security tab and network
+  map, group by library folder, then the folder inside it (his org folders, and a folder holding
+  other people's projects), then the repository; a switch between that hierarchy and the
+  GitHub-owner grouping. Today other people's repositories each get their own owner group (many
+  one-repository groups). `gitso machine
+  check` already shows this hierarchy on screen (2026-11-15). Across machines it needs each
+  report to carry the containing folder's name (a name, never a path): his decision, next to the
+  open "real library paths" question above.
+- **From the cloud down:** one picture from GitHub owners through machines and libraries down to
+  each repository's state on every machine.
+- **The master list and the network library:** every repository he contributes to or collects,
+  in one list; a complete library on a networked machine with a large drive; tick
+  org-level folders to put them on, or take them off, each machine. Builds on materialize
+  (clone what is missing) and safe-to-wipe (prove a removal loses nothing).
+- **The folder mapper as an optional view:** if Orbital-Workshop's mapper is present, an ASCII
+  map of a library with each repository's state appended. gitSpecOps does not depend on it.
+- **One inventory, not two:** `gitso machine check` and the app each read the library; the app
+  could reuse a recent read instead of reading again at start. The user asked why, not for a
+  change.
+
 ## Not built yet
 - **The gitso alias in a synced profile (found 2026-11-15):** on Windows the PowerShell profiles
   can live in OneDrive's Documents, which syncs to the user's other PCs. The alias is a function

@@ -159,6 +159,47 @@ def security_notices(records):
     return result
 
 
+def library_tree(roots, observation, *, everything: bool = False) -> list[tuple[str, str]]:
+    """This machine's repositories for a person at a terminal: library folder, then the folder
+    inside it (an org folder, say), then each repository that needs something; clean ones are
+    counted unless `everything`. Lines are (text, tone); the screen wraps them to its width. Local
+    only: it shows this machine's own folders and is never published (2026-11-15: the wide table
+    wrapped into rows of dashes, and 188 rows were too many to read)."""
+    from pathlib import Path
+
+    roots = [Path(root) for root in roots]
+    groups: dict[tuple[str, str], list[tuple[str, str, str, bool]]] = {}
+    for repo, location in zip(observation.repositories, observation.locations):
+        location = Path(location)
+        root = next((r for r in roots if location == r or r in location.parents), location.parent)
+        parts = location.relative_to(root).parts if location != root else (location.name,)
+        folder = parts[0] if len(parts) > 1 else ""
+        name = "/".join(parts[1:]) if len(parts) > 1 else parts[0]
+        state, action = classify_repository(repo)
+        branch_id = repo.get("branch_id")
+        branch = "(detached)" if not branch_id else observation.branches.get(branch_id, "")
+        detail = f"{describe_repository(repo)}: {action}" if state != "synced" else "clean"
+        groups.setdefault((str(root), folder), []).append((name, branch, detail, state != "synced"))
+    lines: list[tuple[str, str]] = []
+    last_root = None
+    for (root, folder), items in sorted(groups.items(), key=lambda kv: (kv[0][0], kv[0][1].casefold())):
+        if root != last_root:
+            lines.append(("", "text"))
+            lines.append((root, "strong"))
+            last_root = root
+        attention = [item for item in items if item[3]]
+        heading = folder or "(directly in this folder)"
+        summary = (f"{len(items)} repositor{'y' if len(items) == 1 else 'ies'}, "
+                   + (f"{len(attention)} need{'s' if len(attention) == 1 else ''} something"
+                      if attention else "all clean"))
+        lines.append((f"  {heading}  ({summary})", "warning" if attention else "success"))
+        for name, branch, detail, needs in sorted(items, key=lambda item: item[0].casefold()):
+            if needs or everything:
+                lines.append((f"      {name}" + (f"  [{branch}]" if branch else "") + f"  {detail}",
+                              "text" if needs else "muted"))
+    return lines
+
+
 def render_table(manifest: dict, catalog: dict[str, dict],
                  branches: dict[str, str] | None = None, *, security=None) -> str:
     branches = branches or {}
