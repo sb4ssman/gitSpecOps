@@ -2979,3 +2979,23 @@ No code changed; decisions recorded where they govern.
 - Header: the logo and title go home; "App & setup" opens that tab (hash changes now switch
   tabs); "Refresh view" is "Reload view", and says it fetches nothing and rescans nothing. The
   library page shares the header (Map, App & setup) and points its old fleet section to the tab.
+
+## 2026-11-16 17:10 - user (claude) - Every setting on the App & setup tab; one menu; the header says what the page does (branch wave/settings-page)
+- The user: half the App & setup tab could not be changed (integration and feature cards were
+  read-only summaries beside the controls), the checkbox rows did not read as controls, the
+  libraries page had no menu bar, "App & setup" was in the header as well as the menu, and
+  "Reload view" with its tooltip was more confusing than before.
+- The tab's "Set up this machine" now holds every setting, as a form (sections in a grid, each
+  checkbox beside its words, fields labelled above): fleet (join by name, name or rename, the key
+  for a machine without Tailscale, leave), connections, library folders (add, remove), shared
+  protected values, the fetch schedule, what this machine watches and shares (observe and
+  publish baskets; new `baskets` route), how the app shows itself, start at sign-in. The
+  read-only integration and feature cards show only on the Tailscale view, where nothing can be
+  changed. Checked by rendering the page from a throwaway profile in headless Edge.
+- /setup is the first run only: a machine already set up is sent to the tab, under the menu.
+- The header has no App & setup link and no reload button; it says "Live: updated every 3
+  seconds from this computer's gitSpecOps", and its title says that this reads what the app
+  already knows, reads no repository and fetches nothing (the app checks a repository when its
+  files change and fetches on the schedule set on the tab).
+- "Fleet" in the facts list said "not in a fleet" for an unnamed fleet; it now says so only when
+  the machine is in none.

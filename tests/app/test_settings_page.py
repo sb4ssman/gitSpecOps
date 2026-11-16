@@ -19,7 +19,8 @@ class Node {
   text() { return this.all().map(n => n.textContent).join(' '); }
 }
 globalThis.document = {createElement: tag => new Node(tag)};
-const settings = {enrolled: true, fleet_id: null,
+const settings = {enrolled: true, fleet_id: null, libraries: ['/home/x/Github'], presentation: {face: 'web', web: 'loopback'},
+  baskets: {observe: {mode: 'all'}, publish: {mode: 'all'}, capture: {mode: 'none'}},
   connections: {tailnet: {on: false, seconds: 300, names: true, choices: [60, 300, 1800]},
                 folder: {on: false, path: '', names: false}, repo: {on: false, name: '', names: false}},
   shared: {questions: [{id: 'q1', kind: 'remove', list: 'never_publish', value: 'old-name', from: 'desk'}], sealed: false, encryption_installed: false, has_folder: true},
@@ -56,6 +57,7 @@ class SettingsPageTests(unittest.TestCase):
         out = json.loads(done.stdout)
         for words in ("Not in a fleet", "Look for your fleets on Tailscale", "Connections", "Fetch from GitHub",
                       "Shared protected values", "desk removed the never-publish value", "Remove it here too",
+                      "Library folders", "/home/x/Github", "How the app shows itself", "Share with the other machines",
                       "Start at sign-in"):
             self.assertIn(words, out["sections"])
         self.assertIn("Connect this way?", out["plan"])

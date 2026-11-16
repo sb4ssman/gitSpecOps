@@ -23,7 +23,7 @@ from pathlib import Path
 
 ACTIONS = ("find", "add", "remove", "presentation", "join", "leave", "open-folder",
            "settings", "connections", "fetch", "sign-in", "fleets", "show-key", "shared-answer", "seal",
-           "name-fleet")
+           "name-fleet", "baskets")
 PLANNED = ("find", "add", "join", "leave", "connections", "show-key", "seal")
 QUESTIONS = {"find": "Look in these folders?", "add": "Enroll these library folders?",
              "join": "Join with these choices?", "leave": "Leave the fleet?",
@@ -55,8 +55,12 @@ class SetupRoutes:
             sign_in = autostart.status()
         except (OSError, ValueError) as exc:
             sign_in = {"supported": False, "enabled": False, "reason": str(exc)}
+        machine = state.get("machine") or {}
         return {
             "enrolled": state.get("machine") is not None,
+            "libraries": machine.get("libraries", []),
+            "presentation": machine.get("presentation"),
+            "baskets": {scope: (config or {}).get("baskets", {}).get(scope) for scope in ("observe", "publish", "capture")},
             "fleet_id": (state.get("fleet") or {}).get("fleet_id"),
             "fleet_name": (state.get("fleet") or {}).get("name"),
             "connections": {
@@ -259,6 +263,27 @@ class SetupRoutes:
             return {"settings": self.settings(), "applied": True}
         if action == "fleets":
             return {"fleets": self._fleets(), "applied": True}
+        if action == "baskets":
+            # Which repositories this machine observes, and which it publishes to the fleet.
+            # Capture stays with the fleet baskets command and a confirmed recovery location.
+            import Special._sync.baskets as baskets
+            from Elaborate._fleet.cli import load_saved, save_saved
+            from Elaborate._fleet.config import validate
+            from Special._settings.fleet import fleet_directory
+            scope = payload.get("scope")
+            if scope not in ("observe", "publish"):
+                raise ValueError("choose observe or publish")
+            names = [n.strip() for n in str(payload.get("namespaces") or "").split(",") if n.strip()]
+            selection = baskets.parse_selection(str(payload.get("mode") or ""), names or None)
+            directory = fleet_directory(self.config_dir, home=self.home)
+            config = load_saved(directory, home=self.home)
+            config["baskets"] = baskets.validate_scopes({**(config.get("baskets") or baskets.DEFAULT_SCOPES),
+                                                         scope: selection})
+            validate(config)
+            save_saved(directory, config, home=self.home)
+            self.on_change(self.state())
+            return {"applied": True, "settings": self.settings(),
+                    "notice": f"Saved. The app applies the {scope} basket now."}
         if action == "name-fleet":
             named = fleet_setup.name_fleet(self.home, self.config_dir, name=str(payload.get("name") or ""))
             self.on_change(self.state())
