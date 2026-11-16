@@ -191,12 +191,13 @@ class TransportPublisher:
 class PeerNetwork:
     """The optional tailnet tier: answer peers, and pull from them. Degrades to nothing."""
 
-    def __init__(self, config: dict, own_report, store: FleetStore, log=_log, shared=None):
+    def __init__(self, config: dict, own_report, store: FleetStore, log=_log, shared=None, adopt_name=None):
         self.log = log
         self.config = config
         self.store = store
         self.own_report = own_report
         self.shared = shared  # shared_policy.SharedPolicy: protected values pulled and served
+        self.adopt_name = adopt_name  # saves a newer fleet name heard from a machine of this fleet
         self.server = None
         self.identity = None
         self.port = int((config.get("transports") or {}).get("tailnet", {}).get("port") or 0)
@@ -225,7 +226,8 @@ class PeerNetwork:
         try:
             self.server = make_peer_server((self.identity["ip"], self.port), self.own_report,
                                            self.config["fleet_secret"], allowed,
-                                           own_settings=self.shared.record if self.shared else None)
+                                           own_settings=self.shared.record if self.shared else None,
+                                           own_name=lambda: self.config.get("fleet_name"))
             threading.Thread(target=self.server.serve_forever, daemon=True).start()
         except OSError as exc:
             self.log(f"Could not listen for peers on port {self.port}: {exc}")
@@ -258,7 +260,31 @@ class PeerNetwork:
             except (ValueError, KeyError, OSError):
                 continue  # a peer on a different fleet, or a malformed report
             self.merge_settings(host)
+            self.merge_name(host)
         return learned
+
+    def merge_name(self, host) -> None:
+        """The fleet's name as the newest machine to name it says (a rename spreads)."""
+        if self.adopt_name is None:
+            return
+        from Elaborate._fleet.net import FleetClient
+        from Special._sync.manifest import fleet_id_for
+        try:
+            about = FleetClient(f"http://{host['ip']}:{self.port}").request("/v1/fleet")
+        except (OSError, ValueError):
+            return
+        named = about.get("fleet_name") if isinstance(about, dict) else None
+        if (not isinstance(named, dict) or about.get("fleet_id") != fleet_id_for(self.config["fleet_secret"])
+                or not isinstance(named.get("name"), str) or not isinstance(named.get("at"), str)):
+            return
+        mine = self.config.get("fleet_name") or {}
+        if named["at"] > str(mine.get("at", "")) and named["name"] != mine.get("name"):
+            try:
+                self.adopt_name(named)
+            except (OSError, ValueError):
+                return
+            self.config["fleet_name"] = {"name": named["name"], "at": named["at"]}
+            self.log(f"The fleet is called {named['name']} (named on {host.get('label', 'another machine')}).")
 
     def merge_settings(self, host) -> None:
         """Pull a peer's shared protected values and merge them (shared_policy.py). Counts only
@@ -368,7 +394,10 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     shared = (SharedPolicy(security_settings()[0], config_dir, fleet_id=fleet_id,
                            machine_id=config["machine_id"], label=config["label"])
               if config.get("transports") else None)
-    network = PeerNetwork(config, lambda: latest["report"], store, log=log, shared=shared)
+    def adopt_name(named):
+        from Elaborate._fleet.setup_state import name_fleet
+        name_fleet(security_settings()[0], config_dir, name=named["name"], at=named["at"])
+    network = PeerNetwork(config, lambda: latest["report"], store, log=log, shared=shared, adopt_name=adopt_name)
 
     def sealed_folder_loop():
         """The shared protected values through the synced folder, sealed (sealed.py)."""
@@ -435,6 +464,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             stale_seconds=stale_seconds,
             settings={"machine_id": config["machine_id"],
                       "transports": describe(config),
+                      "fleet_name": (config.get("fleet_name") or {}).get("name"),
                       "transport_config": config.get("transports") or {},
                       "debounce_seconds": config["debounce_seconds"],
                       "fetch_seconds": fetch_minutes * 60,

@@ -2956,3 +2956,26 @@ No code changed; decisions recorded where they govern.
   installs cryptography (not on Debian) so sealing is tested.
 - Shared so far: the three protected-value lists. Not yet: repository exceptions, scanner choice,
   check intervals.
+
+## 2026-11-16 15:40 - user (claude) - Fleets by name; places from the parent folder; one header and one way to setup (branch wave/fleet-by-name)
+- Joining failed twice. Checked on the machines: node1 and the Debian machine each kept their own
+  fleet and no connections, so setup's join never applied. The App & setup tab's "Show the fleet
+  key" put the key into a box the tab's redraw had already replaced, so it never appeared; the
+  16-character Fleet ID in the facts list was taken for the key, and the prompts' "64 letters
+  and digits" read as "64 bits".
+- The user: "couldn't it just be Home-Fleet on the tailnet?" Fleets now have a name
+  (`fleet_name`: name and when it was given). The peer server answers GET /v1/fleet with the
+  fleet's name and id (never the key); setup and the App & setup tab list the fleets your
+  machines on Tailscale are in, by name, and joining one gets the key from a machine of it
+  (GET /v1/session, same identity check as before). Starting a fleet asks its name; renaming
+  spreads (newest wins; the "My fleet" placeholder is dated 1970 so a real name always wins).
+  The key stays, for machines without Tailscale, under "For a machine without Tailscale"; the
+  display bug is fixed and the wording names 64 characters and the Fleet ID's difference.
+- Places: the folder is the repository's parent (Github/<org>/<repo> on a backup drive put every
+  repository in "Github"); a repository with copies in two libraries keeps the first copy's place
+  instead of none (59 such on the Debian machine showed as "Folder not shared").
+- Repositories tab: libraries are sections with their folders inside; every table shares one
+  column grid, so columns line up.
+- Header: the logo and title go home; "App & setup" opens that tab (hash changes now switch
+  tabs); "Refresh view" is "Reload view", and says it fetches nothing and rescans nothing. The
+  library page shares the header (Map, App & setup) and points its old fleet section to the tab.

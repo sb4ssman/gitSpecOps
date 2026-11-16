@@ -39,7 +39,8 @@ class PlaceTests(unittest.TestCase):
         library = Path(tempfile.gettempdir()) / "Library"
         self.assertEqual(place_of(library / "Org" / "repo", [library]), {"library": "Library", "folder": "Org"})
         self.assertEqual(place_of(library / "repo", [library]), {"library": "Library", "folder": ""})
-        self.assertEqual(place_of(library / "Org" / "deeper" / "repo", [library])["folder"], "Org")
+        # The parent folder is the organization's folder, however deep (the user, 2026-11-16).
+        self.assertEqual(place_of(library / "Github" / "Org" / "repo", [library]), {"library": "Library", "folder": "Org"})
         self.assertIsNone(place_of(Path(tempfile.gettempdir()) / "elsewhere" / "repo", [library]))
 
     def test_the_innermost_library_wins(self):
@@ -57,11 +58,11 @@ class PlaceTests(unittest.TestCase):
         named = build_manifest(FLEET, "m", "m", [repo({"library": "Lib", "folder": "Org"})], carries_names=True)
         self.assertNotIn("place", without_names(named)["repositories"][0])
 
-    def test_two_checkouts_keep_a_place_only_when_they_agree(self):
+    def test_two_checkouts_keep_the_first_ones_place(self):
         same = merge_checkouts([repo({"library": "L", "folder": "A"}), repo({"library": "L", "folder": "A"})])
         apart = merge_checkouts([repo({"library": "L", "folder": "A"}), repo({"library": "L", "folder": "B"})])
         self.assertEqual(same[0]["place"], {"library": "L", "folder": "A"})
-        self.assertIsNone(apart[0]["place"])
+        self.assertEqual(apart[0]["place"], {"library": "L", "folder": "A"})
 
 
 class PlaceGroupTests(unittest.TestCase):

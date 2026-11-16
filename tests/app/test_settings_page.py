@@ -11,7 +11,7 @@ from pathlib import Path
 MODULE = Path(__file__).resolve().parents[2] / "App" / "_web" / "skins" / "standard" / "fleet_settings.js"
 SCRIPT = r"""
 class Node {
-  constructor(tag) { this.tag = tag; this.children = []; this.dataset = {}; this.textContent = ''; this.attrs = {}; }
+  constructor(tag) { this.tag = tag; this.children = []; this.dataset = {}; this.textContent = ''; this.attrs = {}; this.value = ''; this.style = {}; }
   append(...items) { for (const item of items) this.children.push(typeof item === 'string' ? Object.assign(new Node('#text'), {textContent: item}) : item); }
   replaceChildren(...items) { this.children = []; this.append(...items); }
   setAttribute(k, v) { this.attrs[k] = v; }
@@ -54,7 +54,7 @@ class SettingsPageTests(unittest.TestCase):
                               capture_output=True, text=True, encoding="utf-8", timeout=60)
         self.assertEqual(done.returncode, 0, done.stderr)
         out = json.loads(done.stdout)
-        for words in ("Not in a fleet", "Look for machines on Tailscale", "Connections", "Fetch from GitHub",
+        for words in ("Not in a fleet", "Look for your fleets on Tailscale", "Connections", "Fetch from GitHub",
                       "Shared protected values", "desk removed the never-publish value", "Remove it here too",
                       "Start at sign-in"):
             self.assertIn(words, out["sections"])

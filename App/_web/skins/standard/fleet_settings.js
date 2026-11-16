@@ -18,7 +18,7 @@ const FETCH_LABELS = {0: 'Never (behind counts use the last fetch you made)', 60
 export function renderSettings(block, connection, token) {
   if (block.dataset.built === '1') return;
   block.dataset.built = '1';
-  const state = {settings: null, message: '', plan: null};
+  const state = {settings: null, message: '', plan: null, key: ''};
 
   async function call(action, payload = {}) {
     return connection.desktopAction(`setup/${action}`, payload, token(), {structured: true});
@@ -64,36 +64,53 @@ export function renderSettings(block, connection, token) {
 
   function fleetSection(s) {
     const box = el('div', undefined, 'capability');
-    box.append(el('strong', s.fleet_id ? `In fleet ${s.fleet_id}` : 'Not in a fleet'));
     if (s.fleet_id) {
-      box.append(el('p', 'To add another machine: on it, join through this machine on Tailscale, or paste this machine\'s key.'));
-      const shown = el('pre', '', 'host-note');
-      box.append(button('Show the fleet key', () => planned('show-key', {}, done => {
-        shown.textContent = done.key; state.message = done.notice || ''; draw(); box.append(shown);
-      })), button('Leave the fleet', () => planned('leave', {}, () => load('Left the fleet. This machine keeps its libraries.'))));
+      box.append(el('strong', `In the fleet ${s.fleet_name || '(unnamed)'}`),
+        el('p', 'Your other machines join it by this name: in setup, or on this tab, "Look for your fleets on Tailscale".'));
+      const name = el('input'); name.type = 'text'; name.value = s.fleet_name || ''; name.maxLength = 60;
+      box.append(el('label', 'Name '), name, button('Rename', async () => {
+        try { const done = await call('name-fleet', {name: name.value}); state.settings = done.settings; state.message = done.notice; }
+        catch (error) { state.message = error.message; }
+        draw();
+      }));
+      // The key belongs in a box of its own state: redrawing the tab must not lose it.
+      const advanced = el('details'); advanced.append(el('summary', 'For a machine without Tailscale'));
+      advanced.append(el('p', 'It joins with the fleet key instead. The key is 64 characters; the 16-character Fleet ID is not the key.', 'host-note'));
+      if (state.key) advanced.append(el('pre', state.key, 'host-note'));
+      advanced.append(button(state.key ? 'Hide the fleet key' : 'Show the fleet key', () => {
+        if (state.key) { state.key = ''; draw(); return; }
+        planned('show-key', {}, done => { state.key = done.key; state.message = done.notice || ''; draw(); });
+      }));
+      advanced.open = Boolean(state.key);
+      box.append(advanced, button('Leave the fleet', () => planned('leave', {}, () => load('Left the fleet. This machine keeps its libraries.'))));
       return box;
     }
-    box.append(el('p', 'Join the fleet your other machines are in, or start one: turn on a connection below.'));
-    const peers = el('div');
-    box.append(button('Look for machines on Tailscale', async () => {
-      peers.replaceChildren(el('p', 'Looking…', 'host-note'));
+    box.append(el('strong', 'Not in a fleet'),
+      el('p', 'Join the fleet your other machines are in, found by its name on Tailscale. Or start one: name it under Connections and turn a connection on.'));
+    const found = el('div');
+    box.append(button('Look for your fleets on Tailscale', async () => {
+      found.replaceChildren(el('p', 'Looking…', 'host-note'));
       try {
-        const found = (await call('peers')).peers;
-        peers.replaceChildren();
-        if (!found.length) peers.append(el('p', 'No machine on your tailnet is sharing a fleet right now. On a machine in the fleet, the app must be running with Tailscale on.', 'host-note'));
-        for (const peer of found) {
-          peers.append(button(`Join through ${peer.label}`, () => planned('join',
-            {via: peer.label, tailnet: true, tailnet_seconds: 300}, () => load(`Joined the fleet ${peer.label} is in.`))));
+        const fleets = (await call('fleets')).fleets;
+        found.replaceChildren();
+        if (!fleets.length) found.append(el('p', 'No fleet is answering on your tailnet. On a machine in the fleet, the app must be running with Tailscale as one of its connections.', 'host-note'));
+        for (const fleet of fleets) {
+          const item = el('div');
+          item.append(button(`Join ${fleet.name}`, () => planned('join',
+            {fleet_id: fleet.fleet_id, fleet_label: fleet.name, tailnet: true, tailnet_seconds: 300},
+            () => load(`Joined ${fleet.name}.`))), el('span', ` on ${fleet.machines.join(', ')}`, 'host-note'));
+          found.append(item);
         }
-      } catch (error) { peers.replaceChildren(el('p', error.message, 'tone-text-warning')); }
-    }), peers);
-    const key = el('input'); key.type = 'password'; key.placeholder = 'Fleet key (64 characters)'; key.autocomplete = 'off';
-    box.append(el('p', 'Or paste the key shown on a machine already in the fleet:'), key,
-      button('Join with this key', () => {
-        const value = key.value.replace(/[\s-]/g, '').toLowerCase();
-        if (!/^[0-9a-f]{64}$/.test(value)) { state.message = `A fleet key has 64 letters a-f and digits; this has ${value.length} characters.`; draw(); return; }
-        planned('join', {key: value, tailnet: true, tailnet_seconds: 300}, () => load('Joined the fleet.'));
-      }));
+      } catch (error) { found.replaceChildren(el('p', error.message, 'tone-text-warning')); }
+    }), found);
+    const advanced = el('details'); advanced.append(el('summary', 'Without Tailscale: join with a fleet key'));
+    const key = el('input'); key.type = 'password'; key.placeholder = 'Fleet key: 64 characters (not the 16-character Fleet ID)'; key.autocomplete = 'off';
+    advanced.append(key, button('Join with this key', () => {
+      const value = key.value.replace(/[\s-]/g, '').toLowerCase();
+      if (!/^[0-9a-f]{64}$/.test(value)) { state.message = `A fleet key is 64 characters long; this is ${value.length}. The 16-character Fleet ID is not the key.`; draw(); return; }
+      planned('join', {key: value, tailnet: true, tailnet_seconds: 300}, () => load('Joined the fleet.'));
+    }));
+    box.append(advanced);
     return box;
   }
 
@@ -117,11 +134,13 @@ export function renderSettings(block, connection, token) {
     const row3b = el('label'); row3b.append(create, ' create it (private) if it does not exist');
     const repoNames = el('input'); repoNames.type = 'checkbox'; repoNames.checked = c.repo.names;
     const row3c = el('label'); row3c.append(repoNames, ' with repository names');
+    const fleetName = el('input'); fleetName.type = 'text'; fleetName.placeholder = 'My fleet'; fleetName.maxLength = 60;
+    if (!s.fleet_id) box.append(el('p', 'Name for the new fleet (when you turn a connection on):', 'host-note'), fleetName);
     box.append(row1, row1b, el('p', 'Synced folder', 'host-note'), folder, row2b,
       el('p', 'State repository', 'host-note'), repo, row3b, row3c,
       button('Review the change', () => planned('connections', {
         tailnet: tailnet.checked, tailnet_seconds: Number(seconds.value), folder: folder.value.trim(),
-        repo: repo.value.trim(), create_repo: create.checked,
+        repo: repo.value.trim(), create_repo: create.checked, fleet_name: fleetName.value.trim(),
         names: {tailnet: tailnetNames.checked, folder: folderNames.checked, repo: repoNames.checked},
       }, done => load(done.notice || 'Saved.'))));
     return box;

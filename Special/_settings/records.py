@@ -119,7 +119,7 @@ OPTIONS = {
     "sync": {"root_recursion", "transport_names", "stale_hours", "expired_days", "compress_manifests"},
     "app": {"transport_names", "fetch_minutes", "share_names", "baskets", "recovery", "observation_mode",
             "debounce_seconds", "heartbeat", "inventory_notice_acknowledged", "local_port", "git_client",
-            "presentation", "seal_settings"},
+            "presentation", "seal_settings", "fleet_name"},
     "archive_manage": {"archives"},
 }
 
@@ -143,6 +143,12 @@ def options(component, value):
         elif key in ("stale_hours", "expired_days", "heartbeat", "local_port", "fetch_minutes"):
             integer(item, 0 if key == "fetch_minutes" else (1024 if key == "local_port" else 1),
                     65535 if key == "local_port" else (60 if key == "heartbeat" else None))
+        elif key == "fleet_name":
+            # The fleet's name, as people say it ("Home-Fleet"), and when it was given.
+            obj(item, ("name", "at"), ("name", "at"))
+            text(item["name"])
+            text(item["at"])
+            require(len(item["name"]) <= 60 and item["name"].isprintable(), "invalid fleet name")
         elif key == "debounce_seconds":
             require((type(item) is int and item >= 0) or
                     (type(item) is float and math.isfinite(item) and item >= 0), "invalid debounce duration")

@@ -54,8 +54,8 @@ Setup's menu:
    Without either, every command runs as `python gitso.py <command>`.
 
 **The same from the app.** The web view's App & setup tab changes this machine's setup without a
-terminal: join a fleet (through a machine on Tailscale, or with a pasted key) or leave it, show
-the fleet key, turn each connection on or off (Tailscale and how often it asks, a synced folder,
+terminal: join one of your fleets by its name on Tailscale (or, without Tailscale, with its key),
+start one with a name, rename it or leave it, turn each connection on or off (Tailscale and how often it asks, a synced folder,
 the state repository, and whether each carries repository names), the GitHub fetch schedule, and
 start at sign-in. Changes to the fleet show what they will do first and happen only on Apply.
 The tab appears on this computer only, never on the Tailscale view.

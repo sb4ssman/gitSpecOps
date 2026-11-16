@@ -65,7 +65,9 @@ function renderMachine(state) {
   const list = byId('libraries');
   list.replaceChildren();
   byId('presentation-card').hidden = !machine;
-  byId('fleet-section').hidden = !machine;
+  // The fleet is set up in one place, the App & setup tab; this page only points there.
+  byId('fleet-section').hidden = true;
+  byId('fleet-pointer').hidden = !machine;
   if (!machine) {
     byId('machine-summary').textContent = 'Not enrolled yet. Tell gitSpecOps which folders hold your repositories; nothing is looked at until you say so.';
     return;
@@ -115,6 +117,7 @@ function render(state) {
   renderMachine(state);
   renderFleet(state);
   byId('to-map').hidden = !state.machine;
+  byId('to-setup').hidden = !state.machine;
   if (wasEnrolled === false && state.machine) say('This machine is enrolled. The app is starting its map…', 'success');
   wasEnrolled = Boolean(state.machine);
 }
