@@ -80,7 +80,18 @@ class PlaceGroupTests(unittest.TestCase):
         here = build_display(reports, FLEET, settings={"machine_id": "one"})
         self.assertEqual(here["rows"][0]["place_id"], "place/Github/Org")
         elsewhere = build_display(reports, FLEET, settings={"machine_id": "four"})
-        self.assertEqual(elsewhere["rows"][0]["place_id"], "place/Backup/Org", "no copy here: the most common")
+        # No copy here: the most common place, under the machine that keeps it (machine, then
+        # library, then folder), so it never merges into a library here of the same name.
+        self.assertRegex(elsewhere["rows"][0]["place_id"], r"^place/(two|three)/Backup/Org$")
+        group = elsewhere["place_groups"][0]
+        self.assertRegex(group["host"], r"^Backup on (two|three)$")
+
+    def test_two_libraries_with_one_name_on_a_machine_are_told_apart(self):
+        roots = ["/memory-lambda/Github", "/media/drive/Memory Gamma/Github"]
+        self.assertEqual(place_of("/media/drive/Memory Gamma/Github/Org/repo", roots)["library"],
+                         "Github (Memory Gamma)")
+        self.assertEqual(place_of("/memory-lambda/Github/Org/repo", roots)["library"], "Github (memory-lambda)")
+        self.assertEqual(place_of("/memory-lambda/Github/Org/repo", roots[:1])["library"], "Github")
 
     def test_a_repository_without_a_place_is_grouped_as_not_shared(self):
         document = build_display([report("one", None)], FLEET)

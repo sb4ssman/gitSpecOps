@@ -73,6 +73,27 @@ class RequestBook:
         with self.lock:
             return [item for item in self._read(self.out_path) if _fresh(item.get("at", ""))]
 
+    def published(self) -> list[dict]:
+        """What GET /v1/requests serves: this machine's requests, and its answers to the requests
+        others sent it, so the asking machine learns what happened (the user, 2026-11-16)."""
+        answers = [{"answer_for": item["id"], "from": self.machine_id, "to": item["from"],
+                    "status": item["status"], "result": item.get("result", "")[:2000], "at": item["at"]}
+                   for item in self.incoming() if item["status"] != "waiting"]
+        return self.outgoing() + answers
+
+    def log(self, event: str, request: dict, result: str = "") -> None:
+        """The task log: every request sent, applied or dismissed, and every local run, one JSON
+        line each, kept in the fleet folder (tasks.log). Names and counts; never a path."""
+        line = {"at": _now().isoformat(), "event": event, "id": request.get("id"), "kind": request.get("kind"),
+                "from": request.get("from_label") or request.get("from"), "to": request.get("to_label") or request.get("to"),
+                "repositories": [item.get("name") or item.get("repo_id", "")[:8] for item in request.get("items", [])][:50],
+                "result": result.splitlines()[:20]}
+        try:
+            with open(self.out_path.with_name("tasks.log"), "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(line) + "\n")
+        except OSError:
+            pass
+
     def withdraw(self, request_id: str) -> None:
         with self.lock:
             self._write(self.out_path, [item for item in self._read(self.out_path) if item.get("id") != request_id])
@@ -84,6 +105,19 @@ class RequestBook:
             return 0
         added = 0
         with self.lock:
+            # Answers to what this machine asked: kept on its own request, so its page says what
+            # happened over there.
+            sent = self._read(self.out_path)
+            answered = False
+            for item in requests:
+                if (isinstance(item, dict) and item.get("answer_for") and item.get("to") == self.machine_id
+                        and item.get("from") == from_machine):
+                    for request in sent:
+                        if request.get("id") == item["answer_for"] and request.get("status") != item.get("status"):
+                            request.update(status=str(item.get("status"))[:20], result=str(item.get("result"))[:2000])
+                            answered = True
+            if answered:
+                self._write(self.out_path, sent)
             book = self._read(self.in_path)
             for item in requests:
                 if (not isinstance(item, dict) or item.get("to") != self.machine_id

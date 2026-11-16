@@ -72,6 +72,15 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
   could reuse a recent read instead of reading again at start. The user asked why, not for a
   change.
 
+## Fleet sync (raised 2026-11-16)
+- **Apply requests automatically, by choice:** a per-machine setting ("fast-forwards: apply
+  automatically") so a request needs no one at that machine. Clones stay manual unless chosen.
+- **Scrutinize the display contract against the page** (`docs/DISPLAY-CONTRACT.md`): every fact
+  worked out once in Python; skins only draw, so an LCARS-style skin can rearrange everything.
+- **The Memory Gamma copies on the dual-boot machine** are Windows checkouts read from Linux: Git
+  on Linux sees every line ending as a change. Either `core.autocrlf=true` in those repositories,
+  or gitSpecOps reporting "line endings only" instead of "dirty".
+
 ## Not built yet
 - **The gitso alias in a synced profile (found 2026-11-15):** on Windows the PowerShell profiles
   can live in OneDrive's Documents, which syncs to the user's other PCs. The alias is a function

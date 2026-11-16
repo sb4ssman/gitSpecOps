@@ -52,12 +52,19 @@ export function renderRequests(block, data, act) {
     block.append(item);
   }
   for (const request of requests.sent) {
-    const item = el('div', undefined, 'request');
-    const button = el('button', 'Withdraw'); button.type = 'button';
+    // Answered over there: say so, with what happened; otherwise it is still waiting.
+    const answered = request.status === 'done' || request.status === 'dismissed';
+    const item = el(answered ? 'details' : 'div', undefined, 'request');
+    const words = answered
+      ? `${request.status === 'done' ? 'Done' : 'Dismissed'} on ${request.to_label}: ${KIND[request.kind]} ${names(request)}`
+      : `Waiting on ${request.to_label} (apply it there): ${KIND[request.kind]} ${names(request)}. `;
+    item.append(el(answered ? 'summary' : 'span', words, answered ? undefined : 'host-note'));
+    if (answered) item.append(el('pre', request.result || '', 'host-note'));
+    const button = el('button', answered ? 'Clear' : 'Withdraw'); button.type = 'button';
     button.onclick = async () => {
-      try { await act('request-withdraw', {id: request.id}); message = 'Withdrawn.'; } catch (error) { message = error.message; }
+      try { await act('request-withdraw', {id: request.id}); message = answered ? '' : 'Withdrawn.'; } catch (error) { message = error.message; }
     };
-    item.append(el('span', `Asked ${request.to_label} to ${KIND[request.kind]}: ${names(request)}. `, 'host-note'), button);
+    item.append(button);
     block.append(item);
   }
 }

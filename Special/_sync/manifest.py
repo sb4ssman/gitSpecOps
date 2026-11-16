@@ -301,8 +301,21 @@ def place_of(path, roots) -> dict | None:
         return None
     root = max(owners, key=lambda r: len(r.parts))  # the innermost library holding it
     parts = path.relative_to(root).parts
-    library = (root.name or str(root).rstrip("\\/:")).replace(":", "")[:PLACE_LIMIT]
-    return {"library": library, "folder": parts[-2][:PLACE_LIMIT] if len(parts) > 1 else ""}
+    return {"library": library_name(root, roots), "folder": parts[-2][:PLACE_LIMIT] if len(parts) > 1 else ""}
+
+
+def library_name(root, roots) -> str:
+    """A library's name: its folder's name; with its parent's name added when another library on
+    this machine has the same name (two libraries called Github on one machine, 2026-11-16)."""
+    from pathlib import Path
+
+    def bare(folder: Path) -> str:
+        return (folder.name or str(folder).rstrip("\\/:")).replace(":", "")
+    root = Path(root)
+    name = bare(root)
+    if sum(bare(Path(other)).casefold() == name.casefold() for other in roots or []) > 1 and root.parent.name:
+        name = f"{name} ({bare(root.parent)})"
+    return name[:PLACE_LIMIT]
 
 
 def _validate_names(repo: dict, label: str) -> None:

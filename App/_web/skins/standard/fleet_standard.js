@@ -226,9 +226,10 @@ function renderRepositories() {
       outer.open = state.expansion.isOpen(outerId);
       outer.addEventListener('toggle', () => { state.expansion.record(outerId, outer.open); saveCollapsedGroups(); });
       const count = folders.reduce((sum, group) => sum + group.rows.length, 0);
+      const total = folders.reduce((sum, group) => sum + (group.count ?? group.rows.length), 0);
       const attention = folders.reduce((sum, group) => sum + group.attention, 0);
       const head = node('summary'); head.append(document.createTextNode(library));
-      head.append(node('span', `${folders.length} folder${folders.length === 1 ? '' : 's'} · ${count} shown · ${attention} need attention`, 'group-meta'));
+      head.append(node('span', `${folders.length} folder${folders.length === 1 ? '' : 's'} · ${shownOf(count, total)} · ${attention} need attention`, 'group-meta'));
       outer.append(head); list.append(outer); target = outer;
     }
     for (const group of folders) renderGroup(target, group, data);
@@ -246,7 +247,7 @@ function renderGroup(list, group, data) {
       saveCollapsedGroups();
     });
     const summary = node('summary'); summary.append(document.createTextNode(group.label));
-    summary.append(node('span', `${group.rows.length} shown · ${group.attention} need attention`, 'group-meta'));
+    summary.append(node('span', `${shownOf(group.rows.length, group.count ?? group.rows.length)} · ${group.attention} need attention`, 'group-meta'));
     details.append(summary);
     const scroll = node('div', undefined, 'table-scroll'); const table = node('table', undefined, 'repo-table');
     // The same column widths in every group, so the columns line up down the page.
@@ -408,7 +409,19 @@ function renderNotices() {
   for (const notice of state.data.notices) block.append(node('p', notice.text, `tone-text-${notice.tone}`));
 }
 
-const mapOptions = {view: 'zoom', perspective: null, group: 'all', repo: null};
+/** "10 of 11 shown" when the filters hide some: a folder never looks smaller than it is. */
+function shownOf(shown, total) {
+  return shown === total ? `${shown} shown` : `${shown} of ${total} shown (filters hide ${total - shown})`;
+}
+
+// The map's choices survive a reload (the user, 2026-11-16: reloading went back to the zoom map).
+const MAP_DEFAULTS = {view: 'zoom', perspective: null, group: 'all', repo: null};
+const mapOptions = (() => {
+  try { return {...MAP_DEFAULTS, ...JSON.parse(localStorage.getItem('gitso.map') || '{}')}; } catch { return {...MAP_DEFAULTS}; }
+})();
+function saveMapOptions() {
+  try { localStorage.setItem('gitso.map', JSON.stringify(mapOptions)); } catch { /* a remembered choice only */ }
+}
 
 function fillSelect(select, entries, chosen) {
   select.replaceChildren(...entries.map(([value, label]) => option(value, label)));
@@ -436,7 +449,7 @@ function renderMapPanel() {
     return;
   }
   try {
-    renderMap(box, data, {...mapOptions, actions: fleetActions()}, change => { Object.assign(mapOptions, change); renderMapPanel(); });
+    renderMap(box, data, {...mapOptions, actions: fleetActions()}, change => { Object.assign(mapOptions, change); saveMapOptions(); renderMapPanel(); });
   } catch (error) {
     box.replaceChildren(node('p', `The map could not be drawn (${error.message}). Switch to another map view above; `
       + 'if this one keeps failing, tell us the message.', 'tone-text-warning'));
@@ -444,7 +457,7 @@ function renderMapPanel() {
 }
 
 for (const [id, key] of [['map-view', 'view'], ['map-perspective', 'perspective'], ['map-group', 'group'], ['map-repo', 'repo']]) {
-  byId(id).addEventListener('input', event => { mapOptions[key] = event.target.value; if (state.data) renderMapPanel(); });
+  byId(id).addEventListener('input', event => { mapOptions[key] = event.target.value; saveMapOptions(); if (state.data) renderMapPanel(); });
 }
 
 /** Requests to other machines and their uncommitted-work summaries: this computer only. */

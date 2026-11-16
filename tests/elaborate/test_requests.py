@@ -47,6 +47,16 @@ class RequestBookTests(unittest.TestCase):
         self.prime.receive(self.desk.outgoing(), "desk")
         self.assertEqual([item["status"] for item in self.prime.incoming()], ["dismissed"])
 
+    def test_the_asking_machine_learns_what_happened(self):
+        sent = self.desk.send("prime", "Prime", "pull", [{"repo_id": "a" * 32, "name": "alpha"}])
+        self.prime.receive(self.desk.published(), "desk")
+        self.prime.settle(sent["id"], "done", "alpha: pulled")
+        self.prime.log("applied", self.prime.incoming()[0], "alpha: pulled")
+        self.desk.receive(self.prime.published(), "prime")
+        mine = self.desk.outgoing()[0]
+        self.assertEqual((mine["status"], mine["result"]), ("done", "alpha: pulled"))
+        self.assertIn('"event": "applied"', (self.root / "prime" / "tasks.log").read_text())
+
     def test_bad_requests_are_refused(self):
         with self.assertRaises(ValueError):
             self.desk.send("prime", "Prime", "delete", [{"repo_id": "a"}])

@@ -244,7 +244,12 @@ function organizationView(container, data, perspective, group, onPick, actions) 
       const cell = html('td');
       const held = rows.filter(row => (row.cells[machine.id] || {}).present);
       const missing = rows.filter(row => !(row.cells[machine.id] || {}).present && providerUrl(row));
+      // This machine's own column runs here and now (you are at it); another machine's is a request
+      // it shows on its own page (the user, 2026-11-16).
+      const here = machine.id === data.this_machine;
       const ask = (kind, list) => async () => {
+        if (here && !window.confirm(`${kind === 'pull' ? 'Fast-forward' : 'Clone'} ${list.length} here now? Each is fetched first and moved only if clean and simply behind; a clone replaces nothing.`)) return;
+        orgState.message = here ? 'Working…' : orgState.message; onPick({});
         try {
           const done = await actions.send({to: machine.id, to_label: machine.label, kind, items: list.map(row => ({
             repo_id: row.id, name: (row.identity || {}).name || row.name, host: (row.identity || {}).host,
@@ -253,8 +258,9 @@ function organizationView(container, data, perspective, group, onPick, actions) 
         } catch (error) { orgState.message = error.message; }
         onPick({});
       };
-      if (held.length) { const b = html('button', `Fast-forward ${held.length}`); b.type = 'button'; b.onclick = ask('pull', held); cell.append(b); }
-      if (missing.length) { const b = html('button', `Clone ${missing.length} missing`); b.type = 'button'; b.onclick = ask('clone', missing); cell.append(b); }
+      const suffix = here ? ' here' : '';
+      if (held.length) { const b = html('button', `Fast-forward ${held.length}${suffix}`); b.type = 'button'; b.onclick = ask('pull', held); cell.append(b); }
+      if (missing.length) { const b = html('button', `Clone ${missing.length} missing${suffix}`); b.type = 'button'; b.onclick = ask('clone', missing); cell.append(b); }
       asks.append(cell);
     }
     table.append(asks);
@@ -288,7 +294,7 @@ function organizationView(container, data, perspective, group, onPick, actions) 
     }
     table.append(line);
   }
-  if (orgState.message) container.append(html('p', orgState.message, 'host-note'));
+  if (orgState.message) container.append(html(orgState.message.includes('\n') ? 'pre' : 'p', orgState.message, 'host-note'));
   container.append(table);
   if (orgState.changes) container.append(changesBox(orgState.changes));
 }

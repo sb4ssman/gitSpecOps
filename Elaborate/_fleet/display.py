@@ -31,7 +31,11 @@ def _row_place(row, here=None) -> dict | None:
     if not places:
         return None
     (library, folder), _count = max(places.items(), key=lambda item: (item[1], item[0]))
-    return {"library": library, "folder": folder}
+    # Not on this machine: say whose library it is, so it never merges into a library here of
+    # the same name (the user: machine, then library, then folder).
+    owner = next((machine_id for machine_id, cell in row.cells.items() if cell.present and cell.repo.get("place")
+                  and (cell.repo["place"]["library"], cell.repo["place"]["folder"]) == (library, folder)), None)
+    return {"library": library, "folder": folder, "machine": owner if here else None}
 
 
 def _duration(seconds: float) -> str:
@@ -189,16 +193,21 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
         names.update(report["names"])
     catalog = {rid: {"display_name": f"{v['owner']}/{v['name']}"} for rid, v in names.items()}
     rows, groups, place_groups = [], {}, {}
+    labels = {view.machine_id: view.label for view in views}
     for row in build_rows(views, catalog):
         identity = names[row.repo_id]
         group_id = f"{identity['host']}/{identity['owner']}"
         group = groups.setdefault(group_id, {"id": group_id, "label": identity["owner"],
                                             "host": identity["host"], "count": 0, "attention": 0})
         place = _row_place(row, settings.get("machine_id"))
-        place_id = (f"place/{place['library']}/{place['folder']}" if place else "place/unknown")
+        elsewhere = (place or {}).get("machine")
+        library = (f"{place['library']} on {labels.get(elsewhere, elsewhere)}" if elsewhere else place["library"]) if place else None
+        place_id = (f"place/{elsewhere + '/' if elsewhere else ''}{place['library']}/{place['folder']}"
+                    if place else "place/unknown")
+        place = {"library": place["library"], "folder": place["folder"]} if place else None
         place_group = place_groups.setdefault(place_id, {
             "id": place_id, "label": (place["folder"] or "(directly in the library)") if place
-            else "Folder not shared", "host": place["library"] if place else "Other machines",
+            else "Folder not shared", "host": library if place else "Other machines",
             "count": 0, "attention": 0})
         cells = {mid: _cell(cell) for mid, cell in row.cells.items()}
         # Attention means unfinished work somewhere: stashed or worse, including work an old
@@ -300,6 +309,7 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
         "product": {"name": PRODUCT_NAME, "version": VERSION, "channel": "development"},
         "generated_at": now.isoformat(), "fleet_id": fleet_id,
         "fleet_name": settings.get("fleet_name") if transport_config else None,
+        "this_machine": settings.get("machine_id"),  # which column is the machine showing this page
         "summary": {"repositories": len(rows), "attention": sum(r["needs_attention"] for r in rows),
                     "machines": len(machines),
                     "current_machines": sum(m["freshness"] == "current" for m in machines),
