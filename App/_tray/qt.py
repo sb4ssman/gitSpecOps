@@ -430,6 +430,8 @@ def _control(args) -> int:
 
 def main(argv=None) -> int:
     from Basic import _cli
+    from Basic._console import include_user_tools
+    include_user_tools()  # scanners and gh installed for this user only (~/.local/bin)
     parser = _cli.parser("tray", __doc__.split("\n", 1)[0])
     parser.add_argument("--config-dir", type=Path, help="local fleet state directory")
     parser.add_argument("--settings-home", type=Path, help="common profile; defaults to the user-data home")

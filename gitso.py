@@ -262,6 +262,8 @@ NEEDS_ARGUMENTS = {"org copy", "inventory export", "inventory restore"}
 
 def main(argv=None):
     """Discover/document without imports; dispatch only an explicitly chosen operation."""
+    from Basic._console import include_user_tools
+    include_user_tools()
     arguments = list(sys.argv[1:] if argv is None else argv)
     try:
         if not arguments:

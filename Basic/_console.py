@@ -38,6 +38,18 @@ def _reconfigure(stream, encoding: str | None, errors: str) -> bool:
     return True
 
 
+def include_user_tools() -> None:
+    """Search ~/.local/bin for tools too, when it exists: where uv, and tools installed for this
+    user only (the GitHub CLI and gitleaks on an older Mac, 2026-11-16), live. A sign-in item or
+    a new terminal on macOS does not search it by default."""
+    import os
+    from pathlib import Path
+    folder = Path.home() / ".local" / "bin"
+    parts = os.environ.get("PATH", "").split(os.pathsep)
+    if folder.is_dir() and str(folder) not in parts:
+        os.environ["PATH"] = os.pathsep.join([*parts, str(folder)]) if parts != [""] else str(folder)
+
+
 def enable_unicode_output() -> bool:
     """Best-effort UTF-8 stdout/stderr. Never raises; returns whether UTF-8 is in play.
 

@@ -215,12 +215,28 @@ function librariesView(container, data, perspective, onPick) {
   container.append(table);
 }
 
-function copyText(cell, row, perspectiveCell) {
+const PROVIDER = {'github.com': 'GitHub', 'gitlab.com': 'GitLab', 'bitbucket.org': 'Bitbucket'};
+
+/** A copy, said against its one source of truth, the provider it comes from: "matches GitHub",
+ *  "3 behind GitHub", "2 ahead of GitHub (not pushed)", with uncommitted files and extra copies
+ *  named plainly (the user, 2026-11-16: "same commit as WHAT?"). As of that machine's last fetch. */
+function copyText(cell, row) {
   if (!cell || !cell.present) return 'not here';
-  const head = cell.facts && cell.facts.head;
-  const mine = perspectiveCell && perspectiveCell.present && perspectiveCell.facts && perspectiveCell.facts.head;
-  const relation = head && mine && cell !== perspectiveCell ? (head === mine ? ' · same commit' : ' · different commit') : '';
-  return `${cell.description || cell.state}${relation}`;
+  const facts = cell.facts || {};
+  const host = (row.identity || {}).host;
+  const remote = PROVIDER[host] || (host && host !== 'local' ? host : null);
+  const parts = [];
+  const changed = (facts.staged || 0) + (facts.unstaged || 0) + (facts.untracked || 0);
+  if (changed) parts.push(`${changed} uncommitted file${changed === 1 ? '' : 's'}`);
+  if (!remote) parts.push('no remote: the only copy is on machines');
+  else if (!facts.has_upstream) parts.push(`not linked to a branch on ${remote}`);
+  else if (facts.ahead && facts.behind) parts.push(`${facts.ahead} ahead and ${facts.behind} behind ${remote}`);
+  else if (facts.ahead) parts.push(`${facts.ahead} ahead of ${remote} (not pushed)`);
+  else if (facts.behind) parts.push(`${facts.behind} behind ${remote}`);
+  else parts.push(`matches ${remote}`);
+  if (facts.stashes) parts.push(`${facts.stashes} stash${facts.stashes === 1 ? '' : 'es'}`);
+  if ((facts.checkouts || 1) > 1) parts.push(`${facts.checkouts} copies on this machine`);
+  return parts.join(' · ');
 }
 
 // What the organization view keeps across the page's refreshes: the last request's answer, and
@@ -326,6 +342,8 @@ function organizationView(container, data, perspective, group, onPick, actions) 
   }
   if (orgState.message) container.append(html(orgState.message.includes('\n') ? 'pre' : 'p', orgState.message, 'host-note'));
   container.append(table);
+  container.append(html('p', 'Each copy is compared with its provider as of that machine\'s last fetch. To fetch now on this '
+    + 'machine: gitso fetch <organization folder>; or set a schedule in App & setup.', 'host-note'));
   if (orgState.changes) container.append(changesBox(orgState.changes));
 }
 
@@ -384,7 +402,7 @@ export function renderMap(container, data, options, onPick) {
   container.replaceChildren();
   if (options.view === 'zoom') { renderZoom(container, data); return; }
   const perspective = options.perspective && data.machines.some(m => m.id === options.perspective)
-    ? options.perspective : (data.machines[0] || {}).id;
+    ? options.perspective : (data.machines.some(m => m.id === data.this_machine) ? data.this_machine : (data.machines[0] || {}).id);
   if (!data.machines.length) { container.append(html('p', 'No machine has reported yet.', 'empty')); return; }
   if (options.view === 'libraries') librariesView(container, data, perspective, onPick);
   else if (options.view === 'organization') organizationView(container, data, perspective, options.group || 'all', onPick, options.actions);
