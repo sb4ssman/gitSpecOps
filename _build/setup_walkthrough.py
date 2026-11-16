@@ -966,8 +966,7 @@ def area_fleet(found: dict, plan: Plan) -> None:
         if answer == "s":
             if ask("Anyone, or any program reading this window, who has the key can join your fleet. "
                    "Type SHOW to print it:") == "SHOW":
-                subprocess.call([sys.executable, str(ROOT / "Elaborate" / "fleet.py"), "key", "--show"],
-                                cwd=ROOT)
+                _show_fleet_key()
                 ask("Press Enter when you have copied it:")
         elif answer == "l":
             plan.add("Fleet", "Fleet: leave (this machine keeps its libraries)", lambda: (leave_fleet(), "left")[1])
@@ -1002,9 +1001,9 @@ def area_fleet(found: dict, plan: Plan) -> None:
         return
     key = None
     if answer == "2":
-        key = ask("Paste the fleet key:")
-        if len(key) != 64:
-            line("A fleet key is 64 characters; nothing will be joined. Run setup again with the key.", "warning")
+        key = _ask_join(found)
+        if key is None:
+            line("Not joining a fleet; nothing will change. Run setup again to join.", "warning")
             return
     chosen = _choose_connections(found, has_tailscale, {})
     if chosen is None:
@@ -1018,6 +1017,103 @@ def area_fleet(found: dict, plan: Plan) -> None:
     plan.add("Fleet", f"Fleet: {'join' if key else 'start'} a fleet, connected by {ways}",
              lambda: _start_fleet(key, tailnet, folder, repo, create, names, seconds))
     _browser_reach(found, plan, tailnet)
+
+
+def _show_fleet_key() -> None:
+    """The key alone on one line, never wrapped, so it copies whole."""
+    from Special._settings.fleet import load_fleet_settings
+    snapshot = load_fleet_settings()
+    secret = ((snapshot.document if snapshot is not None else {}).get("machine") or {}).get("fleet_secret")
+    if not secret:
+        line("This machine has no fleet key yet.", "warning")
+        return
+    say()
+    line("The fleet key is the line below. Copy all of it; setup on the other machine also "
+         "accepts it in parts if it wraps.", "muted")
+    say()
+    print(secret, flush=True)
+    say()
+
+
+def _ask_join(found: dict) -> str | None:
+    """The fleet key to join with, through a machine on Tailscale or pasted; None to not join.
+
+    A pasted key used to be dropped with one warning line when it was not exactly 64 characters,
+    and setup went on as though nothing had happened (one machine, 2026-11-16, joined nothing). A
+    key copied from a narrow window arrives over two lines: each part is collected until it is
+    whole, and anything wrong is asked again."""
+    if found.get("tailnet"):
+        option("T", "Through a machine on Tailscale", "No key to copy: a machine already in the fleet, "
+               "with its app running and Tailscale on, hands it over. Only your own devices can ask.")
+        option("K", "Paste the fleet key", "Shown on a machine already in the fleet: setup, Fleet, "
+               "Show this machine's fleet key.")
+        option("0", "Do not join")
+        answer = choose("tk0", "t")
+        if answer == "0":
+            return None
+        if answer == "t":
+            secret = _join_over_tailnet()
+            if secret is not None:
+                return secret
+            line("Paste the key instead, or press Enter to not join.", "muted")
+    return _ask_fleet_key()
+
+
+def _ask_fleet_key() -> str | None:
+    import re
+    collected, prompt = "", "Paste the fleet key (64 letters and digits; Enter alone: do not join):"
+    while True:
+        text = re.sub(r"[\s-]", "", ask(prompt))
+        if not text:
+            return None
+        if not re.fullmatch(r"[0-9a-fA-F]+", text):
+            line("A fleet key has only digits and the letters a to f. Paste only the key.", "warning")
+            collected, prompt = "", "Paste the fleet key (Enter alone: do not join):"
+            continue
+        collected += text
+        if len(collected) == 64:
+            return collected.lower()
+        if len(collected) > 64:
+            line(f"That is {len(collected)} characters; a fleet key has 64. Paste it again.", "warning")
+            collected, prompt = "", "Paste the fleet key (Enter alone: do not join):"
+            continue
+        prompt = (f"{len(collected)} of 64 so far: a key copied over two lines arrives in parts. "
+                  "Paste the rest (Enter alone: do not join):")
+
+
+def _join_over_tailnet() -> str | None:
+    """The fleet key from a running machine on this tailnet; it authorizes the request by its
+    Tailscale identity. None when no machine could hand it over (said why)."""
+    try:
+        from Elaborate._fleet.net import FleetClient, discover_hosts
+        from Special._sync.manifest import fleet_id_for
+        hosts = [host for host in discover_hosts() if host.get("serving")]
+    except (OSError, ValueError) as exc:
+        line(f"Could not look for machines on Tailscale ({exc}).", "warning")
+        return None
+    if not hosts:
+        line("No machine on your tailnet is sharing a fleet right now. On a machine in the fleet, "
+             "the app must be running with Tailscale as one of its connections.", "warning")
+        return None
+    for number, host in enumerate(hosts, 1):
+        option(str(number), host["label"])
+    option("0", "None of these")
+    answer = choose("".join(str(n) for n in range(1, min(len(hosts), 9) + 1)) + "0", "1")
+    if answer == "0":
+        return None
+    host = hosts[int(answer) - 1]
+    try:
+        session = FleetClient(host["url"]).request("/v1/session")
+    except (OSError, ValueError) as exc:
+        line(f"{host['label']} did not hand over the key ({exc}).", "warning")
+        return None
+    secret = session.get("fleet_secret") if isinstance(session, dict) else None
+    if not (isinstance(secret, str) and len(secret) == 64):
+        line(f"{host['label']} did not hand over a fleet key.", "warning")
+        return None
+    line(f"Got the key for fleet {fleet_id_for(secret)} from {host['label']}; it is joined when you "
+         "apply the plan.", "success")
+    return secret
 
 
 def _connection_names(transports: dict) -> list[str]:

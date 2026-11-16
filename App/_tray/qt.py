@@ -267,6 +267,20 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
     menu.addSeparator()
     menu.addAction("Quit gitSpecOps").triggered.connect(app.quit)
     tray.setContextMenu(menu)
+    # `gitso tray --stop` leaves a quit request; it means the same as Quit on this menu. One left
+    # over from before this start is not a request to this tray.
+    from App._tray.control import QUIT_REQUEST
+    quit_request = fleet_directory(config_dir, home=settings_home) / QUIT_REQUEST
+    quit_request.unlink(missing_ok=True)
+    quit_timer = QtCore.QTimer()
+    quit_timer.setInterval(1000)
+
+    def check_quit():
+        if quit_request.exists():
+            quit_request.unlink(missing_ok=True)
+            app.quit()
+    quit_timer.timeout.connect(check_quit)
+    quit_timer.start()
     tray.activated.connect(lambda reason: open_view() if reason ==
                            QtWidgets.QSystemTrayIcon.ActivationReason.DoubleClick else None)
     bridge.snapshot.connect(apply)
@@ -344,6 +358,33 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
     return result["code"]
 
 
+def _control(args) -> int:
+    """--follow, --open, --stop: talk to the running tray (App/_tray/control.py)."""
+    from App._detach import running
+    from App._tray import control
+    from Basic import _cli
+    if not running(args.config_dir, args.settings_home):
+        return _cli.fail(args, "tray", "the app is not running; start it with gitso tray")
+    try:
+        if args.stop:
+            stopped = control.request_stop(args.config_dir, args.settings_home)
+            if not stopped:
+                return _cli.fail(args, "tray", "the app did not quit within 15 seconds; quit it from its tray menu",
+                                 _cli.FAILED)
+            _cli.emit(args, _cli.document("tray", stopped=True), lambda: print("gitSpecOps has quit."))
+            return 0
+        if args.open:
+            address = control.open_map(args.settings_home)
+            _cli.emit(args, _cli.document("tray", opened=address), lambda: print(f"Opened {address}"))
+            return 0
+        print("Following gitSpecOps; Ctrl+C stops following (the app keeps running).", flush=True)
+        for text in control.recent_events(args.settings_home):
+            print(text, flush=True)
+        return control.follow(args.settings_home, out=lambda text: print(text, flush=True))
+    except (OSError, RuntimeError, ValueError) as exc:
+        return _cli.fail(args, "tray", str(exc))
+
+
 def main(argv=None) -> int:
     from Basic import _cli
     parser = _cli.parser("tray", __doc__.split("\n", 1)[0])
@@ -358,7 +399,14 @@ def main(argv=None) -> int:
                         help="also serve the web view on the tailnet (App/_web/remote.py)")
     parser.add_argument("--foreground", action="store_true",
                         help="run in this terminal and show its output; closing the terminal closes the app")
+    control = parser.add_mutually_exclusive_group()
+    control.add_argument("--follow", action="store_true",
+                         help="while it runs: keep showing what it does, until Ctrl+C (the app keeps running)")
+    control.add_argument("--open", action="store_true", help="open the web view at the map")
+    control.add_argument("--stop", action="store_true", help="quit the running app")
     args = parser.parse_args(argv)
+    if args.follow or args.open or args.stop:
+        return _control(args)
     # From a terminal (or setup), start the app on its own and return: closing that window must
     # not close the app (node1, 2026-11-15). Without a console (pythonw, start at sign-in) it is
     # already on its own, so it runs right here.
@@ -368,16 +416,28 @@ def main(argv=None) -> int:
                    *(["--settings-home", str(args.settings_home)] if args.settings_home else []),
                    *(["--view", args.view] if args.view else []), *(["--web", args.web] if args.web else []),
                    *(["--open-on-start"] if args.open_on_start else []), *(["--remote"] if args.remote else [])]
+        from App._detach import ALREADY
         try:
             message = start(forward)
         except (OSError, RuntimeError) as exc:
             return _cli.fail(args, "tray", str(exc))
-        _cli.emit(args, _cli.document("tray", message=message),
-                  lambda: print(f"gitSpecOps {message}.\nIt does not belong to this window: closing this "
-                                "window, or setup, leaves it running. Quit it from its tray menu.\n"
-                                "What it does is written to logs/app_tray.log in the settings folder (the "
-                                "app's About page opens that folder). To run it here and watch its output "
-                                "instead: gitso tray --foreground"))
+        from App._tray import control as tray_control
+        running_now = tray_control.status_now(args.settings_home) if message == ALREADY else []
+        events = tray_control.recent_events(args.settings_home)
+
+        def screen():
+            print(f"gitSpecOps {message}.")
+            for text in running_now:
+                print(f"  {text}")
+            if events:
+                print("Recently:")
+                for text in events:
+                    print(f"  {text}")
+            print("It does not belong to this window: closing this window, or setup, leaves it running.\n"
+                  "  gitso tray --follow   keep showing what it does (Ctrl+C stops following, not the app)\n"
+                  "  gitso tray --open     open the web view at the map\n"
+                  "  gitso tray --stop     quit it (or Quit on its tray menu)")
+        _cli.emit(args, _cli.document("tray", message=message, status=running_now, recent=events), screen)
         return 0
     try:
         return run_tray(args.config_dir, args.settings_home, view=args.view, web=args.web,

@@ -47,6 +47,10 @@ def ignored_relative(name: str) -> bool:
     return any(part in _IGNORED_DIRS for part in PurePath(name).parts)
 
 
+class _WatchLimit(OSError):
+    """Linux ran out of file watches (ENOSPC from inotify_add_watch)."""
+
+
 def _prune(current: Path, names: list[str]) -> None:
     """Avoid dependency/build caches and Git object stores that cannot change status."""
     names[:] = [name for name in names if name not in _IGNORED_DIRS]
@@ -68,7 +72,18 @@ class LinuxEvents:
     _IGNORED = 0x00008000
     _Q_OVERFLOW = 0x00004000
 
-    def __init__(self, roots: list[Path]):
+    def __init__(self, roots: list[Path], repositories=None):
+        """Watch `repositories` (each one's tree) and the folders leading to them from `roots`,
+        or, without repositories, every folder under `roots`.
+
+        Linux needs one watch per folder and allows a fixed number (often about 120,000). A
+        library on a large drive passes that easily when every folder is watched: on one machine
+        (2026-11-16) a 2.7 TB drive took 20 minutes to walk, hit the limit, and stopped the app.
+        Only repositories can change what gitSpecOps reports, so only they and the folders that
+        lead to them are watched. If even that passes the limit, the watches that fit stay and
+        `incomplete` is set: the caller then rereads the library on a timer instead of stopping.
+        """
+        self.incomplete = False
         libc = ctypes.CDLL(None, use_errno=True)
         self._add_watch = libc.inotify_add_watch
         self._add_watch.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32)
@@ -82,11 +97,35 @@ class LinuxEvents:
         self.paths: dict[int, Path] = {}
         self._overflow = False
         try:
-            for root in roots:
-                self._add_tree(root)
+            if repositories is None:
+                for root in roots:
+                    self._add_tree(root)
+            else:
+                self._add_repositories(roots, [Path(path) for path in repositories])
+        except _WatchLimit:
+            self.incomplete = True
         except Exception:
             self.close()
             raise
+
+    def _add_repositories(self, roots: list[Path], repositories: list[Path]) -> None:
+        """Each library, the folders between it and each repository (new clones there are
+        noticed), and each repository's own tree. Nothing else on the drive."""
+        watched: set[Path] = set()
+        for repository in sorted(repositories):
+            owners = [root for root in roots if root == repository or root in repository.parents]
+            if not owners:
+                continue
+            root = max(owners, key=lambda item: len(item.parts))
+            for folder in (root, *reversed([p for p in repository.parents if root in p.parents])):
+                if folder not in watched:
+                    watched.add(folder)
+                    self._watch(folder)
+            self._add_tree(repository)
+            watched.add(repository)
+        for root in roots:  # a library without repositories yet still notices its first one
+            if root not in watched:
+                self._watch(root)
 
     def _watch(self, path: Path) -> None:
         raw = os.fsencode(path)
@@ -96,7 +135,7 @@ class LinuxEvents:
             if code in (errno.ENOENT, errno.ENOTDIR, errno.EACCES):
                 return
             if code == errno.ENOSPC:
-                raise OSError(code, "inotify watch limit reached; reduce the selected roots")
+                raise _WatchLimit(code, "Linux's file-watch limit was reached")
             raise OSError(code, f"cannot watch {path}")
         self.paths[wd] = path
 
@@ -134,7 +173,10 @@ class LinuxEvents:
                     self.paths.pop(wd, None)
                 elif mask & self._IS_DIR and mask & (0x00000080 | 0x00000100):
                     if path.name not in _IGNORED_DIRS:
-                        self._add_tree(path)
+                        try:
+                            self._add_tree(path)
+                        except _WatchLimit:
+                            self.incomplete = True
             if len(data) < 1024 * 256:
                 break
         return changed
@@ -369,12 +411,13 @@ class MacEvents:
 
 class NativeEvents:
     """Small cross-platform boundary used by the observer loop and synthetic tests."""
-    def __init__(self, roots: list[Path], backend=None):
+    def __init__(self, roots: list[Path], backend=None, repositories=None):
         roots = [Path(root).expanduser().resolve() for root in roots]
         if backend is not None:
             self.backend = backend
         elif sys.platform.startswith("linux"):
-            self.backend = LinuxEvents(roots)
+            self.backend = LinuxEvents(roots, repositories=None if repositories is None else
+                                       [Path(path).expanduser().resolve() for path in repositories])
         elif sys.platform == "win32":
             self.backend = WindowsEvents(roots)
         elif sys.platform == "darwin":
@@ -400,6 +443,11 @@ class NativeEvents:
     def overflowed(self) -> bool:
         """True once after changes were dropped; the caller must take a fresh inventory."""
         return self.backend.take_overflow()
+
+    @property
+    def incomplete(self) -> bool:
+        """Some folders could not be watched (Linux's watch limit): reread the library on a timer."""
+        return bool(getattr(self.backend, "incomplete", False))
 
     def close(self) -> None:
         self.backend.close()

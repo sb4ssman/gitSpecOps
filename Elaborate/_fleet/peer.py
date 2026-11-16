@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 import queue
+import sys
 import threading
 import time
 from pathlib import Path
@@ -53,6 +54,8 @@ def poll_seconds(config: dict) -> float:
 # ask for the dashboard every few seconds, and every GitHub read is an API call: reading on
 # every request spent most of the account's hourly API budget on one idle machine.
 READ_SECONDS = {"folder": 15.0, "repo": 300.0}
+# When Linux cannot watch every repository folder, the library is reread this often instead.
+SWEEP_SECONDS = 600
 READ_RETRY_SECONDS = 30.0
 WATCH_RESTART_SECONDS = 5.0
 
@@ -289,6 +292,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     # the filtered view peers and transports receive. Keeping them apart is the whole point of
     # a publish basket: withheld work must still be visible to the person sitting at the machine.
     latest = {"report": None, "local": None, "withheld": set(), "paths": ()}
+    watching = {"incomplete": False}  # Linux's watch limit reached: the library is reread on a timer
 
     def save_client(choice):
         # Only local UI choices reach here; executable paths never cross a transport.
@@ -370,6 +374,12 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             issues = list(issues) + [
                 f"{len(pending_new)} new repository(ies) appeared in your library and are not "
                 f"observed yet: {listed}{more}. Run 'fleet rescan' to include them."]
+        if watching["incomplete"]:
+            issues = list(issues) + [
+                f"Linux's file-watch limit was reached, so some repositories are not watched for "
+                f"changes; the library is reread every {SWEEP_SECONDS // 60} minutes instead. To "
+                "watch everything, raise the limit: sudo sysctl fs.inotify.max_user_watches=524288 "
+                "(add fs.inotify.max_user_watches=524288 to /etc/sysctl.conf to keep it)."]
         document = display_from_manifests(
             manifests, fleet_id=fleet_id, names=names, issues=issues,
             stale_seconds=stale_seconds,
@@ -421,18 +431,43 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
 
     pending_new: set = set()
 
-    started = time.monotonic()
-    doing("finding", "finding the repositories in your library")
-    count = observer.inventory(progress=lambda done, total, _path: doing(
-        "reading", f"reading Git status: {done} of {total} repositories", done, total))
-    doing("publishing", f"found {count} repositories; putting this machine's state together", count, count)
-    log(f"Initial inventory found {count} repositories in {time.monotonic() - started:.1f}s. "
-        "Filesystem events now drive targeted checks; there is no periodic scan. Ctrl-C stops.")
+    def stop_serving():
+        network.stop()
+        if dashboard is not None:
+            dashboard.shutdown()
+            dashboard.server_close()
 
     def open_events():
-        return event_source or NativeEvents([Path(root) for root in config["roots"]])
+        # Linux watches only the repositories and the folders leading to them (events.py).
+        return event_source or NativeEvents([Path(root) for root in config["roots"]],
+                                            repositories=list(observer.paths))
 
-    source = open_events()
+    def watch_note(events) -> None:
+        if getattr(events, "incomplete", False):
+            log("Linux's file-watch limit was reached, so some folders are not watched; the "
+                f"library is reread every {SWEEP_SECONDS // 60} minutes instead.")
+        watching["incomplete"] = bool(getattr(events, "incomplete", False))
+
+    # Until the observation loop's own try/finally takes over, a failure here must still stop the
+    # web view: on one machine (2026-11-16) the watcher failed after a 20-minute walk and the page
+    # showed "putting this machine's state together" for good, served by a peer that had stopped.
+    try:
+        started = time.monotonic()
+        doing("finding", "finding the repositories in your library")
+        count = observer.inventory(progress=lambda done, total, _path: doing(
+            "reading", f"reading Git status: {done} of {total} repositories", done, total))
+        doing("publishing", f"found {count} repositories; putting this machine's state together", count, count)
+        log(f"Initial inventory found {count} repositories in {time.monotonic() - started:.1f}s. "
+            "Filesystem events now drive targeted checks. Ctrl-C stops.")
+        doing("publishing", f"found {count} repositories; setting up change watching", count, count)
+        source = open_events()
+        watch_note(source)
+    except Exception as exc:
+        doing("stopped", f"stopped: {exc}")
+        print(f"error: {exc}", file=sys.stderr, flush=True)  # the tray's icon says why
+        stop_serving()
+        raise
+    next_sweep = time.monotonic() + SWEEP_SECONDS
     request_path = config_dir / "fleet-rescan.request"
     fingerprint = None
     next_heartbeat = 0.0
@@ -517,12 +552,18 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                             "individually; taking a fresh inventory.")
                         force_inventory = True
                 reason = None
+                if getattr(source, "incomplete", False) and time.monotonic() >= next_sweep:
+                    force_inventory, next_sweep = True, time.monotonic() + SWEEP_SECONDS
                 if force_inventory or request_path.exists():
                     request_path.unlink(missing_ok=True)
                     started = time.monotonic()
                     doing("finding", "rescanning: finding the repositories in your library")
                     count = observer.inventory(progress=lambda done, total, _path: doing(
                         "reading", f"rescanning: reading Git status: {done} of {total}", done, total))
+                    if event_source is None:  # watch what this inventory found, new clones included
+                        source.close()
+                        source = open_events()
+                        watch_note(source)
                     doing("idle", f"watching {count} repositories for changes")
                     pending_new.clear()
                     reason = f"inventory: {count} repos in {time.monotonic() - started:.1f}s"
@@ -559,10 +600,11 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                     log(f"Published pending status to {', '.join(published)}")
             except (OSError, ValueError) as exc:
                 log(f"Observation cycle failed; last state retained: {exc}")
+    except Exception as exc:
+        doing("stopped", f"stopped: {exc}")
+        print(f"error: {exc}", file=sys.stderr, flush=True)
+        raise
     finally:
         source.close()
-        network.stop()
-        if dashboard is not None:
-            dashboard.shutdown()
-            dashboard.server_close()
+        stop_serving()
     return 0
