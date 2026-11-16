@@ -3027,3 +3027,18 @@ No code changed; decisions recorded where they govern.
 - The organization view shows each repository's provider link, the request buttons per machine,
   and the uncommitted-work summary.
 - The "What to audit" list resizes vertically on desktop.
+
+## 2026-11-16 23:30 - user (claude) - Older Safari, libraries as columns, reveal a finding (branch dev)
+
+- The page failed on Safari 15 (macOS 10.15): AbortSignal.timeout arrived in Safari 16. A
+  controller and a timer replace it (fleet_client.js timeoutSignal).
+- Organization view: a machine keeping a repository in two libraries reports each folder's own
+  facts (manifest `copies`, a name key) and its upstream commit (`upstream_head`). The page gives
+  each library its own column under its machine, offers Clone missing per library (the request
+  names the library; run_request refuses a folder that is not a plain name), and shows each
+  copy's commit and the provider's commit as faded subtext. Every machine must run this version
+  together: an older peer refuses the new fields.
+- `gitso update` over SSH on Linux borrows the desktop session's DISPLAY/WAYLAND settings from
+  `systemctl --user show-environment`; without them the restarted app aborted (exit -6).
+- Security tab: Show reveals one finding's real value. The audit keeps values in memory apart
+  from the polled, masked status (AuditJobs.reveal, local action security-reveal only).
