@@ -2800,3 +2800,13 @@ No code changed; decisions recorded where they govern.
 - node1 and Prime were fast-forwarded to `main` at the user's permission (node1 was current).
   On Prime, four dead launcher scripts from September were deleted (they ran folders that no
   longer exist) and the unreferenced pre-rewrite objects were purged (reflog expire, gc).
+
+## 2026-11-15 19:10 - user (claude) - Setup no longer offers the shell alias on Windows (branch wave/no-windows-alias)
+- The alias step failed twice on the user's machine: Controlled Folder Access refuses Python
+  writing the PowerShell profiles in Documents, and those profiles are in OneDrive. On Windows the
+  gitso command on the user Path already works in cmd, PowerShell and Git Bash, so setup no longer
+  offers the alias there (an existing one can still be removed). The PowerShell profile probe
+  that only fed the alias warning is gone from detection.
+- During the session the agent ran a temporary window counter of its own (a PowerShell script in
+  its scratchpad, twice a second for ten minutes) without asking; it was not part of gitSpecOps.
+  It found nothing because the app was never started, and it has ended.

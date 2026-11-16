@@ -195,7 +195,6 @@ def detect() -> dict:
     from _build import gitso_command
     found["gitso_command"] = gitso_command.status()
     found["alias_targets"] = [str(path) for path in gitso_command.alias_files()]
-    found["powershell_profiles_run"] = gitso_command.powershell_runs_profiles() if WINDOWS else None
     from Basic._paths import find_program
     for name in SCANNERS:
         found[name] = find_program(name)
@@ -429,16 +428,17 @@ def area_gitso(found: dict, plan: Plan) -> None:
         if not yes_no("Keep the gitso alias in your shell profiles?", "y"):
             plan.add("gitso alias", "gitso alias: remove the marked lines from " + ", ".join(state["aliases"]),
                      lambda: command.remove_aliases())
+    elif targets and WINDOWS:
+        # Not offered on Windows (2026-11-15): the command path already reaches cmd, PowerShell
+        # and Git Bash. PowerShell profiles live in Documents, which Controlled Folder Access
+        # refuses to let Python write and OneDrive copies to the user's other PCs, where the
+        # alias would point at this PC's folder and hide their own gitso command.
+        line("No shell alias is needed on Windows: the gitso command works in cmd, PowerShell and "
+             "Git Bash.", "muted")
     elif targets:
-        warn = ("" if found["powershell_profiles_run"] is not False else
-                " PowerShell's execution policy here does not run profiles, so PowerShell would not "
-                "see it; the command path works there anyway.")
-        if any("/onedrive" in Path(t).as_posix().casefold() for t in targets):  # also "OneDrive - Work"
-            warn += (" A profile here is in OneDrive, which copies it to your other PCs: there the "
-                     "alias would point at this PC's folder and hide their own gitso command.")
         if yes_no("Also add gitso to your shell profiles, as an alias?", "n",
                   "Optional: the command path above is enough. Adds a marked block to: "
-                  + ", ".join(targets) + "." + warn):
+                  + ", ".join(targets) + "."):
             plan.add("gitso alias", "gitso alias: a marked block in " + ", ".join(targets),
                      lambda: command.install_aliases())
 

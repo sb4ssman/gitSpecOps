@@ -227,10 +227,16 @@ class WalkthroughTests(unittest.TestCase):
         result = next(line for line in lines if "installed" in line and "changed" in line)
         self.assertIn("[1/1] Install gitleaks", result)
 
-    def test_the_alias_offer_warns_about_a_profile_in_onedrive(self):
-        self.area(self.walk.area_gitso, ["a", "n"],
-                  alias_targets=["C:/Users/x/OneDrive/Documents/PowerShell/profile.ps1"])
-        self.assertIn("in OneDrive", self.output.getvalue())
+    def test_on_windows_no_alias_is_offered_and_nothing_can_fail_there(self):
+        # 2026-11-15: Controlled Folder Access refused the profile write twice, and the profile
+        # was in OneDrive. The command path already works in every Windows shell.
+        with patch.object(self.walk, "WINDOWS", True):
+            plan = self.area(self.walk.area_gitso, ["a"],
+                             alias_targets=["C:/Users/x/OneDrive/Documents/PowerShell/profile.ps1"])
+        self.assertEqual([c.title for c in plan.changes], ["The gitso command"])
+        out = self.output.getvalue()
+        self.assertNotIn("as an alias?", out)
+        self.assertIn("No shell alias is needed on Windows", out)
 
     def test_a_failed_step_is_reported_and_the_rest_still_run(self):
         plan = self.walk.Plan()
@@ -385,7 +391,8 @@ class WalkthroughTests(unittest.TestCase):
         self.assertIn("existing; experimental, ids only)", review)
 
     def test_gitso_can_be_put_on_the_command_path_with_an_optional_alias(self):
-        plan = self.area(self.walk.area_gitso, ["a", "y"])
+        with patch.object(self.walk, "WINDOWS", False):
+            plan = self.area(self.walk.area_gitso, ["a", "y"])
         self.assertEqual([c.title for c in plan.changes], ["The gitso command", "gitso alias"])
         self.assertIn("/home/x/.gitspecops/bin", plan.changes[0].review)
         self.assertIn("/home/x/.bashrc", plan.changes[1].review)
