@@ -31,7 +31,7 @@ export class FleetConnection extends EventTarget {
   async desktopAction(action, payload, token, {structured = false} = {}) {
     if (!['git-client', 'open-git-client', 'catchup-preview', 'security-preview', 'security-engines',
          'security-start', 'security-status', 'security-stop', 'security-policy',
-         'security-policy-change'].includes(action) || !token) {
+         'security-policy-change', 'setup/open-folder'].includes(action) || !token) {
       throw new Error('Desktop actions are unavailable in this dashboard.');
     }
     const response = await this.fetcher(`/v1/${action}`, {

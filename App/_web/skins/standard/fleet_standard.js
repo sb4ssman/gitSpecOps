@@ -261,6 +261,16 @@ function renderAbout() {
   const facts = byId('app-facts'); facts.replaceChildren();
   for (const [term, value] of [['Display contract', `${state.data.contract.name} v${state.data.contract.version}`],
     ['Fleet ID', fleetId], ['Interface', 'Standard']]) facts.append(node('dt', term), node('dd', value));
+  if (state.data.local_actions) {  // this computer only: never on the Tailscale view
+    const open = node('button', 'Open settings folder');
+    open.type = 'button';
+    open.addEventListener('click', async () => {
+      try { await connection.desktopAction('setup/open-folder', {}, state.data.local_actions.token, {structured: true}); }
+      catch (error) { open.textContent = error.message; }
+    });
+    const value = node('dd'); value.append(open);
+    facts.append(node('dt', 'Settings'), value);
+  }
   const block = byId('capabilities'); block.replaceChildren();
   for (const [id, capability] of Object.entries(capabilities)) {
     const item = node('div', undefined, 'capability');

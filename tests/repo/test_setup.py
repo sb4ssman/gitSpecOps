@@ -333,15 +333,11 @@ class WalkthroughTests(unittest.TestCase):
             self.walk.area_app(self.found(), plan)
         self.assertIn("needs the desktop app (step 8)", self.output.getvalue())
 
-    def test_the_app_is_checked_to_be_still_running_after_it_starts(self):
-        import subprocess
-        alive = type("P", (), {"wait": lambda self, timeout: (_ for _ in ()).throw(subprocess.TimeoutExpired("x", 1))})()
-        dead = type("P", (), {"wait": lambda self, timeout: 1})()
-        with patch.object(self.walk.subprocess, "Popen", return_value=alive):
-            self.assertIn("running", self.walk._start_app(wait=0))
-        with patch.object(self.walk.subprocess, "Popen", return_value=dead):
-            with self.assertRaisesRegex(RuntimeError, "stopped at once"):
-                self.walk._start_app(wait=0)
+    def test_setup_starts_the_app_on_its_own(self):
+        from App import _detach
+        with patch.object(_detach, "start", return_value="started") as start:
+            self.assertEqual(self.walk._start_app(wait=0), "started")
+        start.assert_called_once()
 
     def test_the_desktop_app_question_says_it_is_the_tray_icon_and_map(self):
         plan = self.walk.Plan()

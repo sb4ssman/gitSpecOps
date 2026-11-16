@@ -1356,17 +1356,9 @@ def app_running() -> bool:
 
 
 def _start_app(wait: float = 5.0) -> str:
-    """Start the tray app detached, then make sure it is still running a few seconds later."""
-    pythonw = VENV_PYTHON.with_name("pythonw.exe")
-    command = [str(pythonw if WINDOWS and pythonw.exists() else VENV_PYTHON), str(ROOT / "App" / "tray.py")]
-    flags = (subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP) if WINDOWS else 0
-    process = subprocess.Popen(command, cwd=ROOT, creationflags=flags, start_new_session=not WINDOWS,
-                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    try:
-        code = process.wait(timeout=wait)
-    except subprocess.TimeoutExpired:
-        return "running: its icon is by the clock"
-    raise RuntimeError(f"the app stopped at once (exit code {code}); run gitso tray in a terminal to see why")
+    """Start the tray app on its own (App._detach): closing setup's window must not close it."""
+    from App._detach import start
+    return start(wait=wait)
 
 
 AREA_STEPS = (area_requirements, area_gitso, area_machine, area_protection, area_scanners,

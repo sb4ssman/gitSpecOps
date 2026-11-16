@@ -2842,3 +2842,18 @@ No code changed; decisions recorded where they govern.
   too. The JSON output, and the table with `--security`, are unchanged.
 - The user's ideas for the fleet view (organise by where things live, the master list and the
   network library, the folder mapper as an optional view) are recorded in WORKING-NOTES.
+
+## 2026-11-15 22:10 - user (claude) - The app starts on its own; open the settings folder from the app (branch wave/tray-detached)
+- On node1 the tray started from setup's First scan closed with setup's window, and `gitso tray`
+  closed with its terminal. Setup runs inside `uv run`, which on Windows ends what it started
+  when it exits; `gitso tray` ran the app inside the terminal's own process. `App/_detach.start`
+  now starts the tray as its own process (detached, outside the caller's job: breakaway was
+  checked to be allowed under `uv run` and the venv launcher), refuses a second copy, and checks
+  it is still running five seconds later. `gitso tray` uses it and returns; `--foreground` keeps
+  the old behaviour for watching its output. Without a console (pythonw, start at sign-in) the
+  tray runs in place.
+- The App & setup page has "Open settings folder" (local dashboard only; the path is never sent
+  to the page).
+- The user's protected values: the old settings (old-settings.json) held 11 never-publish values,
+  a whole-word value, one allowed value and 2 repository exceptions; setup's run left 4, 1, 0
+  and 0. Restoring them is put to the user.

@@ -356,7 +356,26 @@ def main(argv=None) -> int:
     parser.add_argument("--open-on-start", action="store_true", help="open the view once the peer is ready")
     parser.add_argument("--remote", action="store_true",
                         help="also serve the web view on the tailnet (App/_web/remote.py)")
+    parser.add_argument("--foreground", action="store_true",
+                        help="run in this terminal and show its output; closing the terminal closes the app")
     args = parser.parse_args(argv)
+    # From a terminal (or setup), start the app on its own and return: closing that window must
+    # not close the app (node1, 2026-11-15). Without a console (pythonw, start at sign-in) it is
+    # already on its own, so it runs right here.
+    if not args.foreground and sys.stdout is not None:
+        from App._detach import start
+        forward = [*(["--config-dir", str(args.config_dir)] if args.config_dir else []),
+                   *(["--settings-home", str(args.settings_home)] if args.settings_home else []),
+                   *(["--view", args.view] if args.view else []), *(["--web", args.web] if args.web else []),
+                   *(["--open-on-start"] if args.open_on_start else []), *(["--remote"] if args.remote else [])]
+        try:
+            message = start(forward)
+        except (OSError, RuntimeError) as exc:
+            return _cli.fail(args, "tray", str(exc))
+        _cli.emit(args, _cli.document("tray", message=message),
+                  lambda: print(f"gitSpecOps {message}. Closing this window leaves it running; quit it "
+                                "from its tray menu. To watch its output instead: gitso tray --foreground"))
+        return 0
     try:
         return run_tray(args.config_dir, args.settings_home, view=args.view, web=args.web,
                         open_on_start=args.open_on_start, remote=args.remote)
