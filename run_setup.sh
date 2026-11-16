@@ -18,10 +18,17 @@ if [ ! -t 0 ] && [ -z "${GITSO_SETUP_WINDOW:-}" ] && [ "$#" -eq 0 ]; then
     done
 fi
 
+# uv's installer puts it in ~/.local/bin, which a Mac's shell does not search by default (2026-11-16).
+if [ -d "$HOME/.local/bin" ]; then
+    PATH="$HOME/.local/bin:$PATH"; export PATH
+fi
+
 # Keep caller-relative settings/root paths; bootstrap itself uses the explicit checkout root.
+# A Python new enough for gitSpecOps (3.11 or later): an older system Python (macOS's 3.8) is
+# passed over when uv has a newer one.
 status=0
 if command -v uv >/dev/null 2>&1; then
-    uv run --no-project --no-python-downloads python "$SCRIPT_DIR/_build/setup_gitspecops.py" "$@" || status=$?
+    uv run --no-project --no-python-downloads --python ">=3.11" python "$SCRIPT_DIR/_build/setup_gitspecops.py" "$@" || status=$?
 elif command -v python3 >/dev/null 2>&1; then
     python3 "$SCRIPT_DIR/_build/setup_gitspecops.py" "$@" || status=$?
 elif command -v python >/dev/null 2>&1; then

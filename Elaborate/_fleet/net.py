@@ -22,11 +22,18 @@ from Elaborate._fleet.store import MAX_REPORT_BYTES
 from Elaborate._fleet.display import build_display
 
 
+TAILSCALE_PLACES = (Path("C:/Program Files/Tailscale/tailscale.exe"),
+                    # The Mac app keeps its command-line tool inside the app (an iMac, 2026-11-16).
+                    Path("/Applications/Tailscale.app/Contents/MacOS/Tailscale"))
+
+
+def tailscale_executable() -> str | None:
+    """The Tailscale command: on the command path, or where its Windows or Mac app installs it."""
+    return shutil.which("tailscale") or next((str(p) for p in TAILSCALE_PLACES if p.is_file()), None)
+
+
 def tailscale_json(*args):
-    executable = shutil.which("tailscale")
-    if not executable:
-        candidate = Path("C:/Program Files/Tailscale/tailscale.exe")
-        executable = str(candidate) if candidate.is_file() else "tailscale"
+    executable = tailscale_executable() or "tailscale"
     try:
         proc = subprocess.run([executable, *args], capture_output=True, text=True,
                               encoding="utf-8", errors="replace", timeout=10, **_process.window_options())
