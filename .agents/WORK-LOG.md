@@ -2743,3 +2743,13 @@ No code changed; decisions recorded where they govern.
 - **Not gitSpecOps:** the DesktopOpener "Bad Image" at sign-in is Smart App Control (enforcing)
   blocking an unsigned DLL (`libextrafont.dll`, intact: its SHA-256 matches its install record),
   Code Integrity event 3077 at 16:07:09. The fleet database survived (integrity check ok).
+
+## 2026-11-15 17:00 - user (claude) - Setup builds up in gitSpecOps' own order; Uninstall removes the desktop app (branch wave/setup-protection)
+- The user ran Uninstall, then setup again, and setup still said "Desktop app: installed".
+  Uninstall stopped the app and removed start at sign-in but left Qt in this folder's .venv
+  ("not removed: this folder and its .venv"). Uninstall now removes it (`uv sync` without the
+  app extra, then checks Qt is gone).
+- The user: setup should build up like gitSpecOps itself. Parts now run Basic (requirements,
+  the gitso command), Special (this machine, protection, scanners, archives), Elaborate (fleet),
+  App (the desktop app, the desktop Git app, running the app). Every "step N" is computed from
+  that order. Uninstall shows and removes in the reverse order.

@@ -71,6 +71,16 @@ class SetupTests(unittest.TestCase):
         self.prerequisites.assert_called_once()
         self.environment.assert_not_called()
 
+    def test_setup_builds_up_in_gitspecops_own_order(self):
+        import setup_walkthrough as walk
+        self.assertEqual(walk.AREAS, ("Requirements", "The gitso command", "This machine", "Protection",
+                                      "Scanners", "Archives", "Fleet", "The desktop app",
+                                      "Desktop Git app", "Running the app"))
+        self.assertEqual([f.__name__ for f in walk.AREA_STEPS],
+                         ["area_requirements", "area_gitso", "area_machine", "area_protection",
+                          "area_scanners", "area_archives", "area_fleet", "area_environment",
+                          "area_client", "area_app"])
+
     def test_uninstall_is_on_the_menu(self):
         self.assertEqual(self.interactive(["0"]), 0)
         self.assertIn("[5] Uninstall", self.output.getvalue())
@@ -78,8 +88,8 @@ class SetupTests(unittest.TestCase):
     def test_menu_item_two_lists_every_part_and_zero_goes_back(self):
         self.assertEqual(self.interactive(["2", "0", "", "0"]), 0)
         out = self.output.getvalue()
-        self.assertIn("[7] Protection", out)
-        self.assertIn("[10] Fleet", out)
+        self.assertIn("[4] Protection", out)
+        self.assertIn("[10] Running the app", out)
         self.assert_no_actions()
 
     def test_every_menu_item_comes_back_to_the_menu(self):
@@ -181,7 +191,7 @@ class WalkthroughTests(unittest.TestCase):
             return self.walk.walkthrough(detector=lambda: self.found(**overrides))
 
     def test_stopping_at_the_first_question_changes_nothing(self):
-        # Requirements asks nothing here (all present); the environment area asks first.
+        # Requirements asks nothing here (all present); the gitso command asks first.
         self.assertEqual(self.run_walk(["0"]), 0)
         self.assertIn("Walkthrough stopped", self.output.getvalue())
         self.assertIn("Nothing has been changed", self.output.getvalue())
@@ -255,7 +265,7 @@ class WalkthroughTests(unittest.TestCase):
 
     def test_starting_the_app_is_offered_and_is_the_last_step(self):
         with patch("builtins.input", side_effect=["", "y", "0"]):
-            self.walk.walkthrough(detector=lambda: self.found(), only=4)
+            self.walk.walkthrough(detector=lambda: self.found(), only=self.walk.AREAS.index("Running the app"))
         out = self.output.getvalue()
         self.assertIn("Start the app when setup finishes?", out)
         bullets = [line for line in out.splitlines() if line.strip().startswith(". ")]
@@ -271,7 +281,7 @@ class WalkthroughTests(unittest.TestCase):
         with patch("builtins.input", side_effect=[]):
             self.walk.area_app(self.found(), plan)
         self.assertFalse(plan.start_app)
-        self.assertIn("needs the desktop app (step 2)", self.output.getvalue())
+        self.assertIn("needs the desktop app (step 8)", self.output.getvalue())
 
     def test_the_app_is_checked_to_be_still_running_after_it_starts(self):
         import subprocess
@@ -373,9 +383,9 @@ class WalkthroughTests(unittest.TestCase):
 
     def test_one_part_runs_only_that_part(self):
         with patch("builtins.input", side_effect=["n", "0"]):
-            self.assertEqual(self.walk.walkthrough(detector=lambda: self.found(), only=6), 0)
+            self.assertEqual(self.walk.walkthrough(detector=lambda: self.found(), only=self.walk.AREAS.index("Protection")), 0)
         out = self.output.getvalue()
-        self.assertIn("Setup  7/10:  Protection", out)
+        self.assertIn("Setup  4/10:  Protection", out)
         self.assertNotIn("Setup  1/10", out)
         self.assertIn("Your full name as you write it", out)
         self.assertIn("settings.json", out)
@@ -450,8 +460,9 @@ class WalkthroughTests(unittest.TestCase):
         _code, applied = self.run_uninstall(["y", "u"])
         plan = applied.call_args.args[0]
         titles = [c.title for c in plan.changes]
-        self.assertEqual(titles[0], "Stop the app")
-        self.assertEqual(titles[-1], "Settings")
+        # The reverse of setup's order: the App first, Basic (the gitso command) last.
+        self.assertEqual(titles, ["Stop the app", "Start at sign-in", "Desktop app", "Settings",
+                                  "gitso alias", "The gitso command"])
         self.assertNotIn("Fleet", titles, "deleting the settings leaves the fleet with them")
 
     def test_public_identity_rules(self):

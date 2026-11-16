@@ -17,18 +17,19 @@ cd gitSpecOps
 
 Setup's menu:
 
-1. **Walk me through everything.** It finds what this computer already has (Git, the GitHub
-   CLI and its sign-in, the desktop app, library folders, start at sign-in, a desktop Git app,
-   protected values, secret scanners, archives, Tailscale, a fleet), asks about each part, and
-   changes nothing until you have reviewed the whole list.
+1. **Walk me through everything.** It finds what this computer already has and asks about each
+   part, built up in gitSpecOps' own order: Basic (Git, the GitHub CLI and its sign-in, the
+   `gitso` command), Special (library folders, protected values, secret scanners, archives),
+   Elaborate (a fleet, over Tailscale or a synced folder), then the App (the desktop app, a
+   desktop Git app, starting it). Nothing changes until you have reviewed the whole list.
 2. **Set up one part.** Any one of those ten parts on its own: set it up, change it, or repair
    it. It shows what is there now, and nothing changes until you review it.
 3. **Use the commands without installing anything.** Any Basic, Special or Elaborate command,
    straight from the folder: registering archive folders to keep updated, say.
 4. **Check this computer.** Git, the GitHub CLI and uv: what is there and what each is for.
-5. **Uninstall.** Stops the app and removes what setup added (start at sign-in, the `gitso`
-   command and alias, the monthly refresh task, downloaded scanners, fleet membership), after
-   showing the list. Your settings (protected values, library folders, logs) are deleted only if
+5. **Uninstall.** Stops the app and removes what setup added, in the reverse order (start at
+   sign-in, the desktop app's Qt, fleet membership, the monthly refresh task, downloaded
+   scanners, the `gitso` alias and command), after showing the list. Your settings (protected values, library folders, logs) are deleted only if
    you say so. This folder, your repositories and programs installed with your package manager
    stay; it says which.
 

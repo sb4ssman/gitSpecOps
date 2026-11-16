@@ -5,11 +5,11 @@ Why:          a person setting up gitSpecOps should be walked through everything
 Reads:        Git, the GitHub CLI and its sign-in, uv, this folder's .venv, the gitso command,
               this machine's enrollment, start at sign-in, desktop Git apps, protected values,
               the secret scanners, Tailscale, synced folders. Never a repository's contents.
-May change:   nothing until the review is accepted. Then exactly what was chosen, in order:
-              installs (with the system's package tool, the command shown first), the GitHub
-              sign-in, the desktop app, the gitso command, library folders, the web
-              view's reach, start at sign-in, the desktop Git app, protected values, the
-              scanners used in scans, the fleet.
+May change:   nothing until the review is accepted. Then exactly what was chosen, built up
+              in gitSpecOps' own order: installs (with the system's package tool, the
+              command shown first), the GitHub sign-in, the gitso command, library folders,
+              protected values, the scanners used in scans, archives, the fleet, the
+              desktop app, the desktop Git app, start at sign-in, starting the app.
 Results:      the walkthrough screens, the review, a run screen of numbered steps.
 Layer:        setup (_build): uses the layers' own functions; no policy of its own.
 Status:       working
@@ -39,8 +39,11 @@ WINDOWS = sys.platform == "win32"
 MAC = sys.platform == "darwin"
 VENV_DIR = ROOT / ".venv"
 VENV_PYTHON = VENV_DIR / ("Scripts/python.exe" if WINDOWS else "bin/python")
-AREAS = ("Requirements", "The desktop app", "The gitso command", "This machine", "Running the app",
-         "Desktop Git app", "Protection", "Scanners", "Archives", "Fleet")
+# In gitSpecOps' own order, built up from below: Basic (Git, GitHub, the gitso command), Special
+# (this machine: libraries, protection, scanners, archives), Elaborate (other machines: the fleet),
+# then the App (the desktop app, opening a desktop Git app from it, running it).
+AREAS = ("Requirements", "The gitso command", "This machine", "Protection", "Scanners", "Archives",
+         "Fleet", "The desktop app", "Desktop Git app", "Running the app")
 
 from Special._security._audit import INSTALL_PACKAGES  # noqa: E402  the Security tab suggests the same
 
@@ -221,8 +224,13 @@ def _security() -> tuple[dict, list]:
 
 
 # --------------------------------------------------------------------------- screens
-def screen(number: int, title: str) -> None:
-    banner(f"Setup  {number}/{len(AREAS)}:  {title}", tagline=True)
+def step(title: str) -> str:
+    """'step N' for a part, from its place in AREAS."""
+    return f"step {AREAS.index(title) + 1}"
+
+
+def screen(title: str) -> None:
+    banner(f"Setup  {AREAS.index(title) + 1}/{len(AREAS)}:  {title}", tagline=True)
 
 
 def yes_no(question: str, default: str = "y", explanation: str = "") -> bool:
@@ -294,7 +302,7 @@ def _install(command: list[str], name: str) -> str:
 
 # --------------------------------------------------------------------------- the areas
 def area_requirements(found: dict, plan: Plan) -> None:
-    screen(1, "Requirements")
+    screen("Requirements")
     if not found["git"]:
         notice("Git is required", "Install it from https://git-scm.com/downloads, then run setup again. "
                "Nothing has been changed.", "error")
@@ -320,7 +328,7 @@ def _gh_login() -> str:
 
 
 def area_environment(found: dict, plan: Plan) -> None:
-    screen(2, "The desktop app")
+    screen("The desktop app")
     row("Desktop app", "installed" if found["desktop"] else "not installed",
         "success" if found["desktop"] else "warning")
     tool_row("uv", found["uv"], "not installed")
@@ -361,9 +369,21 @@ def _build_env() -> str:
     return ".venv ready, with the desktop app"
 
 
+def _remove_desktop() -> str:
+    """`uv sync` without `--extra app`: the .venv keeps what uv.lock lists and drops Qt."""
+    uv = shutil.which("uv")
+    if not uv:
+        raise RuntimeError(f"uv is not on PATH; delete {VENV_DIR} to remove the desktop app")
+    if subprocess.call([uv, "sync"], cwd=ROOT) != 0:
+        raise RuntimeError("uv sync did not finish")
+    if (VENV_DIR / "Lib/site-packages/PySide6").exists() or any(VENV_DIR.glob("lib/python*/site-packages/PySide6")):
+        raise RuntimeError("Qt is still in this folder's .venv")
+    return "removed"
+
+
 def area_gitso(found: dict, plan: Plan) -> None:
     from _build import gitso_command as command
-    screen(3, "The gitso command")
+    screen("The gitso command")
     state = found["gitso_command"]
     where = state["folder"]
     row("Command path", {"here": "set up", "elsewhere": "set up for another gitSpecOps folder",
@@ -424,7 +444,7 @@ def area_gitso(found: dict, plan: Plan) -> None:
 
 def area_machine(found: dict, plan: Plan) -> None:
     from Special._sync.enrollment import find_libraries, whole_machine_starts
-    screen(4, "This machine")
+    screen("This machine")
     row("Enrolled", f"yes, as {found['machine']}" if found["enrolled"] else "not yet",
         "success" if found["enrolled"] else "warning")
     for path in found["libraries"]:
@@ -485,7 +505,7 @@ LOGIN_SWITCH = ("Task Manager > Startup apps" if WINDOWS else "System Settings >
 
 
 def area_app(found: dict, plan: Plan) -> None:
-    screen(5, "Running the app")
+    screen("Running the app")
     state, where = found["login"], found.get("login_elsewhere") or LOGIN_SWITCH
     row("Running now", "yes" if found.get("app_running") else "no",
         "success" if found.get("app_running") else "text")
@@ -495,7 +515,7 @@ def area_app(found: dict, plan: Plan) -> None:
          f"sign-in keeps it watching. It appears in {LOGIN_SWITCH} like any other start-up item; "
          "switching it there is noticed here and in the tray menu.", "muted")
     if not plan.desktop_after:
-        line("The app needs the desktop app (step 2).", "warning")
+        line(f"The app needs the desktop app ({step('The desktop app')}).", "warning")
         return
     if state is not None:
         _sign_in_choice(plan, state, where)
@@ -547,14 +567,14 @@ def _start_at_login(enable: bool) -> str:
 
 def area_client(found: dict, plan: Plan) -> None:
     from Special._sync.git_client import LABELS
-    screen(6, "Desktop Git app")
+    screen("Desktop Git app")
     names = {key: LABELS.get(key, key) for key in found["clients"]}
     row("Found", ", ".join(names.values()) or "none (Sourcetree, GitHub Desktop)")
     row("Connected", names.get(found["client"], "none"))
     line("The web view can open any repository in your desktop Git app.", "muted")
     if not names or not plan.enrolled_after:
         if names:
-            line("Connecting is saved with a library folder (step 4).", "warning")
+            line(f"Connecting is saved with a library folder ({step('This machine')}).", "warning")
         return
     say()
     keys = list(names)
@@ -582,7 +602,7 @@ def _save_client(choice) -> str:
 
 
 def area_protection(found: dict, plan: Plan) -> None:
-    screen(7, "Protection")
+    screen("Protection")
     anywhere = found["protected"].get("never_publish", [])
     words = found["protected"].get("never_publish_words", [])
     row("Protected values", f"{len(anywhere) + len(words)}" + (f" ({len(words)} whole word only)" if words else ""))
@@ -600,7 +620,7 @@ def area_protection(found: dict, plan: Plan) -> None:
     retired = commit_identity(found, plan)
     if not plan.enrolled_after and not found["protected"]:
         line("Protected values are saved with this machine's settings, which a library folder "
-             "creates (step 4).", "warning")
+             f"creates ({step('This machine')}).", "warning")
         return
     known = {v.casefold() for v in anywhere + words}
     suggestions = []
@@ -725,7 +745,7 @@ def _protect(value: str, whole: bool) -> str:
 
 
 def area_scanners(found: dict, plan: Plan) -> None:
-    screen(8, "Scanners")
+    screen("Scanners")
     for name in SCANNERS:
         state = ("installed, used in scans" if found[name] and name in found["engines"] else
                  "installed, not used" if found[name] else "not installed")
@@ -745,7 +765,7 @@ def area_scanners(found: dict, plan: Plan) -> None:
     if not (installed or installing):
         return
     if not plan.enrolled_after and not found["protected"]:
-        line("Which scanners to use is saved with this machine's settings (step 4).", "warning")
+        line(f"Which scanners to use is saved with this machine's settings ({step('This machine')}).", "warning")
         return
     chosen = list(installing)
     for name in installed:
@@ -778,7 +798,7 @@ def _archives() -> list:
 
 def area_archives(found: dict, plan: Plan) -> None:
     from Special._archive.manager import registration_plan
-    screen(9, "Archives")
+    screen("Archives")
     for item in found["archives"]:
         row("Archive", f"{item['root']}  ({'update' if item['mode'] == 'update' else 'update and clone missing'})")
     if not found["archives"]:
@@ -849,7 +869,7 @@ TAILSCALE_WHY = ("Your machines exchange repository status directly over your ow
 
 def area_fleet(found: dict, plan: Plan) -> None:
     from Elaborate._fleet.setup_state import join_fleet, leave_fleet
-    screen(10, "Fleet")
+    screen("Fleet")
     has_tailscale = bool(found["tailscale"] or found["tailnet"])
     over_tailscale = "tailnet" in found["fleet"]
     row("Tailscale", "connected" if found["tailnet"] else "installed, not connected" if found["tailscale"]
@@ -868,7 +888,7 @@ def area_fleet(found: dict, plan: Plan) -> None:
         line(f"Tailscale is free for personal use: {HOME_PAGES['tailscale']}. Run setup again after "
              "installing it to operate over it.", "muted")
     if not plan.enrolled_after:
-        line("A fleet needs a library folder on this machine (step 4).", "warning")
+        line(f"A fleet needs a library folder on this machine ({step('This machine')}).", "warning")
         return
     say()
     if found["fleet"]:
@@ -1065,14 +1085,17 @@ def uninstall(detector=detect) -> int:
     state, settings, tools = found["gitso_command"], config_home(), tools_home()
     task = _archive_task_present()
     say()
+    # Shown, and removed, in the reverse of setup's order: the App first, Basic last.
     row("App running", f"yes ({len(pids)} process{'es' if len(pids) != 1 else ''})" if pids else "no")
     row("Start at sign-in", {"on": "on", "elsewhere": "turned off elsewhere"}.get(found["login"], "no"))
-    row("gitso command", {"here": state["folder"], "elsewhere": "another gitSpecOps folder's (left alone)"}.get(
-        state["launcher"], "none"))
-    row("gitso alias", ", ".join(state["aliases"]) or "none")
+    row("Desktop app", "installed (Qt in this folder's .venv)" if found["desktop"] else "none")
+    row("Fleet", "this machine is in one" if found["fleet"] else "none")
     row("Monthly refresh", "scheduled" if task else "none")
     row("Downloaded tools", str(tools) if tools.exists() else "none")
     row("Settings", str(settings) if settings.exists() else "none")
+    row("gitso alias", ", ".join(state["aliases"]) or "none")
+    row("gitso command", {"here": state["folder"], "elsewhere": "another gitSpecOps folder's (left alone)"}.get(
+        state["launcher"], "none"))
     delete_settings = settings.exists() and yes_no(
         "Also delete your gitSpecOps settings?", "n",
         f"{settings}: your protected values, library folders, fleet membership, logs and reports. "
@@ -1082,24 +1105,27 @@ def uninstall(detector=detect) -> int:
         plan.add("Stop the app", f"Stop the app: end its {len(pids)} process(es)", lambda: _stop_app(pids))
     if found["login"] in ("on", "elsewhere"):
         plan.add("Start at sign-in", "Start at sign-in: remove the entry", lambda: _start_at_login(False))
-    if task:
-        plan.add("Monthly refresh", "Monthly archive refresh: delete the scheduled task", _remove_archive_task)
+    if found["desktop"]:
+        plan.add("Desktop app", "Desktop app: remove Qt from this folder's .venv (uv sync, without the app "
+                 "extra)", _remove_desktop, loud=True)
     if found["fleet"] and not delete_settings:
         plan.add("Fleet", "Fleet: leave (this machine's settings are kept)", lambda: (leave_fleet(), "left")[1])
+    if task:
+        plan.add("Monthly refresh", "Monthly archive refresh: delete the scheduled task", _remove_archive_task)
+    if tools.exists():
+        plan.add("Downloaded tools", f"Downloaded tools: delete {tools}", lambda: _delete_folder(tools))
+    if delete_settings:
+        plan.add("Settings", f"Settings: delete {settings}", lambda: _delete_folder(settings))
     if state["aliases"]:
         plan.add("gitso alias", "gitso alias: remove the marked lines from " + ", ".join(state["aliases"]),
                  command.remove_aliases)
     if state["launcher"] == "here":
         plan.add("The gitso command", f"gitso command: delete it from {state['folder']} and take the folder off "
                  "PATH", command.remove_launchers)
-    if tools.exists():
-        plan.add("Downloaded tools", f"Downloaded tools: delete {tools}", lambda: _delete_folder(tools))
-    if delete_settings:
-        plan.add("Settings", f"Settings: delete {settings}", lambda: _delete_folder(settings))
     say()
-    line("Not removed: this folder and its .venv (delete the folder yourself), your repositories, and "
-         "programs installed with your package manager, such as Gitleaks (winget uninstall "
-         "Gitleaks.Gitleaks), Git, the GitHub CLI and uv.", "muted")
+    line("Not removed: this folder (delete it yourself to remove gitSpecOps completely), your "
+         "repositories, and programs installed with your package manager, such as Gitleaks (winget "
+         "uninstall Gitleaks.Gitleaks), Git, the GitHub CLI and uv.", "muted")
     if not plan.changes:
         notice("Nothing to remove", "Setup has nothing installed on this computer.", "success")
         return 0
@@ -1147,20 +1173,21 @@ def _start_app(wait: float = 5.0) -> str:
     raise RuntimeError(f"the app stopped at once (exit code {code}); run gitso tray in a terminal to see why")
 
 
-AREA_STEPS = (area_requirements, area_environment, area_gitso, area_machine, area_app,
-              area_client, area_protection, area_scanners, area_archives, area_fleet)
+AREA_STEPS = (area_requirements, area_gitso, area_machine, area_protection, area_scanners,
+              area_archives, area_fleet, area_environment, area_client, area_app)
 PART_HINTS = (
     "Git, the GitHub CLI and your GitHub sign-in.",
-    "The tray icon and map: Qt in this folder's .venv, installed with uv.",
     "gitso on your command path, and an optional shell alias.",
     "Library folders: where your repositories are.",
-    "Start the tray app now, and when you sign in.",
-    "Open repositories from the map in Sourcetree or GitHub Desktop.",
     "Values that must never be published.",
     "Extra secret scanners: Gitleaks, Betterleaks, TruffleHog.",
     "Folders of clones kept current.",
     "Your machines watching each other, over Tailscale or a synced folder.",
+    "The tray icon and map: Qt in this folder's .venv, installed with uv.",
+    "Open repositories from the map in Sourcetree or GitHub Desktop.",
+    "Start the tray app now, and when you sign in.",
 )
+assert len(AREA_STEPS) == len(AREAS) == len(PART_HINTS)
 
 
 def choose_part() -> int | None:
