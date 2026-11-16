@@ -69,6 +69,20 @@ class PosixTests(unittest.TestCase):
             command.remove_aliases(self.home, "linux", self.which)
             self.assertEqual(command.status(self.home, "linux", self.which)["aliases"], [])
 
+    def test_a_refused_profile_is_named_and_the_others_are_still_written(self):
+        # Windows' Controlled Folder Access refuses writes into Documents with "No such file".
+        real = command.write_block
+
+        def refuse_zshrc(path, kind, body):
+            if path.name == ".zshrc":
+                raise FileNotFoundError(2, "No such file or directory")
+            return real(path, kind, body)
+        with patch.object(command, "powershell_profiles", return_value={}), \
+                patch.object(command, "write_block", side_effect=refuse_zshrc):
+            with self.assertRaisesRegex(RuntimeError, r"could not write .*\.zshrc.*Written: 1"):
+                command.install_aliases(self.home, "linux", self.which)
+        self.assertIn("gitso()", (self.home / ".bashrc").read_text(encoding="utf-8"))
+
     def test_a_launcher_for_another_folder_is_reported(self):
         launcher = self.home / ".gitspecops" / "bin" / "gitso"
         launcher.parent.mkdir(parents=True)

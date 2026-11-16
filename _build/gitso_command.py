@@ -318,10 +318,18 @@ def remove_launchers(home: Path | None = None, osname: str | None = None, which=
 
 
 def install_aliases(home: Path | None = None, osname: str | None = None, which=shutil.which) -> str:
-    done = []
+    done, refused = [], []
     for path, shell in alias_files(home, which, osname).items():
-        write_block(path, "alias", alias_line(shell))
-        done.append(str(path))
+        try:
+            write_block(path, "alias", alias_line(shell))
+            done.append(str(path))
+        except OSError:
+            refused.append(str(path))
+    if refused:
+        blocked = ("; on Windows this is usually Controlled Folder Access protecting Documents"
+                   if (osname or os.name) == "nt" else "")
+        raise RuntimeError(f"could not write {', '.join(refused)}{blocked}. "
+                           f"Written: {len(done)}. The gitso command works without the alias")
     if not done:
         raise RuntimeError("no shell profile found to add an alias to")
     return f"alias in {len(done)} profile(s); open a new terminal"

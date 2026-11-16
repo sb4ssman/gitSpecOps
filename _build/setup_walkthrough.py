@@ -5,19 +5,21 @@ Why:          a person setting up gitSpecOps should be walked through everything
 Reads:        Git, the GitHub CLI and its sign-in, uv, this folder's .venv, the gitso command,
               this machine's enrollment, start at sign-in, desktop Git apps, protected values,
               the secret scanners, Tailscale, synced folders. Never a repository's contents.
-May change:   nothing until the review is accepted. Then exactly what was chosen, in order:
-              installs (with the system's package tool, the command shown first), the GitHub
-              sign-in, the Python environment, the gitso command, library folders, the web
-              view's reach, start at sign-in, the desktop Git app, protected values, the
-              scanners used in scans, the fleet.
+May change:   nothing until the review is accepted. Then exactly what was chosen, built up
+              in gitSpecOps' own order: installs (with the system's package tool, the
+              command shown first), the GitHub sign-in, the gitso command, library folders,
+              protected values, the scanners used in scans, archives, the fleet, the
+              desktop app, the desktop Git app, start at sign-in, starting the app.
 Results:      the walkthrough screens, the review, a run screen of numbered steps.
 Layer:        setup (_build): uses the layers' own functions; no policy of its own.
 Status:       working
 
 Screens follow the station script design (.agents/knowledge/station-script-design.md). Every
 area offers the same answers: yes, no, or stop (nothing changes). Run again, each area shows what
-is already set and asks whether to keep or change it. The fleet's status repository is
-experimental and untested, so setup does not offer it.
+is already set and asks whether to keep or change it. The fleet's state repository is
+experimental and untested: setup offers it, says so, and its answer defaults to no. After the
+review is applied, setup asks whether to read the library now (the first scan); nothing starts
+unless the person chooses it.
 """
 from __future__ import annotations
 
@@ -39,8 +41,11 @@ WINDOWS = sys.platform == "win32"
 MAC = sys.platform == "darwin"
 VENV_DIR = ROOT / ".venv"
 VENV_PYTHON = VENV_DIR / ("Scripts/python.exe" if WINDOWS else "bin/python")
-AREAS = ("Requirements", "Python environment", "The gitso command", "This machine", "The app",
-         "Desktop Git app", "Protection", "Scanners", "Archives", "Fleet")
+# In gitSpecOps' own order, built up from below: Basic (Git, GitHub, the gitso command), Special
+# (this machine: libraries, protection, scanners, archives), Elaborate (other machines: the fleet),
+# then the App (the desktop app, opening a desktop Git app from it, running it).
+AREAS = ("Requirements", "The gitso command", "This machine", "Protection", "Scanners", "Archives",
+         "Fleet", "The desktop app", "Desktop Git app", "Running the app")
 
 from Special._security._audit import INSTALL_PACKAGES  # noqa: E402  the Security tab suggests the same
 
@@ -58,7 +63,7 @@ HOME_PAGES = {
 SCANNERS = {
     "gitleaks": "The most widely used secret scanner: keys and tokens in files and full history. "
                 "Runs offline. Recommended.",
-    "betterleaks": "The successor to Gitleaks, by its original author. Setup installs version 1, "
+    "betterleaks": "From the makers of Gitleaks, including its original author. Setup installs version 1, "
                    "which gitSpecOps supports; version 2 changes its output and is not supported yet.",
     "trufflehog": "Hundreds of credential detectors. gitSpecOps runs it with verification off, so "
                   "nothing found is sent to any provider.",
@@ -74,6 +79,7 @@ class Change:
     title: str
     review: str
     apply: object  # callable() -> short detail
+    loud: bool = False  # runs another program that prints (an installer, uv, gh)
 
 
 @dataclass
@@ -83,9 +89,10 @@ class Plan:
     enrolled_after: bool = False
     uv_after: bool = False
     venv_after: bool = False
+    desktop_after: bool = False  # the tray app (Qt) will be installed
 
-    def add(self, title, review, apply):
-        self.changes.append(Change(title, review, apply))
+    def add(self, title, review, apply, loud=False):
+        self.changes.append(Change(title, review, apply, loud))
 
 
 # --------------------------------------------------------------------------- detection
@@ -155,7 +162,9 @@ def detect() -> dict:
              "desktop": (VENV_DIR / "Lib/site-packages/PySide6").exists()
              or any(VENV_DIR.glob("lib/python*/site-packages/PySide6"))}
     found["gh_signed_in"] = bool(found["gh"]) and _run(["gh", "auth", "status"])[0] == 0
-    found["gh_login"] = _run(["gh", "api", "user", "--jq", ".login"])[1] if found["gh_signed_in"] else ""
+    account = _run(["gh", "api", "user", "--jq", '.login + " " + (.id | tostring)'])[1].split() \
+        if found["gh_signed_in"] else []
+    found["gh_login"], found["gh_id"] = account if len(account) == 2 else ("", "")
     found["git_name"] = _run(["git", "config", "--global", "user.name"])[1] if found["git"] else ""
     found["git_email"] = _run(["git", "config", "--global", "user.email"])[1] if found["git"] else ""
     import getpass
@@ -187,9 +196,11 @@ def detect() -> dict:
     found["gitso_command"] = gitso_command.status()
     found["alias_targets"] = [str(path) for path in gitso_command.alias_files()]
     found["powershell_profiles_run"] = gitso_command.powershell_runs_profiles() if WINDOWS else None
+    from Basic._paths import find_program
     for name in SCANNERS:
-        found[name] = shutil.which(name)
+        found[name] = find_program(name)
     found["archives"] = _archives()
+    found["app_running"] = app_running()
     return found
 
 
@@ -214,8 +225,13 @@ def _security() -> tuple[dict, list]:
 
 
 # --------------------------------------------------------------------------- screens
-def screen(number: int, title: str) -> None:
-    banner(f"Setup  {number}/{len(AREAS)}:  {title}", tagline=True)
+def step(title: str) -> str:
+    """'step N' for a part, from its place in AREAS."""
+    return f"step {AREAS.index(title) + 1}"
+
+
+def screen(title: str) -> None:
+    banner(f"Setup  {AREAS.index(title) + 1}/{len(AREAS)}:  {title}", tagline=True)
 
 
 def yes_no(question: str, default: str = "y", explanation: str = "") -> bool:
@@ -233,11 +249,24 @@ def yes_no(question: str, default: str = "y", explanation: str = "") -> bool:
     return answer == "y"
 
 
-def masked(value: str) -> str:
-    """A protected value as it appears on screen: enough to recognise, not to copy."""
-    if len(value) <= 3:
-        return "*" * len(value)
-    return value[:2] + "*" * (len(value) - 3) + value[-1]
+NOREPLY_DOMAIN = "@users.noreply.github.com"
+
+
+def public_git_name(name: str, login: str) -> bool:
+    """A Git name made from the public GitHub login (the login, or login@machine) is public."""
+    name, login = name.casefold(), login.casefold()
+    return bool(name and login) and (name == login or name.startswith(login + "@"))
+
+
+def public_git_email(email: str) -> bool:
+    """GitHub's no-reply addresses are public by design; any other address is treated as private."""
+    email = email.casefold()
+    return email.endswith(NOREPLY_DOMAIN) or email == "noreply@github.com"
+
+
+def noreply_address(login: str, user_id: str) -> str:
+    """GitHub's no-reply address for an account: ID+LOGIN@users.noreply.github.com."""
+    return f"{user_id}+{login}{NOREPLY_DOMAIN}" if login and user_id.isdigit() else ""
 
 
 def tool_row(label: str, path: str | None, missing: str) -> None:
@@ -247,14 +276,21 @@ def tool_row(label: str, path: str | None, missing: str) -> None:
 def offer_install(plan: Plan, name: str, label: str, why: str) -> bool:
     """Ask to install a missing program; returns whether it will be installed."""
     command = install_command(name)
-    if not command:
-        line(f"Setup cannot install {label} on this system. Get it at {HOME_PAGES[name]}, then run "
-             "setup again.", "muted")
-        return False
-    if not yes_no(f"Install {label}?", "y", f"{why} Runs: {' '.join(command)}".strip()):
-        return False
-    plan.add(f"Install {label}", f"{label}: {' '.join(command)}", lambda: _install(command, name))
-    return True
+    if command:
+        if not yes_no(f"Install {label}?", "y", f"{why} Runs: {' '.join(command)}".strip()):
+            return False
+        plan.add(f"Install {label}", f"{label}: {' '.join(command)}", lambda: _install(command, name), loud=True)
+        return True
+    from _build import release_install  # no package here: the project's own release, checked
+    if release_install.available(name):
+        if not yes_no(f"Install {label}?", "y", f"{why} {release_install.describe(name)}".strip()):
+            return False
+        plan.add(f"Install {label}", f"{label}: {release_install.describe(name)}",
+                 lambda: release_install.install(name))
+        return True
+    line(f"Setup cannot install {label} on this system, so there is nothing to decide here. To add "
+         f"it later, get it at {HOME_PAGES[name]} and run setup again.", "muted")
+    return False
 
 
 def _install(command: list[str], name: str) -> str:
@@ -267,7 +303,7 @@ def _install(command: list[str], name: str) -> str:
 
 # --------------------------------------------------------------------------- the areas
 def area_requirements(found: dict, plan: Plan) -> None:
-    screen(1, "Requirements")
+    screen("Requirements")
     if not found["git"]:
         notice("Git is required", "Install it from https://git-scm.com/downloads, then run setup again. "
                "Nothing has been changed.", "error")
@@ -283,7 +319,7 @@ def area_requirements(found: dict, plan: Plan) -> None:
     if will_have_gh and not found["gh_signed_in"]:
         if yes_no("Sign in to GitHub?", "y", "Runs gh auth login during setup; you answer its questions. "
                   "gitSpecOps never sees or stores your credentials."):
-            plan.add("Sign in to GitHub", "GitHub sign-in: gh auth login (you answer its questions)", _gh_login)
+            plan.add("Sign in to GitHub", "GitHub sign-in: gh auth login (you answer its questions)", _gh_login, loud=True)
 
 
 def _gh_login() -> str:
@@ -293,29 +329,34 @@ def _gh_login() -> str:
 
 
 def area_environment(found: dict, plan: Plan) -> None:
-    screen(2, "Python environment")
-    tool_row("uv", found["uv"], "not installed")
-    row("Environment", "ready (.venv in this folder)" if found["venv"] else "not built",
-        "success" if found["venv"] else "warning")
+    screen("The desktop app")
     row("Desktop app", "installed" if found["desktop"] else "not installed",
         "success" if found["desktop"] else "warning")
-    line("The desktop app (tray icon and map) needs uv to install its one dependency, Qt. The "
-         "command-line tools need only Python.", "muted")
-    plan.uv_after = bool(found["uv"]) or offer_install(plan, "uv", "uv", "")
+    tool_row("uv", found["uv"], "not installed")
+    line("The desktop app is gitSpecOps' tray icon, by the clock, and the map of your repositories it "
+         "opens: its colour says whether everything is in order. It is drawn with Qt, which setup "
+         "installs with uv into this folder's .venv; nothing system-wide. The gitso commands need "
+         "only Python.", "muted")
+    plan.desktop_after = found["desktop"]
+    plan.uv_after = bool(found["uv"]) or offer_install(plan, "uv", "uv", "The desktop app is installed with it.")
     if not plan.uv_after:
-        line("Without uv the desktop app cannot be installed; the command-line tools still work.", "warning")
+        line("Without uv the desktop app cannot be installed; the gitso commands still work.", "warning")
+        plan.venv_after = found["venv"]
         return
     # `uv sync --extra app`: make this folder's .venv exactly what uv.lock lists, plus the "app"
     # extra (Qt). Without --extra app, a sync would remove Qt.
     if found["desktop"]:
-        question = "The desktop app is installed. Update Qt to the version this gitSpecOps expects?"
-        hint = "Only needed after updating gitSpecOps. Changes this folder's .venv only (uv sync --extra app)."
+        question = "The desktop app is installed. Update it?"
+        hint = ("Only needed after updating gitSpecOps: brings Qt in this folder's .venv to the version "
+                "gitSpecOps expects (uv sync --extra app).")
+        summary = "Desktop app (tray icon and map): update Qt in this folder's .venv (uv sync --extra app)"
     else:
-        question = "Install the desktop app?"
-        hint = "Installs Qt into a .venv in this folder only; nothing system-wide (uv sync --extra app)."
+        question = "Install the desktop app, the tray icon and map?"
+        hint = "Installs Qt into this folder's .venv with uv; nothing system-wide (uv sync --extra app)."
+        summary = "Desktop app (tray icon and map): install Qt into this folder's .venv (uv sync --extra app)"
     if yes_no(question, "n" if found["desktop"] else "y", hint):
-        plan.add("Python environment", "Desktop app: Qt in this folder's .venv (uv sync --extra app)", _build_env)
-        plan.venv_after = True
+        plan.add("Desktop app", summary, _build_env, loud=True)
+        plan.venv_after = plan.desktop_after = True
     else:
         plan.venv_after = found["venv"]
 
@@ -329,9 +370,21 @@ def _build_env() -> str:
     return ".venv ready, with the desktop app"
 
 
+def _remove_desktop() -> str:
+    """`uv sync` without `--extra app`: the .venv keeps what uv.lock lists and drops Qt."""
+    uv = shutil.which("uv")
+    if not uv:
+        raise RuntimeError(f"uv is not on PATH; delete {VENV_DIR} to remove the desktop app")
+    if subprocess.call([uv, "sync"], cwd=ROOT) != 0:
+        raise RuntimeError("uv sync did not finish")
+    if (VENV_DIR / "Lib/site-packages/PySide6").exists() or any(VENV_DIR.glob("lib/python*/site-packages/PySide6")):
+        raise RuntimeError("Qt is still in this folder's .venv")
+    return "removed"
+
+
 def area_gitso(found: dict, plan: Plan) -> None:
     from _build import gitso_command as command
-    screen(3, "The gitso command")
+    screen("The gitso command")
     state = found["gitso_command"]
     where = state["folder"]
     row("Command path", {"here": "set up", "elsewhere": "set up for another gitSpecOps folder",
@@ -380,6 +433,9 @@ def area_gitso(found: dict, plan: Plan) -> None:
         warn = ("" if found["powershell_profiles_run"] is not False else
                 " PowerShell's execution policy here does not run profiles, so PowerShell would not "
                 "see it; the command path works there anyway.")
+        if any("/onedrive" in Path(t).as_posix().casefold() for t in targets):  # also "OneDrive - Work"
+            warn += (" A profile here is in OneDrive, which copies it to your other PCs: there the "
+                     "alias would point at this PC's folder and hide their own gitso command.")
         if yes_no("Also add gitso to your shell profiles, as an alias?", "n",
                   "Optional: the command path above is enough. Adds a marked block to: "
                   + ", ".join(targets) + "." + warn):
@@ -389,7 +445,7 @@ def area_gitso(found: dict, plan: Plan) -> None:
 
 def area_machine(found: dict, plan: Plan) -> None:
     from Special._sync.enrollment import find_libraries, whole_machine_starts
-    screen(4, "This machine")
+    screen("This machine")
     row("Enrolled", f"yes, as {found['machine']}" if found["enrolled"] else "not yet",
         "success" if found["enrolled"] else "warning")
     for path in found["libraries"]:
@@ -450,18 +506,28 @@ LOGIN_SWITCH = ("Task Manager > Startup apps" if WINDOWS else "System Settings >
 
 
 def area_app(found: dict, plan: Plan) -> None:
-    screen(5, "The app")
+    screen("Running the app")
     state, where = found["login"], found.get("login_elsewhere") or LOGIN_SWITCH
+    row("Running now", "yes" if found.get("app_running") else "no",
+        "success" if found.get("app_running") else "text")
     row("Start at sign-in", {None: "not available on this system", "on": "on", "off": "off"}.get(
         state, f"off: turned off in {where}"), "success" if state == "on" else "text")
-    line("The app is a tray icon and a map of your repositories, on this computer. Starting it at "
+    line("The app is the tray icon and the map of your repositories, on this computer. Starting it at "
          f"sign-in keeps it watching. It appears in {LOGIN_SWITCH} like any other start-up item; "
          "switching it there is noticed here and in the tray menu.", "muted")
-    if state is None:
+    if not plan.desktop_after:
+        line(f"The app needs the desktop app ({step('The desktop app')}).", "warning")
         return
-    if not plan.venv_after:
-        line("Start at sign-in needs the Python environment (step 2).", "warning")
-        return
+    if state is not None:
+        _sign_in_choice(plan, state, where)
+    if found.get("app_running"):
+        line("The app is running. To use what setup changes, quit it from its tray menu and start it "
+             "again (gitso tray).", "muted")
+    else:
+        line("Starting it is offered once setup has applied your choices: the first scan.", "muted")
+
+
+def _sign_in_choice(plan: Plan, state: str, where: str) -> None:
     say()
     if state == "on":
         option("K", "Keep starting at sign-in")
@@ -500,14 +566,14 @@ def _start_at_login(enable: bool) -> str:
 
 def area_client(found: dict, plan: Plan) -> None:
     from Special._sync.git_client import LABELS
-    screen(6, "Desktop Git app")
+    screen("Desktop Git app")
     names = {key: LABELS.get(key, key) for key in found["clients"]}
     row("Found", ", ".join(names.values()) or "none (Sourcetree, GitHub Desktop)")
     row("Connected", names.get(found["client"], "none"))
     line("The web view can open any repository in your desktop Git app.", "muted")
     if not names or not plan.enrolled_after:
         if names:
-            line("Connecting is saved with a library folder (step 4).", "warning")
+            line(f"Connecting is saved with a library folder ({step('This machine')}).", "warning")
         return
     say()
     keys = list(names)
@@ -535,29 +601,42 @@ def _save_client(choice) -> str:
 
 
 def area_protection(found: dict, plan: Plan) -> None:
-    screen(7, "Protection")
+    screen("Protection")
     anywhere = found["protected"].get("never_publish", [])
     words = found["protected"].get("never_publish_words", [])
     row("Protected values", f"{len(anywhere) + len(words)}" + (f" ({len(words)} whole word only)" if words else ""))
-    line("Values that must never be published: your name, email addresses, usernames. A checked "
-         "commit or push holds anything that contains one, and scans report them. They stay on "
-         "this computer.", "muted")
+    line("Protected values are things that must never be published. A checked commit or push stops "
+         "anything that contains one, and scans report them. The list stays on this computer.", "muted")
+    say()
+    line("Worth adding:", "muted")
+    for tip in PROTECTION_TIPS:
+        bullet(tip, "muted")
+    line("Leave out your GitHub handle, and a Git name or email that is already public: every commit "
+         "carries those, so protecting one would stop every commit.", "muted")
+    say()
+    line(f"Change the list any time: run setup again (Set up one part, then Protection), use the "
+         f"Security tab in the app, or edit the never_publish lists in the \"security\" section of {settings_file()}.", "muted")
+    retired = commit_identity(found, plan)
     if not plan.enrolled_after and not found["protected"]:
         line("Protected values are saved with this machine's settings, which a library folder "
-             "creates (step 4).", "warning")
+             f"creates ({step('This machine')}).", "warning")
         return
     known = {v.casefold() for v in anywhere + words}
     suggestions = []
-    # Not the GitHub login: it is public by design, and protecting it would hold every publish.
-    for label, value in (("Your Git name", found["git_name"]), ("Your Git email", found["git_email"]),
-                         ("This computer's user name", found["user"])):
-        if value and value.casefold() not in known and value not in [v for _l, v in suggestions]:
+    login = found.get("gh_login", "").casefold()
+    # Never the public GitHub login or a commit identity still in use: every commit carries those,
+    # so protecting one would hold every commit. A private name or email is suggested once commits
+    # stop carrying it (commit_identity above).
+    for label, value in retired + [("This computer's user name", found["user"])]:
+        if value and value.casefold() not in known and value.casefold() != login \
+                and value not in [v for _l, v in suggestions]:
             suggestions.append((label, value))
     adding = []
     for label, value in suggestions:
         short = len(value) < 6 or " " not in value and "@" not in value
-        if yes_no(f"Protect {label.lower()} ({masked(value)})?", "y",
-                  "As a whole word only (it also occurs inside other words)" if short else "Anywhere in text."):
+        if yes_no(f"Protect {label.lower()}, {value}?", "y",
+                  f"Matched only as a separate word, so longer words that contain \"{value}\" are not "
+                  "flagged." if short else "Matched anywhere in text."):
             adding.append((value, short))
     while True:
         say()
@@ -571,13 +650,91 @@ def area_protection(found: dict, plan: Plan) -> None:
             break
         value = ask("Value:")
         if value:
-            whole = ask("Only as a whole word, for a short value that also occurs inside other words? "
-                        "[Y/N] [N]:", "n").lower() == "y"
+            # A name with a space or an email address is matched anywhere. Only a single short
+            # word needs the choice: "pat" anywhere would also match "pattern".
+            whole = (len(value) < 6 or " " not in value and "@" not in value) and yes_no(
+                f"Match {value} only as a separate word?", "y",
+                f"Yes: \"{value}\" on its own. No: also inside longer words, which flags much more text.")
             adding.append((value, whole))
             line("Will be added when you apply.", "success")
     for value, whole in adding:
-        plan.add("Protected value", f"Protect {masked(value)} ({'whole word only' if whole else 'anywhere in text'})",
+        plan.add("Protected value", f"Protect {value} ({'whole word only' if whole else 'anywhere in text'})",
                  lambda value=value, whole=whole: _protect(value, whole))
+
+
+PROTECTION_TIPS = (
+    "Your full name as you write it, such as \"Pat Example\". Add your last name on its own too if it "
+    "is uncommon. Your first name alone usually matches too much ordinary text.",
+    "Other names: nicknames, a former name, family members' names.",
+    "Every email address you use, old ones included.",
+    "Usernames on other sites, and this computer's user name.",
+    "Your street address and phone numbers.",
+)
+
+
+def settings_file() -> str:
+    """Where the protected values are saved, for a person to open."""
+    from Special._settings import SETTINGS_NAME, SettingsError, select_home
+    try:
+        return str(Path(select_home()[0]) / SETTINGS_NAME)
+    except SettingsError:
+        return f"{SETTINGS_NAME} in your gitSpecOps settings folder"
+
+
+def commit_identity(found: dict, plan: Plan) -> list[tuple[str, str]]:
+    """Show the name and email every commit carries; offer public ones in place of private ones.
+
+    Returns the private values commits will stop carrying, for protection. A private value still
+    in use is not offered for protection: every commit would then be held.
+    """
+    login, name, email = found.get("gh_login", ""), found["git_name"], found["git_email"]
+    if not (name or email):
+        return []
+    say()
+    line("Every commit carries your Git name and email, and history keeps them for good. Commit "
+         "under public ones: your GitHub handle and GitHub's no-reply address.", "muted")
+    retired = []
+    if name:
+        if public_git_name(name, login):
+            row("Git name", f"{name}  (public)", "success")
+        else:
+            row("Git name", name, "warning")
+            if login and yes_no(f"Commit as {login} instead of {name}?", "y",
+                                "Sets Git's user.name for your account (git config --global). Commits "
+                                "already made keep the name they were made with."):
+                plan.add("Git name", f"Git name: commit as {login} (git config --global user.name)",
+                         lambda: _git_identity("user.name", login))
+                retired.append(("Your old Git name", name))
+            else:
+                line("Not protected while commits carry it: that would hold every commit.", "muted")
+    if email:
+        if public_git_email(email):
+            row("Git email", f"{email}  (public)", "success")
+        else:
+            row("Git email", email, "warning")
+            address = noreply_address(login, found.get("gh_id", ""))
+            if not address:
+                line("Your no-reply address is on https://github.com/settings/emails, with \"Keep my "
+                     "email addresses private\" turned on. It ends in " + NOREPLY_DOMAIN + ".", "muted")
+                typed = ask("Paste it to commit with it, or press Enter to keep your current email:")
+                address = typed if public_git_email(typed) else ""
+                if typed and not address:
+                    line("That is not a GitHub no-reply address; your email is unchanged.", "warning")
+            if address and yes_no(f"Commit as {address} instead of {email}?", "y",
+                                  "Sets Git's user.email for your account (git config --global). Commits "
+                                  "already made keep the email they were made with."):
+                plan.add("Git email", f"Git email: commit as {address} (git config --global user.email)",
+                         lambda: _git_identity("user.email", address))
+                retired.append(("Your old Git email", email))
+            else:
+                line("Not protected while commits carry it: that would hold every commit.", "muted")
+    return retired
+
+
+def _git_identity(key: str, value: str) -> str:
+    if subprocess.call(["git", "config", "--global", key, value]) != 0:
+        raise RuntimeError(f"git config --global {key} did not finish")
+    return "set"
 
 
 def _protect(value: str, whole: bool) -> str:
@@ -587,7 +744,7 @@ def _protect(value: str, whole: bool) -> str:
 
 
 def area_scanners(found: dict, plan: Plan) -> None:
-    screen(8, "Scanners")
+    screen("Scanners")
     for name in SCANNERS:
         state = ("installed, used in scans" if found[name] and name in found["engines"] else
                  "installed, not used" if found[name] else "not installed")
@@ -595,23 +752,26 @@ def area_scanners(found: dict, plan: Plan) -> None:
     line("gitSpecOps' own checks always run. A scanner adds hundreds of kinds of keys and tokens, "
          "across full history. Only use what is installed: a chosen scanner that is missing makes "
          "every scan incomplete, and an incomplete scan holds a publish.", "muted")
-    will_have = {name for name in SCANNERS if found[name]}
+    installing = []  # a scanner you choose to install is used in every scan: one decision, not two
     for name, about in SCANNERS.items():
         if found[name]:
             continue
         say()
         line(f"{name}: {about}", "muted")
-        if offer_install(plan, name, name, ""):
-            will_have.add(name)
-    if not will_have:
+        if offer_install(plan, name, name, f"gitSpecOps will use it whenever it checks for secrets: {SCANS}."):
+            installing.append(name)
+    installed = [name for name in SCANNERS if found[name]]
+    if not (installed or installing):
         return
     if not plan.enrolled_after and not found["protected"]:
-        line("Which scanners to use is saved with this machine's settings (step 4).", "warning")
+        line(f"Which scanners to use is saved with this machine's settings ({step('This machine')}).", "warning")
         return
-    chosen = []
-    for name in SCANNERS:
-        if name in will_have and yes_no(f"Use {name} in every scan?", "y" if name in found["engines"] or name == "gitleaks" else "n"):
+    chosen = list(installing)
+    for name in installed:
+        if yes_no(f"{name} is already installed. Use it whenever gitSpecOps checks for secrets?",
+                  "y" if name in found["engines"] or name == "gitleaks" else "n", f"That is: {SCANS}."):
             chosen.append(name)
+    chosen = [name for name in SCANNERS if name in chosen]
     if sorted(chosen) != sorted(found["engines"]):
         plan.add("Scanners used", "Scanners used in scans: " + (", ".join(chosen) or "gitSpecOps' own checks only"),
                  lambda: _select_engines(chosen))
@@ -619,7 +779,8 @@ def area_scanners(found: dict, plan: Plan) -> None:
 
 def _select_engines(chosen) -> str:
     from Special._settings.security import load_security_settings, save_security_settings
-    missing = [name for name in chosen if not shutil.which(name)]
+    from Basic._paths import find_program
+    missing = [name for name in chosen if not find_program(name)]
     if missing:
         raise RuntimeError(f"not installed: {', '.join(missing)} (open a new terminal and run setup again)")
     save_security_settings(load_security_settings(), {"engines": list(chosen)})
@@ -636,7 +797,7 @@ def _archives() -> list:
 
 def area_archives(found: dict, plan: Plan) -> None:
     from Special._archive.manager import registration_plan
-    screen(9, "Archives")
+    screen("Archives")
     for item in found["archives"]:
         row("Archive", f"{item['root']}  ({'update' if item['mode'] == 'update' else 'update and clone missing'})")
     if not found["archives"]:
@@ -701,43 +862,55 @@ def _schedule_archives() -> str:
     return "1st of each month, 09:00"
 
 
-TAILSCALE_WHY = ("Your machines exchange repository status directly over your own tailnet, "
-                 "and every machine's map shows the whole fleet. Nothing passes through anyone else.")
+SCANS = ("before a checked commit or push, in gitso scan and gitso history scan, and in the "
+         "app's Security tab")
+
+
+CONNECTIONS = (  # (name, what kind, what it does): the list and each question use the same words
+    ("Tailscale", "Live",
+     "Your machines pull each other's status every 30 seconds, directly, between your own devices."),
+    ("A synced folder", "In between",
+     "A small status file every 5 minutes, in a folder a sync service already copies to your "
+     "machines: OneDrive, Syncthing, an Obsidian Sync vault and others. The service's provider can "
+     "read the file."),
+    ("A GitHub state repository", "Durable, kept while every machine is off; experimental and untested",
+     "A private repository written through your gh sign-in. GitHub can read it."),
+)
+FLEET_FOLDER = "gitSpecOps fleet"
 
 
 def area_fleet(found: dict, plan: Plan) -> None:
-    from Elaborate._fleet.setup_state import join_fleet, leave_fleet
-    screen(10, "Fleet")
+    from Elaborate._fleet.setup_state import leave_fleet
+    screen("Fleet")
     has_tailscale = bool(found["tailscale"] or found["tailnet"])
-    over_tailscale = "tailnet" in found["fleet"]
+    current = found["fleet"]
     row("Tailscale", "connected" if found["tailnet"] else "installed, not connected" if found["tailscale"]
         else "not installed (optional)", "success" if found["tailnet"] else "text")
     row("Synced folders", ", ".join(found["synced_folders"]) or "none found")
-    if found["fleet"]:
-        ways = [{"tailnet": "Tailscale", "folder": "a synced folder"}.get(w, w) for w in found["fleet"]]
-        row("This machine", "in a fleet, over " + " and ".join(ways), "success")
+    if current:
+        row("This machine", "in a fleet, connected by " + ", ".join(_connection_names(current)), "success")
     else:
         row("This machine", "on its own")
-    line("A fleet is your machines watching each other: every machine's map shows every copy of "
-         "every repository. Machines share names, branches and counts only; never file contents or "
-         "folder paths. They share over Tailscale, a synced folder, or both; Tailscale is optional. "
-         "Experimental and untested: a status repository on GitHub (not offered here).", "muted")
+    line("A fleet is your machines watching each other: every machine's map shows every copy of every "
+         "repository. Never shared: file contents, folder paths, web addresses, commit messages. "
+         "Machines connect in up to three ways; choose any combination, each is another place a "
+         "machine leaves its last report:", "muted")
+    for name, kind, about in CONNECTIONS:
+        bullet(f"{name}. {kind}. {about}", "muted")
     if not has_tailscale:
         line(f"Tailscale is free for personal use: {HOME_PAGES['tailscale']}. Run setup again after "
-             "installing it to operate over it.", "muted")
+             "installing it to connect over it.", "muted")
     if not plan.enrolled_after:
-        line("A fleet needs a library folder on this machine (step 4).", "warning")
+        line(f"A fleet needs a library folder on this machine ({step('This machine')}).", "warning")
         return
     say()
-    if found["fleet"]:
+    if current:
         option("K", "Keep the fleet as it is")
-        if has_tailscale:
-            option("T", "Stop operating over Tailscale" if over_tailscale else "Operate over Tailscale",
-                   "" if over_tailscale else TAILSCALE_WHY)
+        option("C", "Change how this machine connects", "Tailscale, a synced folder, the state repository.")
         option("S", "Show this machine's fleet key", "To add another machine. It appears in this window only.")
         option("L", "Leave the fleet", "This machine keeps its libraries and map.")
         option("0", "Stop the walkthrough", "Nothing has been changed.")
-        answer = choose("k" + ("t" if has_tailscale else "") + "sl0", "k")
+        answer = choose("kcsl0", "k")
         if answer == "0":
             raise Stop
         if answer == "s":
@@ -750,14 +923,22 @@ def area_fleet(found: dict, plan: Plan) -> None:
             plan.add("Fleet", "Fleet: leave (this machine keeps its libraries)", lambda: (leave_fleet(), "left")[1])
             _browser_reach(found, plan, False)
             return
-        elif answer == "t":
-            on = not over_tailscale
-            others = [w for w in found["fleet"] if w != "tailnet"]
-            plan.add("Fleet", "Fleet: " + ("operate over Tailscale" if on else "stop operating over Tailscale"
-                                           + ("" if others else "; this machine leaves the fleet")),
-                     lambda: _tailscale_transport(on))
-            over_tailscale = on
-        _browser_reach(found, plan, over_tailscale)
+        elif answer == "c":
+            chosen = _choose_connections(found, has_tailscale, current)
+            if chosen is None:
+                return
+            tailnet, folder, repo, create = chosen
+            if not (tailnet or folder or repo):
+                plan.add("Fleet", "Fleet: no connections left; this machine leaves the fleet",
+                         lambda: (leave_fleet(), "left")[1])
+                _browser_reach(found, plan, False)
+                return
+            names = _ask_names(tailnet, folder, repo, current)
+            plan.add("Fleet", "Fleet: connect by " + ", ".join(_described(tailnet, folder, repo, create, names)),
+                     lambda: _set_connections(current, tailnet, folder, repo, create, names))
+            _browser_reach(found, plan, tailnet)
+            return
+        _browser_reach(found, plan, "tailnet" in current)
         return
     option("1", "Start a fleet with this machine", "Then add your other machines with this machine's key.")
     option("2", "Join a fleet", "Needs the key shown on a machine already in the fleet.")
@@ -774,22 +955,149 @@ def area_fleet(found: dict, plan: Plan) -> None:
         if len(key) != 64:
             line("A fleet key is 64 characters; nothing will be joined. Run setup again with the key.", "warning")
             return
-    tailnet = has_tailscale and yes_no("Let gitSpecOps operate over Tailscale?", "y", TAILSCALE_WHY)
-    if tailnet and not found["tailnet"]:
-        line("Tailscale is installed but not connected; sign in to Tailscale for your machines to "
-             "see each other.", "warning")
-    folder = ""
-    if found["synced_folders"] and yes_no("Also share through a synced folder?", "n" if tailnet else "y",
-                                          "One small status file there every 5 minutes; the folder's provider can read it."):
-        folder = found["synced_folders"][0]
-    if not (tailnet or folder):
-        line("A fleet needs a way to share: Tailscale or a synced folder. Nothing will change.", "warning")
+    chosen = _choose_connections(found, has_tailscale, {})
+    if chosen is None:
         return
-    names = yes_no("Share repository names, branches and commit counts with your machines?", "y")
-    ways = " and ".join(w for w in ("Tailscale" if tailnet else "", f"a synced folder ({folder})" if folder else "") if w)
-    plan.add("Fleet", f"Fleet: {'join' if key else 'start'} a fleet, operating over {ways}",
-             lambda: (join_fleet(key=key, folder=folder or None, tailnet=tailnet, share_names=names), "joined")[1])
+    tailnet, folder, repo, create = chosen
+    if not (tailnet or folder or repo):
+        line("A fleet needs at least one connection. Nothing will change.", "warning")
+        return
+    names = _ask_names(tailnet, folder, repo, {})
+    ways = ", ".join(_described(tailnet, folder, repo, create, names))
+    plan.add("Fleet", f"Fleet: {'join' if key else 'start'} a fleet, connected by {ways}",
+             lambda: _start_fleet(key, tailnet, folder, repo, create, names))
     _browser_reach(found, plan, tailnet)
+
+
+def _connection_names(transports: dict) -> list[str]:
+    return [{"tailnet": "Tailscale", "folder": "a synced folder",
+             "repo": "the state repository (experimental)"}.get(name, name) for name in transports]
+
+
+def _described(tailnet, folder, repo, create, names=None) -> list[str]:
+    names = names or {}
+
+    def carried(key):
+        return "" if key not in names else ", with names" if names[key] else ", ids only"
+    return [part for part in (
+        f"Tailscale{carried('tailnet')}" if tailnet else "",
+        f"a synced folder ({folder}{carried('folder')})" if folder else "",
+        (f"the state repository {repo} ({'create it, private' if create else 'existing'}; experimental"
+         f"{carried('repo')})" if repo else "")) if part]
+
+
+# Repository names per connection: over Tailscale only your own devices see them; a synced
+# folder's provider and GitHub could read them, so those carry unnamed ids unless chosen.
+NAMES_DEFAULT = {"tailnet": True, "folder": False, "repo": False}
+
+
+def _ask_names(tailnet, folder, repo, current: dict) -> dict:
+    """Whether each chosen connection carries repository names. The current choice is the default."""
+    asked = [(key, label, reader) for key, on, label, reader in (
+        ("tailnet", tailnet, "over Tailscale", "only your own devices"),
+        ("folder", folder, "through the synced folder", "the sync service's provider, too"),
+        ("repo", repo, "to the state repository", "GitHub, too")) if on]
+    if not asked:
+        return {}
+    say()
+    line("Repository names: Yes shows other maps which repository is which, with its branch and "
+         "commit. No sends unnamed ids: your machines still see what is ahead, behind or unpushed. "
+         "Never sent either way: folder paths, web addresses, file names, contents, commit messages.",
+         "muted")
+    names = {}
+    for key, label, reader in asked:
+        default = (current.get(key) or {}).get("names", NAMES_DEFAULT[key])
+        names[key] = yes_no(f"Send repository names {label}?", "y" if default else "n",
+                            f"Who could read them: {reader}.")
+    return names
+
+
+def _choose_connections(found: dict, has_tailscale: bool, current: dict):
+    """Ask about each connection. Returns (tailnet, folder, repo, create_repo), or None to stop."""
+    say()
+    tailnet = has_tailscale and yes_no("Connect over Tailscale?", "y" if not current or "tailnet" in current
+                                       else "n", f"{CONNECTIONS[0][1]}. {CONNECTIONS[0][2]}")
+    if tailnet and not found["tailnet"]:
+        line("Tailscale is installed but not connected; sign in to Tailscale for your machines to see "
+             "each other.", "warning")
+    folder = (current.get("folder") or {}).get("path", "")
+    if yes_no("Connect through a synced folder?", "y" if folder or (not current and not tailnet) else "n",
+              f"{CONNECTIONS[1][1]}. {CONNECTIONS[1][2]}"):
+        folder = _pick_synced_folder(found, folder)
+    else:
+        folder = ""
+    repo, create = (current.get("repo") or {}).get("name", ""), False
+    if found.get("gh_signed_in") and yes_no(
+            "Also keep status in a GitHub state repository? Experimental and untested.",
+            "y" if repo else "n", f"Kept while every machine is off. {CONNECTIONS[2][2]} Say no unless "
+            "you want to test it."):
+        repo, create = _pick_state_repo(found, repo)
+    elif not found.get("gh_signed_in"):
+        line("The state repository needs a GitHub sign-in (step 1); not offered.", "muted")
+        repo = ""
+    else:
+        repo = ""
+    return bool(tailnet), folder, repo, create
+
+
+def _pick_synced_folder(found: dict, current: str) -> str:
+    """A folder of its own inside a synced folder: setup creates it when the change is applied."""
+    roots = found["synced_folders"]
+    say()
+    for number, root in enumerate(roots, 1):
+        option(str(number), str(Path(root) / FLEET_FOLDER), f"A new folder inside {root}.")
+    option("P", "Another folder, by its path", "Any folder your sync service copies, such as one in an "
+           "Obsidian Sync vault. It must already exist.")
+    keys = "".join(str(n) for n in range(1, min(len(roots), 9) + 1)) + "p"
+    default = "1" if roots else "p"
+    if current:
+        line(f"Now: {current}. Enter keeps it.", "muted")
+        answer = ask(f"Choose [{'Enter' if current else default.upper()}]:", "")
+        if not answer:
+            return current
+    else:
+        answer = choose(keys, default)
+    if answer.lower() == "p":
+        path = ask("Folder path:")
+        return path if path and Path(path).expanduser().is_dir() else ""
+    if answer.isdigit() and 1 <= int(answer) <= len(roots):
+        return str(Path(roots[int(answer) - 1]) / FLEET_FOLDER)
+    return ""
+
+
+def _pick_state_repo(found: dict, current: str) -> tuple[str, bool]:
+    """owner/name, and whether to create it. The suggestion creates nothing until applied."""
+    suggestion = current or f"{found.get('gh_login') or 'you'}/gitspecops-state"
+    name = ask(f"Repository [{suggestion}]:", suggestion)
+    exists = _run(["gh", "repo", "view", name, "--json", "name"])[0] == 0
+    if exists:
+        line(f"{name} exists: it is used only if it is private and you can write to it.", "muted")
+        return name, False
+    line(f"{name} does not exist yet: it will be created, private, when you apply.", "muted")
+    return name, True
+
+
+def _start_fleet(key, tailnet, folder, repo, create, names) -> str:
+    from Elaborate._fleet.setup_state import join_fleet
+    if folder:
+        Path(folder).mkdir(parents=True, exist_ok=True)
+    join_fleet(key=key, folder=folder or None, tailnet=tailnet, repo=repo or None, create_repo=create,
+               names=names)
+    return "joined"
+
+
+def _set_connections(current: dict, tailnet, folder, repo, create, names=None) -> str:
+    from Elaborate._fleet.cli import load_saved
+    from Elaborate._fleet.setup_state import apply_transports
+    from Special._settings.fleet import fleet_directory
+    if folder:
+        Path(folder).mkdir(parents=True, exist_ok=True)
+    directory = fleet_directory()
+    apply_transports(load_saved(directory), tailnet=tailnet, clear_tailnet=not tailnet,
+                     folder=folder or None, clear_folder=not folder and "folder" in current,
+                     repo=repo or None, create_repo=create, clear_repo=not repo and "repo" in current,
+                     directory=directory, names=names)
+    return "connected by " + ", ".join(_described(tailnet, folder, repo, create, names))
 
 
 def _browser_reach(found: dict, plan: Plan, over_tailscale: bool) -> None:
@@ -798,9 +1106,11 @@ def _browser_reach(found: dict, plan: Plan, over_tailscale: bool) -> None:
     from Special._sync.enrollment import set_presentation
     now = found["web"] == "tailnet"
     want = over_tailscale and yes_no(
-        "Also open this machine's map in a browser on your other Tailscale devices?", "y" if now else "n",
-        "For a phone, or a computer without gitSpecOps. Your fleet machines do not need this; each "
-        "shows the fleet on its own map. Only devices in your own tailnet can reach it.")
+        "Let your other Tailscale devices, such as a phone, open this machine's map in a browser?",
+        "y" if now else "n",
+        "Nothing opens by itself: the map is served at this machine's Tailscale address, port 8770, "
+        "for your devices to visit when you choose. Your fleet machines do not need this; each shows "
+        "the fleet on its own map. Only devices in your own tailnet can reach it.")
     if want != now:
         web = "tailnet" if want else "loopback"
         plan.add("Map in a browser", "Map in a browser: " + ("this computer and your Tailscale devices" if want
@@ -808,17 +1118,8 @@ def _browser_reach(found: dict, plan: Plan, over_tailscale: bool) -> None:
                  lambda: str(set_presentation(face=found["face"], web=web)["web"]))
 
 
-def _tailscale_transport(on: bool) -> str:
-    from Elaborate._fleet.cli import load_saved
-    from Elaborate._fleet.setup_state import apply_transports
-    from Special._settings.fleet import fleet_directory
-    directory = fleet_directory()
-    apply_transports(load_saved(directory), tailnet=on, clear_tailnet=not on, directory=directory)
-    return "over Tailscale" if on else "not over Tailscale"
-
-
 # --------------------------------------------------------------------------- review and apply
-def review(plan: Plan, enrolled: bool) -> str:
+def review(plan: Plan, enrolled: bool, again: str = "Back to the start of the walkthrough") -> str:
     banner("Setup  /  Review", tagline=True)
     if not plan.changes:
         notice("Nothing to change", "Everything is as you chose.", "success")
@@ -834,66 +1135,278 @@ def review(plan: Plan, enrolled: bool) -> str:
     say()
     key = "a" if enrolled else "i"
     option(key.upper(), "Apply" if enrolled else "Install")
-    option("B", "Back to the start of the walkthrough")
+    option("B", again)
     option("0", "Cancel", "Nothing has been changed.")
     answer = choose(key + "b0", "0")
     return "apply" if answer == key else answer
 
 
-def apply(plan: Plan) -> bool:
-    banner("Setup  /  Applying", f"folder: {ROOT}")
+def apply(plan: Plan, done: tuple[str, str] = ("Setup complete", "gitSpecOps is set up on this computer."),
+          title: str = "Applying") -> bool:
+    banner(f"Setup  /  {title}", f"folder: {ROOT}")
     say()
     steps = Steps(len(plan.changes))
     for change in plan.changes:
-        steps.run(change.title, lambda change=change: ("changed", str(change.apply())))
+        steps.run(change.title, lambda change=change: ("changed", str(change.apply())), loud=change.loud)
     failed = [label for label, status, _detail in steps.results if status == "FAILED"]
     section("Summary")
     for label, status, detail in steps.results:
         bullet(f"{label}: {detail}", "error" if status == "FAILED" else "text")
     if failed:
-        notice("Setup incomplete", f"{', '.join(failed)} did not finish; the other steps are done. "
+        notice("Not finished", f"{', '.join(failed)} did not finish; the other steps are done. "
                "Run setup again to finish.", "error")
         return False
-    notice("Setup complete", "gitSpecOps is set up on this computer.", "success")
+    notice(*done, "success")
     return True
 
 
-def start_app() -> None:
-    pythonw = VENV_PYTHON.with_name("pythonw.exe")
-    if not VENV_PYTHON.exists():
-        return
+# --------------------------------------------------------------------------- uninstall
+def find_app_processes() -> list[int]:
+    """Process ids of this folder's tray app (its peer included). Only looks."""
+    target = str(ROOT / "App" / "tray.py")
+    if WINDOWS:
+        script = ("Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" | Where-Object { "
+                  f"$_.CommandLine -like '*{target.replace(chr(39), chr(39) * 2)}*' }} | "
+                  "ForEach-Object { $_.ProcessId }")
+        code, out = _run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script])
+    else:
+        code, out = _run(["ps", "-ax", "-o", "pid=,command="])
+        out = "\n".join(entry.split(None, 1)[0] for entry in out.splitlines() if target in entry)
+    return sorted({int(word) for word in out.split() if word.isdigit()}) if code == 0 else []
+
+
+def _stop_app(pids: list[int]) -> str:
+    import signal
+    for pid in pids:
+        if WINDOWS:
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=30)
+        else:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+    left = find_app_processes()
+    if left:
+        raise RuntimeError(f"still running: process {', '.join(map(str, left))}; quit it from its tray menu")
+    return f"stopped ({len(pids)} process{'es' if len(pids) != 1 else ''})"
+
+
+def _delete_folder(path: Path) -> str:
+    shutil.rmtree(path)
+    parent = path.parent
+    if parent.name == ".gitspecops" and parent.is_dir() and not any(parent.iterdir()):
+        parent.rmdir()  # nothing of ours is left in ~/.gitspecops
+    return "deleted"
+
+
+def _archive_task_present() -> bool:
+    if not WINDOWS:
+        return False
+    from Elaborate.archive_schedule import DEFAULT_TASK_NAME
+    return _run(["schtasks", "/Query", "/TN", DEFAULT_TASK_NAME])[0] == 0
+
+
+def _remove_archive_task() -> str:
+    from Elaborate.archive_schedule import DEFAULT_TASK_NAME, remove_task
+    if remove_task(DEFAULT_TASK_NAME):
+        raise RuntimeError("the scheduled task was not removed")
+    return "removed"
+
+
+def uninstall(detector=detect) -> int:
+    """Stop the app and remove what setup added, after a review. Your settings only on request."""
+    from _build import gitso_command as command
+    from Basic._paths import config_home, tools_home
+    from Elaborate._fleet.setup_state import leave_fleet
+    banner("Setup  /  Uninstall", tagline=True)
+    line("Looking at this computer (nothing changes)...", "detail")
+    found, pids = detector(), find_app_processes()
+    state, settings, tools = found["gitso_command"], config_home(), tools_home()
+    task = _archive_task_present()
     say()
-    option("1", "Start gitSpecOps now", "Its tray icon appears; double-click it for your map.")
-    option("0", "Close")
-    if choose("10", "1") == "1":
-        command = [str(pythonw if WINDOWS and pythonw.exists() else VENV_PYTHON), str(ROOT / "App" / "tray.py")]
-        flags = (subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP) if WINDOWS else 0
-        subprocess.Popen(command, cwd=ROOT, creationflags=flags, start_new_session=not WINDOWS,
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        line("Started.", "success")
+    # Shown, and removed, in the reverse of setup's order: the App first, Basic last.
+    row("App running", f"yes ({len(pids)} process{'es' if len(pids) != 1 else ''})" if pids else "no")
+    row("Start at sign-in", {"on": "on", "elsewhere": "turned off elsewhere"}.get(found["login"], "no"))
+    row("Desktop app", "installed (Qt in this folder's .venv)" if found["desktop"] else "none")
+    row("Fleet", "this machine is in one" if found["fleet"] else "none")
+    row("Monthly refresh", "scheduled" if task else "none")
+    row("Downloaded tools", str(tools) if tools.exists() else "none")
+    row("Settings", str(settings) if settings.exists() else "none")
+    row("gitso alias", ", ".join(state["aliases"]) or "none")
+    row("gitso command", {"here": state["folder"], "elsewhere": "another gitSpecOps folder's (left alone)"}.get(
+        state["launcher"], "none"))
+    delete_settings = settings.exists() and yes_no(
+        "Also delete your gitSpecOps settings?", "n",
+        f"{settings}: your protected values, library folders, fleet membership, logs and reports. "
+        "Keep them and setup finds them again next time.")
+    plan = Plan()
+    if pids:
+        plan.add("Stop the app", f"Stop the app: end its {len(pids)} process(es)", lambda: _stop_app(pids))
+    if found["login"] in ("on", "elsewhere"):
+        plan.add("Start at sign-in", "Start at sign-in: remove the entry", lambda: _start_at_login(False))
+    if found["desktop"]:
+        plan.add("Desktop app", "Desktop app: remove Qt from this folder's .venv (uv sync, without the app "
+                 "extra)", _remove_desktop, loud=True)
+    if found["fleet"] and not delete_settings:
+        plan.add("Fleet", "Fleet: leave (this machine's settings are kept)", lambda: (leave_fleet(), "left")[1])
+    if task:
+        plan.add("Monthly refresh", "Monthly archive refresh: delete the scheduled task", _remove_archive_task)
+    if tools.exists():
+        plan.add("Downloaded tools", f"Downloaded tools: delete {tools}", lambda: _delete_folder(tools))
+    if delete_settings:
+        plan.add("Settings", f"Settings: delete {settings}", lambda: _delete_folder(settings))
+    if state["aliases"]:
+        plan.add("gitso alias", "gitso alias: remove the marked lines from " + ", ".join(state["aliases"]),
+                 command.remove_aliases)
+    if state["launcher"] == "here":
+        plan.add("The gitso command", f"gitso command: delete it from {state['folder']} and take the folder off "
+                 "PATH", command.remove_launchers)
+    say()
+    line("Not removed: this folder (delete it yourself to remove gitSpecOps completely), your "
+         "repositories, and programs installed with your package manager, such as Gitleaks (winget "
+         "uninstall Gitleaks.Gitleaks), Git, the GitHub CLI and uv.", "muted")
+    if not plan.changes:
+        notice("Nothing to remove", "Setup has nothing installed on this computer.", "success")
+        return 0
+    notice("These changes will be made", "", "accent")
+    for change in plan.changes:
+        bullet(change.review)
+    say()
+    option("U", "Uninstall")
+    option("0", "Cancel", "Nothing has been changed.")
+    if choose("u0", "0") != "u":
+        notice("Cancelled", "Nothing has been changed.", "warning")
+        return 0
+    return 0 if apply(plan, ("Uninstalled", "What setup added is gone. Delete this folder to remove gitSpecOps "
+                             "completely."), title="Uninstalling") else 1
 
 
-def walkthrough(detector=detect) -> int:
-    """The whole walkthrough. Returns 0 when it finished or was stopped, 1 when a step failed."""
+def app_running() -> bool:
+    """Whether the app is running for this profile: it holds the fleet folder's lock. Only looks;
+    no lock file yet means it is not running."""
+    from Special._settings.fleet import fleet_directory
+    from Special._sync.lock import PEER_LOCK, TRAY_LOCK, app_lock
+    try:
+        directory = fleet_directory()
+    except Exception:  # noqa: BLE001 - unreadable settings: say not running; never stop setup here
+        return False
+    for name in (TRAY_LOCK, PEER_LOCK):  # a tray whose peer stopped is still running
+        if not (directory / name).exists():
+            continue
+        try:
+            with app_lock(directory, name):
+                pass
+        except (ValueError, OSError):
+            return True
+    return False
+
+
+def _start_app(wait: float = 5.0) -> str:
+    """Start the tray app detached, then make sure it is still running a few seconds later."""
+    pythonw = VENV_PYTHON.with_name("pythonw.exe")
+    command = [str(pythonw if WINDOWS and pythonw.exists() else VENV_PYTHON), str(ROOT / "App" / "tray.py")]
+    flags = (subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP) if WINDOWS else 0
+    process = subprocess.Popen(command, cwd=ROOT, creationflags=flags, start_new_session=not WINDOWS,
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        code = process.wait(timeout=wait)
+    except subprocess.TimeoutExpired:
+        return "running: its icon is by the clock"
+    raise RuntimeError(f"the app stopped at once (exit code {code}); run gitso tray in a terminal to see why")
+
+
+AREA_STEPS = (area_requirements, area_gitso, area_machine, area_protection, area_scanners,
+              area_archives, area_fleet, area_environment, area_client, area_app)
+PART_HINTS = (
+    "Git, the GitHub CLI and your GitHub sign-in.",
+    "gitso on your command path, and an optional shell alias.",
+    "Library folders: where your repositories are.",
+    "Values that must never be published.",
+    "Extra secret scanners: Gitleaks, Betterleaks, TruffleHog.",
+    "Folders of clones kept current.",
+    "Your machines watching each other, over Tailscale or a synced folder.",
+    "The tray icon and map: Qt in this folder's .venv, installed with uv.",
+    "Open repositories from the map in Sourcetree or GitHub Desktop.",
+    "Start the tray app now, and when you sign in.",
+)
+assert len(AREA_STEPS) == len(AREAS) == len(PART_HINTS)
+
+
+def choose_part() -> int | None:
+    """One part of the walkthrough to set up, change or repair; None goes back."""
+    banner("Setup  /  One part", tagline=True)
+    line("Set up, change or repair one part on its own. It shows what is there now, and nothing "
+         "changes until you review it.", "muted")
+    say()
+    for number, (title, hint) in enumerate(zip(AREAS, PART_HINTS), 1):
+        option(str(number), title, hint)
+    option("0", "Back to the setup menu")
+    while True:
+        answer = ask(f"Part [1-{len(AREAS)}, or 0]:", "0")
+        if answer == "0":
+            return None
+        if answer.isdigit() and 1 <= int(answer) <= len(AREAS):
+            return int(answer) - 1
+        line("Choose a number from the list.", "warning")
+
+
+def walkthrough(detector=detect, only: int | None = None) -> int:
+    """The whole walkthrough, or one part of it (`only`, an index into AREAS). Returns 0 when it
+    finished or was stopped, 1 when a step failed."""
     while True:
         line("Looking at this computer (nothing changes)...", "detail")
         found = detector()
-        plan = Plan()
+        if only is None:
+            plan, steps = Plan(), AREA_STEPS
+        else:  # the parts before this one are as this computer has them
+            plan = Plan(enrolled_after=found["enrolled"], uv_after=bool(found["uv"]), venv_after=found["venv"],
+                        desktop_after=found["desktop"])
+            steps = (AREA_STEPS[only],)
         try:
-            for area in (area_requirements, area_environment, area_gitso, area_machine, area_app,
-                         area_client, area_protection, area_scanners, area_archives, area_fleet):
+            for area in steps:
                 area(found, plan)
         except Stop:
             notice("Walkthrough stopped", "Nothing has been changed.", "warning")
             return 0
-        answer = review(plan, found["enrolled"])
+        answer = review(plan, found["enrolled"], "Back to the start of the walkthrough" if only is None
+                        else f"Back to the start of {AREAS[only]}")
         if answer == "b":
             continue
-        if answer != "apply":
-            if plan.changes:
-                notice("Cancelled", "Nothing has been changed.", "warning")
+        if answer != "apply" and plan.changes:
+            notice("Cancelled", "Nothing has been changed.", "warning")
             return 0
-        ok = apply(plan)
-        if ok:
-            start_app()
+        ok = apply(plan) if answer == "apply" else True
+        if only is None:
+            first_scan(plan)
         return 0 if ok else 1
+
+
+def first_scan(plan: Plan) -> None:
+    """After setup: read the library now? Always asked, never automatic; nothing starts on No."""
+    if not plan.enrolled_after:
+        return
+    banner("Setup  /  First scan", tagline=True)
+    line("gitSpecOps reads the Git status of every repository in your library folders. It is "
+         "read-only: nothing in them changes, and nothing is fetched. Nothing starts until you choose.",
+         "muted")
+    running = app_running()
+    app = plan.desktop_after and not running
+    say()
+    if running:
+        line("The app is running: it already watches your library. Double-click its tray icon for the map.",
+             "success")
+    if app:
+        option("A", "Start the app", "It reads your library, then keeps watching it. Double-click its tray "
+               "icon (by the clock, or under the ^ arrow) for the map; quit it from the tray menu.")
+    option("T", "Read it here, in this terminal", "Each repository as it is read, then what each one "
+           "needs. Nothing keeps running afterwards.")
+    option("N", "Not now", "Later: gitso machine check, or gitso tray for the app.")
+    answer = choose(("a" if app else "") + "tn", "n")
+    if answer == "a":
+        try:
+            line(_start_app(), "success")
+        except RuntimeError as exc:
+            line(str(exc), "error")
+    elif answer == "t":
+        python = VENV_PYTHON if VENV_PYTHON.exists() else Path(sys.executable)
+        subprocess.call([str(python), str(ROOT / "gitso.py"), "machine", "check"], cwd=ROOT)

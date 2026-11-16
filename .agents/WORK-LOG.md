@@ -2643,3 +2643,160 @@ No code changed; decisions recorded where they govern.
 - CI passed on PRs #1 to #6, including the new Ruff job.
 - Why setup says the desktop app is installed: this checkout's `.venv` has had PySide6 since
   2026-10-23. Setup checks the folder, so a fresh clone is the honest first-run test.
+
+## 2026-11-15 14:30 - user (claude) - Setup's Protection step: public identity left alone, values shown (branch wave/setup-protection)
+- Found in the user's first install: setup offered to protect the Git name and Git email. Commit
+  identities are scanned, so protecting a name or email every commit carries would hold every
+  commit. Setup now shows both and marks the public ones (a name made from the GitHub login, a
+  GitHub no-reply email); it never offers those for protection.
+- A private Git name or email gets an offer to commit under the GitHub handle or the no-reply
+  address (`ID+LOGIN@users.noreply.github.com`, from `gh api user`; without a sign-in, setup
+  says where to find it and accepts a pasted one). Only then is the old value offered for
+  protection; a private value still in use is not, and setup says why.
+- Values are shown in full: masking hid from the user what was being asked. Setup writes no log.
+- `docs/SETUP.md` and `docs/ARCHIVES.md` used the pre-rename `archive --install` / `--list`.
+
+## 2026-11-15 15:20 - user (claude) - Setup: one part at a time; the Protection step explains itself (branch wave/setup-protection)
+- Setup's menu: 1 walk me through everything, 2 set up one part (any of the ten, to set up,
+  change or repair it alone, reviewed before anything changes), 3 use the commands without
+  installing anything, 4 check this computer. Building the .venv alone stays a named action
+  (`setup environment`); in the menu it is the Python environment part. New named action `part`.
+- Protection now says what is worth adding (full name, last name alone when uncommon, other
+  names, every email, other usernames, street address, phone numbers), what to leave out (the
+  GitHub handle and a public Git name or email), and where the list can be changed later: setup
+  again, the app's Security tab, or the settings file, whose path it shows.
+- The whole-word question appears only for a single short word, in plain words; a name with a
+  space or an email address is matched anywhere without asking.
+- The setup menu screenshot is out of date (recorded in WORKING-NOTES).
+
+## 2026-11-15 15:50 - user (claude) - Setup's Scanners step: one decision per scanner (branch wave/setup-protection)
+- In the user's install, saying yes to installing Gitleaks was followed by "Use gitleaks in every
+  scan?", which read as being asked again. A scanner chosen for installing is now used in every
+  scan without a second question; only one that is already installed gets "Use it in every scan?".
+- TruffleHog has no winget package (checked 2026-11-15; Gitleaks and Betterleaks do), so setup
+  cannot install it on Windows. It now says there is nothing to decide, and how to add it later.
+- Betterleaks is described as its README does ("maintained by the folks who made Gitleaks,
+  including the original author"), not as "the successor".
+
+## 2026-11-15 16:20 - user (claude) - Setup offers every scanner the same way: TruffleHog from its checked release (branch wave/setup-protection)
+- The user, rightly: setup offered Gitleaks and Betterleaks but only told him it could not install
+  TruffleHog. TruffleHog has no winget package, but it publishes Windows archives and a checksum
+  file on every GitHub release.
+- New `_build/release_install.py` (setup only): the latest release, refused unless its major
+  version is one gitSpecOps reads (3.x) and its SHA-256 matches the release's checksum file; only
+  the program is taken out of the archive, into `Basic._paths.tools_home()` (`~/.gitspecops/tools`).
+  `find_program` looks there as well as on PATH (setup, the scan engines, the Security tab), so
+  nothing is added to PATH. Tested once against the real v3.99.9 release in a scratch folder,
+  then deleted.
+- Setup now asks "Install trufflehog?" like the others; the "cannot install" note remains only
+  for a system with neither a package nor a release.
+
+## 2026-11-15 16:50 - user (claude) - The user's first install applied; what went wrong in it (branch wave/setup-protection)
+- Applied on the user's machine: .venv with Qt, the gitso command on the user Path, one library
+  folder, start at sign-in, Sourcetree, five protected values, Gitleaks (winget; its package
+  folder is on the user Path for new terminals) used in every scan, a fleet over Tailscale, the
+  map on the tailnet. Checked afterwards from the settings file and the system.
+- The alias step failed: Windows Defender's Controlled Folder Access (on) refused python.exe
+  writing the PowerShell profile in OneDrive\Documents (Defender event 1123, 15:38:09); Python
+  reports that as "No such file or directory". Nothing was written to either profile. Setup now
+  names the refused file, says Controlled Folder Access is the usual cause on Windows, still
+  writes the other profiles, and warns before offering an alias into a OneDrive profile.
+- Setup's closing line said "Nothing else was changed" after a walkthrough had applied fourteen
+  steps; removed.
+- winget's and uv's own output overwrote the step's number and name ([12/15] was missing). A
+  step that runs another program now gets its own line, and its number and name again with the
+  result.
+
+## 2026-11-15 17:20 - user (claude) - Setup names the tray app and starts it as its last step (branch wave/setup-protection)
+- The user: step 2 talked about uv, the Python environment and Qt without saying it installs a
+  tray app, and no tray appeared. The tray itself starts fine (checked with a console for 20
+  seconds: dashboard, tailnet map and fleet peer all came up). Setup only offered to start it
+  after a run with no failed step, and the alias step had failed.
+- Step 2 is now "The desktop app": the tray icon and the map, drawn with Qt, installed with uv
+  into this folder's .venv. Step 5 is "Running the app": whether it is running now (the fleet
+  folder's lock says so, without starting anything), start at sign-in, and "Start the app when
+  setup finishes?". Starting is the plan's last step and runs whether or not another step
+  failed; setup then checks it is still running five seconds later and reports if it stopped.
+
+## 2026-11-15 16:40 - user (claude) - The tray's window storm: cause, fix, and setup's Uninstall (branch wave/setup-protection)
+- **What happened.** The agent started the tray (15:58:21, through setup's new start step) to
+  show it to the user. Every program gitSpecOps starts on Windows used Windows' defaults
+  (`_os/windows/process.spawn_options` returned nothing). From a terminal, which is where every
+  test and the agent's 20-second check ran, a child shares the terminal. The tray runs under
+  pythonw.exe with no console, so Windows gave each git call a new console window that took the
+  keyboard. The peer scans every repository in the library (175 under the user's library folder)
+  each minute, several git calls each: a continuous storm of windows. The user could not type or
+  open Task Manager and had to hold the power button. A second tray started at 16:03:34. After
+  the reboot, start at sign-in started the tray again; its peer exited with code 1 at once
+  (reason not logged), so there was no second storm.
+- **Fix.** Without a console, programs start with CREATE_NO_WINDOW (`spawn_options`, used by
+  `Basic._run`); the direct `subprocess.run` callers (tailscale in `_fleet/net.py`, git in
+  `_recovery/*`, schtasks) use the same through `window_options`. From a terminal nothing
+  changes. Proven under pythonw.exe on the user's machine: a started child has no window
+  (window handle 0) and git still works.
+- **Done on the user's machine:** the tray stopped (its two processes; no git was running), and
+  start at sign-in turned off with gitSpecOps' own command.
+- **Uninstall** (setup menu 5, action `uninstall`): stops the app, then removes start at sign-in,
+  the monthly refresh task, fleet membership, the gitso alias and command, and downloaded
+  scanners, after a review; the settings folder only when asked. Dry run on the user's machine
+  (cancelled) listed exactly what is there.
+- **Not gitSpecOps:** the DesktopOpener "Bad Image" at sign-in is Smart App Control (enforcing)
+  blocking an unsigned DLL (`libextrafont.dll`, intact: its SHA-256 matches its install record),
+  Code Integrity event 3077 at 16:07:09. The fleet database survived (integrity check ok).
+
+## 2026-11-15 17:00 - user (claude) - Setup builds up in gitSpecOps' own order; Uninstall removes the desktop app (branch wave/setup-protection)
+- The user ran Uninstall, then setup again, and setup still said "Desktop app: installed".
+  Uninstall stopped the app and removed start at sign-in but left Qt in this folder's .venv
+  ("not removed: this folder and its .venv"). Uninstall now removes it (`uv sync` without the
+  app extra, then checks Qt is gone).
+- The user: setup should build up like gitSpecOps itself. Parts now run Basic (requirements,
+  the gitso command), Special (this machine, protection, scanners, archives), Elaborate (fleet),
+  App (the desktop app, the desktop Git app, running the app). Every "step N" is computed from
+  that order. Uninstall shows and removes in the reverse order.
+
+## 2026-11-15 17:10 - user (claude) - Setup's scanner, names and browser questions say what they mean (branch wave/setup-protection)
+- "Use it in every scan?" now says which scans: before a checked commit or push, gitso scan and
+  history scan, and the app's Security tab.
+- The names question says what Yes and No show on the other maps, what is never shared, and who
+  can read it (only the user's devices over Tailscale; the provider of a synced folder).
+- The browser question no longer reads as if it opens browsers: it lets the user's other
+  Tailscale devices visit the map at this machine's Tailscale address, port 8770.
+- Correction to the incident entry above: the peer does one full inventory at startup, then
+  status checks only for repositories whose files change, and a read-only fetch of every
+  repository every 15 minutes (the first a minute after start). There is no periodic full scan.
+- The user's larger setup design questions are recorded in WORKING-NOTES.
+
+## 2026-11-15 17:50 - user (claude) - Setup: the three fleet connections, the state repository (experimental, default no), the first scan (branch wave/setup-protection)
+- The Fleet step describes the three connections side by side: Tailscale (live, every 30
+  seconds), a synced folder (in between, every 5 minutes; OneDrive, Syncthing, an Obsidian Sync
+  vault and others; the provider can read it), the GitHub state repository (durable; experimental
+  and untested). Each is asked; the state repository's answer defaults to no, as the user ruled.
+  It suggests `owner/gitspecops-state`, uses an existing one only if private and writable, and
+  creates a missing one, private, only when the review is applied.
+- A synced folder gets a folder of its own (`gitSpecOps fleet`) inside the synced folder, made
+  when applied, or any existing folder the user names. A fleet member can now change how it
+  connects (replacing the Tailscale-only switch).
+- The names question says who can read the names: the user's own devices, the folder's
+  provider, GitHub.
+- After the review is applied, a First scan screen: start the app (it reads the library and the
+  map follows), read it here in the terminal (`gitso machine check`), or not now (the default).
+  "Running the app" keeps only start at sign-in.
+- `gitso machine check` shows "Reading Git status: N of M repositories" on screen while it reads.
+
+## 2026-11-15 18:40 - user (claude) - Names per connection; one tray per profile; why the peer stopped (branch wave/setup-protection)
+- **Names per connection** (the user's choice of defaults): each connection may carry its own
+  `names` (true/false) in the fleet settings; without one it follows the fleet-wide
+  `share_names`, so an existing fleet behaves as before. The report is built with names when
+  any connection carries them; the Tailscale report and each published copy (synced folder,
+  state repository) are stripped by their own connection's choice
+  (`Special/_sync/manifest.names_over`, `without_names`). Setup asks once per chosen
+  connection: Tailscale Yes, the synced folder No, the state repository No by default; the
+  review says "with names" or "ids only" for each.
+- **One tray per profile:** the tray holds its own lock (`tray.lock`) for its whole life; a
+  second start shows "already running" and leaves. Setup's running check looks at the tray's
+  lock as well as the peer's, so a tray whose peer stopped still counts as running.
+- **Why the peer stopped:** the tray's log records a reason code with `peer_stopped` (the log
+  takes numbers only): 0 none recorded, 1-4 the known causes, 9 anything else.
+- node1 and Prime were fast-forwarded to `main` at the user's permission (node1 was current).
+  On Prime, four dead launcher scripts from September were deleted (they ran folders that no
+  longer exist) and the unreferenced pre-rewrite objects were purged (reflog expire, gc).

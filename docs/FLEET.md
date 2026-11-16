@@ -53,9 +53,12 @@ Tailscale devices, and only those.
 
 **What crosses the wire.** Repositories are identified by `HMAC-SHA256(fleet key,
 host/owner/name)`, or for one with no usable remote, an HMAC of its root commit, so the only copy
-of something is still on the map. By default each record also names the repository, its branch
-and its commit, so every machine can show what the others hold. One setting (`--withhold-names`,
-or "no" during setup) turns that off. Never shared, either way: local paths, URLs, file names,
+of something is still on the map. A record can also name the repository, its branch and its
+commit, so every machine can show what the others hold, and that is chosen **per connection**:
+setup asks for each one, with Tailscale named by default (only your own devices) and a synced
+folder and the state repository carrying unnamed ids by default (their provider could read
+names). A fleet set up before this keeps its one fleet-wide setting (`--withhold-names` turns it
+off) until a connection is given its own. Never shared, either way: local paths, URLs, file names,
 diffs, commit messages or contents. A synced folder's provider can read whatever the status
 carries; setup says so beside the question. Details:
 [`.agents/knowledge/manifest-privacy.md`](../.agents/knowledge/manifest-privacy.md).
@@ -188,11 +191,13 @@ gitso peer run
 `--tailnet` enables direct peers. No transport is authoritative. Keep configuration, fleet
 keys, catalogs, and SQLite databases outside synchronized state folders.
 
-Guided setup offers durable status first. After you opt in, it uses the current `gh` login to
-suggest `owner/gitspecops-state`. Enter another accessible owner/name to override it.
-The walkthrough explains the app-managed `machines/` files and publication conditions.
-Type `CREATE owner/name` to request creation or `USE owner/name` to approve an existing private,
-writable repository. Enter skips that choice. Merely accepting a suggested name creates nothing.
+Setup's Fleet step describes all three connections and asks about each. The state repository
+is offered last, marked experimental and untested, and its answer defaults to no. After you opt
+in, it suggests `owner/gitspecops-state` from the current `gh` login; type another owner/name to
+override it. An existing repository is used only if it is private and writable; a missing one
+is created, private, when you apply the review. Nothing is created before then. A synced folder
+gets a folder of its own (`gitSpecOps fleet`) inside the folder your sync service copies, or any
+existing folder you name, such as one in an Obsidian Sync vault.
 
 Publication sends initial status and then semantic changes at each transport's minimum interval
 (folder 300 seconds, GitHub 1800 seconds by default). Each transport keeps its latest pending

@@ -10,9 +10,32 @@ from __future__ import annotations
 import subprocess
 
 
+def _has_console() -> bool:
+    """Whether this process has a console window: a terminal, yes; the tray or a scheduled task
+    (pythonw.exe), no."""
+    try:
+        import ctypes
+        return bool(ctypes.windll.kernel32.GetConsoleWindow())
+    except (ImportError, OSError, AttributeError):
+        return True  # cannot tell: behave as before
+
+
 def spawn_options() -> dict:
-    """Extra `Popen` arguments. Windows tracks the tree by parent id, so none are needed."""
-    return {}
+    """Extra `Popen` arguments for every program gitSpecOps starts.
+
+    Without a console of its own (the tray, a scheduled task), Windows gives each console
+    program it starts -- every git call -- a new window that takes the keyboard. Scanning a
+    library makes hundreds a minute and the computer cannot be used (2026-11-15). So with no
+    console, programs start with no window; their output still comes back through the pipes.
+    From a terminal, programs share that terminal, as before."""
+    if _has_console():
+        return {}
+    return {"creationflags": subprocess.CREATE_NO_WINDOW}
+
+
+def window_options() -> dict:
+    """For a `subprocess.run` outside `Basic._run`: no window without a console (spawn_options)."""
+    return spawn_options()
 
 
 def stdin_is_interactive() -> bool:

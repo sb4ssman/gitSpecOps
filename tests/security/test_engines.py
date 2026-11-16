@@ -37,7 +37,7 @@ class Engines(unittest.TestCase):
                                    executables={name: sys.executable for name in engines})
 
     def test_none_never_discovers_or_starts_a_process(self):
-        with patch.object(_engines.shutil, "which", side_effect=AssertionError("unexpected discovery")), \
+        with patch.object(_engines, "find_program", side_effect=AssertionError("unexpected discovery")), \
              patch.object(_engines, "_execute", side_effect=AssertionError("unexpected process")):
             batch = self.batch(())
             batch.add("selected ordinary text", "readme.txt")
@@ -94,7 +94,7 @@ class Engines(unittest.TestCase):
     def test_selected_missing_engine_is_an_explicit_gap(self):
         batch = _engines.EngineBatch(self.report, self.policy, ("gitleaks",))
         batch.add("ordinary", "a.txt")
-        with patch.object(_engines.shutil, "which", return_value=None), \
+        with patch.object(_engines, "find_program", return_value=None), \
              patch.object(_engines, "_execute", side_effect=AssertionError("unexpected process")):
             batch.finish()
         self.assertEqual(self.report.exit_code, 2)

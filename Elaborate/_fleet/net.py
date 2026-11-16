@@ -17,6 +17,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
+from _os.current import process as _process
 from Elaborate._fleet.store import MAX_REPORT_BYTES
 from Elaborate._fleet.display import build_display
 
@@ -28,7 +29,7 @@ def tailscale_json(*args):
         executable = str(candidate) if candidate.is_file() else "tailscale"
     try:
         proc = subprocess.run([executable, *args], capture_output=True, text=True,
-                              encoding="utf-8", errors="replace", timeout=10)
+                              encoding="utf-8", errors="replace", timeout=10, **_process.window_options())
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ValueError("Tailscale CLI unavailable; start Tailscale and retry") from exc
     if proc.returncode:

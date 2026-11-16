@@ -260,7 +260,7 @@ class CleanupPlans(Fixture):
 @unittest.skipUnless(os.environ.get("GITSPECOPS_RUN_HISTORY_REWRITE") == "1", "explicit native rewrite trial not selected")
 class NativeCleanup(Fixture):
     def test_selected_missing_engine_never_turns_rewritten_mirror_into_verified_result(self):
-        with patch("Special._security._engines.shutil.which", return_value=None):
+        with patch("Special._security._engines.find_program", return_value=None):
             planned = self.plan(plan_out=self.plan_path, engines=["gitleaks"])
             self.assertEqual(planned.status, "planned", planned.record())
             self.assertTrue(planned.check["gaps"])

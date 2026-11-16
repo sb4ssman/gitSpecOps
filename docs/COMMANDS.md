@@ -974,9 +974,11 @@ Run from this repository:
 With no arguments, a person at a terminal gets the setup menu. Named actions:
 
     walkthrough   the guided setup (needs a person at a terminal)
+    part          set up, change or repair one part of the walkthrough on its own
     run           choose one command from a list and run it, without setting anything up
     environment   build this folder's .venv (with uv when it is installed), then check
     check         show what this computer has: Git, the GitHub CLI, uv. Changes nothing.
+    uninstall     stop the app and remove what setup added, after a review; settings on request
 
 gitSpecOps needs no setup to run: every command works straight from this folder through
 `gitso`, e.g. `python gitso.py commands`. Sign-ins are never touched here: you sign in to your

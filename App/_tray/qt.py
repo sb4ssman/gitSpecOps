@@ -20,7 +20,7 @@ TRAY_SCRIPT = Path(__file__).resolve().parents[1] / "tray.py"
 from App._mark.geometry import FRAME_MS, FRAMES  # noqa: E402
 from App._mark.qt import icon as mark_icon  # noqa: E402
 from App._tray.model import (GENERIC_FAILURE, POLL_SECONDS, setup_snapshot, Snapshot, error_snapshot,  # noqa: E402
-                             failure_reason, snapshot_from_display, stopped_snapshot)
+                             failure_code, failure_reason, snapshot_from_display, stopped_snapshot)
 
 class TrayUnavailable(RuntimeError):
     """No Qt, or no system tray on this desktop."""
@@ -106,6 +106,18 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
     app.setQuitOnLastWindowClosed(False)
     if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
         raise TrayUnavailable("this desktop has no system tray")
+    # One tray per profile, held for this tray's whole life: a second copy (2026-11-15) doubled
+    # the work and the windows. A second start says where the first one is, then leaves.
+    from Special._settings.fleet import fleet_directory
+    from Special._sync.lock import TRAY_LOCK, app_lock
+    tray_lock = app_lock(fleet_directory(config_dir, home=settings_home), TRAY_LOCK)
+    try:
+        tray_lock.__enter__()
+    except ValueError:
+        QtWidgets.QMessageBox.information(
+            None, "gitSpecOps", "gitSpecOps is already running for this profile. Its icon is by the "
+            "clock (Windows may tuck it under the ^ arrow).")
+        return 0
 
     profile = profile_arguments(config_dir, settings_home)
     # What start-at-sign-in registers: this tray, with the same choices it was started with.
@@ -288,7 +300,8 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
             result["code"] = 1
             errors.reason = errors.reason or failure_reason(str(exc))
         finally:
-            operational.event("peer_stopped", exit_code=max(0, int(result["code"])))
+            operational.event("peer_stopped", exit_code=max(0, int(result["code"])),
+                              reason=failure_code(errors.reason))
             if not stopping.is_set():
                 # Stopped without being asked: keep a red icon up saying why until Quit.
                 reason = errors.reason or GENERIC_FAILURE
@@ -327,6 +340,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
             thread.join(timeout=10)
         sys.stderr = original
         operational.close()
+        tray_lock.__exit__(None, None, None)
     return result["code"]
 
 

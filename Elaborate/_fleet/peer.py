@@ -35,7 +35,7 @@ from Special._sync.git_client import DesktopIntegration
 from Basic._files import atomic_write_bytes
 from Elaborate._transport.folder import FolderTransport
 from Elaborate._fleet.local_view import display_from_manifests
-from Special._sync.manifest import fleet_id_for
+from Special._sync.manifest import fleet_id_for, names_over, without_names
 from Special._sync.observer import fetch_repositories
 from Elaborate._transport.repo import RepoTransport
 from Elaborate._fleet.watcher import semantic_fingerprint
@@ -91,18 +91,22 @@ class TransportPublisher:
     must never stop the others, or stop observation.
     """
 
-    def __init__(self, transports: dict, clock=time.monotonic):
+    def __init__(self, transports: dict, clock=time.monotonic, names: dict | None = None):
+        """`names`: per connection, whether its copy keeps readable names (missing: kept as given)."""
         self.clock = clock
         self.lock = threading.Lock()
         self.entries = []
+        names = names or {}
         folder = transports.get("folder")
         if folder:
             self.entries.append({"name": "folder", "transport": FolderTransport(folder["path"]),
-                                 "seconds": int(folder["seconds"]), "next": 0.0})
+                                 "seconds": int(folder["seconds"]), "next": 0.0,
+                                 "names": names.get("folder", True)})
         repo = transports.get("repo")
         if repo:
             self.entries.append({"name": "repo", "transport": RepoTransport(repo["name"]),
-                                 "seconds": int(repo["seconds"]), "next": 0.0})
+                                 "seconds": int(repo["seconds"]), "next": 0.0,
+                                 "names": names.get("repo", True)})
 
     def publish(self, manifest: dict, changed: bool, log=_log) -> list[str]:
         """Queue this manifest for each transport, then deliver whatever is due.
@@ -121,7 +125,8 @@ class TransportPublisher:
         for entry in self.entries:
             heartbeat = entry["name"] != "repo" and now >= entry["next"]
             if changed or entry.get("pending") is not None or heartbeat:
-                entry["pending"] = deepcopy(manifest)
+                # Each connection carries names only if its own setting says so.
+                entry["pending"] = deepcopy(manifest if entry.get("names", True) else without_names(manifest))
         return self.flush(log=log)
 
     def flush(self, log=_log) -> list[str]:
@@ -260,7 +265,8 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     other peers, and shows nothing itself."""
     fleet_id = fleet_id_for(config["fleet_secret"])
     store = FleetStore(config_dir / "fleet.sqlite3", fleet_id)
-    publisher = TransportPublisher(config.get("transports") or {})
+    publisher = TransportPublisher(config.get("transports") or {},
+                                   names={name: names_over(config, name) for name in ("folder", "repo")})
     observer = IncrementalObserver(config)
     # What this peer is doing right now, in words, for the tray's status line and the web view:
     # people should see the work happen. Counts only; never a path or a repository name.
@@ -450,11 +456,14 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         nonlocal fingerprint, next_heartbeat
         local = observer.report()
         shared, withheld = observer.shared_report(local)
-        raw = json.dumps(shared).encode()
-        if len(raw) > MAX_REPORT_BYTES:
+        # What Tailscale peers may fetch: without names unless that connection carries them.
+        live = shared if names_over(config, "tailnet") else {
+            **shared, "names": {}, "manifest": without_names(shared["manifest"])}
+        raw = json.dumps(live).encode()
+        if len(raw) > MAX_REPORT_BYTES or len(json.dumps(shared).encode()) > MAX_REPORT_BYTES:
             raise ValueError("report exceeds the size limit")
         atomic_write_bytes(config_dir / "fleet-latest.json", raw)
-        latest["local"], latest["report"], latest["withheld"] = local, shared, withheld
+        latest["local"], latest["report"], latest["withheld"] = local, live, withheld
         latest["paths"] = observer.paths
         next_heartbeat = time.monotonic() + heartbeat_seconds
         # Fingerprinted on the shared view, so a change confined to a withheld namespace

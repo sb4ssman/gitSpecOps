@@ -8,6 +8,12 @@ import subprocess
 from pathlib import Path
 
 
+def window_options() -> dict:
+    """For a `subprocess.run` outside `Basic._run`. Only Windows opens windows for console
+    programs; nothing is needed here."""
+    return {}
+
+
 def spawn_options() -> dict:
     """Start each command in its own session, so the command and its children form one group."""
     return {"start_new_session": True}

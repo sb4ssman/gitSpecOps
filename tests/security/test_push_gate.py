@@ -169,7 +169,7 @@ class PushGateTests(unittest.TestCase):
         self.commit("clean.txt", "ordinary")
         self.document["defaults"]["security"]["engines"] = ["gitleaks"]
         self.save_settings()
-        with patch("Special._security._engines.shutil.which", return_value=None):
+        with patch("Special._security._engines.find_program", return_value=None):
             result = self.publish()
         self.assertEqual(result.status, "incomplete")
         self.assertEqual(self.tip(self.bare), self.base)
@@ -182,7 +182,7 @@ class PushGateTests(unittest.TestCase):
         self.commit("clean.txt", "ordinary")
         self.document["defaults"]["security"]["engines"] = ["gitleaks"]
         self.save_settings()
-        with patch("Special._security._engines.shutil.which", return_value=sys.executable), \
+        with patch("Special._security._engines.find_program", return_value=sys.executable), \
              patch("Special._security._engines._execute", side_effect=CommandFailed("private-marker raw stderr")):
             result = self.publish()
         self.assertEqual(result.status, "incomplete")

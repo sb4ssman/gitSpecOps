@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from Basic._objects import git_output
+from Basic._paths import find_program
 from Basic._run import CommandFailed
 from Special._settings import SECURITY_ENGINES, SettingsError, select_home
 from Special._security._material import scan
@@ -33,7 +34,7 @@ MAX_REPOSITORIES = 1000
 ENGINE_NOTES = {
     "gitleaks": ("Gitleaks 8", "A widely used rule set for keys and tokens in files and history.",
                  "https://github.com/gitleaks/gitleaks"),
-    "betterleaks": ("Betterleaks 1", "The successor to Gitleaks, by its original author; version 1 reports "
+    "betterleaks": ("Betterleaks 1", "From the makers of Gitleaks, including its original author; version 1 reports "
                     "in the same form as Gitleaks. Version 2 is not supported yet.",
                     "https://github.com/betterleaks/betterleaks"),
     "trufflehog": ("TruffleHog 3", "Hundreds of credential detectors; run here without checking "
@@ -65,7 +66,7 @@ def engines_status() -> list[dict]:
     missing one here. Only looks."""
     status = []
     for name in SECURITY_ENGINES:
-        installed = shutil.which(name) is not None
+        installed = find_program(name) is not None
         status.append({"engine": name, "label": ENGINE_NOTES[name][0], "about": ENGINE_NOTES[name][1],
                        "home_page": ENGINE_NOTES[name][2], "installed": installed,
                        "install": None if installed else install_suggestion(name)})

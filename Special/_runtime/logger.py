@@ -21,7 +21,8 @@ from uuid import uuid4
 from Special._runtime.files import checked_path, prepare_directory, RuntimeIOError
 
 LOCK_WAIT_SECONDS = 1.0
-COUNTERS = {"roots", "repositories", "updated", "failed", "skipped", "exit_code", "attempted", "excluded"}
+COUNTERS = {"roots", "repositories", "updated", "failed", "skipped", "exit_code", "attempted", "excluded",
+            "reason"}
 
 
 class _LockedHandler(RotatingFileHandler):

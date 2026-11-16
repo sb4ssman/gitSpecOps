@@ -38,8 +38,10 @@ class IncrementalObserver:
 
     @property
     def shares_names(self) -> bool:
-        """Readable names in what this machine publishes (manifest v5): on unless turned off."""
-        return self.config.get("share_names", True) is True
+        """Readable names in the report built here (manifest v5): when any connection carries
+        them. Each connection's copy is stripped by its own setting (`names_over`)."""
+        from Special._sync.manifest import names_anywhere
+        return names_anywhere(self.config)
 
     def local_repositories(self) -> dict[str, Path]:
         """Local-only launch lookup; paths never enter a manifest or peer report."""

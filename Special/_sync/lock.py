@@ -14,11 +14,15 @@ import sys
 from contextlib import contextmanager
 
 
+PEER_LOCK = "fleet-app.lock"
+TRAY_LOCK = "tray.lock"  # one tray per profile, held for the tray's whole life (2026-11-15)
+
+
 @contextmanager
-def app_lock(directory):
-    """One peer per local configuration; the OS releases the lock after a crash too."""
+def app_lock(directory, name: str = PEER_LOCK):
+    """One peer (or one tray) per local configuration; the OS releases the lock after a crash too."""
     directory.mkdir(parents=True, exist_ok=True)
-    with (directory / "fleet-app.lock").open("a+b") as handle:
+    with (directory / name).open("a+b") as handle:
         handle.write(b"0")
         handle.flush()
         handle.seek(0)

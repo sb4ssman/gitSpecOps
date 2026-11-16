@@ -83,7 +83,7 @@ class Scanners(unittest.TestCase):
 
         for material in ("tree", "history"):
             with self.subTest(material=material), patch("Special._security._engines._execute", side_effect=execute), \
-                 patch("Special._security._engines.shutil.which", return_value=sys.executable):
+                 patch("Special._security._engines.find_program", return_value=sys.executable):
                 report = scan(self.repo, self.policy, material=material)
             self.assertFalse(report.gaps, report.gaps)
             self.assertEqual(set(report.engines.values()), {"checked"})
@@ -96,7 +96,7 @@ class Scanners(unittest.TestCase):
         with patch("Special._security._engines._execute", side_effect=AssertionError("unexpected engine")):
             report = scan(self.repo, self.policy, engines=())
         self.assertFalse(report.engines)
-        with patch("Special._security._engines.shutil.which", return_value=None):
+        with patch("Special._security._engines.find_program", return_value=None):
             report = scan(self.repo, self.policy)
         self.assertEqual(report.exit_code, 2)
         self.assertEqual(report.engines, {"gitleaks": "incomplete"})

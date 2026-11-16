@@ -13,17 +13,31 @@ cd gitSpecOps
 ./run_setup.sh          # Windows: run_setup.bat
 ```
 
-![Setup's menu in a terminal: the gitSpecOps banner, then "Walk me through everything", "Run one command, without setting anything up", and the individual setup items](images/setup-menu.png)
+![Setup's menu in a terminal: the gitSpecOps banner, then "Walk me through everything", "Set up one part", "Use the commands without installing anything" and "Check this computer"](images/setup-menu.png)
 
-Setup offers three ways in:
+Setup's menu:
 
-1. **Walk me through everything.** It finds what this computer already has (Git, the GitHub
-   CLI and its sign-in, the desktop app, library folders, start at sign-in, a desktop Git app,
-   protected values, secret scanners, archives, Tailscale, a fleet), asks about each part, and
-   changes nothing until you have reviewed the whole list.
-2. **Run one command, without setting anything up.** Any Basic, Special or Elaborate command,
-   straight from the folder, installing nothing: registering archive folders to keep updated, say.
-3. **The `gitso` command.** A command of its own, beside `git` and `gh`, in any terminal. The
+1. **Walk me through everything.** It finds what this computer already has and asks about each
+   part, built up in gitSpecOps' own order: Basic (Git, the GitHub CLI and its sign-in, the
+   `gitso` command), Special (library folders, protected values, secret scanners, archives),
+   Elaborate (a fleet: Tailscale, a synced folder, and the experimental state repository, which
+   defaults to no), then the App (the desktop app, a desktop Git app, start at sign-in). Nothing
+   changes until you have reviewed the whole list. Afterwards it asks about a **first scan**:
+   start the app, which reads your library and shows the map; read it right there in the
+   terminal (`gitso machine check`, with progress); or not now, the default. Nothing starts
+   unless you choose it.
+2. **Set up one part.** Any one of those ten parts on its own: set it up, change it, or repair
+   it. It shows what is there now, and nothing changes until you review it.
+3. **Use the commands without installing anything.** Any Basic, Special or Elaborate command,
+   straight from the folder: registering archive folders to keep updated, say.
+4. **Check this computer.** Git, the GitHub CLI and uv: what is there and what each is for.
+5. **Uninstall.** Stops the app and removes what setup added, in the reverse order (start at
+   sign-in, the desktop app's Qt, fleet membership, the monthly refresh task, downloaded
+   scanners, the `gitso` alias and command), after showing the list. Your settings (protected values, library folders, logs) are deleted only if
+   you say so. This folder, your repositories and programs installed with your package manager
+   stay; it says which.
+
+**The `gitso` command** is a command of its own, beside `git` and `gh`, in any terminal. The
    walkthrough can put it on your command path (small text launchers in `~/.gitspecops/bin`, on
    every system), and optionally add it to your shells as an alias; it removes both just as
    easily. Without it, every command runs as `python gitso.py <command>`.
@@ -41,6 +55,11 @@ gitso machine check         # this machine: what needs attention
 | **Python 3.11+** | The command-line tools use only the standard library. The tray needs Qt (PySide6), which setup installs into this folder's `.venv` with `uv`. |
 | **`git` on PATH** | Every Git operation runs your real `git`. |
 | **`gh`, already signed in** | Only for anything that talks to GitHub. |
+
+**Secret scanners** are optional. Setup installs one with your package manager (winget, Homebrew,
+apt). Where none has it (TruffleHog on Windows), setup downloads the project's official GitHub
+release, refuses it unless its SHA-256 matches the release's checksum file, and puts only the
+program in `~/.gitspecops/tools`, where gitSpecOps looks as well as on PATH.
 
 **Authentication is yours and stays yours.** gitSpecOps stores no token, writes no credential
 file, configures no keyring, and never prompts for a password. It runs CLIs you have already
@@ -60,7 +79,7 @@ Every part of the walkthrough is also a command, for scripts and for agents:
 | Part | Command |
 |---|---|
 | This machine's library folders | `gitso machine add FOLDER` (`find` suggests some) |
-| Archives | `gitso archive --install FOLDER --mode update` |
+| Archives | `gitso archive add FOLDER --mode update` |
 | A monthly archive refresh | `gitso archive schedule --install-monthly-task` |
 | Start at sign-in | `gitso start-at-sign-in enable` |
 | A fleet | `gitso fleet` (guided), or `fleet transports ...` |

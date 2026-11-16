@@ -71,10 +71,26 @@ class SetupTests(unittest.TestCase):
         self.prerequisites.assert_called_once()
         self.environment.assert_not_called()
 
-    def test_menu_item_three_builds_the_environment_only(self):
-        self.assertEqual(self.interactive(["3", "", "0"]), 0)
-        self.environment.assert_called_once()
-        self.prerequisites.assert_called_once()
+    def test_setup_builds_up_in_gitspecops_own_order(self):
+        import setup_walkthrough as walk
+        self.assertEqual(walk.AREAS, ("Requirements", "The gitso command", "This machine", "Protection",
+                                      "Scanners", "Archives", "Fleet", "The desktop app",
+                                      "Desktop Git app", "Running the app"))
+        self.assertEqual([f.__name__ for f in walk.AREA_STEPS],
+                         ["area_requirements", "area_gitso", "area_machine", "area_protection",
+                          "area_scanners", "area_archives", "area_fleet", "area_environment",
+                          "area_client", "area_app"])
+
+    def test_uninstall_is_on_the_menu(self):
+        self.assertEqual(self.interactive(["0"]), 0)
+        self.assertIn("[5] Uninstall", self.output.getvalue())
+
+    def test_menu_item_two_lists_every_part_and_zero_goes_back(self):
+        self.assertEqual(self.interactive(["2", "0", "", "0"]), 0)
+        out = self.output.getvalue()
+        self.assertIn("[4] Protection", out)
+        self.assertIn("[10] Running the app", out)
+        self.assert_no_actions()
 
     def test_every_menu_item_comes_back_to_the_menu(self):
         """Item 4 used to print its check and quit setup. Every item is a visit now."""
@@ -91,8 +107,8 @@ class SetupTests(unittest.TestCase):
         self.assertNotIn("[4] Check this computer", self.output.getvalue())
 
     def test_an_item_that_fails_says_so_and_comes_back(self):
-        self.environment.return_value = False
-        self.assertEqual(self.interactive(["3", "", "0"]), 0)
+        self.prerequisites.side_effect = SystemExit(1)
+        self.assertEqual(self.interactive(["4", "", "0"]), 0)
         self.assertIn("That item did not finish", self.output.getvalue())
 
     def test_an_item_stopped_with_ctrl_c_comes_back_to_the_menu(self):
@@ -105,18 +121,18 @@ class SetupTests(unittest.TestCase):
     def test_menu_item_two_runs_one_command_then_returns_to_setup(self):
         import gitso
         with patch.object(gitso, "menu", return_value=0) as command_menu:
-            self.assertEqual(self.interactive(["2", "0"]), 0)
+            self.assertEqual(self.interactive(["3", "0"]), 0)
         command_menu.assert_called_once_with(cancel="go back to setup")
         out = self.output.getvalue()
         self.assertIn("Back to setup.", out)
-        self.assertEqual(out.count("[2] Run one command, without setting anything up"), 2,
+        self.assertEqual(out.count("[3] Use the commands without installing anything"), 2,
                          "the setup menu must come back after the command menu")
         self.assert_no_actions()
 
     def test_a_blank_answer_in_the_command_menu_goes_back_to_setup(self):
         import gitso
         with patch.object(subject.sys, "stdin", SimpleNamespace(isatty=lambda: True)), \
-                patch("builtins.input", side_effect=["2", "", "0"]) as prompt, \
+                patch("builtins.input", side_effect=["3", "", "0"]) as prompt, \
                 patch.object(gitso, "dispatch", side_effect=AssertionError("nothing may run")):
             self.assertEqual(subject.main([]), 0)
         prompts = [call.args[0] for call in prompt.call_args_list]
@@ -155,7 +171,7 @@ class WalkthroughTests(unittest.TestCase):
         self.applied = []
 
     def found(self, **overrides):
-        base = {"git": "git", "gh": "gh", "gh_signed_in": True, "gh_login": "someone", "uv": "uv",
+        base = {"git": "git", "gh": "gh", "gh_signed_in": True, "gh_login": "someone", "gh_id": "", "uv": "uv",
                 "gitso": None, "tailscale": None, "venv": True, "desktop": True, "git_name": "",
                 "git_email": "", "user": "", "enrolled": True, "machine": "Box", "libraries": ["/code"],
                 "web": "loopback", "face": "web", "fleet": {}, "tailnet": False, "synced_folders": [],
@@ -164,7 +180,8 @@ class WalkthroughTests(unittest.TestCase):
                 "engines": [], "gitleaks": None, "betterleaks": None, "trufflehog": None,
                 "gitso_command": {"launcher": "none", "on_path": False, "folder": "/home/x/.gitspecops/bin",
                                   "aliases": [], "in_this_terminal": False},
-                "alias_targets": ["/home/x/.bashrc"], "powershell_profiles_run": None, "archives": []}
+                "alias_targets": ["/home/x/.bashrc"], "powershell_profiles_run": None, "archives": [],
+                "app_running": False}
         base.update(overrides)
         return base
 
@@ -174,7 +191,7 @@ class WalkthroughTests(unittest.TestCase):
             return self.walk.walkthrough(detector=lambda: self.found(**overrides))
 
     def test_stopping_at_the_first_question_changes_nothing(self):
-        # Requirements asks nothing here (all present); the environment area asks first.
+        # Requirements asks nothing here (all present); the gitso command asks first.
         self.assertEqual(self.run_walk(["0"]), 0)
         self.assertIn("Walkthrough stopped", self.output.getvalue())
         self.assertIn("Nothing has been changed", self.output.getvalue())
@@ -202,6 +219,19 @@ class WalkthroughTests(unittest.TestCase):
         self.assertEqual(self.applied, [1, 2])
         self.assertIn("[2/2] Second", self.output.getvalue())
 
+    def test_a_step_running_a_program_keeps_its_number_and_name_beside_the_result(self):
+        plan = self.walk.Plan()
+        plan.add("Install gitleaks", "gitleaks", lambda: print("\rDownloading 8 MB") or "installed", loud=True)
+        self.assertTrue(self.walk.apply(plan))
+        lines = self.output.getvalue().splitlines()
+        result = next(line for line in lines if "installed" in line and "changed" in line)
+        self.assertIn("[1/1] Install gitleaks", result)
+
+    def test_the_alias_offer_warns_about_a_profile_in_onedrive(self):
+        self.area(self.walk.area_gitso, ["a", "n"],
+                  alias_targets=["C:/Users/x/OneDrive/Documents/PowerShell/profile.ps1"])
+        self.assertIn("in OneDrive", self.output.getvalue())
+
     def test_a_failed_step_is_reported_and_the_rest_still_run(self):
         plan = self.walk.Plan()
         plan.add("Breaks", "breaks", lambda: (_ for _ in ()).throw(RuntimeError("no network")))
@@ -210,10 +240,10 @@ class WalkthroughTests(unittest.TestCase):
         self.assertEqual(self.applied, ["works"])
         out = self.output.getvalue()
         self.assertIn("FAILED", out)
-        self.assertIn("Setup incomplete", out)
+        self.assertIn("Not finished", out)
 
     def area(self, area, answers, **overrides):
-        plan = self.walk.Plan(enrolled_after=True, venv_after=True)
+        plan = self.walk.Plan(enrolled_after=True, venv_after=True, desktop_after=True)
         with patch("builtins.input", side_effect=answers):
             area(self.found(**overrides), plan)
         return plan
@@ -233,21 +263,126 @@ class WalkthroughTests(unittest.TestCase):
     def test_keeping_start_at_sign_in_changes_nothing(self):
         self.assertEqual(self.area(self.walk.area_app, [""], login="on").changes, [])
 
+    def first_scan(self, answers, enrolled=True, desktop=True, running=False):
+        plan = self.walk.Plan(enrolled_after=enrolled, desktop_after=desktop)
+        with patch.object(self.walk, "app_running", return_value=running), \
+                patch.object(self.walk, "_start_app", return_value="running") as start, \
+                patch.object(self.walk.subprocess, "call", return_value=0) as call, \
+                patch("builtins.input", side_effect=answers):
+            self.walk.first_scan(plan)
+        return start, call
+
+    def test_the_first_scan_is_asked_and_nothing_starts_by_default(self):
+        start, call = self.first_scan([""])
+        out = self.output.getvalue()
+        self.assertIn("Setup  /  First scan", out)
+        self.assertIn("[A] Start the app", out)
+        self.assertIn("[T] Read it here, in this terminal", out)
+        start.assert_not_called()
+        call.assert_not_called()
+
+    def test_the_first_scan_in_the_terminal_runs_machine_check(self):
+        start, call = self.first_scan(["t"])
+        self.assertEqual(call.call_args.args[0][-2:], ["machine", "check"])
+        start.assert_not_called()
+
+    def test_the_first_scan_with_the_app_starts_it(self):
+        start, call = self.first_scan(["a"])
+        start.assert_called_once()
+        call.assert_not_called()
+
+    def test_without_the_desktop_app_the_first_scan_offers_the_terminal_only(self):
+        self.first_scan([""], desktop=False)
+        self.assertNotIn("[A] Start the app", self.output.getvalue())
+
+    def test_without_a_library_there_is_no_first_scan(self):
+        self.first_scan([], enrolled=False)
+        self.assertNotIn("First scan", self.output.getvalue())
+
+    def test_a_running_app_is_not_offered_again(self):
+        self.area(self.walk.area_app, [""], login="on", app_running=True)
+        self.assertIn("The app is running", self.output.getvalue())
+        start, _call = self.first_scan([""], running=True)
+        self.assertIn("it already watches your library", self.output.getvalue())
+        start.assert_not_called()
+
+    def test_without_the_desktop_app_there_is_no_app_to_start(self):
+        plan = self.walk.Plan(enrolled_after=True, venv_after=True, desktop_after=False)
+        with patch("builtins.input", side_effect=[]):
+            self.walk.area_app(self.found(), plan)
+        self.assertIn("needs the desktop app (step 8)", self.output.getvalue())
+
+    def test_the_app_is_checked_to_be_still_running_after_it_starts(self):
+        import subprocess
+        alive = type("P", (), {"wait": lambda self, timeout: (_ for _ in ()).throw(subprocess.TimeoutExpired("x", 1))})()
+        dead = type("P", (), {"wait": lambda self, timeout: 1})()
+        with patch.object(self.walk.subprocess, "Popen", return_value=alive):
+            self.assertIn("running", self.walk._start_app(wait=0))
+        with patch.object(self.walk.subprocess, "Popen", return_value=dead):
+            with self.assertRaisesRegex(RuntimeError, "stopped at once"):
+                self.walk._start_app(wait=0)
+
+    def test_the_desktop_app_question_says_it_is_the_tray_icon_and_map(self):
+        plan = self.walk.Plan()
+        with patch("builtins.input", side_effect=["y"]):
+            self.walk.area_environment(self.found(desktop=False), plan)
+        out = self.output.getvalue()
+        self.assertIn("Install the desktop app, the tray icon and map?", out)
+        self.assertTrue(plan.desktop_after)
+        self.assertIn("tray icon and map", plan.changes[0].review)
+
     def test_without_tailscale_the_fleet_does_not_ask_about_it(self):
         self.area(self.walk.area_fleet, ["n"], tailscale=None, tailnet=False)
         out = self.output.getvalue()
         self.assertIn("not installed (optional)", out)
-        self.assertNotIn("operate over Tailscale?", out)
+        self.assertNotIn("Connect over Tailscale?", out)
 
-    def test_a_fleet_member_can_start_operating_over_tailscale(self):
-        plan = self.area(self.walk.area_fleet, ["t", "n"], tailscale="tailscale", tailnet=True,
-                         fleet={"folder": {}})
-        self.assertEqual([c.review for c in plan.changes], ["Fleet: operate over Tailscale"])
-        self.assertIn("Also open this machine's map in a browser", self.output.getvalue())
+    def test_the_fleet_step_describes_all_three_connections(self):
+        self.area(self.walk.area_fleet, ["n"], tailscale="tailscale", tailnet=True)
+        out = " ".join(self.output.getvalue().split())
+        for text in ("Tailscale. Live.", "A synced folder. In between.", "Obsidian Sync vault",
+                     "A GitHub state repository. Durable", "experimental and untested."):
+            self.assertIn(text, out)
+
+    def test_a_fleet_member_can_change_how_it_connects(self):
+        plan = self.area(self.walk.area_fleet, ["c", "y", "n", "n", "y", "n"], tailscale="tailscale", tailnet=True,
+                         fleet={"folder": {"path": "/sync/fleet"}})
+        self.assertEqual([c.review for c in plan.changes], ["Fleet: connect by Tailscale, with names"])
+        self.assertIn("Let your other Tailscale devices, such as a phone, open", self.output.getvalue())
 
     def test_starting_a_fleet_over_tailscale(self):
-        plan = self.area(self.walk.area_fleet, ["1", "y", "y", "n"], tailscale="tailscale", tailnet=True)
-        self.assertEqual([c.review for c in plan.changes], ["Fleet: start a fleet, operating over Tailscale"])
+        plan = self.area(self.walk.area_fleet, ["1", "y", "n", "n", "y", "n"], tailscale="tailscale", tailnet=True)
+        self.assertEqual([c.review for c in plan.changes],
+                         ["Fleet: start a fleet, connected by Tailscale, with names"])
+
+    def test_the_state_repository_defaults_to_no(self):
+        # Enter at the state repository question: experimental, so it is declined.
+        plan = self.area(self.walk.area_fleet, ["1", "y", "n", "", "y", "n"], tailscale="tailscale", tailnet=True)
+        self.assertNotIn("state repository", plan.changes[0].review)
+        self.assertIn("Experimental and untested.", " ".join(self.output.getvalue().split()))
+
+    def test_the_state_repository_is_created_only_when_chosen_and_says_experimental(self):
+        with patch.object(self.walk, "_run", return_value=(1, "")):
+            plan = self.area(self.walk.area_fleet, ["1", "y", "n", "y", "", "y", "", "n"], tailscale="tailscale",
+                             tailnet=True)
+        self.assertIn("the state repository someone/gitspecops-state (create it, private; experimental, ids only)",
+                      plan.changes[0].review)
+
+    def test_a_synced_folder_gets_a_folder_of_its_own(self):
+        plan = self.area(self.walk.area_fleet, ["1", "y", "1", "n", ""], tailscale=None, tailnet=False,
+                         synced_folders=["/home/x/OneDrive"])
+        expected = str(Path("/home/x/OneDrive") / "gitSpecOps fleet")
+        self.assertIn(f"a synced folder ({expected}, ids only)", plan.changes[0].review)
+
+    def test_names_default_to_yes_over_tailscale_and_no_elsewhere(self):
+        # Enter at every names question: Tailscale with names, the folder and the repository without.
+        with patch.object(self.walk, "_run", return_value=(0, "")):
+            plan = self.area(self.walk.area_fleet, ["1", "y", "y", "1", "y", "", "", "", "", "n"],
+                             tailscale="tailscale", tailnet=True, synced_folders=["/home/x/OneDrive"])
+        review = plan.changes[0].review
+        self.assertIn("Tailscale, with names", review)
+        self.assertIn("gitSpecOps fleet, ids only)", review)
+        self.assertIn("existing; experimental, ids only)", review)
 
     def test_gitso_can_be_put_on_the_command_path_with_an_optional_alias(self):
         plan = self.area(self.walk.area_gitso, ["a", "y"])
@@ -263,8 +398,148 @@ class WalkthroughTests(unittest.TestCase):
         plan = self.area(self.walk.area_gitso, ["r", "n"], gitso_command=here)
         self.assertEqual([c.review.split(":")[0] for c in plan.changes], ["gitso command", "gitso alias"])
 
-    def test_protected_values_are_masked_on_screen(self):
-        self.assertEqual(self.walk.masked("someone@example.invalid"), "so" + "*" * 20 + "d")
+    def test_public_commit_identity_is_shown_and_never_offered_for_protection(self):
+        # The handle@machine name and the no-reply email are on every commit: protecting either
+        # would hold every commit. Only the computer's user name is offered, shown in full.
+        plan = self.area(self.walk.area_protection, ["y", "n"], git_name="someone@Box",
+                         git_email="42+someone@users.noreply.github.com", user="pat", gh_id="42")
+        out = self.output.getvalue()
+        self.assertEqual(out.count("(public)"), 2)
+        self.assertNotIn("Protect your git", out)
+        self.assertIn("Protect this computer's user name, pat?", out)
+        self.assertEqual([c.review for c in plan.changes], ["Protect pat (whole word only)"])
+
+    def test_a_private_email_can_be_swapped_for_the_no_reply_address_and_then_protected(self):
+        plan = self.area(self.walk.area_protection, ["y", "y", "n"], git_name="someone",
+                         git_email="pat@example.invalid", gh_id="42")
+        self.assertEqual([c.review for c in plan.changes], [
+            "Git email: commit as 42+someone@users.noreply.github.com (git config --global user.email)",
+            "Protect pat@example.invalid (anywhere in text)"])
+
+    def test_a_private_email_kept_in_use_is_not_protected(self):
+        plan = self.area(self.walk.area_protection, ["n", "n"], git_email="pat@example.invalid", gh_id="42")
+        self.assertEqual(plan.changes, [])
+        self.assertIn("that would hold every commit", self.output.getvalue())
+
+    def test_without_a_github_sign_in_the_no_reply_address_can_be_pasted(self):
+        plan = self.area(self.walk.area_protection, ["7+pat@users.noreply.github.com", "y", "y", "n"],
+                         gh_login="", git_email="pat@example.invalid")
+        self.assertIn("https://github.com/settings/emails", self.output.getvalue())
+        self.assertEqual([c.title for c in plan.changes], ["Git email", "Protected value"])
+
+    def test_a_pasted_address_that_is_not_a_no_reply_address_changes_nothing(self):
+        plan = self.area(self.walk.area_protection, ["pat@example.invalid", "n"], gh_login="",
+                         git_email="pat@example.invalid")
+        self.assertEqual(plan.changes, [])
+        self.assertIn("not a GitHub no-reply address", self.output.getvalue())
+
+    def test_a_private_git_name_can_be_swapped_for_the_github_handle(self):
+        plan = self.area(self.walk.area_protection, ["y", "y", "n"], git_name="Pat Example")
+        self.assertEqual([c.review for c in plan.changes], [
+            "Git name: commit as someone (git config --global user.name)",
+            "Protect Pat Example (anywhere in text)"])
+
+    def test_an_added_name_needs_no_matching_question_and_a_short_word_gets_a_plain_one(self):
+        plan = self.area(self.walk.area_protection, ["a", "Pat Example", "a", "pat", "y", "n"])
+        self.assertEqual([c.review for c in plan.changes],
+                         ["Protect Pat Example (anywhere in text)", "Protect pat (whole word only)"])
+        out = self.output.getvalue()
+        self.assertEqual(out.count("only as a separate word?"), 1)
+        self.assertIn("Match pat only as a separate word?", out)
+
+    def test_one_part_runs_only_that_part(self):
+        with patch("builtins.input", side_effect=["n", "0"]):
+            self.assertEqual(self.walk.walkthrough(detector=lambda: self.found(), only=self.walk.AREAS.index("Protection")), 0)
+        out = self.output.getvalue()
+        self.assertIn("Setup  4/10:  Protection", out)
+        self.assertNotIn("Setup  1/10", out)
+        self.assertIn("Your full name as you write it", out)
+        self.assertIn("settings.json", out)
+
+    def test_the_part_picker_takes_only_a_listed_number(self):
+        with patch("builtins.input", side_effect=["11", "x", "7"]):
+            self.assertEqual(self.walk.choose_part(), 6)
+        self.assertEqual(self.output.getvalue().count("Choose a number from the list."), 2)
+
+    def test_every_scanner_is_offered_the_same_way_and_yes_is_the_only_question(self):
+        # No package for trufflehog here: it is offered from its checked GitHub release instead.
+        def command(name):
+            return None if name == "trufflehog" else ["installer", name]
+        from _build import release_install
+        with patch.object(self.walk, "install_command", side_effect=command),                 patch.object(release_install, "available", return_value=True):
+            plan = self.area(self.walk.area_scanners, ["y", "n", "y"])
+        out = self.output.getvalue()
+        self.assertEqual(out.count("Install "), 3)
+        self.assertIn("Install trufflehog?", out)
+        self.assertNotIn("is already installed", out)
+        self.assertEqual([c.title for c in plan.changes],
+                         ["Install gitleaks", "Install trufflehog", "Scanners used"])
+        self.assertIn("checks its SHA-256", plan.changes[1].review)
+        self.assertEqual(plan.changes[2].review, "Scanners used in scans: gitleaks, trufflehog")
+
+    def test_a_scanner_with_no_package_and_no_release_says_there_is_nothing_to_decide(self):
+        from _build import release_install
+        with patch.object(self.walk, "install_command", return_value=None),                 patch.object(release_install, "available", return_value=False):
+            plan = self.area(self.walk.area_scanners, [])
+        self.assertIn("Setup cannot install trufflehog on this system", self.output.getvalue())
+        self.assertEqual(plan.changes, [])
+
+    def test_an_installed_scanner_is_asked_about_once(self):
+        from _build import release_install
+        with patch.object(self.walk, "install_command", return_value=None),                 patch.object(release_install, "available", return_value=False):
+            plan = self.area(self.walk.area_scanners, ["y"], gitleaks="gitleaks")
+        self.assertIn("gitleaks is already installed. Use it whenever gitSpecOps checks for", self.output.getvalue())
+        self.assertEqual([c.review for c in plan.changes], ["Scanners used in scans: gitleaks"])
+
+    def uninstall_found(self):
+        return self.found(login="on", fleet={"tailnet": {}},
+                          gitso_command={"launcher": "here", "on_path": True, "folder": "/home/x/.gitspecops/bin",
+                                         "aliases": ["/home/x/.bashrc"], "in_this_terminal": True})
+
+    def run_uninstall(self, answers, settings_exist=True):
+        import os
+        import tempfile
+        temp = Path(tempfile.mkdtemp())
+        self.addCleanup(__import__("shutil").rmtree, temp, ignore_errors=True)
+        home = temp / "settings"
+        if settings_exist:
+            home.mkdir()
+        with patch.dict(os.environ, {"GITSPECOPS_HOME": str(home), "GITSPECOPS_TOOLS": str(temp / "tools")}), \
+                patch.object(self.walk, "find_app_processes", return_value=[11]), \
+                patch.object(self.walk, "_archive_task_present", return_value=False), \
+                patch.object(self.walk, "apply", return_value=True) as applied, \
+                patch("builtins.input", side_effect=answers):
+            code = self.walk.uninstall(detector=self.uninstall_found)
+        return code, applied
+
+    def test_uninstall_lists_every_removal_and_cancel_changes_nothing(self):
+        code, applied = self.run_uninstall(["n", "0"])
+        self.assertEqual(code, 0)
+        applied.assert_not_called()
+        out = self.output.getvalue()
+        for text in ("Stop the app: end its 1 process(es)", "Start at sign-in: remove the entry",
+                     "Fleet: leave", "gitso alias: remove", "gitso command: delete it", "Not removed:"):
+            self.assertIn(text, out)
+        self.assertNotIn("Settings: delete", out)
+
+    def test_uninstall_deletes_settings_only_when_asked_and_stops_the_app_first(self):
+        _code, applied = self.run_uninstall(["y", "u"])
+        plan = applied.call_args.args[0]
+        titles = [c.title for c in plan.changes]
+        # The reverse of setup's order: the App first, Basic (the gitso command) last.
+        self.assertEqual(titles, ["Stop the app", "Start at sign-in", "Desktop app", "Settings",
+                                  "gitso alias", "The gitso command"])
+        self.assertNotIn("Fleet", titles, "deleting the settings leaves the fleet with them")
+
+    def test_public_identity_rules(self):
+        self.assertTrue(self.walk.public_git_name("Someone@Box", "someone"))
+        self.assertTrue(self.walk.public_git_name("someone", "someone"))
+        self.assertFalse(self.walk.public_git_name("someone-else", "someone"))
+        self.assertFalse(self.walk.public_git_name("Pat", ""))
+        self.assertTrue(self.walk.public_git_email("noreply@github.com"))
+        self.assertFalse(self.walk.public_git_email("pat@example.invalid"))
+        self.assertEqual(self.walk.noreply_address("someone", "42"), "42+someone@users.noreply.github.com")
+        self.assertEqual(self.walk.noreply_address("someone", ""), "")
 
     def test_an_archive_is_planned_after_reading_its_folder_and_changes_nothing_yet(self):
         folder = Path(__file__).resolve().parent

@@ -108,6 +108,7 @@ class AuditTests(unittest.TestCase):
 
     def test_engines_are_only_looked_for(self):
         with patch("Special._security._audit.shutil.which", return_value=None), \
+                patch("Special._security._audit.find_program", return_value=None), \
                 patch("Special._security._audit.subprocess", create=True) as never_run:
             status = engines_status()
         self.assertEqual([item["engine"] for item in status], ["gitleaks", "betterleaks", "trufflehog"])
@@ -117,7 +118,7 @@ class AuditTests(unittest.TestCase):
 
     def test_a_missing_engine_comes_with_this_systems_install_command(self):
         with patch("Special._security._audit.sys.platform", "win32"), \
-                patch("Special._security._audit.shutil.which", side_effect=lambda name: name if name == "winget" else None):
+                patch("Special._security._audit.shutil.which", side_effect=lambda name: name if name == "winget" else None),                 patch("Special._security._audit.find_program", return_value=None):
             status = {item["engine"]: item for item in engines_status()}
         self.assertEqual(status["gitleaks"]["install"], "winget install --id Gitleaks.Gitleaks --exact")
         self.assertIsNone(status["trufflehog"]["install"], "no winget package: the home page instead")

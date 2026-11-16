@@ -295,7 +295,7 @@ class CommitGateTests(unittest.TestCase):
         self.document["defaults"]["security"]["engines"] = ["gitleaks"]
         self.save_settings()
         before = (self.repo / ".git/index").read_bytes()
-        with patch("Special._security._engines.shutil.which", return_value=None):
+        with patch("Special._security._engines.find_program", return_value=None):
             result = self.check()
         self.assertEqual(result.status, "incomplete")
         self.assertEqual((self.repo / ".git/index").read_bytes(), before)

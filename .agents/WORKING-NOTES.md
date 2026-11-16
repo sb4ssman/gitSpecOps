@@ -20,8 +20,9 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
    marked "experimental, untested".
 
 ## Waiting on the user
-- **Merge, in order:** PR #1 basic-and-secure-commands, #2 remove-legacy, #3 readme-docs,
-  #4 polish, #5 command-names, #6 cleanup. CI passed on all six (2026-11-14).
+- **Merge PR #7** (wave/setup-protection). PRs #1 to #6 were merged 2026-11-15.
+- **Screenshots to retake on the user's screen** (redact user and computer): `docs/images/setup-menu.png`
+  shows the old setup menu (the menu changed 2026-11-15); the org copy screenshot.
 - **Old archive registrations:** the current registry is empty. The pre-shared-settings registry
   (`old-settings.json` in the settings folder) still lists three archive folders; only one had a
   launcher file, and it was removed 2026-11-14 at the user's request. Register an archive again
@@ -42,7 +43,19 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
   at its own home. Recording it is the shelf's job, not this repository's.
 - **Code signing** for release builds.
 
+## Before the tray runs on any machine again (the 2026-11-15 window storm; see the work log)
+- **Prove it on the user's machine first, watched:** start the tray with the window fix, a
+  small library and the user present, and stop it at the first window that appears.
+- **A test that runs the peer under pythonw.exe on Windows CI**, so the tray's real conditions
+  are tested, not only a terminal's.
+
 ## Not built yet
+- **The gitso alias in a synced profile (found 2026-11-15):** on Windows the PowerShell profiles
+  can live in OneDrive's Documents, which syncs to the user's other PCs. The alias is a function
+  with this machine's absolute paths, and a PowerShell function wins over the `gitso` launcher on
+  PATH, so on another PC `gitso` would run a path that is not there, and each PC's setup would
+  rewrite the shared block. Setup should notice a profile under a synced folder and recommend
+  the PATH launcher alone (it already works in cmd, PowerShell and Git Bash).
 - Security tab: review a finding from the page (accept an example, as `gitso review` does).
 - A menu of every command in the web view, through the same plans and safety checks.
 - Updating gitSpecOps itself (fast-forward its own checkout, restart the app). Only a version
@@ -77,4 +90,5 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
 ## Notes to bring up to date
 - `knowledge/settings-schema.md`, and parts of `product-contract.md` and
   `architecture-layers.md`, still describe settings migration and older files removed on
-  2026-11-13. `.agents/README.md`'s Sync Suggester sections predate the layer move.
+  2026-11-13. `.agents/README.md`'s Sync Suggester sections predate the layer move, and its smoke checks
+  still name the old scripts (`update_archive.py`, `sync_archive.py`, `duplicate_org.py`).
