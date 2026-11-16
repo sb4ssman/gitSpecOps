@@ -83,10 +83,10 @@ class SetupTests(unittest.TestCase):
 
     def test_uninstall_is_on_the_menu(self):
         self.assertEqual(self.interactive(["0"]), 0)
-        self.assertIn("[5] Uninstall", self.output.getvalue())
+        self.assertIn("[6] Uninstall", self.output.getvalue())
 
     def test_menu_item_two_lists_every_part_and_zero_goes_back(self):
-        self.assertEqual(self.interactive(["2", "0", "", "0"]), 0)
+        self.assertEqual(self.interactive(["3", "0", "", "0"]), 0)
         out = self.output.getvalue()
         self.assertIn("[4] Protection", out)
         self.assertIn("[10] Running the app", out)
@@ -95,44 +95,44 @@ class SetupTests(unittest.TestCase):
     def test_every_menu_item_comes_back_to_the_menu(self):
         """Item 4 used to print its check and quit setup. Every item is a visit now."""
         with patch.object(subject.sys, "stdin", SimpleNamespace(isatty=lambda: True)), \
-                patch("builtins.input", side_effect=["4", "", "4", "", "0"]) as prompt:
+                patch("builtins.input", side_effect=["5", "", "5", "", "0"]) as prompt:
             self.assertEqual(subject.main([]), 0)
         self.assertEqual(self.prerequisites.call_count, 2)
         prompts = [call.args[0] for call in prompt.call_args_list]
         self.assertEqual(sum("go back to the setup menu" in text for text in prompts), 2)
-        self.assertEqual(self.output.getvalue().count("[4] Check this computer"), 3)
+        self.assertEqual(self.output.getvalue().count("[5] Check this computer"), 3)
 
     def test_a_named_action_runs_once_and_exits(self):
         self.assertEqual(subject.main(["check"]), 0)
-        self.assertNotIn("[4] Check this computer", self.output.getvalue())
+        self.assertNotIn("[5] Check this computer", self.output.getvalue())
 
     def test_an_item_that_fails_says_so_and_comes_back(self):
         self.prerequisites.side_effect = SystemExit(1)
-        self.assertEqual(self.interactive(["4", "", "0"]), 0)
+        self.assertEqual(self.interactive(["5", "", "0"]), 0)
         self.assertIn("That item did not finish", self.output.getvalue())
 
     def test_an_item_stopped_with_ctrl_c_comes_back_to_the_menu(self):
         self.prerequisites.side_effect = KeyboardInterrupt
         with patch.object(subject.sys, "stdin", SimpleNamespace(isatty=lambda: True)), \
-                patch("builtins.input", side_effect=["4", "", "0"]):
+                patch("builtins.input", side_effect=["5", "", "0"]):
             self.assertEqual(subject.main([]), 0)
         self.assertIn("Stopped.", self.output.getvalue())
 
     def test_menu_item_two_runs_one_command_then_returns_to_setup(self):
         import gitso
         with patch.object(gitso, "menu", return_value=0) as command_menu:
-            self.assertEqual(self.interactive(["3", "0"]), 0)
+            self.assertEqual(self.interactive(["4", "0"]), 0)
         command_menu.assert_called_once_with(cancel="go back to setup")
         out = self.output.getvalue()
         self.assertIn("Back to setup.", out)
-        self.assertEqual(out.count("[3] Use the commands without installing anything"), 2,
+        self.assertEqual(out.count("[4] Use the commands without installing anything"), 2,
                          "the setup menu must come back after the command menu")
         self.assert_no_actions()
 
     def test_a_blank_answer_in_the_command_menu_goes_back_to_setup(self):
         import gitso
         with patch.object(subject.sys, "stdin", SimpleNamespace(isatty=lambda: True)), \
-                patch("builtins.input", side_effect=["3", "", "0"]) as prompt, \
+                patch("builtins.input", side_effect=["4", "", "0"]) as prompt, \
                 patch.object(gitso, "dispatch", side_effect=AssertionError("nothing may run")):
             self.assertEqual(subject.main([]), 0)
         prompts = [call.args[0] for call in prompt.call_args_list]

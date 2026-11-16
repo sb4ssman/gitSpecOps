@@ -2857,3 +2857,11 @@ No code changed; decisions recorded where they govern.
 - The user's protected values: the old settings (old-settings.json) held 11 never-publish values,
   a whole-word value, one allowed value and 2 repository exceptions; setup's run left 4, 1, 0
   and 0. Restoring them is put to the user.
+
+## 2026-11-15 22:40 - user (claude) - Setup's express update (branch wave/express-update)
+- The user: setup needs an update that changes nothing already chosen. Setup's menu item 2,
+  "Update gitSpecOps" (also `setup update`, `_build/setup_update.py`): refuses when this folder
+  has uncommitted changes, has no upstream, or has commits the upstream lacks; otherwise fetches,
+  shows what is new, and on a yes fast-forwards (`git merge --ff-only @{u}`), then runs
+  `setup refresh` with the new code: Qt for the desktop app when installed, the gitso launchers
+  when present. It says to restart the app when it is running. No setting is read or written.
