@@ -91,6 +91,7 @@ class PosixTests(unittest.TestCase):
             with self.assertRaisesRegex(command.ProfileRefused, r"To add it yourself: open .*paste: gitso\(\)"):
                 command.install_aliases(self.home, "linux", self.which)
 
+    @unittest.skipUnless(sys.platform == "win32", "the PowerShell retry exists on Windows only")
     def test_on_windows_a_refused_write_is_retried_through_powershell(self):
         target = self.home / "profile.ps1"
         calls = []
