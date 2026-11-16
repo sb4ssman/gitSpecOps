@@ -11,6 +11,8 @@
  * not "synced"; attention, tones and advice come from Python. Library paths stay private, so a
  * machine's tree is its hosts and organizations. Every mark has text; colour is never alone.
  */
+import {byOwner} from './fleet_view.js';
+
 const SVG = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs = {}, text) => {
   const item = document.createElementNS(SVG, tag);
@@ -158,14 +160,17 @@ function fleetLevel(container, data) {
   const cloudAt = new Map(clouds.map((c, i) => [c.host, [xs(clouds.length, i), 120]]));
   const machineAt = new Map(machines.map((m, i) => [m.id, [xs(machines.length, i), 470]]));
   for (const [i, a] of machines.entries()) {               // machine to machine, below
-    for (const b of machines.slice(i + 1)) {
+    for (const [k, b] of machines.slice(i + 1).entries()) {
       const shared = (data.map && data.map.links || []).find(l => (l.a === a.id && l.b === b.id) || (l.a === b.id && l.b === a.id));
       if (!shared) continue;
       const [x1, y1] = machineAt.get(a.id), [x2, y2] = machineAt.get(b.id);
-      svg.append(el('path', {d: `M${x1} ${y1 + 38} Q${(x1 + x2) / 2} ${y1 + 130} ${x2} ${y2 + 38}`,
+      // Wider pairs curve deeper, so each pair's label sits on its own curve at its own height
+      // (the labels lay on top of each other, 2026-11-16).
+      const depth = y1 + 38 + 40 + 45 * (k + 1), top = y1 + 38;
+      svg.append(el('path', {d: `M${x1} ${top} Q${(x1 + x2) / 2} ${depth} ${x2} ${y2 + 38}`,
                              class: `z-link ${toneClass(shared.differ ? 'warning' : 'success')}`, 'stroke-width': 3}));
-      svg.append(el('text', {x: (x1 + x2) / 2, y: y1 + 100, class: 'z-link-label'},
-                    `${shared.shared} shared${shared.differ ? `, ${shared.differ} on different commits` : ''}`));
+      svg.append(el('text', {x: (x1 + x2) / 2, y: (top + depth) / 2 + 4, class: 'z-link-label'},
+                    `${shared.shared} shared${shared.differ ? ` · ${shared.differ} on different commits` : ''}`));
     }
   }
   for (const [m, machine] of machines.entries()) {          // machine to cloud
@@ -173,10 +178,11 @@ function fleetLevel(container, data) {
       const {count, bad} = onMachine(data, machine.id, row => hostOf(row) === host.host);
       if (!count) continue;
       const [x1, y1] = cloudAt.get(host.host), [x2, y2] = machineAt.get(machine.id);
-      // Each machine's labels at their own height, each cloud's a little apart: never stacked.
-      const at = Math.min(0.8, 0.25 + 0.45 * (m / Math.max(1, machines.length - 1)) + 0.06 * c);
-      link(svg, x1, y1 + 34, x2, y2 - 38, Math.min(2 + Math.sqrt(count) * 1.2, 16), bad ? 'warning' : 'success',
-           `${count}${bad ? ` · ${bad} need attention` : ''}`, 0, at);
+      // Each line leaves its cloud and reaches its machine at its own point along the edge, and
+      // its count sits near the machine end: counts stay apart instead of piling up mid-map.
+      const from = x1 + (m - (machines.length - 1) / 2) * 46, to = x2 + (c - (clouds.length - 1) / 2) * 62;
+      link(svg, from, y1 + 34, to, y2 - 38, Math.min(2 + Math.sqrt(count) * 1.2, 16), bad ? 'warning' : 'success',
+           `${count}${bad ? ` · ${bad} ⚑` : ''}`, 0, 0.84);
     }
   }
   for (const host of clouds) {
@@ -355,6 +361,7 @@ function exists(step, data) {
 
 /** Draw the map at its current zoom into `container`. */
 export function renderZoom(container, data) {
+  data = byOwner(data);
   current = [container, data];
   while (trail.length && !exists(trail[trail.length - 1], data)) trail.pop();
   container.replaceChildren();

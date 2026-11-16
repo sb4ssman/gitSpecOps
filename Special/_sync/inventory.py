@@ -151,8 +151,11 @@ class IncrementalObserver:
     def refresh(self, changed: set[Path]) -> int:
         affected = self.affected_repositories(changed)
         for path in affected:
-            previous = self._repos.pop(path, None)
-            previous_catalog = self._catalog.pop(path, None)
+            # The record stays in place while Git reads the repository and is swapped once the
+            # read is done. Taking it out first made it vanish from every view asked for in
+            # between: the Security tab counted 10 of a folder's 11, and counts flickered on
+            # another machine (the user, 2026-11-16).
+            previous = self._repos.get(path)
             observation = observe_paths([path], self.config["fleet_secret"],
                                         fetched_at=self._fetched_at, roots=self.config["roots"])
             if observation.repositories:
@@ -161,6 +164,8 @@ class IncrementalObserver:
                 if not self.observes(catalog):
                     # Its remote moved into an excluded namespace. Drop it and say so at the
                     # next inventory rather than keeping a stale record nobody chose.
+                    self._repos.pop(path, None)
+                    self._catalog.pop(path, None)
                     self.excluded_from_observation += 1
                     continue
                 self._repos[path] = repo
@@ -171,8 +176,10 @@ class IncrementalObserver:
             elif previous is not None and path.is_dir():
                 # A read error keeps the last-known record -- dirty stays dirty -- and the issue
                 # below says the state could not be re-read.
-                self._repos[path] = previous
-                self._catalog[path] = previous_catalog
+                pass
+            else:
+                self._repos.pop(path, None)  # gone from disk
+                self._catalog.pop(path, None)
             if observation.issues:
                 self._path_issues[path] = list(observation.issues)
             else:

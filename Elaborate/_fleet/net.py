@@ -138,7 +138,7 @@ class FleetClient:
 
 
 def make_peer_server(address, own_report, secret: str, allowed_login: str, authenticate=None,
-                     own_settings=None, own_name=None):
+                     own_settings=None, own_name=None, on_knock=None):
     """A peer's tailnet endpoint: **read-only**, and it serves only this machine's own state.
 
     The v2 host accepted `POST /v1/report` from clients, which is what made it an authority --
@@ -194,6 +194,13 @@ def make_peer_server(address, own_report, secret: str, allowed_login: str, authe
                     from Special._sync.manifest import fleet_id_for
                     self.send(200, {"fleet_id": fleet_id_for(secret),
                                     "fleet_name": own_name() if own_name else None})
+                    return
+                if self.path == "/v1/knock" and on_knock is not None:
+                    # "Ask me now": a machine that just started or joined, so the others pull its
+                    # report at once instead of at their next round (up to five minutes later).
+                    # It carries nothing and changes nothing but when this machine next asks.
+                    on_knock()
+                    self.send(200, {"knocked": True})
                     return
                 if self.path == "/v1/settings" and own_settings is not None:
                     # The shared protected values (shared_policy.py): to the same peers, under the

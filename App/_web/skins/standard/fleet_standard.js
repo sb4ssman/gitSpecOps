@@ -425,7 +425,21 @@ function renderMapPanel() {
   byId('map-perspective').closest('label').hidden = mapOptions.view === 'zoom';
   byId('map-group').closest('label').hidden = mapOptions.view !== 'organization';
   byId('map-repo').closest('label').hidden = mapOptions.view !== 'repository';
-  renderMap(byId('map'), data, mapOptions, change => { Object.assign(mapOptions, change); renderMapPanel(); });
+  // Never a blank map: while the library is still being read, say so; if drawing fails, say why
+  // and what to do (the user, 2026-11-16).
+  const box = byId('map');
+  if (!data.rows.length) {
+    const activity = data.activity || {};
+    box.replaceChildren(node('p', activity.phase && activity.phase !== 'idle'
+      ? `Building the map: ${activity.text}.` : 'No repositories observed yet: add a library folder in App & setup.', 'empty'));
+    return;
+  }
+  try {
+    renderMap(box, data, mapOptions, change => { Object.assign(mapOptions, change); renderMapPanel(); });
+  } catch (error) {
+    box.replaceChildren(node('p', `The map could not be drawn (${error.message}). Switch to another map view above; `
+      + 'if this one keeps failing, tell us the message.', 'tone-text-warning'));
+  }
 }
 
 for (const [id, key] of [['map-view', 'view'], ['map-perspective', 'perspective'], ['map-group', 'group'], ['map-repo', 'repo']]) {

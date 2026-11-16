@@ -201,6 +201,7 @@ class PeerNetwork:
         self.server = None
         self.identity = None
         self.port = int((config.get("transports") or {}).get("tailnet", {}).get("port") or 0)
+        self.knocked = threading.Event()  # another machine asked to be pulled now (/v1/knock)
 
     @property
     def enabled(self) -> bool:
@@ -227,7 +228,8 @@ class PeerNetwork:
             self.server = make_peer_server((self.identity["ip"], self.port), self.own_report,
                                            self.config["fleet_secret"], allowed,
                                            own_settings=self.shared.record if self.shared else None,
-                                           own_name=lambda: self.config.get("fleet_name"))
+                                           own_name=lambda: self.config.get("fleet_name"),
+                                           on_knock=self.knocked.set)
             threading.Thread(target=self.server.serve_forever, daemon=True).start()
         except OSError as exc:
             self.log(f"Could not listen for peers on port {self.port}: {exc}")
@@ -286,6 +288,24 @@ class PeerNetwork:
             self.config["fleet_name"] = {"name": named["name"], "at": named["at"]}
             self.log(f"The fleet is called {named['name']} (named on {host.get('label', 'another machine')}).")
 
+    def knock_others(self) -> int:
+        """Ask every running machine on the tailnet to pull this one now (after a start or a join)."""
+        if self.server is None:
+            return 0
+        from Elaborate._fleet.net import FleetClient, discover_hosts
+        try:
+            hosts = [host for host in discover_hosts(port=self.port, timeout=0.5) if host.get("serving")]
+        except (OSError, ValueError):
+            return 0
+        knocked = 0
+        for host in hosts:
+            try:
+                FleetClient(host["url"]).request("/v1/knock")
+                knocked += 1
+            except (OSError, ValueError):
+                continue  # an older machine without /v1/knock: it pulls at its next round
+        return knocked
+
     def merge_settings(self, host) -> None:
         """Pull a peer's shared protected values and merge them (shared_policy.py). Counts only
         in the log: the values themselves never are."""
@@ -327,6 +347,17 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
 
     def doing(phase: str, text: str, done: int = 0, total: int = 0) -> None:
         activity.update(phase=phase, text=text, done=done, total=total)
+
+    def watching_text() -> str:
+        """Folders and repositories are different counts: a repository with a second copy here
+        (a backup library, a duplicate clone) is two folders and one repository."""
+        try:
+            folders, repositories = len(observer.paths), len(observer.local_repositories())
+        except TypeError:  # a stand-in observer in tests
+            return "watching for changes"
+        extra = folders - repositories
+        return (f"watching {folders} repository folders for changes"
+                + (f" ({repositories} repositories; {extra} folders are second copies)" if extra > 0 else ""))
     from Elaborate._recovery.runtime import RecoveryRuntime
     recovery = RecoveryRuntime(config, observer, log=log)
     stale_seconds = stale_after(config)
@@ -502,12 +533,16 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             # Off the observation loop: an unreachable peer can take seconds to time out, and
             # that must never delay noticing a local edit.
             while True:
+                network.knocked.clear()
                 try:
                     network.poll()
                 except Exception as exc:  # noqa: BLE001 - the tailnet tier may never stop the peer
                     log(f"Tailnet poll failed: {exc}")
-                if stopping.wait(poll_seconds(config)):
-                    return
+                # The next round, or sooner when a machine that just started or joined knocks.
+                deadline = time.monotonic() + poll_seconds(config)
+                while time.monotonic() < deadline and not network.knocked.is_set():
+                    if stopping.wait(1.0):
+                        return
 
         threading.Thread(target=poll_loop, name="fleet-poll", daemon=True).start()
     if on_ready is not None:
@@ -579,7 +614,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                 doing("fetching", f"fetching remotes (read-only): {len(paths)} repositories", 0, len(paths))
                 fetched, problems = fetch_repositories(paths)
                 fetch_results.put((paths, fetched, problems))
-                doing("idle", f"watching {len(paths)} repositories for changes")
+                doing("idle", watching_text())
 
     if fetch_minutes > 0 and not once:
         threading.Thread(target=fetch_loop, name="fleet-fetch", daemon=True).start()
@@ -618,7 +653,10 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         recovery.capture_paths(observer.paths)
         recovery.acknowledge_available()
         observe("initial inventory")
-        doing("idle", f"watching {count} repositories for changes")
+        # Now there is a report to pull: ask the other machines to pull it at once, so a machine
+        # that just started or joined appears on their maps now, not at their next round.
+        threading.Thread(target=network.knock_others, name="fleet-knock", daemon=True).start()
+        doing("idle", watching_text())
         if once:
             return 0
         while not stopping.is_set():
@@ -652,7 +690,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                         source.close()
                         source = open_events()
                         watch_note(source)
-                    doing("idle", f"watching {count} repositories for changes")
+                    doing("idle", watching_text())
                     pending_new.clear()
                     reason = f"inventory: {count} repos in {time.monotonic() - started:.1f}s"
                 elif changed:

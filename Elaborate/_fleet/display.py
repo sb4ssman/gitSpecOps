@@ -17,9 +17,15 @@ CONTRACT_VERSION = 1
 PRODUCT_NAME = "gitSpecOps"
 
 
-def _row_place(row) -> dict | None:
-    """Where a repository lives: the place most machines report for it (names only)."""
+def _row_place(row, here=None) -> dict | None:
+    """Where a repository lives, names only: where this machine keeps it when it has a copy;
+    otherwise the place most machines report. Grouping by the fleet's most common place split a
+    folder on the machine looking at it: ten of a folder's eleven repositories also sat on another
+    machine's backup library and were grouped there, the eleventh apart (2026-11-16)."""
     from collections import Counter
+    mine = row.cells.get(here) if here else None
+    if mine is not None and mine.present and mine.repo.get("place"):
+        return {"library": mine.repo["place"]["library"], "folder": mine.repo["place"]["folder"]}
     places = Counter((cell.repo["place"]["library"], cell.repo["place"]["folder"])
                      for cell in row.cells.values() if cell.present and cell.repo.get("place"))
     if not places:
@@ -132,8 +138,8 @@ def mark_state(rows, machines, reports, settings) -> dict:
         machine = {"state": "starting", "text": "waiting for the first observation"}
     else:
         count, problems = trouble(me), issues.get(me, 0)
-        parts = [f"{count} of {mine['repository_count']} need attention" if count
-                 else f"{mine['repository_count']} repositories in sync"]
+        parts = [f"{mine['repository_count']} repositories, {count} need attention" if count
+                 else f"{mine['repository_count']} repositories, all in sync"]
         if problems:
             parts.append(_plural(problems, "problem", "problems"))
         machine = {"state": "attention" if count or problems else "ok", "text": ", ".join(parts)}
@@ -144,19 +150,20 @@ def mark_state(rows, machines, reports, settings) -> dict:
         fleet = {"state": "starting", "text": "no other machine has reported yet"}
     else:
         needy = [m for m in others if m["freshness"] != "current" or trouble(m["id"]) or issues.get(m["id"])]
+        # Every machine counted, this one included; each other machine that needs something named
+        # with what (the user, 2026-11-16: "0 of 2 clear" said nothing anyone could use).
+        total = _plural(len(others) + 1, "machine", "machines")
         if needy:
-            first = needy[0]
-            if first["freshness"] != "current":
-                why = "not reporting"
-            elif trouble(first["id"]):
-                why = _plural(trouble(first["id"]), "repository needs", "repositories need") + " attention"
-            else:
-                why = "reported a problem"
-            more = f" (+{len(needy) - 1} more)" if len(needy) > 1 else ""
+            def why(view):
+                if view["freshness"] != "current":
+                    return "not reporting"
+                if trouble(view["id"]):
+                    return f"{trouble(view['id'])} need attention"
+                return "reported a problem"
             fleet = {"state": "attention",
-                     "text": f"{len(others) - len(needy)} of {len(others)} clear; {first['label']}: {why}{more}"}
+                     "text": f"{total}; " + ", ".join(f"{view['label']}: {why(view)}" for view in needy)}
         else:
-            fleet = {"state": "ok", "text": f"all {_plural(len(others), 'other machine', 'other machines')} clear"}
+            fleet = {"state": "ok", "text": f"{total}; nothing needs attention on the others"}
     if settings.get("fleet_name") and settings.get("transport_config"):
         fleet["text"] = f"{settings['fleet_name']}: {fleet['text']}"  # the fleet by its name
     return {"machine": machine, "fleet": fleet}
@@ -187,7 +194,7 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
         group_id = f"{identity['host']}/{identity['owner']}"
         group = groups.setdefault(group_id, {"id": group_id, "label": identity["owner"],
                                             "host": identity["host"], "count": 0, "attention": 0})
-        place = _row_place(row)
+        place = _row_place(row, settings.get("machine_id"))
         place_id = (f"place/{place['library']}/{place['folder']}" if place else "place/unknown")
         place_group = place_groups.setdefault(place_id, {
             "id": place_id, "label": (place["folder"] or "(directly in the library)") if place
