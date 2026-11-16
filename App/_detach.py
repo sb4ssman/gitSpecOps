@@ -26,8 +26,13 @@ TRAY = ROOT / "App" / "tray.py"
 _BREAKAWAY = 0x01000000  # CREATE_BREAKAWAY_FROM_JOB
 # Windows starts the process from its WMI service; the command line and folder go through the
 # environment, so no quoting reaches PowerShell.
-_WMI_START = ("$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments "
-              "@{CommandLine=$env:GITSO_START; CurrentDirectory=$env:GITSO_START_IN}; "
+# ShowWindow=0 (SW_HIDE): should the process get a console after all, its window is never shown
+# (checked with a console Python, 2026-11-16: console present, window not visible).
+_WMI_START = ("$si = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly "
+              "-Property @{ShowWindow=[uint16]0}; "
+              "$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments "
+              "@{CommandLine=$env:GITSO_START; CurrentDirectory=$env:GITSO_START_IN; "
+              "ProcessStartupInformation=$si}; "
               "if ($r.ReturnValue -eq 0) { $r.ProcessId } else { exit 1 }")
 STARTED = "started on its own: its icon is by the clock (Windows may tuck it under the ^ arrow)"
 ALREADY = "already running: its icon is by the clock (Windows may tuck it under the ^ arrow)"
@@ -109,7 +114,8 @@ def start(arguments: list[str] | None = None, *, wait: float = 5.0) -> str:
     """Start the tray on its own with `arguments`, then make sure it is still running."""
     if running():
         return ALREADY
-    argv = [str(interpreter()), str(TRAY), "--foreground", *(arguments or [])]
+    # --detached: run in place, and give up any console this start gave it (App/_tray/qt.py).
+    argv = [str(interpreter()), str(TRAY), "--detached", *(arguments or [])]
     pid = _through_windows(argv) if os.name == "nt" else None
     if pid is not None:
         code = _exit_code(pid, wait)

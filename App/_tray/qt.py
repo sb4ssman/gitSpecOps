@@ -9,6 +9,8 @@ Status:       working
 """
 from __future__ import annotations
 
+import argparse
+import os
 import sys
 import threading
 import webbrowser
@@ -341,6 +343,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
     original = sys.stderr
     sys.stderr = errors
     operational.event("tray_starting")
+    _record_process(config_dir, settings_home)
     threads = [threading.Thread(target=worker, name="fleet-peer", daemon=True),
                threading.Thread(target=poller, name="tray-poll", daemon=True)]
     try:
@@ -356,6 +359,38 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
         operational.close()
         tray_lock.__exit__(None, None, None)
     return result["code"]
+
+
+def _leave_console() -> None:
+    """A tray started on its own (App/_detach.py) belongs to no window. Should it have been given
+    a console anyway, it lets go of it, so no window is ever tied to it: a console that only this
+    process used closes with it (node1, 2026-11-16: a window stayed attached to the tray). Output
+    then goes nowhere, as under pythonw; the log and `gitso tray --follow` show what it does."""
+    if os.name == "nt":
+        import ctypes
+        kernel = ctypes.windll.kernel32
+        if kernel.GetConsoleWindow():
+            kernel.FreeConsole()
+    devnull = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115 - lives as long as the app
+    sys.stdout = sys.stderr = devnull
+
+
+def _record_process(config_dir, settings_home) -> None:
+    """How this tray runs, for `gitso tray`: its interpreter's name and whether a console window
+    is attached. Names and yes/no only; local to this machine."""
+    import json
+    from Basic._files import atomic_write_bytes
+    from Special._settings.fleet import fleet_directory
+    console = False
+    if os.name == "nt":
+        import ctypes
+        console = bool(ctypes.windll.kernel32.GetConsoleWindow())
+    record = {"pid": os.getpid(), "interpreter": Path(sys.executable).name, "console_window": console}
+    try:
+        atomic_write_bytes(fleet_directory(config_dir, home=settings_home) / "tray-process.json",
+                           json.dumps(record).encode())
+    except (OSError, ValueError):
+        pass
 
 
 def _control(args) -> int:
@@ -404,13 +439,16 @@ def main(argv=None) -> int:
                          help="while it runs: keep showing what it does, until Ctrl+C (the app keeps running)")
     control.add_argument("--open", action="store_true", help="open the web view at the map")
     control.add_argument("--stop", action="store_true", help="quit the running app")
+    parser.add_argument("--detached", action="store_true", help=argparse.SUPPRESS)  # App/_detach.py's start
     args = parser.parse_args(argv)
     if args.follow or args.open or args.stop:
         return _control(args)
+    if args.detached:
+        _leave_console()
     # From a terminal (or setup), start the app on its own and return: closing that window must
     # not close the app (node1, 2026-11-15). Without a console (pythonw, start at sign-in) it is
     # already on its own, so it runs right here.
-    if not args.foreground and sys.stdout is not None:
+    if not (args.foreground or args.detached) and sys.stdout is not None:
         from App._detach import start
         forward = [*(["--config-dir", str(args.config_dir)] if args.config_dir else []),
                    *(["--settings-home", str(args.settings_home)] if args.settings_home else []),

@@ -75,8 +75,27 @@ def recent_events(settings_home=None, count: int = 8) -> list[str]:
     return lines
 
 
+def process_line(settings_home=None) -> str | None:
+    """How the running tray runs: its interpreter, and whether a console window is tied to it."""
+    from Special._settings.fleet import fleet_directory
+    try:
+        record = json.loads((fleet_directory(None, home=settings_home) / "tray-process.json").read_text())
+    except (OSError, ValueError):
+        return None
+    if record.get("console_window"):
+        return (f"Running as {record.get('interpreter')} (process {record.get('pid')}) WITH a console "
+                "window tied to it: closing that window closes the app. Quit it (gitso tray --stop) "
+                "and start it again with gitso tray.")
+    return f"Running as {record.get('interpreter')} (process {record.get('pid')}), with no window tied to it."
+
+
 def status_now(settings_home=None) -> list[str]:
     """What the running tray says about itself right now, from its web view; [] when unreadable."""
+    running_as = process_line(settings_home)
+    return ([running_as] if running_as else []) + _web_status(settings_home)
+
+
+def _web_status(settings_home=None) -> list[str]:
     address = web_address(settings_home)
     if address is None:
         return ["Its web view is off, so its status can only be seen on its icon."]
