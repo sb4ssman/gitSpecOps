@@ -2934,3 +2934,25 @@ No code changed; decisions recorded where they govern.
   the venv's link to the system Python, and from setup it is uv's Python; neither has Qt, so the
   login entry failed silently. It now registers the app's own interpreter (the .venv's, windowless
   on Windows), the same one `gitso tray` starts.
+
+## 2026-11-16 13:00 - user (claude) - Protected values shared across the fleet; optional sealing for the synced folder (branch wave/fleet-settings)
+- The user: a value added on one machine is shared with the fleet; removals asked about; the
+  encryption library optional, offered in setup and the app. Elaborate/_fleet/shared_policy.py:
+  each machine keeps what it last saw (so a disappearing value is a removal made here), its own
+  removals, declined answers and open questions (fleet folder, shared-policy.json). Rule:
+  whatever strengthens protection applies (a never-publish value added, an allowance removed);
+  whatever loosens it (a never-publish value removed, an allowance added) waits as a question on
+  the App & setup tab; a no is not asked again; a value removed here is not added back by a
+  machine that still has it; another fleet's record changes nothing.
+- Transports: over Tailscale, GET /v1/settings on the peer server under the same identity check
+  as /v1/session (which already hands over the fleet key), merged on each poll. Through the
+  synced folder only sealed (Elaborate/_fleet/sealed.py: AES-256-GCM, HKDF from the fleet key, the
+  machine id bound in), when `seal_settings` is on and cryptography is installed. Never in a
+  report, a log (counts only) or the state repository.
+- Optional install: pyproject extra "crypto" (cryptography>=43; uv.lock updated, nothing
+  installed here). Setup's Fleet step offers sealing when a synced folder is a connection
+  (default no); the App & setup tab has the switch, with the install shown in its plan. Every
+  `uv sync` setup runs now names the installed extras, so a sync no longer removes them. CI
+  installs cryptography (not on Debian) so sealing is tested.
+- Shared so far: the three protected-value lists. Not yet: repository exceptions, scanner choice,
+  check intervals.

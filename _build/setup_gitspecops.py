@@ -58,8 +58,10 @@ def create_venv_with_uv() -> bool:
         return False
     # --extra app keeps the tray's Qt (PySide6): a plain sync would remove it, since uv makes
     # .venv match exactly what is asked for.
-    print("Creating .venv with `uv sync --extra app`...")
-    return _run(["uv", "sync", "--extra", "app"]) == 0
+    from Elaborate._fleet.sealed import venv_has  # and encryption, once installed
+    extras = ["--extra", "app", *(["--extra", "crypto"] if venv_has("cryptography") else [])]
+    print(f"Creating .venv with `uv sync {' '.join(extras)}`...")
+    return _run(["uv", "sync", *extras]) == 0
 
 
 def _base_python() -> str:

@@ -95,7 +95,8 @@ def refresh() -> int:
     has_qt = (VENV / "Lib/site-packages/PySide6").exists() or any(VENV.glob("lib/python*/site-packages/PySide6"))
     uv = shutil.which("uv")
     if has_qt and uv:
-        if subprocess.call([uv, "sync", "--extra", "app"], cwd=ROOT) == 0:
+        from Elaborate._fleet.sealed import sync_extras  # keeps Qt, and encryption when installed
+        if subprocess.call([uv, "sync", *sync_extras()], cwd=ROOT) == 0:
             done.append("desktop app: Qt as this version expects")
         else:
             failed.append("desktop app: uv sync did not finish (setup's desktop app part repairs it)")

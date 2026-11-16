@@ -366,7 +366,9 @@ def _build_env() -> str:
     uv = shutil.which("uv")
     if not uv:
         raise RuntimeError("uv is not on PATH; open a new terminal and run setup again")
-    if subprocess.call([uv, "sync", "--extra", "app"], cwd=ROOT) != 0:
+    from Elaborate._fleet.sealed import venv_has  # a sync keeps only what it names
+    extras = ["--extra", "app", *(["--extra", "crypto"] if venv_has("cryptography") else [])]
+    if subprocess.call([uv, "sync", *extras], cwd=ROOT) != 0:
         raise RuntimeError("uv sync did not finish")
     return ".venv ready, with the desktop app"
 
@@ -986,8 +988,10 @@ def area_fleet(found: dict, plan: Plan) -> None:
             plan.add("Fleet", "Fleet: connect by " + ", ".join(_described(tailnet, folder, repo, create, names,
                                                                           seconds)),
                      lambda: _set_connections(current, tailnet, folder, repo, create, names, seconds))
+            _offer_sealing(plan, bool(folder))
             _browser_reach(found, plan, tailnet)
             return
+        _offer_sealing(plan, "folder" in current)
         _browser_reach(found, plan, "tailnet" in current)
         return
     option("1", "Start a fleet with this machine", "Then add your other machines with this machine's key.")
@@ -1016,7 +1020,44 @@ def area_fleet(found: dict, plan: Plan) -> None:
     ways = ", ".join(_described(tailnet, folder, repo, create, names, seconds))
     plan.add("Fleet", f"Fleet: {'join' if key else 'start'} a fleet, connected by {ways}",
              lambda: _start_fleet(key, tailnet, folder, repo, create, names, seconds))
+    _offer_sealing(plan, bool(folder))
     _browser_reach(found, plan, tailnet)
+
+
+def _offer_sealing(plan: Plan, has_folder: bool) -> None:
+    """Protected values are shared with the fleet over Tailscale already. Through a synced folder
+    (someone else's servers) only sealed: optional, off unless chosen here or in the app."""
+    from Elaborate._fleet.sealed import venv_has
+    from Special._sync.enrollment import _snapshot
+    say()
+    line("Your protected values are shared with your other machines over Tailscale: one added on any "
+         "machine is added on all; one removed, or an allowed value added, is asked about on the "
+         "others (App & setup tab).", "muted")
+    if not has_folder:
+        return
+    try:
+        config = _snapshot(None).config("app") or {}
+    except Exception:  # noqa: BLE001 - not enrolled yet: the question still applies
+        config = {}
+    if config.get("seal_settings"):
+        line("They also go through the synced folder, sealed.", "muted")
+        return
+    installed = venv_has("cryptography")
+    if not yes_no("Also share them through the synced folder, sealed?", "n",
+                  "Sealed with a key made from the fleet key, so the sync service cannot read them. "
+                  + ("" if installed else "Installs the cryptography package into this folder's .venv. ")
+                  + "Without it, Tailscale alone carries them."):
+        return
+    plan.add("Fleet", "Shared protected values: also through the synced folder, sealed"
+             + ("" if installed else " (installs cryptography into this folder's .venv)"), _seal_on, loud=not installed)
+
+
+def _seal_on() -> str:
+    from Elaborate._fleet import sealed
+    from Special._sync.enrollment import set_seal_settings
+    done = [] if sealed.venv_has("cryptography") else [sealed.install()]
+    set_seal_settings(True)
+    return "; ".join([*done, "sealed through the synced folder; the app uses it when it restarts"])
 
 
 def _show_fleet_key() -> None:

@@ -28,6 +28,9 @@ dependencies = []
 # The App's tray and window (Qt). Nothing below App/ may import it; the web view needs none.
 # Install with: uv sync --extra app
 app = ["PySide6-Essentials>=6.12"]
+# Sealing the shared protected values for a synced folder (Elaborate/_fleet/sealed.py). Optional:
+# setup or the App & setup tab installs it. Install with: uv sync --extra app --extra crypto
+crypto = ["cryptography>=43"]
 
 # This project is NOT an importable package. The tools are flat scripts that put their own
 # directory (and the repo root, for the layers) on sys.path at runtime. `.venv` exists only to

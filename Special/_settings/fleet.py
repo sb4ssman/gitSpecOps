@@ -25,7 +25,7 @@ from Special._settings.store import fingerprint, read_settings_document, write_s
 SYNC_OPTIONS = {"root_recursion", "transport_names", "stale_hours", "expired_days", "compress_manifests"}
 APP_REQUIRED = {"transport_names", "baskets", "recovery", "observation_mode", "debounce_seconds",
                 "heartbeat", "inventory_notice_acknowledged", "local_port"}
-APP_OPTIONS = APP_REQUIRED | {"fetch_minutes", "share_names", "git_client", "presentation"}
+APP_OPTIONS = APP_REQUIRED | {"fetch_minutes", "share_names", "git_client", "presentation", "seal_settings"}
 
 
 def fleet_home(home=None):

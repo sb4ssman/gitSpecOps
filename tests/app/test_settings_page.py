@@ -22,6 +22,7 @@ globalThis.document = {createElement: tag => new Node(tag)};
 const settings = {enrolled: true, fleet_id: null,
   connections: {tailnet: {on: false, seconds: 300, names: true, choices: [60, 300, 1800]},
                 folder: {on: false, path: '', names: false}, repo: {on: false, name: '', names: false}},
+  shared: {questions: [{id: 'q1', kind: 'remove', list: 'never_publish', value: 'old-name', from: 'desk'}], sealed: false, encryption_installed: false, has_folder: true},
   fetch_minutes: 1440, fetch_choices: [0, 60, 360, 1440], sign_in: {supported: true, enabled: false}};
 const calls = [];
 const connection = {desktopAction: async (action, payload) => {
@@ -50,10 +51,11 @@ console.log(JSON.stringify(out));
 class SettingsPageTests(unittest.TestCase):
     def test_draws_shows_the_plan_and_applies_it(self):
         done = subprocess.run(["node", "--input-type=module", "-e", SCRIPT.replace("MODULE", json.dumps(MODULE.as_uri()))],
-                              capture_output=True, text=True, timeout=60)
+                              capture_output=True, text=True, encoding="utf-8", timeout=60)
         self.assertEqual(done.returncode, 0, done.stderr)
         out = json.loads(done.stdout)
         for words in ("Not in a fleet", "Look for machines on Tailscale", "Connections", "Fetch from GitHub",
+                      "Shared protected values", "desk removed the never-publish value", "Remove it here too",
                       "Start at sign-in"):
             self.assertIn(words, out["sections"])
         self.assertIn("Connect this way?", out["plan"])

@@ -70,6 +70,16 @@ carries; setup says so beside the question. Details:
 The fleet key is shown only when you ask: `gitso fleet key --show`. Anyone, or any
 program, that reads it can join your fleet.
 
+**Protected values are shared across the fleet.** A value you must never publish, added on any
+machine, is added on every machine. What would loosen protection (a never-publish value removed
+elsewhere, or a value newly allowed elsewhere) is never done for you: it waits on each other
+machine's App & setup tab, under Shared protected values, until you say yes or no there, and a no
+is not asked again. The values travel only among your own devices: over Tailscale, peers pull
+them from each other under the same Tailscale identity check that hands over the fleet key; and,
+if you turn it on, through the synced folder sealed with AES-256-GCM under a key made from the
+fleet key (the optional `cryptography` package, which setup or the App & setup tab installs).
+They never go into a status report, a log or the state repository.
+
 ## Local security advice
 
 `gitso fleet publish` includes current working-file and cached-outgoing security advice using
