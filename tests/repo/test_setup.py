@@ -386,7 +386,7 @@ class WalkthroughTests(unittest.TestCase):
                       plan.changes[0].review)
 
     def test_a_synced_folder_gets_a_folder_of_its_own(self):
-        plan = self.area(self.walk.area_fleet, ["1", "y", "1", "n", ""], tailscale=None, tailnet=False,
+        plan = self.area(self.walk.area_fleet, ["1", "y", "1", "n", "", ""], tailscale=None, tailnet=False,
                          synced_folders=["/home/x/OneDrive"])
         expected = str(Path("/home/x/OneDrive") / "gitSpecOps fleet")
         self.assertIn(f"a synced folder ({expected}, ids only)", plan.changes[0].review)
@@ -394,7 +394,7 @@ class WalkthroughTests(unittest.TestCase):
     def test_names_default_to_yes_over_tailscale_and_no_elsewhere(self):
         # Enter at every names question: Tailscale with names, the folder and the repository without.
         with patch.object(self.walk, "_run", return_value=(0, "")):
-            plan = self.area(self.walk.area_fleet, ["1", "y", "", "y", "1", "y", "", "", "", "", "n"],
+            plan = self.area(self.walk.area_fleet, ["1", "y", "", "y", "1", "y", "", "", "", "", "", "n"],
                              tailscale="tailscale", tailnet=True, synced_folders=["/home/x/OneDrive"])
         review = plan.changes[0].review
         self.assertIn("Tailscale every 5 minutes, with names", review)

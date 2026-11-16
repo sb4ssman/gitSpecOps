@@ -127,6 +127,37 @@ export function renderSettings(block, connection, token) {
     return box;
   }
 
+  function sharedSection(s) {
+    const shared = s.shared;
+    const box = el('div', undefined, 'capability');
+    box.append(el('strong', 'Shared protected values'),
+      el('p', s.fleet_id
+        ? 'Shared with your other machines over Tailscale. A value added on any machine is added here; a removal, or a newly allowed value, waits for your answer below.'
+        : 'Shared once this machine is in a fleet.'));
+    const WORDS = {never_publish: 'never-publish value', never_publish_words: 'whole-word never-publish value', safe_values: 'allowed value'};
+    for (const q of shared.questions) {
+      const item = el('div', undefined, 'host-note');
+      const what = q.kind === 'remove' ? `${q.from} removed the ${WORDS[q.list]} ` : `${q.from} added the ${WORDS[q.list]} `;
+      item.append(el('p', `${what}“${q.value}”.`));
+      const answer = accept => async () => {
+        try { const done = await call('shared-answer', {id: q.id, accept}); state.settings = done.settings; state.message = done.notice; }
+        catch (error) { state.message = error.message; }
+        draw();
+      };
+      item.append(button(q.kind === 'remove' ? 'Remove it here too' : 'Allow it here too', answer(true)),
+        button('Keep this machine as it is', answer(false)));
+      box.append(item);
+    }
+    if (shared.has_folder) {
+      const seal = el('input'); seal.type = 'checkbox'; seal.checked = shared.sealed;
+      const label = el('label'); label.append(seal, ' Also through the synced folder, sealed with a key from the fleet key');
+      box.append(label);
+      if (!shared.encryption_installed) box.append(el('p', 'Turning this on installs the cryptography package into this folder\'s .venv.', 'host-note'));
+      box.append(button('Review the change', () => planned('seal', {enabled: seal.checked}, done => load(done.notice || 'Saved.'))));
+    }
+    return box;
+  }
+
   function fetchSection(s) {
     const box = el('div', undefined, 'capability');
     box.append(el('strong', 'Fetch from GitHub'), el('p', 'Read-only git fetch of every repository, so "behind" means behind the remote now. Moves no branch and no file.'));
@@ -163,7 +194,7 @@ export function renderSettings(block, connection, token) {
     const s = state.settings;
     if (!s) { block.append(el('p', 'Reading this machine\'s setup…', 'host-note')); return; }
     if (!s.enrolled) { block.append(el('p', 'This machine has no library yet: run setup first.', 'host-note')); return; }
-    block.append(fleetSection(s), connectionsSection(s), fetchSection(s), signInSection(s));
+    block.append(fleetSection(s), connectionsSection(s), sharedSection(s), fetchSection(s), signInSection(s));
   }
 
   draw();

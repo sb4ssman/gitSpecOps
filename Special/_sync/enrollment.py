@@ -155,6 +155,23 @@ def set_fetch_minutes(minutes: int, *, home=None) -> int:
     return minutes
 
 
+def set_seal_settings(enabled: bool, *, home=None) -> bool:
+    """Whether the shared protected values also go, sealed, through the synced folder
+    (Elaborate/_fleet/sealed.py). Off by default; needs the optional cryptography package."""
+    if type(enabled) is not bool:
+        raise ValueError("seal settings is true or false")
+    snapshot = _snapshot(home)
+    config = snapshot.config("app")
+    if config is None:
+        raise ValueError("this machine is not enrolled; add a library first")
+    config["seal_settings"] = enabled
+    try:
+        save_fleet_config(config, component="app", home=home)
+    except SettingsError as exc:
+        raise ValueError(str(exc)) from None
+    return enabled
+
+
 def current_fetch_minutes(home=None) -> int | None:
     """The saved interval, or None when the machine is not enrolled. Only reads."""
     try:

@@ -57,6 +57,10 @@ jobs:
         run: |
           git config --global user.name "ci-$GITHUB_RUN_ID"
           git config --global user.email "ci-$GITHUB_RUN_ID@example.invalid"
+      # The optional encryption package (the "crypto" extra), so sealing shared protected values
+      # is tested here; the Debian job runs without it, as most installs do.
+      - name: Optional encryption package
+        run: python -m pip install --disable-pip-version-check "cryptography==50.0.2"
       # Hosted runners have about 4 processors, which the local default would turn into 1 job.
       - name: Run the suite
         run: python tests/run_all.py --jobs 4

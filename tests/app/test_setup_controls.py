@@ -98,6 +98,31 @@ class SetupControlsTests(unittest.TestCase):
         shown = self.routes.act("show-key", {"apply": first["plan_id"]})
         self.assertEqual(len(shown["key"]), 64)
 
+    def test_sealing_shows_the_install_in_its_plan_and_installs_only_on_apply(self):
+        self.approved("connections", {"folder": str(self.synced)})
+        with patch("Elaborate._fleet.sealed.venv_has", return_value=False), \
+                patch("Elaborate._fleet.sealed.install", return_value="installed") as install:
+            plan = self.routes.act("seal", {"enabled": True})
+            self.assertTrue(any("install" in line for line in plan["plan"]["changes"]))
+            install.assert_not_called()
+            self.routes.act("seal", {"enabled": True, "apply": plan["plan_id"]})
+            install.assert_called_once()
+        self.assertTrue(self.routes.act("settings", {})["settings"]["shared"]["sealed"])
+
+    def test_a_question_from_another_machine_is_answered_here(self):
+        from Special._security._policy_edit import policy_view
+        self.approved("connections", {"folder": str(self.synced)})
+        settings = self.routes.act("settings", {})["settings"]
+        config = self.routes._config()
+        shared = self.routes._shared(config)
+        shared.receive({"schema": 1, "fleet_id": shared.fleet_id, "machine_id": "desk", "label": "desk",
+                        "lists": {"safe_values": ["example.invalid"]}, "removed": {}})
+        questions = self.routes.act("settings", {})["settings"]["shared"]["questions"]
+        self.assertEqual(len(questions), 1)
+        self.assertEqual(settings["shared"]["questions"], [])
+        self.routes.act("shared-answer", {"id": questions[0]["id"], "accept": True})
+        self.assertIn("example.invalid", policy_view(self.home)["lists"]["safe_values"])
+
     def test_joining_through_a_machine_on_tailscale(self):
         with patch.object(SetupRoutes, "_key_from_peer", return_value=KEY) as handed:
             joined = self.approved("join", {"via": "desk", "tailnet": True, "tailnet_seconds": 300})

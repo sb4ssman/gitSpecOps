@@ -22,12 +22,13 @@ from __future__ import annotations
 from pathlib import Path
 
 ACTIONS = ("find", "add", "remove", "presentation", "join", "leave", "open-folder",
-           "settings", "connections", "fetch", "sign-in", "peers", "show-key")
-PLANNED = ("find", "add", "join", "leave", "connections", "show-key")
+           "settings", "connections", "fetch", "sign-in", "peers", "show-key", "shared-answer", "seal")
+PLANNED = ("find", "add", "join", "leave", "connections", "show-key", "seal")
 QUESTIONS = {"find": "Look in these folders?", "add": "Enroll these library folders?",
              "join": "Join with these choices?", "leave": "Leave the fleet?",
              "connections": "Connect this way?",
-             "show-key": "Show the fleet key on this page? Anyone who has it can join your fleet."}
+             "show-key": "Show the fleet key on this page? Anyone who has it can join your fleet.",
+             "seal": "Change how protected values go through the synced folder?"}
 POLL_CHOICES = (60, 300, 1800)       # the same choices setup offers for Tailscale
 FETCH_CHOICES = (0, 60, 360, 1440)   # never, hourly, every 6 hours, daily
 
@@ -65,9 +66,30 @@ class SetupRoutes:
                          "names": (repo or {}).get("names", False)}},
             "fetch_minutes": int((config or {}).get("fetch_minutes") or 0),
             "fetch_choices": list(FETCH_CHOICES),
+            "shared": self._shared_state(config, bool(folder)),
             "sign_in": {"supported": bool(sign_in.get("supported")), "enabled": bool(sign_in.get("enabled")),
                         "elsewhere": sign_in.get("elsewhere"), "reason": sign_in.get("reason")},
         }
+
+    def _shared(self, config):
+        """This machine's side of the shared protected values (Elaborate/_fleet/shared_policy.py)."""
+        from Elaborate._fleet.shared_policy import SharedPolicy
+        from Special._settings.fleet import fleet_directory
+        from Special._sync.manifest import fleet_id_for
+        return SharedPolicy(self.home, fleet_directory(self.config_dir, home=self.home),
+                            fleet_id=fleet_id_for(config["fleet_secret"]), machine_id=config["machine_id"],
+                            label=config["label"])
+
+    def _shared_state(self, config, has_folder: bool) -> dict:
+        from Elaborate._fleet.sealed import venv_has
+        questions = []
+        if config is not None:
+            try:
+                questions = self._shared(config).questions()
+            except (OSError, ValueError):
+                questions = []
+        return {"questions": questions, "sealed": bool((config or {}).get("seal_settings")),
+                "encryption_installed": venv_has("cryptography"), "has_folder": has_folder}
 
     def _config(self):
         from Special._settings.fleet import load_fleet_settings
@@ -162,6 +184,17 @@ class SetupRoutes:
         if action == "show-key":
             shown = {"action": "show-key", "shows": "this machine's fleet key, on this page only"}
             return shown, shown
+        if action == "seal":
+            from Elaborate._fleet.sealed import REQUIREMENT, venv_has
+            enabled = bool(payload.get("enabled"))
+            install = enabled and not venv_has("cryptography")
+            changes = ([f"install {REQUIREMENT} into this folder's .venv (one package, nothing else changes)"]
+                       if install else [])
+            changes.append("share protected values through the synced folder, sealed with a key from the "
+                           "fleet key" if enabled else "stop sharing protected values through the synced "
+                           "folder (Tailscale still carries them)")
+            shown = {"action": "seal", "changes": changes, "enabled": enabled, "install": install}
+            return shown, shown
 
         if action == "find":
             starts = enrollment.whole_machine_starts() if payload.get("whole_machine") else paths
@@ -213,6 +246,18 @@ class SetupRoutes:
             from Special._settings.fleet import fleet_home
             open_folder(fleet_home(self.home))
             return {"applied": True, "notice": "Opened your settings folder."}
+        if action == "shared-answer":
+            config = self._config()
+            if config is None:
+                raise ValueError("this machine is not enrolled")
+            answered = self._shared(config).answer(str(payload.get("id") or ""), bool(payload.get("accept")))
+            return {**answered, "applied": True, "settings": self.settings(),
+                    "notice": "Changed here too." if answered["accepted"] else "Kept as it is here; not asked again."}
+        if action == "seal" and shown.get("install"):
+            from Elaborate._fleet import sealed
+            sealed.install()
+        if action == "seal":
+            enrollment.set_seal_settings(bool(shown["enabled"]), home=self.home)
         if action == "settings":
             return {"settings": self.settings(), "applied": True}
         if action == "peers":
@@ -288,4 +333,5 @@ NOTICES = {
     "presentation": "Saved. Takes effect when the app restarts.",
     "connections": "Saved. The app reconnects now.",
     "fetch": "Saved. The app uses the new schedule now.",
+    "seal": "Saved. The app uses it now.",
 }

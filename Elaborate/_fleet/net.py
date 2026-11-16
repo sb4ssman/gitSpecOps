@@ -137,7 +137,8 @@ class FleetClient:
             raise ValueError(f"fleet request refused ({exc.code})") from None
 
 
-def make_peer_server(address, own_report, secret: str, allowed_login: str, authenticate=None):
+def make_peer_server(address, own_report, secret: str, allowed_login: str, authenticate=None,
+                     own_settings=None):
     """A peer's tailnet endpoint: **read-only**, and it serves only this machine's own state.
 
     The v2 host accepted `POST /v1/report` from clients, which is what made it an authority --
@@ -185,6 +186,11 @@ def make_peer_server(address, own_report, secret: str, allowed_login: str, authe
                     return
                 if self.path == "/v1/session":
                     self.send(200, {**peer, "fleet_secret": secret})
+                    return
+                if self.path == "/v1/settings" and own_settings is not None:
+                    # The shared protected values (shared_policy.py): to the same peers, under the
+                    # same Tailscale check, as the fleet key itself.
+                    self.send(200, own_settings())
                     return
                 self.send(404, {"error": "unknown endpoint"})
             except PermissionError:

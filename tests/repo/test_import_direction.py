@@ -10,6 +10,9 @@ It may not import:
   belongs in that layer's plumbing, or the two commands are secretly one;
 - anything outside the stack, or a third-party package. Everything below App is
   stdlib-only; App alone may import PySide6 (Qt), its one declared dependency.
+  One exception, optional by design: Elaborate/_fleet/sealed.py may import `cryptography` (the
+  "crypto" extra) to seal shared protected values for a synced folder. Nothing requires it:
+  sealed.available() says whether it is there, and without it Tailscale alone carries them.
 
 `_os/` may import only the stdlib and itself. Relative imports are not used anywhere.
 Every import statement counts, including those inside functions: a lazy import is still a
@@ -28,6 +31,7 @@ setup()
 
 ORDER = ["_os", "Basic", "Special", "Elaborate", "App"]
 APP_ONLY = {"PySide6"}
+OPTIONAL_IN = {"cryptography": {"Elaborate/_fleet/sealed.py"}}  # see the exception above
 RANK = {name: rank for rank, name in enumerate(ORDER)}
 STDLIB = set(sys.stdlib_module_names) | {"__future__"}
 failures: list[str] = []
@@ -70,6 +74,8 @@ for layer in ORDER:
                 top, *rest = module.split(".")
                 where = f"{rel}:{node.lineno} imports {module}"
                 if top in STDLIB or (layer == "App" and top in APP_ONLY):
+                    continue
+                if rel.replace("\\", "/") in OPTIONAL_IN.get(top, ()):
                     continue
                 if top not in RANK:
                     failures.append(f"{where} — outside the stack (tool folder, or a "

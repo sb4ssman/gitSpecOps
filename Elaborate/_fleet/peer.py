@@ -191,11 +191,12 @@ class TransportPublisher:
 class PeerNetwork:
     """The optional tailnet tier: answer peers, and pull from them. Degrades to nothing."""
 
-    def __init__(self, config: dict, own_report, store: FleetStore, log=_log):
+    def __init__(self, config: dict, own_report, store: FleetStore, log=_log, shared=None):
         self.log = log
         self.config = config
         self.store = store
         self.own_report = own_report
+        self.shared = shared  # shared_policy.SharedPolicy: protected values pulled and served
         self.server = None
         self.identity = None
         self.port = int((config.get("transports") or {}).get("tailnet", {}).get("port") or 0)
@@ -223,7 +224,8 @@ class PeerNetwork:
             return False
         try:
             self.server = make_peer_server((self.identity["ip"], self.port), self.own_report,
-                                           self.config["fleet_secret"], allowed)
+                                           self.config["fleet_secret"], allowed,
+                                           own_settings=self.shared.record if self.shared else None)
             threading.Thread(target=self.server.serve_forever, daemon=True).start()
         except OSError as exc:
             self.log(f"Could not listen for peers on port {self.port}: {exc}")
@@ -255,7 +257,23 @@ class PeerNetwork:
                 learned += 1
             except (ValueError, KeyError, OSError):
                 continue  # a peer on a different fleet, or a malformed report
+            self.merge_settings(host)
         return learned
+
+    def merge_settings(self, host) -> None:
+        """Pull a peer's shared protected values and merge them (shared_policy.py). Counts only
+        in the log: the values themselves never are."""
+        if self.shared is None:
+            return
+        from Elaborate._fleet.net import FleetClient
+        try:
+            result = self.shared.receive(FleetClient(f"http://{host['ip']}:{self.port}").request("/v1/settings"))
+        except (OSError, ValueError, KeyError, TypeError):
+            return  # an older peer without shared settings, or one in another fleet
+        if result["applied"] or result["asked"]:
+            self.log(f"Shared protected values from {host.get('label', 'a peer')}: "
+                     + "; ".join(result["applied"] + [f"{len(result['asked'])} change(s) to answer "
+                                                       "on the App & setup tab"] * bool(result["asked"])))
 
     def stop(self):
         if self.server is not None:
@@ -344,7 +362,30 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             plan = plan_catchup(observer.paths)
         return {"message": render_catchup(plan), "action": "catchup-preview"}
 
-    network = PeerNetwork(config, lambda: latest["report"], store, log=log)
+    # Protected values shared with the fleet (shared_policy.py): over Tailscale whenever this
+    # machine is in a fleet; sealed through the synced folder when that is turned on.
+    from Elaborate._fleet.shared_policy import SharedPolicy
+    shared = (SharedPolicy(security_settings()[0], config_dir, fleet_id=fleet_id,
+                           machine_id=config["machine_id"], label=config["label"])
+              if config.get("transports") else None)
+    network = PeerNetwork(config, lambda: latest["report"], store, log=log, shared=shared)
+
+    def sealed_folder_loop():
+        """The shared protected values through the synced folder, sealed (sealed.py)."""
+        from Elaborate._fleet import sealed
+        root = (config.get("transports") or {}).get("folder", {}).get("path")
+        while True:
+            try:
+                sealed.write_own(root, shared.record(), config["fleet_secret"], config["machine_id"])
+                for record in sealed.read_others(root, config["fleet_secret"], config["machine_id"]):
+                    result = shared.receive(record)
+                    if result["applied"] or result["asked"]:
+                        log("Shared protected values through the synced folder: "
+                            f"{len(result['applied'])} change(s) made, {len(result['asked'])} to answer")
+            except (OSError, ValueError) as exc:
+                log(f"Sealed settings through the synced folder failed: {exc}")
+            if stopping.wait(poll_seconds(config)):
+                return
 
     def sources() -> tuple[list[dict], list[str], dict]:
         """Everything this machine can currently see, newest-per-machine resolved downstream."""
@@ -380,6 +421,15 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                 f"changes; the library is reread every {SWEEP_SECONDS // 60} minutes instead. To "
                 "watch everything, raise the limit: sudo sysctl fs.inotify.max_user_watches=524288 "
                 "(add fs.inotify.max_user_watches=524288 to /etc/sysctl.conf to keep it)."]
+        if shared is not None:
+            try:
+                waiting = len(shared.questions())
+            except (OSError, ValueError):
+                waiting = 0
+            if waiting:
+                issues = list(issues) + [
+                    f"{waiting} change(s) to protected values made on other machines wait for your "
+                    "answer: App & setup tab, Shared protected values."]
         document = display_from_manifests(
             manifests, fleet_id=fleet_id, names=names, issues=issues,
             stale_seconds=stale_seconds,
@@ -408,6 +458,14 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     else:
         log("Running headless: no dashboard is served by this process.")
     log(f"Transports:\n{describe(config)}")
+
+    if shared is not None and config.get("seal_settings") and (config.get("transports") or {}).get("folder"):
+        from Elaborate._fleet import sealed
+        if sealed.available():
+            threading.Thread(target=sealed_folder_loop, name="fleet-sealed-settings", daemon=True).start()
+        else:
+            log("Sealing shared settings for the synced folder needs the cryptography package "
+                "(setup, or the App & setup tab, installs it); Tailscale still carries them.")
 
     if network.start():
         def poll_loop():
