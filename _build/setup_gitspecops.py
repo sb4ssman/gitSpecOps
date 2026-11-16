@@ -7,11 +7,13 @@ Run from this repository:
 With no arguments, a person at a terminal gets the setup menu. Named actions:
 
     walkthrough   the guided setup (needs a person at a terminal)
+    update        bring gitSpecOps up to date, keeping every setting (fetch, fast-forward, refresh)
     part          set up, change or repair one part of the walkthrough on its own
     run           choose one command from a list and run it, without setting anything up
     environment   build this folder's .venv (with uv when it is installed), then check
     check         show what this computer has: Git, the GitHub CLI, uv. Changes nothing.
     uninstall     stop the app and remove what setup added, after a review; settings on request
+    refresh       after an update: refresh the desktop app's Qt and the gitso launchers (update runs it)
 
 gitSpecOps needs no setup to run: every command works straight from this folder through
 `gitso`, e.g. `python gitso.py commands`. Sign-ins are never touched here: you sign in to your
@@ -149,7 +151,7 @@ def bootstrap() -> int:
     return 0 if ok else 1
 
 
-ACTIONS = ("walkthrough", "part", "run", "environment", "check", "uninstall")
+ACTIONS = ("walkthrough", "update", "part", "run", "environment", "check", "uninstall", "refresh")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -169,21 +171,24 @@ def choose_action() -> str | None:
     say()
     option("1", "Walk me through everything", "Recommended. Finds what this computer already has and "
            "asks about each part. Nothing changes until you review it.")
-    option("2", "Set up one part", "Pick one part to set up, change or repair on its own: the gitso "
+    option("2", "Update gitSpecOps", "Bring it up to date and keep everything you chose: shows what is "
+           "new, then fast-forwards and refreshes the app and the gitso command. Changes no setting.")
+    option("3", "Set up one part", "Pick one part to set up, change or repair on its own: the gitso "
            "command, library folders, protection, the fleet, and the rest.")
-    option("3", "Use the commands without installing anything", "Choose any command from a list and run "
+    option("4", "Use the commands without installing anything", "Choose any command from a list and run "
            "it from this folder. Any time: python gitso.py <command>.")
-    option("4", "Check this computer", "Git, the GitHub CLI and uv: what is there and what each is "
+    option("5", "Check this computer", "Git, the GitHub CLI and uv: what is there and what each is "
            "for. Changes nothing.")
-    option("5", "Uninstall", "Stop the app and remove what setup added: start at sign-in, the gitso "
+    option("6", "Uninstall", "Stop the app and remove what setup added: start at sign-in, the gitso "
            "command, the fleet. Asks before deleting your settings; shows everything before it acts.")
     option("0", "Exit")
     try:
-        answer = choose("123450", "1")
+        answer = choose("1234560", "1")
     except (EOFError, KeyboardInterrupt):
         print("\nSetup cancelled; nothing has been changed.")
         return None
-    return {"1": "walkthrough", "2": "part", "3": "run", "4": "check", "5": "uninstall"}.get(answer)
+    return {"1": "walkthrough", "2": "update", "3": "part", "4": "run", "5": "check",
+            "6": "uninstall"}.get(answer)
 
 
 def run_one_command(back: bool) -> int:
@@ -267,6 +272,19 @@ def perform(parser, args, action) -> int:
         return run_one_command(back=False)
     if action == "environment":
         return bootstrap()
+    if action in ("update", "refresh"):
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import setup_update
+        if action == "refresh":
+            return setup_update.refresh()
+        if not sys.stdin.isatty():
+            print("The update asks before it changes anything; run it at a terminal.", file=sys.stderr)
+            return 2
+        try:
+            return setup_update.update()
+        except (EOFError, KeyboardInterrupt):
+            print("\nUpdate cancelled; nothing has been changed.")
+            return 0
     report_prerequisites()
     return 0
 

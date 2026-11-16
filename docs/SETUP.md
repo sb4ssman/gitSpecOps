@@ -26,12 +26,16 @@ Setup's menu:
    start the app, which reads your library and shows the map; read it right there in the
    terminal (`gitso machine check`, with progress); or not now, the default. Nothing starts
    unless you choose it.
-2. **Set up one part.** Any one of those ten parts on its own: set it up, change it, or repair
+2. **Update gitSpecOps.** Brings it up to date and keeps everything you chose: it shows what is
+   new, fast-forwards this folder (never a merge or a reset), then refreshes the desktop app and
+   the `gitso` command from the new version. It refuses, saying why, when this folder has its
+   own changes or commits. Also `setup update`.
+3. **Set up one part.** Any one of those ten parts on its own: set it up, change it, or repair
    it. It shows what is there now, and nothing changes until you review it.
-3. **Use the commands without installing anything.** Any Basic, Special or Elaborate command,
+4. **Use the commands without installing anything.** Any Basic, Special or Elaborate command,
    straight from the folder: registering archive folders to keep updated, say.
-4. **Check this computer.** Git, the GitHub CLI and uv: what is there and what each is for.
-5. **Uninstall.** Stops the app and removes what setup added, in the reverse order (start at
+5. **Check this computer.** Git, the GitHub CLI and uv: what is there and what each is for.
+6. **Uninstall.** Stops the app and removes what setup added, in the reverse order (start at
    sign-in, the desktop app's Qt, fleet membership, the monthly refresh task, downloaded
    scanners, the `gitso` alias and command), after showing the list. Your settings (protected values, library folders, logs) are deleted only if
    you say so. This folder, your repositories and programs installed with your package manager
@@ -101,8 +105,10 @@ another folder instead, for a scratch profile or a first-run test; nothing else 
 
 ## Updates
 
-Running from a clone, `git pull` brings the latest version; your settings live outside the
-folder, so an update never touches them. Downloadable releases that update themselves are
-*(planned)*.
+Run setup and choose **Update gitSpecOps** (or `setup update`): it fast-forwards this folder and
+refreshes what depends on it. A plain `git pull --ff-only` does the first half by hand. Your
+settings live outside the folder, so an update never touches them. If the app is running, quit it
+from its tray menu and start it again to use the new version. Downloadable releases that update
+themselves are *(planned)*.
 
 [Back to the README](../README.md)
