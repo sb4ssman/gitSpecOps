@@ -65,7 +65,7 @@ class PlaceTests(unittest.TestCase):
         self.assertEqual(apart[0]["place"], {"library": "L", "folder": "A"})
 
     def test_two_libraries_keep_each_copys_own_commit_and_place(self):
-        # Prime: one repository in two libraries; the page gives each library its own column.
+        # One machine, one repository in two libraries; the page gives each library its own column.
         manifest = build_manifest(FLEET, "m", "m", [
             repo({"library": "Github (one)", "folder": "Org"}, head="1" * 40),
             {**repo({"library": "Github (two)", "folder": "Org"}, head="2" * 40), "behind": 3,
