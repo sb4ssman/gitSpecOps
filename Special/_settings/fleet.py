@@ -160,7 +160,7 @@ class FleetSettings:
             value = {**common, "version": 5, "mode": "peer", "label": machine["label"],
                      "roots": roots, "transports": selected,
                      **{key: copy.deepcopy(item) for key, item in options.items() if key != "transport_names"}}
-            value.setdefault("fetch_minutes", 15)
+            value.setdefault("fetch_minutes", 1440)  # once a day: Special._sync.enrollment
             value.setdefault("share_names", True)
         return FleetConfig(value, self, component)
 

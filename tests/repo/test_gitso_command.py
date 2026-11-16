@@ -79,9 +79,37 @@ class PosixTests(unittest.TestCase):
             return real(path, kind, body)
         with patch.object(command, "powershell_profiles", return_value={}), \
                 patch.object(command, "write_block", side_effect=refuse_zshrc):
-            with self.assertRaisesRegex(RuntimeError, r"could not write .*\.zshrc.*Written: 1"):
-                command.install_aliases(self.home, "linux", self.which)
+            result = command.install_aliases(self.home, "linux", self.which)
+        self.assertIn("alias in 1 profile(s); not in 1", result)
+        self.assertIn(".zshrc", result)
+        self.assertIn("paste:", result)
         self.assertIn("gitso()", (self.home / ".bashrc").read_text(encoding="utf-8"))
+
+    def test_when_every_profile_is_refused_it_says_how_to_add_it_by_hand(self):
+        with patch.object(command, "powershell_profiles", return_value={}), \
+                patch.object(command, "write_block", side_effect=PermissionError(13, "refused")):
+            with self.assertRaisesRegex(command.ProfileRefused, r"To add it yourself: open .*paste: gitso\(\)"):
+                command.install_aliases(self.home, "linux", self.which)
+
+    def test_on_windows_a_refused_write_is_retried_through_powershell(self):
+        target = self.home / "profile.ps1"
+        calls = []
+        real_write = Path.write_text
+
+        def powershell(args, env, **_kw):
+            calls.append(args)
+            real_write(Path(env["GITSO_PROFILE"]), env["GITSO_TEXT"], encoding="utf-8")
+            return type("Done", (), {"returncode": 0})()
+
+        def refuse(self_path, *a, **k):
+            if self_path == target:
+                raise FileNotFoundError(2, "No such file or directory")
+            return real_write(self_path, *a, **k)
+        with patch.object(command.os, "name", "nt"), patch.object(Path, "write_text", refuse), \
+                patch.object(command.subprocess, "run", side_effect=powershell):
+            command.write_block(target, "alias", "gitso-line")
+        self.assertTrue(calls and "-NoProfile" in calls[0])
+        self.assertIn("gitso-line", target.read_text(encoding="utf-8"))
 
     def test_a_launcher_for_another_folder_is_reported(self):
         launcher = self.home / ".gitspecops" / "bin" / "gitso"
