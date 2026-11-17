@@ -339,7 +339,7 @@ function organizationView(container, data, perspective, group, onPick, actions) 
   widths.append(html('col', undefined, 'map-col-repo'), html('col', undefined, 'map-col-online'));
   for (const column of columns) widths.append(html('col'));
   table.append(widths);
-  // Machines on the first header row, each spanning its libraries on the second: one Prime with
+  // Machines on the first header row, each spanning its libraries on the second: one machine with
   // two libraries under it, one shade per machine.
   const head = html('tr'), under = html('tr');
   const repo = html('th', 'Repository'), online = html('th', 'Online');
