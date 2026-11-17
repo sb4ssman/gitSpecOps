@@ -79,6 +79,17 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
   zoomable map's machine-to-machine link labels overlap under the machine boxes; the map's
   machine trees show organizations, not yet libraries; the map should one day show everything.
 - **A customizable legend for the map** (raised 2026-11-16).
+- **Repositories as repositories (decided 2026-11-16):** no place grouping on Repositories (node1
+  showed three "library on machine" groups). Absorb every source of truth and compare them: what is
+  on my machines, what my account has on GitHub (owned, org member, collaborator, forks,
+  contributed-to, via `gh`, read-only), and which local repositories hold my own commits; the
+  differences are the findings. Perspectives with their issues and resolving actions: Needs me,
+  Out of sync, At risk, Publishing, Age, Coverage; statistics (repositories touched, my commits
+  per repository, first and last commit). The same questions at every integration level.
+- **The map as a focus-and-context explorer (raised 2026-11-16):** hover magnifies what is under
+  the cursor (the rest fades, details appear), drag pans laterally when zoomed, chosen dimensions
+  (place, ownership, state, time, sameness) set the layout and the perspective, jump straight to
+  each issue and see how it differs elsewhere. Effectively 3D.
 - **The Memory Gamma copies on the dual-boot machine** are Windows checkouts read from Linux: Git
   on Linux sees every line ending as a change. Either `core.autocrlf=true` in those repositories,
   or gitSpecOps reporting "line endings only" instead of "dirty".
