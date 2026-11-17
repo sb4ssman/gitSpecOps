@@ -29,7 +29,7 @@ export function renderRequests(block, data, act) {
   if (finished) {
     const clear = el('button', `Clear ${finished} finished`); clear.type = 'button';
     clear.onclick = async () => {
-      try { await act('request-clear', {}); message = 'Cleared; the task log (App & setup) keeps the record.'; } catch (error) { message = error.message; }
+      try { await act('request-clear', {}); message = 'Cleared; the task log (Settings) keeps the record.'; } catch (error) { message = error.message; }
     };
     block.append(clear);
   }

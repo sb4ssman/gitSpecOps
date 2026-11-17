@@ -5,6 +5,28 @@ while the version starts with 0, gitSpecOps is a development preview and anythin
 
 ## Unreleased
 
+- **The page, rebuilt around one menu and one vocabulary.** The menu is seven tiles, each with its
+  number: Network map (the zoomable picture, now the first page), Repositories, Orgs/Archives,
+  Machines, Clouds, Security, Settings (was "App & setup"; `#about` still opens it). Repositories
+  and Orgs/Archives draw the same grid: a column per library under each machine, the provider
+  and its commit, each copy's commit. Machines lists each machine's libraries; Clouds lists
+  providers and how machines talk; any repository group has "Audit these". The display contract
+  gains `libraries`, `providers` and new `summary` totals, and `docs/DISPLAY-CONTRACT.md` is
+  rewritten around the vocabulary.
+- **Libraries are always named with what holds them**: `Github (T:\)`, `Github (memory-lambda)`,
+  `Github (~)` for a home folder (never the account's name).
+- **A machine with a repository in two libraries reports each copy**, with the commit its
+  provider was on at the last fetch; clone requests name the library, and refuse a folder that
+  is not a plain name.
+- **Security: Show reveals a finding's real value**, on this machine only, from the audit in
+  the app's memory.
+- **Older Macs:** each macOS gets the newest Qt built for it (macOS 11-13 too); a Mac older than
+  11 runs without an icon instead of failing to install Qt. The menu-bar app shows no Dock icon.
+  The page works in Safari 15. `gitso update` over SSH on Linux restarts the app inside the
+  desktop session.
+- `python _build/demo_fleet.py` serves the page with an invented, messy fleet, for demos and
+  screenshots.
+
 - **Fixed (Windows): two gitSpecOps processes logging at the same moment could stop with
   `logging_write`.** A lock file being deleted by one process now counts as busy for the other.
 - **The web setup page approves like the commands:** it shows the plan, then "Yes, do it". The

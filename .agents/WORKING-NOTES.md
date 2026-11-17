@@ -75,17 +75,13 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
 ## Fleet sync (raised 2026-11-16)
 - **Apply requests automatically, by choice:** a per-machine setting ("fast-forwards: apply
   automatically") so a request needs no one at that machine. Clones stay manual unless chosen.
-- **Scrutinize the display contract against the page** (`docs/DISPLAY-CONTRACT.md`): every fact
-  worked out once in Python; skins only draw, so an LCARS-style skin can rearrange everything.
-- **Page rebuild (raised 2026-11-16, to discuss before building):** menu order Network map,
-  Repositories, Orgs/Archives, Machines, Clouds, Settings; the menu and the summary tiles become
-  one thing (each menu item carries its tile's details); the network map is the zoomable visual
-  that should one day show everything; every other item is tables (parts of the map's grids and
-  the repository inventory merge). Consistent choices throughout; rewrite the display contract
-  from this. Security sits between Clouds and Settings, with an "audit these" button on repository
-  groups. Clouds = providers and how machines talk (shared folder, Tailscale, a gitso-managed
-  repo). He approved building it 2026-11-16.
+- **The page after the 2026-11-16 rebuild** (menu tiles, shared grid; see the work log): the
+  zoomable map's machine-to-machine link labels overlap under the machine boxes; the map's
+  machine trees show organizations, not yet libraries; the map should one day show everything.
 - **A customizable legend for the map** (raised 2026-11-16).
+- **The Memory Gamma copies on the dual-boot machine** are Windows checkouts read from Linux: Git
+  on Linux sees every line ending as a change. Either `core.autocrlf=true` in those repositories,
+  or gitSpecOps reporting "line endings only" instead of "dirty".
 
 ## Older Macs (macOS 10.15): parked for completeness, not tonight's detour (2026-11-16)
 - **Safari 15 has no CSS color-mix**: every tone colour on the page is missing there. Replace
@@ -96,9 +92,6 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
   read, and an app restarted by `gitso update` over SSH cannot either; restart it at the Mac
   itself. `gh auth setup-git` was needed so git uses `gh`'s sign-in.
 - **Sign-in in old Safari:** GitHub's device page did not work in Safari 15; Chrome did.
-- **The Memory Gamma copies on the dual-boot machine** are Windows checkouts read from Linux: Git
-  on Linux sees every line ending as a change. Either `core.autocrlf=true` in those repositories,
-  or gitSpecOps reporting "line endings only" instead of "dirty".
 
 ## Not built yet
 - **The gitso alias in a synced profile (found 2026-11-15):** on Windows the PowerShell profiles

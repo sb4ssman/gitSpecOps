@@ -327,6 +327,33 @@ function setAudit(audit) {
   }
 }
 
+/** The Security menu tile: the last audit's outcome since the app started, or how to start one. */
+export function securitySummary() {
+  const audit = ui.audit;
+  if (!audit) return ['Audit', 'files and every commit'];
+  if (audit.state === 'running') return [`${audit.done}/${audit.total}`, 'auditing now'];
+  const blocked = audit.results.filter(entry => entry.security.check_status === 'blocked').length;
+  const review = audit.results.filter(entry => entry.security.check_status === 'review-required').length;
+  return [String(audit.done), blocked ? `checked · ${blocked} blocked` : review ? `checked · ${review} to review` : 'checked · all passed'];
+}
+
+/** "Audit these" from a repository group elsewhere on the page: choose exactly those that have a
+ *  copy here, open their groups, and say how many were chosen. The audit itself still waits for
+ *  the person's Audit button. Returns how many could be chosen. */
+export function auditThese(repoIds) {
+  if (!ui.data) return 0;
+  const here = new Set(localRows().map(row => row.id));
+  const chosen = repoIds.filter(id => here.has(id));
+  ui.selected = new Set(chosen);
+  for (const row of localRows()) if (ui.selected.has(row.id)) ui.open.add(row.group_id);
+  if (ui.built) {
+    renderScope();
+    const skipped = repoIds.length - chosen.length;
+    say(`${chosen.length} chosen${skipped ? `; ${skipped} have no copy on this machine, so they cannot be audited here` : ''}. Press Audit to start.`);
+  }
+  return chosen.length;
+}
+
 // ---- entry ------------------------------------------------------------------------------------
 /** Called on every refresh of the dashboard data; builds once, then keeps the person's choices. */
 export function renderSecurity(container, data, connection) {

@@ -1,8 +1,11 @@
 /* The standard skin. It renders display v1 and never decides what Git state means. */
 import {FleetConnection} from './fleet_client.js';
 import {ageLabel, GroupExpansion, groupRows, regroup, selectRows} from './fleet_view.js';
-import {organizationChoices, renderMap, VIEWS} from './fleet_map.js';
-import {renderSecurity} from './fleet_security.js';
+import {renderMap, VIEWS} from './fleet_map.js';
+import {auditThese, renderSecurity, securitySummary} from './fleet_security.js';
+import {columnsOf, copyGrid, GRID_FOOTNOTE, gridNotes, orderedMachines, perspectiveOf} from './fleet_grid.js';
+import {organizationChoices, renderOrgs} from './fleet_orgs.js';
+import {MENU, renderClouds, renderMachines as drawMachines, renderMenu} from './fleet_pages.js';
 import {renderSettings} from './fleet_settings.js';
 import {renderRequests} from './fleet_requests.js';
 
@@ -82,20 +85,10 @@ function renderMark() {
   byId('favicon').href = url(32, false);
 }
 
+/** The menu: each item carries its tile's number and line (the user, 2026-11-16). */
+let activeTab = 'map';
 function renderSummary() {
-  const {summary} = state.data;
-  const values = [
-    [summary.attention, 'Need attention', `${summary.repositories} repositories observed`],
-    [summary.machines, 'Reporting machines', `${summary.current_machines} current`],
-    [summary.stale_machines, 'Stale machines', summary.stale_machines ? 'Review before acting' : 'All reports current'],
-    [state.data.groups.length, state.grouping === 'place' ? 'Folders observed' : 'Organizations observed',
-     state.grouping === 'place' ? 'Grouped by library and folder' : 'Grouped by owner'],
-  ];
-  byId('summary').replaceChildren(...values.map(([value, label, detail]) => {
-    const card = node('article', undefined, 'metric');
-    card.append(node('strong', String(value)), node('span', label), node('small', detail));
-    return card;
-  }));
+  renderMenu(byId('menu'), state.data, activeTab, securitySummary(), selectTab);
 }
 
 function renderFilters() {
@@ -210,6 +203,8 @@ function renderRepositories() {
     list.append(node('p', 'No repositories match these filters.', 'empty'));
     byId('detail').hidden = true; return;
   }
+  const perspective = perspectiveOf(data, null);
+  const grid = {perspective, columns: columnsOf(orderedMachines(data, perspective), rows)};
   // By library and folder: each library is a section, its folders inside it (the user,
   // 2026-11-16). By owner: one level, as before.
   const libraries = new Map();
@@ -232,70 +227,84 @@ function renderRepositories() {
       head.append(node('span', `${folders.length} folder${folders.length === 1 ? '' : 's'} · ${shownOf(count, total)} · ${attention} need attention`, 'group-meta'));
       outer.append(head); list.append(outer); target = outer;
     }
-    for (const group of folders) renderGroup(target, group, data);
+    for (const group of folders) renderGroup(target, group, data, grid);
   }
+  list.append(node('p', GRID_FOOTNOTE, 'host-note'));
+  gridNotes(list, renderRepositories);
   const selected = rows.find(row => row.id === state.selected);
   if (selected) showDetail(selected); else { state.selected = null; byId('detail').hidden = true; }
 }
 
-function renderGroup(list, group, data) {
-  {
-    const details = node('details', undefined, 'repo-group');
-    details.open = state.expansion.isOpen(group.id);
-    details.addEventListener('toggle', () => {
-      state.expansion.record(group.id, details.open);
-      saveCollapsedGroups();
-    });
-    const summary = node('summary'); summary.append(document.createTextNode(group.label));
-    summary.append(node('span', `${shownOf(group.rows.length, group.count ?? group.rows.length)} · ${group.attention} need attention`, 'group-meta'));
-    details.append(summary);
-    const scroll = node('div', undefined, 'table-scroll'); const table = node('table', undefined, 'repo-table');
-    // The same column widths in every group, so the columns line up down the page.
-    const columns = node('colgroup');
-    const share = data.machines.length ? Math.floor(36 / data.machines.length) : 0;
-    for (const width of [28, ...data.machines.map(() => share), 72 - share * data.machines.length]) {
-      const col = node('col'); col.style.width = `${width}%`; columns.append(col);
-    }
-    table.append(columns);
-    const header = node('tr');
-    for (const title of ['Repository', ...data.machines.map(machine => machine.label), 'Advice']) header.append(node('th', title));
-    const thead = node('thead'); thead.append(header); table.append(thead); const body = node('tbody');
-    for (const row of group.rows) {
-      const line = node('tr'); line.dataset.repoId = row.id;
-      if (row.id === state.selected) line.classList.add('selected');
-      const nameCell = node('td'); const link = node('button', row.identity.name, 'repo-link'); link.type = 'button';
-      link.onclick = () => showDetail(row); nameCell.append(link, node('span', row.identity.host, 'host-note'));
-      if (row.publication && !row.publication.published) {
-        const held = node('span', 'not published', 'badge tone-warning');
-        held.title = row.publication.reason; nameCell.append(held);
-      }
-      line.append(nameCell);
-      for (const machine of data.machines) {
-        const machineCell = node('td'); machineCell.append(cellBadge(row.cells[machine.id])); line.append(machineCell);
-      }
-      line.append(node('td', row.advice)); body.append(line);
-    }
-    table.append(body); scroll.append(table); details.append(scroll); list.append(details);
+/** One group of the inventory: the shared copy grid, so a copy reads the same as on
+ *  Orgs/Archives, with every group's columns lined up (`grid.columns`). */
+function renderGroup(list, group, data, grid) {
+  const details = node('details', undefined, 'repo-group');
+  details.open = state.expansion.isOpen(group.id);
+  details.addEventListener('toggle', () => {
+    state.expansion.record(group.id, details.open);
+    saveCollapsedGroups();
+  });
+  const summary = node('summary'); summary.append(document.createTextNode(group.label));
+  summary.append(node('span', `${shownOf(group.rows.length, group.count ?? group.rows.length)} · ${group.attention} need attention`, 'group-meta'));
+  if (state.data.local_actions) {
+    const audit = node('button', 'Audit these', 'quiet group-action'); audit.type = 'button';
+    audit.title = 'Choose them on the Security tab; the audit starts when you press Audit there';
+    audit.onclick = event => { event.preventDefault(); event.stopPropagation(); openAudit(group.rows.map(row => row.id)); };
+    summary.append(audit);
   }
+  details.append(summary);
+  details.append(copyGrid(data, group.rows, {perspective: grid.perspective, columns: grid.columns, advice: true,
+    actions: fleetActions(), onName: row => showDetail(row), onChange: renderRepositories}));
+  list.append(details);
 }
 
 function renderMachines() {
-  const list = byId('machine-list'); list.replaceChildren();
-  for (const machine of state.data.machines) {
-    const card = node('article', undefined, 'card'); card.append(node('h3', machine.label),
-      node('span', machine.freshness, `badge tone-${machine.tone}`));
-    const facts = node('dl');
-    for (const [term, value] of [['Last report', ageLabel(machine.age_seconds)],
-      ['Repositories', machine.repository_count], ['Device ID', machine.id]]) facts.append(node('dt', term), node('dd', String(value)));
-    card.append(facts); list.append(card);
-  }
-  const issues = byId('issues'); issues.replaceChildren();
-  if (state.data.issues.length) {
-    const block = node('section', undefined, 'issue-list'); block.append(node('h3', 'Observation issues'));
-    const entries = node('ul');
-    for (const issue of state.data.issues) for (const item of issue.items) entries.append(node('li', `${issue.machine}: ${item}`));
-    block.append(entries); issues.append(block);
-  }
+  drawMachines(byId('machine-list'), state.data, ageLabel);
+}
+
+function renderCloudsPanel() {
+  renderClouds(byId('clouds'), state.data);
+}
+
+/** "Audit these": choose them on the Security tab and go there; the audit waits for Audit. */
+function openAudit(repoIds) {
+  auditThese(repoIds);
+  selectTab('security');
+}
+
+/** A repository named on another page: open it in Repositories, its details shown. */
+function openRepository(row) {
+  controls.query.value = row.identity ? row.identity.name : row.name;
+  controls.status.value = 'all';
+  selectTab('repositories');
+  renderRepositories();
+  showDetail(row);
+}
+
+// Orgs/Archives: the organization and perspective survive a reload.
+const orgOptions = (() => {
+  try { return {group: 'all', ...JSON.parse(localStorage.getItem('gitso.orgs') || '{}'), perspective: null}; } catch { return {group: 'all', perspective: null}; }
+})();
+function renderOrgsPanel() {
+  const data = state.data;
+  fillSelect(byId('orgs-group'), [['all', 'All organizations'], ...organizationChoices(data)], orgOptions.group);
+  fillSelect(byId('orgs-perspective'), data.machines.map(m => [m.id, m.label]), perspectiveOf(data, orgOptions.perspective));
+  byId('orgs-perspective').closest('label').hidden = !byId('orgs-group').value || byId('orgs-group').value === 'all';
+  renderOrgs(byId('orgs'), data, {group: byId('orgs-group').value, perspective: perspectiveOf(data, orgOptions.perspective)}, {
+    onPick: change => {
+      Object.assign(orgOptions, change);
+      try { localStorage.setItem('gitso.orgs', JSON.stringify({group: orgOptions.group})); } catch { /* a remembered choice only */ }
+      renderOrgsPanel();
+    },
+    onAudit: data.local_actions ? openAudit : null, onRepository: openRepository, actions: fleetActions(),
+  });
+}
+for (const [id, key] of [['orgs-group', 'group'], ['orgs-perspective', 'perspective']]) {
+  byId(id).addEventListener('input', event => {
+    orgOptions[key] = event.target.value;
+    try { localStorage.setItem('gitso.orgs', JSON.stringify({group: orgOptions.group})); } catch { /* a remembered choice only */ }
+    if (state.data) renderOrgsPanel();
+  });
 }
 
 function renderAbout() {
@@ -431,21 +440,17 @@ function fillSelect(select, entries, chosen) {
 function renderMapPanel() {
   const data = state.data;
   fillSelect(byId('map-view'), VIEWS, mapOptions.view);
-  fillSelect(byId('map-perspective'), data.machines.map(m => [m.id, m.label]), mapOptions.perspective);
-  fillSelect(byId('map-group'), [['all', 'All organizations'], ...organizationChoices(data)], mapOptions.group);
-  fillSelect(byId('map-repo'), data.rows.map(r => [r.id, r.name]), mapOptions.repo);
+  mapOptions.view = byId('map-view').value;
+  fillSelect(byId('map-perspective'), data.machines.map(m => [m.id, m.label]), perspectiveOf(data, mapOptions.perspective));
   mapOptions.perspective = byId('map-perspective').value || null;
-  mapOptions.repo = byId('map-repo').value || null;
   byId('map-perspective').closest('label').hidden = mapOptions.view === 'zoom';
-  byId('map-group').closest('label').hidden = mapOptions.view !== 'organization';
-  byId('map-repo').closest('label').hidden = mapOptions.view !== 'repository';
   // Never a blank map: while the library is still being read, say so; if drawing fails, say why
   // and what to do (the user, 2026-11-16).
   const box = byId('map');
   if (!data.rows.length) {
     const activity = data.activity || {};
     box.replaceChildren(node('p', activity.phase && activity.phase !== 'idle'
-      ? `Building the map: ${activity.text}.` : 'No repositories observed yet: add a library folder in App & setup.', 'empty'));
+      ? `Building the map: ${activity.text}.` : 'No repositories observed yet: add a library folder in Settings.', 'empty'));
     return;
   }
   try {
@@ -456,7 +461,7 @@ function renderMapPanel() {
   }
 }
 
-for (const [id, key] of [['map-view', 'view'], ['map-perspective', 'perspective'], ['map-group', 'group'], ['map-repo', 'repo']]) {
+for (const [id, key] of [['map-view', 'view'], ['map-perspective', 'perspective']]) {
   byId(id).addEventListener('input', event => { mapOptions[key] = event.target.value; saveMapOptions(); if (state.data) renderMapPanel(); });
 }
 
@@ -469,17 +474,19 @@ function fleetActions() {
 }
 
 function renderAll() {
-  renderSummary();
   renderRequests(byId('requests'), state.data, async (action, payload) => {
     const done = await fleetActions().act(action, payload); await connection.refresh(); return done;
   });
-  renderFilters(); renderRepositories(); renderMapPanel(); renderSecurity(byId('security'), state.data, connection); renderMachines(); renderAbout(); renderNotices();
+  renderFilters(); renderRepositories(); renderMapPanel(); renderOrgsPanel(); renderSecurity(byId('security'), state.data, connection);
+  renderMachines(); renderCloudsPanel(); renderAbout(); renderNotices();
+  renderSummary();  // after Security, so its tile shows the latest audit
   byId('last-updated').textContent = `View received ${state.receivedAt.toLocaleTimeString()}`;
 }
 
 function selectTab(tab) {
+  activeTab = tab;
   for (const button of document.querySelectorAll('[data-tab]')) button.setAttribute('aria-pressed', String(button.dataset.tab === tab));
-  for (const id of ['repositories', 'map', 'security', 'machines', 'about']) byId(`${id}-panel`).hidden = id !== tab;
+  for (const {id} of MENU) byId(`${id}-panel`).hidden = id !== tab;
   // The address always names the tab on screen, so reloading stays on it (the user, 2026-11-16).
   if (location.hash !== `#${tab}`) history.replaceState(null, '', `#${tab}`);
 }
@@ -504,11 +511,23 @@ byId('collapse').onclick = () => {
   document.querySelectorAll('.repo-group, .repo-library').forEach(item => { item.open = false; });
 };
 byId('theme').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
-for (const button of document.querySelectorAll('[data-tab]')) button.onclick = () => selectTab(button.dataset.tab);
+// The menu is on screen from the start; its numbers arrive with the first report.
+renderMenu(byId('menu'), {summary: {}, machines: [], rows: [], mark: {}}, activeTab, ['', ''], selectTab);
 // An address ending in #map (gitso tray --open) or another tab's name opens at that tab, on load
-// and when a link on the page (the header's home and App & setup links) changes it.
-const TABS = ['repositories', 'map', 'security', 'machines', 'about'];
-function tabFromAddress() { const tab = location.hash.slice(1); if (TABS.includes(tab)) selectTab(tab); }
+// and when a link on the page (the header's home and Settings links) changes it.
+const TABS = MENU.map(item => item.id);
+// Older addresses keep working: #about was "App & setup", now Settings. #orgs/<name> opens one
+// organization, so a link can point straight at it.
+const ALIASES = {about: 'settings'};
+function tabFromAddress() {
+  const [asked, detail] = location.hash.slice(1).split('/');
+  const tab = ALIASES[asked] || asked;
+  if (tab === 'orgs' && detail) {
+    orgOptions.group = `org:${decodeURIComponent(detail)}`;
+    if (state.data) renderOrgsPanel();
+  }
+  selectTab(TABS.includes(tab) ? tab : 'map');
+}
 tabFromAddress();
 window.addEventListener('hashchange', tabFromAddress);
 
@@ -516,9 +535,9 @@ setTheme(savedTheme());
 const connection = new FleetConnection();
 // What the page does, said plainly (the user, 2026-11-16): every 3 seconds it asks the app on this
 // computer what it already knows. That reads no repository and fetches nothing: the app itself
-// checks a repository when its files change, and fetches on the schedule set in App & setup.
+// checks a repository when its files change, and fetches on the schedule set in Settings.
 const LIVE = 'Live: updated every 3 seconds from this computer\'s gitSpecOps';
-const LIVE_DETAIL = 'The page asks the app on this computer for what it already knows. That reads no repository and fetches nothing. The app checks a repository when its files change, and fetches from GitHub on the schedule set in App & setup.';
+const LIVE_DETAIL = 'The page asks the app on this computer for what it already knows. That reads no repository and fetches nothing. The app checks a repository when its files change, and fetches from GitHub on the schedule set in Settings.';
 connection.addEventListener('display', event => {
   if (event.detail.data.setup_required) { window.location.href = '/setup'; return; }
   state.raw = event.detail.data; state.data = regroup(state.raw, state.grouping);

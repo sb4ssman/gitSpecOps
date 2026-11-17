@@ -1,4 +1,4 @@
-/* App & setup: change this machine's setup from the page (the user, 2026-11-16).
+/* Settings: change this machine's setup from the page (the user, 2026-11-16).
  * Every control calls a setup route (App/_web/setup.py), which calls the same functions as
  * setup and the commands. Changes to the fleet show their plan first and apply only on "Apply".
  * Built once and redrawn only after an action, so the page's refresh never wipes what is typed. */

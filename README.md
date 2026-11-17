@@ -14,9 +14,10 @@ It sits beside tools like GitHub Desktop and Sourcetree. They work *deeply* in o
 gitSpecOps works *broadly*, across all of them and all your machines, and opens any repository
 in your desktop Git app when you want to go deep.
 
-![The network map: two clouds (GitHub and GitLab) above four machines (Desktop, Home server, Laptop, Old laptop), lines showing how many repositories each machine holds from each cloud and how many need attention, and under each machine its library: every organization and repository it holds, amber where that copy has unfinished work](docs/images/network-map.png)
+![The network map: a menu of seven tiles (Network map, Repositories, Orgs/Archives, Machines, Clouds, Security, Settings), each with its number; below, three clouds (GitHub, GitLab, No remote) above four machines (Desktop, Home server, Laptop, Old laptop), lines showing how many repositories each machine holds from each cloud and how many need attention, and under each machine every organization and repository it holds, amber where that copy has unfinished work](docs/images/network-map.png)
 
-*A hypothetical fleet: every machine, owner and repository name in this picture is made up.*
+*A made-up, messy fleet: every machine, owner and repository name in these pictures is invented.
+See it yourself with `python _build/demo_fleet.py` (no setup; it reads nothing on your computer).*
 
 > **Development preview.** Everything below marked *(planned)* is not built yet. Development and
 > testing happen on Windows first; Linux and macOS are being verified now.
@@ -45,6 +46,27 @@ one before:
 Security sits alongside: `secure-commit` and `secure-push` check before anything leaves, and so
 does every publish gitSpecOps makes on its own. Basic `commit` and `push` are plain, like git's.
 
+## The page
+
+Seven pages, one menu: each menu tile carries its number. The **Network map** is the picture;
+every other page is a table that says each copy the same way, against its provider: "matches
+GitHub", "12 behind GitHub", "4 uncommitted files", with the commit it is on beside it.
+
+**Repositories and Orgs/Archives line every copy up**: one row per repository, one column per
+library under each machine (a machine with two libraries gets two columns), and the provider
+with its own commit. From the same row you can ask any machine to fast-forward what is simply
+behind, or clone what it is missing, into the library you choose; the machine checks again
+before it does anything, and another machine shows your request for approval.
+
+![One organization across the fleet: "acme-tools: 1 of 4 are the same on every machine that has them. 3 need a decision", the three listed with their advice; below, a grid with a row per repository and a column per library under each machine (Desktop; Home server with two libraries, backup and srv; Laptop; Old laptop, stale), each cell saying how that copy compares with GitHub, with "Fast-forward 1" and "Clone 1 missing" buttons above the libraries that need them](docs/images/organization.png)
+
+**Machines** lists each machine with the libraries under it; **Clouds** lists the providers and
+how the machines talk (Tailscale, a shared folder, a gitso-managed repository); **Security**
+audits chosen repositories, files and every commit, and any group of repositories has an
+"Audit these" button that takes them there; **Settings** changes this machine's setup.
+
+![Machines: four cards, each machine with its libraries under it and how many repositories, organizations and copies needing attention each holds; the Home server shows two libraries, and the Old laptop is marked stale](docs/images/machines.png)
+
 ## What never happens
 
 - No force push, no `reset --hard`, no rebase, merge or delete as an automatic action, ever.
@@ -66,8 +88,12 @@ features that use it: the GitHub CLI (`gh`), Tailscale, a file-sync client, a se
 ```sh
 git clone https://github.com/sb4ssman/gitSpecOps
 cd gitSpecOps
-./run_setup.sh          # Windows: run_setup.bat
+./run_setup.sh          # Windows: run_setup.bat; macOS: double-click run_setup.command
 ```
+
+On macOS 11 and later setup installs the Qt build made for that macOS, for the menu-bar icon (not
+yet tried on a Mac: so far only the icon-less mode has run there). Older Macs run without an icon
+and the page is the way in (`gitso tray --open`).
 
 ![Setup's menu in a terminal: the gitSpecOps banner, then "Walk me through everything", "Set up one part", "Use the commands without installing anything" and "Check this computer"](docs/images/setup-menu.png)
 
@@ -92,9 +118,9 @@ switched off".
 | **Protect** | scans; secure-commit and secure-push; history cleanup | findings on the map, on request | audit every machine *(planned)* | |
 | **Agents can** | work on folders you name | work on this machine | observe the whole fleet | |
 
-Also planned: keeping repositories current automatically under a consent you set; asking
-another machine to act, live over Tailscale or when it next wakes. A private GitHub repository
-as a fourth way to share is built but **experimental and untested**.
+Built: asking another machine to fast-forward or clone (it shows the request and acts on your
+approval there). Planned: applying such requests automatically under a consent you set. A private
+GitHub repository as a fourth way to share is built but **experimental and untested**.
 
 ## Commands
 

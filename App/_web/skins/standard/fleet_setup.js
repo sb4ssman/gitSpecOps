@@ -65,7 +65,7 @@ function renderMachine(state) {
   const list = byId('libraries');
   list.replaceChildren();
   byId('presentation-card').hidden = !machine;
-  // The fleet is set up in one place, the App & setup tab; this page only points there.
+  // The fleet is set up in one place, the Settings tab; this page only points there.
   byId('fleet-section').hidden = true;
   byId('fleet-pointer').hidden = !machine;
   if (!machine) {
@@ -112,9 +112,9 @@ function renderFleet(state) {
 }
 
 function render(state) {
-  // A machine already set up is set up from the map's App & setup tab, under the same menu as
+  // A machine already set up is set up from the map's Settings tab, under the same menu as
   // every other page (the user, 2026-11-16); this page is the first run only.
-  if (wasEnrolled === null && state.machine) { window.location.replace('/#about'); return; }
+  if (wasEnrolled === null && state.machine) { window.location.replace('/#settings'); return; }
   if (state.error) say(state.error, 'danger');
   renderTiers(state);
   renderMachine(state);

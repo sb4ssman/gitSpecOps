@@ -53,7 +53,7 @@ Setup's menu:
    keeps its profiles): setup then marks that step skipped and shows the line to add yourself.
    Without either, every command runs as `python gitso.py <command>`.
 
-**The same from the app.** The web view's App & setup tab changes this machine's setup without a
+**The same from the app.** The web view's Settings tab changes this machine's setup without a
 terminal: join one of your fleets by its name on Tailscale (or, without Tailscale, with its key),
 start one with a name, rename it or leave it, turn each connection on or off (Tailscale and how often it asks, a synced folder,
 the state repository, and whether each carries repository names), the GitHub fetch schedule, and

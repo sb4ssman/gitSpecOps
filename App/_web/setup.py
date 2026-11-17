@@ -45,7 +45,7 @@ class SetupRoutes:
         return setup_state(self.home, self.config_dir, readiness=readiness)
 
     def settings(self) -> dict:
-        """Every setting the App & setup tab can change, as it is now. Never the fleet key."""
+        """Every setting the Settings tab can change, as it is now. Never the fleet key."""
         from Elaborate._fleet import autostart
         state = self.state()
         config = self._config()
@@ -308,7 +308,7 @@ class SetupRoutes:
             if config is None:
                 raise ValueError("this machine is not enrolled")
             return {"key": config["fleet_secret"], "applied": True,
-                    "notice": "Copy it into setup, or the App & setup tab, on the machine joining."}
+                    "notice": "Copy it into setup, or the Settings tab, on the machine joining."}
         if action == "fetch":
             minutes = payload.get("minutes")
             if minutes not in FETCH_CHOICES:

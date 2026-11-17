@@ -349,7 +349,7 @@ class PeerNetwork:
         if result["applied"] or result["asked"]:
             self.log(f"Shared protected values from {host.get('label', 'a peer')}: "
                      + "; ".join(result["applied"] + [f"{len(result['asked'])} change(s) to answer "
-                                                       "on the App & setup tab"] * bool(result["asked"])))
+                                                       "on the Settings tab"] * bool(result["asked"])))
 
     def stop(self):
         if self.server is not None:
@@ -585,7 +585,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             if waiting:
                 issues = list(issues) + [
                     f"{waiting} change(s) to protected values made on other machines wait for your "
-                    "answer: App & setup tab, Shared protected values."]
+                    "answer: Settings tab, Shared protected values."]
         document = display_from_manifests(
             manifests, fleet_id=fleet_id, names=names, issues=issues,
             stale_seconds=stale_seconds,
@@ -626,7 +626,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             threading.Thread(target=sealed_folder_loop, name="fleet-sealed-settings", daemon=True).start()
         else:
             log("Sealing shared settings for the synced folder needs the cryptography package "
-                "(setup, or the App & setup tab, installs it); Tailscale still carries them.")
+                "(setup, or the Settings tab, installs it); Tailscale still carries them.")
 
     if network.start():
         def poll_loop():

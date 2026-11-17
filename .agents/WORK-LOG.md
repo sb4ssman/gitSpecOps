@@ -3042,3 +3042,25 @@ No code changed; decisions recorded where they govern.
   `systemctl --user show-environment`; without them the restarted app aborted (exit -6).
 - Security tab: Show reveals one finding's real value. The audit keeps values in memory apart
   from the polled, masked status (AuditJobs.reveal, local action security-reveal only).
+
+## 2026-11-17 03:00 - user (claude) - The page rebuilt: menu tiles, one grid, Machines and Clouds (branch dev)
+
+- The user's design (2026-11-16): menu order Network map, Repositories, Orgs/Archives, Machines,
+  Clouds, Security, Settings; the menu and the summary tiles are one thing; the map is the
+  zoomable visual, everything else tables; consistent choices. Built: `fleet_pages.js` (menu
+  tiles, Machines, Clouds), `fleet_grid.js` (the one copy grid: libraries under machines, the
+  provider and its commit, each copy's commit, requests, work summaries), `fleet_orgs.js`
+  (Orgs/Archives: per-organization counts per library, one organization as the grid);
+  `fleet_map.js` keeps only the visual views. "Audit these" on repository groups chooses them on
+  the Security tab (`auditThese`); the audit still waits for Audit. `#orgs/<name>` opens one
+  organization; `#about` still opens Settings.
+- Display contract (additive, still v1): `libraries` (per machine and library, each library's own
+  attention), `providers`, and summary totals (organizations, libraries, providers, copies).
+  `docs/DISPLAY-CONTRACT.md` rewritten around the vocabulary (Cloud > Owner > Repository;
+  Machine > Library > Folder > Copy) and the pages.
+- Libraries are always named with what holds them (`Github (T:\)`, `Github (~)` for a home
+  folder); a drive suffix is the one exception the place validation allows.
+- Qt per macOS (6.7 / 6.9 / 6.11 / 6.12 by Darwin version); no Dock icon on macOS (ctypes,
+  tested on the 10.15 iMac: activation policy 2 -> 1). Qt on a Mac remains untested.
+- `_build/demo_fleet.py`: an invented, messy fleet through the real manifest and display code;
+  the README's new screenshots come from it. README: the page section, the demo, older Macs.
