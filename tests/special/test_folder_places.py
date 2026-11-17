@@ -16,7 +16,7 @@ setup()
 from Elaborate._fleet.display import build_display  # noqa: E402
 from Elaborate._fleet.peer import PEER_POLL_SECONDS, poll_seconds  # noqa: E402
 from Special._sync.folder_map import built_in_map, mapper_map  # noqa: E402
-from Special._sync.manifest import (build_manifest, fleet_id_for, merge_checkouts, place_of,  # noqa: E402
+from Special._sync.manifest import (build_manifest, fleet_id_for, library_name, merge_checkouts, place_of,  # noqa: E402
                                     validate_manifest, without_names)
 
 FLEET = fleet_id_for("33" * 32)
@@ -37,16 +37,30 @@ def report(machine, place):
 class PlaceTests(unittest.TestCase):
     def test_a_place_is_the_library_and_folder_names_only(self):
         library = Path(tempfile.gettempdir()) / "Library"
-        self.assertEqual(place_of(library / "Org" / "repo", [library]), {"library": "Library", "folder": "Org"})
-        self.assertEqual(place_of(library / "repo", [library]), {"library": "Library", "folder": ""})
+        named = f"Library ({library.parent.name})"  # always with what holds it (the user, 2026-11-16)
+        self.assertEqual(place_of(library / "Org" / "repo", [library]), {"library": named, "folder": "Org"})
+        self.assertEqual(place_of(library / "repo", [library]), {"library": named, "folder": ""})
         # The parent folder is the organization's folder, however deep (the user, 2026-11-16).
-        self.assertEqual(place_of(library / "Github" / "Org" / "repo", [library]), {"library": "Library", "folder": "Org"})
+        self.assertEqual(place_of(library / "Github" / "Org" / "repo", [library]), {"library": named, "folder": "Org"})
         self.assertIsNone(place_of(Path(tempfile.gettempdir()) / "elsewhere" / "repo", [library]))
 
     def test_the_innermost_library_wins(self):
         outer = Path(tempfile.gettempdir()) / "Outer"
         inner = outer / "Inner"
-        self.assertEqual(place_of(inner / "Org" / "repo", [outer, inner]), {"library": "Inner", "folder": "Org"})
+        self.assertEqual(place_of(inner / "Org" / "repo", [outer, inner]), {"library": "Inner (Outer)", "folder": "Org"})
+
+    def test_every_library_names_what_holds_it_and_a_home_folder_is_never_named(self):
+        self.assertEqual(library_name(Path.home() / "Github"), "Github (~)")
+        if sys.platform == "win32":
+            self.assertEqual(library_name("T:/Github"), "Github (T:\\)")
+        bad = build_manifest(FLEET, "m", "m", [repo({"library": "Lib", "folder": "Org"})], carries_names=True)
+        for name in ("Github (T:\\)", "Github (memory-lambda)", "Github (~)"):
+            bad["repositories"][0]["place"] = {"library": name, "folder": "Org"}
+            validate_manifest(bad)
+        for name in ("C:\\Users (T:\\)", "Github (t:\\)", "a/b (T:\\)"):
+            bad["repositories"][0]["place"] = {"library": name, "folder": "Org"}
+            with self.assertRaises(ValueError, msg=name):
+                validate_manifest(bad)
 
     def test_a_path_is_refused_as_a_place(self):
         bad = build_manifest(FLEET, "m", "m", [repo({"library": "Lib", "folder": "Org"})], carries_names=True)
@@ -114,7 +128,7 @@ class PlaceGroupTests(unittest.TestCase):
         self.assertEqual(place_of("/media/drive/Memory Gamma/Github/Org/repo", roots)["library"],
                          "Github (Memory Gamma)")
         self.assertEqual(place_of("/memory-lambda/Github/Org/repo", roots)["library"], "Github (memory-lambda)")
-        self.assertEqual(place_of("/memory-lambda/Github/Org/repo", roots[:1])["library"], "Github")
+        self.assertEqual(place_of("/memory-lambda/Github/Org/repo", roots[:1])["library"], "Github (memory-lambda)")
 
     def test_a_repository_without_a_place_is_grouped_as_not_shared(self):
         document = build_display([report("one", None)], FLEET)

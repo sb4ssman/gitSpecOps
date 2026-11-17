@@ -311,6 +311,11 @@ function organizationView(container, data, perspective, group, onPick, actions) 
   const machines = orderedMachines(data, perspective);
   const rows = rowsOf(data, group);
   const columns = columnsOf(machines, rows);
+  // Alternate shades by machine, so a machine's libraries read as one block.
+  const shades = new Map(machines.map((machine, index) => [machine.id, index % 2 ? 'map-shade-b' : 'map-shade-a']));
+  const shadeOf = column => shades.get(column.machine.id);
+  const startsGroup = column => columns.find(item => item.machine.id === column.machine.id) === column;
+  const cellClass = (column, tone) => `${tone} ${shadeOf(column)}${startsGroup(column) ? ' map-group-start' : ''}`;
   const label = group.startsWith('org:') ? group.slice(4) : (data.groups.find(item => item.id === group) || {label: 'All organizations'}).label;
   container.append(html('p', `${label}: every repository, its copy on each machine lined up in one row, and where it lives online.`, 'map-note'));
   // In words first: what is in sync everywhere, and what needs a decision, from the advice Python
@@ -328,15 +333,30 @@ function organizationView(container, data, perspective, group, onPick, actions) 
   }
   container.append(verdict);
   const table = html('table', undefined, 'map-grid');
-  const head = html('tr');
-  head.append(html('th', 'Repository'), html('th', 'Online'));
+  table.classList.add('map-org');
+  // Equal widths for every library column, whatever its words (the user, 2026-11-16).
+  const widths = html('colgroup');
+  widths.append(html('col', undefined, 'map-col-repo'), html('col', undefined, 'map-col-online'));
+  for (const column of columns) widths.append(html('col'));
+  table.append(widths);
+  // Machines on the first header row, each spanning its libraries on the second: one Prime with
+  // two libraries under it, one shade per machine.
+  const head = html('tr'), under = html('tr');
+  const repo = html('th', 'Repository'), online = html('th', 'Online');
+  repo.rowSpan = 2; online.rowSpan = 2;
+  head.append(repo, online);
   for (const column of columns) {
-    const th = html('th', column.machine.id === perspective ? `${column.machine.label} (perspective)` : column.machine.label);
-    th.className = `tone-${toneOfFreshness(column.machine.freshness)}`;
-    if (column.library) th.append(html('span', column.library, 'host-note'));
-    head.append(th);
+    const first = columns.find(item => item.machine.id === column.machine.id) === column;
+    if (first) {
+      const span = columns.filter(item => item.machine.id === column.machine.id).length;
+      const th = html('th', column.machine.id === perspective ? `${column.machine.label} (perspective)` : column.machine.label);
+      th.className = `tone-${toneOfFreshness(column.machine.freshness)} ${shadeOf(column)} map-group-start`;
+      th.colSpan = span;
+      head.append(th);
+    }
+    under.append(html('th', column.library || '', `map-library ${shadeOf(column)}${first ? ' map-group-start' : ''}`));
   }
-  table.append(head);
+  table.append(head, under);
   if (actions) {
     // Ask a machine to bring this organization's copies forward, or to clone the ones it lacks.
     // The machine doing the work checks each one again and shows the request for approval.
@@ -346,7 +366,7 @@ function organizationView(container, data, perspective, group, onPick, actions) 
     asks.append(askLabel, html('td'));
     for (const column of columns) {
       const machine = column.machine;
-      const cell = html('td');
+      const cell = html('td', undefined, cellClass(column, ''));
       // Only copies that are behind GitHub: a fast-forward is all this button can do. A copy on a
       // different commit that is not behind (ahead, diverged) needs a decision, not this button.
       const held = rows.filter(row => ((cellIn(row, column) || {}).facts || {}).behind > 0);
@@ -388,7 +408,7 @@ function organizationView(container, data, perspective, group, onPick, actions) 
     for (const column of columns) {
       const machine = column.machine;
       const cell = cellIn(row, column);
-      const td = html('td', undefined, cell && cell.present ? `tone-${cell.tone}` : 'tone-muted');
+      const td = html('td', undefined, cellClass(column, cell && cell.present ? `tone-${cell.tone}` : 'tone-muted'));
       if (actions && dirtyOf(cell)) {
         // Uncommitted work: ask that machine what it is (names and line counts, never contents).
         const show = html('button', copyText(cell, row, row.cells[perspective]), 'repo-link'); show.type = 'button';

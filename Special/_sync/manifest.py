@@ -86,6 +86,8 @@ MANIFEST_KEYS = frozenset({
 # repository in more than one folder, each folder's own facts, so every library gets its own column.
 NAME_KEYS = frozenset({"name", "branch", "head", "place", "upstream_head", "copies"})
 PLACE_LIMIT = 120
+#: A library at the top of a Windows drive ends its name with the drive: " (T:\)".
+DRIVE_SUFFIX = _re.compile(r" \([A-Z]:\\\)$")
 IDENTITY_NAME_KEYS = ("host", "owner", "name")
 #: What each entry of `copies` holds: one folder's facts, never a path.
 COPY_KEYS = frozenset({"place", "head", "upstream_head", "branch", "ahead", "behind", "staged",
@@ -294,6 +296,9 @@ def _validate_place(place, label: str) -> None:
         raise ValueError(f"{label} must hold exactly library and folder")
     for key in ("library", "folder"):
         value = place[key]
+        if key == "library" and isinstance(value, str):
+            # The one exception: a library at a drive's top names its drive, "Github (T:\)".
+            value = DRIVE_SUFFIX.sub("", value)
         if not isinstance(value, str) or len(value) > PLACE_LIMIT or any(c in value for c in "/\\:\0"):
             raise ValueError(f"{label}.{key} must be a folder name, not a path")
 
@@ -315,17 +320,32 @@ def place_of(path, roots) -> dict | None:
     return {"library": library_name(root, roots), "folder": parts[-2][:PLACE_LIMIT] if len(parts) > 1 else ""}
 
 
-def library_name(root, roots) -> str:
-    """A library's name: its folder's name; with its parent's name added when another library on
-    this machine has the same name (two libraries called Github on one machine, 2026-11-16)."""
+def library_name(root, roots=None) -> str:
+    """A library's name: its folder's name and, always, what holds it, so every machine's
+    libraries read alike (the user, 2026-11-16: "Github (B:\\)", "Github (T:\\)",
+    "Github (memory-lambda)"). A library in a home folder says "~", never the account's name; one
+    at a drive's top names the drive. `roots` is no longer needed; callers may still pass it."""
     from pathlib import Path
 
     def bare(folder: Path) -> str:
         return (folder.name or str(folder).rstrip("\\/:")).replace(":", "")
     root = Path(root)
     name = bare(root)
-    if sum(bare(Path(other)).casefold() == name.casefold() for other in roots or []) > 1 and root.parent.name:
-        name = f"{name} ({bare(root.parent)})"
+    parent = root.parent
+    try:
+        home = Path.home()
+    except (KeyError, RuntimeError):
+        home = None
+    if parent == root:
+        holder = ""
+    elif home is not None and parent == home:
+        holder = "~"
+    elif not parent.name and parent.drive[-2:-1].isalpha() and parent.drive.endswith(":"):
+        holder = parent.drive.upper() + "\\"
+    else:
+        holder = bare(parent)
+    if holder:
+        name = f"{name[:PLACE_LIMIT - len(holder) - 3]} ({holder})"
     return name[:PLACE_LIMIT]
 
 

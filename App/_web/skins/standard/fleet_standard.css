@@ -57,3 +57,4 @@ main{padding:0 32px}.section-title{margin:24px 0 18px}.section-title p{margin:5p
 .map-verdict{margin:10px 0 14px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
 .map-verdict-open{border-color:var(--warning, #d29922)}
 .map-verdict ul{margin:6px 0 0;padding-left:18px;font-size:13px}
+.map-org{table-layout:fixed}.map-org .map-col-repo{width:20%}.map-org .map-col-online{width:9%}.map-org td,.map-org th{white-space:normal;overflow-wrap:anywhere}.map-org th.map-library{text-transform:none;letter-spacing:0;font-weight:500}.map-org .map-group-start{border-left:2px solid var(--border)}.map-org .map-shade-b{background-image:linear-gradient(rgba(128,128,128,.09),rgba(128,128,128,.09))}
