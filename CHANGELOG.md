@@ -5,6 +5,14 @@ while the version starts with 0, gitSpecOps is a development preview and anythin
 
 ## Unreleased
 
+- **Reference**, a new menu item between Security and Settings: the catalog of operations by
+  layer, each with its manual (and Git's own, for the Basic ones), this project's documents, and
+  the online manuals of the tools it drives. Reading only.
+- **The map's repository view:** machine boxes fit their columns (five overlapped); clicking one
+  opens the repository's details. There, a copy with uncommitted work has "Show the N
+  uncommitted files": that machine answers with file names and line counts. A machine that is
+  off cannot answer, and the page says so.
+
 - **Second copies, found and retired with proof.** The live line's "N folders are second copies"
   opens the list (a new filter, "Several copies on one machine"). A repository with several
   folders here lets you choose which copy the Resolve buttons act on, and "Safe to delete this

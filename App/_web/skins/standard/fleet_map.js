@@ -73,7 +73,7 @@ export function renderMap(container, data, options, onPick) {
   // The explorer keeps its own canvas across the page's refreshes (its camera, hover and pins).
   if (options.view === 'explorer') { renderExplorer(container, data, options); return; }
   container.replaceChildren();
-  if (!options.view || options.view === 'overview') { renderZoom(container, data); return; }
+  if (!options.view || options.view === 'overview') { renderZoom(container, data, options); return; }
   if (!data.machines.length) { container.append(html('p', 'No machine has reported yet.', 'empty')); return; }
   machinesView(container, data, perspectiveOf(data, options.perspective), onPick);
 }

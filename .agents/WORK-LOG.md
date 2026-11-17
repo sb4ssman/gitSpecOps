@@ -3103,3 +3103,16 @@ No code changed; decisions recorded where they govern.
   above what to audit.
 - Header: `mark.fleet.short`; the live line says "locally".
 - Not clicked through in a browser by the agent: the new buttons. The Python behind them is tested.
+
+## 2026-11-17 16:00 - user (claude) - Reference page; the map's repository boxes; ask a machine what is uncommitted (branch dev)
+
+- Reference (App/_web/reference.py, fleet_reference.js): gitso's command table grouped by layer,
+  each script's docstring as its manual, README + docs/*.md + CHANGELOG by listed id only (no
+  path from the page), online manuals. Served as the local `reference` action. Menu: between
+  Security and Settings. tests/app/test_reference.py.
+- "On my other devices" header button (setup/settings' `remote_view`).
+- Zoom map, repository level: box width follows the column; a click opens the details.
+- Details: "Show the N uncommitted files" per machine, through the existing `changes` action.
+  File names are never in a report (counts only), so a machine that is off cannot answer; the
+  page says that instead of failing.
+- Working notes: the Catalog/Docs idea is built (removed there); Tailscale names stay noted.

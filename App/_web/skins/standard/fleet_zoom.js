@@ -320,6 +320,8 @@ function repositoryLevel(container, data, repoId) {
   cloud(svg, 500, 90, 230, host, clip(row.name, 34), host === 'local' ? 'muted' : row.needs_attention ? 'warning' : 'success',
         () => { zoomOut(trail.length - 1); rerender(); });
   svg.append(el('text', {x: 500, y: 175, class: 'z-detail z-strong'}, clip(row.advice, 90)));
+  // As wide as its column allows (five machines at 220 each overlapped, 2026-11-17).
+  const wide = Math.min(220, 1000 / (machines.length + 1) - 12), letters = Math.max(8, Math.floor(wide / 7.4));
   machines.forEach((machine, i) => {
     const x = (1000 / (machines.length + 1)) * (i + 1), y = 410, cell = row.cells[machine.id];
     const here = cell && cell.present;
@@ -330,15 +332,18 @@ function repositoryLevel(container, data, repoId) {
       link(svg, 500, 124, x, y - 38, 3, tone, [behind ? `↓ ${behind} to pull` : '', ahead ? `↑ ${ahead} to push` : '']
         .filter(Boolean).join(' · ') || 'in step', (x - 500) * 0.15);
     }
-    const group = node(svg, {label: `${machine.label}: ${here ? cell.description || cell.state : 'no copy'}`, onOpen: () => {}});
-    group.append(el('rect', {x: x - 110, y: y - 38, width: 220, height: 96, rx: 10, class: `z-machine ${toneClass(tone)}${here ? '' : ' z-dashed'}`}));
-    group.append(el('text', {x, y: y - 12, class: 'z-label'}, clip(machine.label, 22)));
-    group.append(el('text', {x, y: y + 8, class: 'z-detail'}, here ? clip(cell.description || cell.state, 30) : 'no copy here'));
+    // A click opens the repository's details: every machine's facts, and what is uncommitted there.
+    const group = node(svg, {label: `${machine.label}: ${here ? cell.description || cell.state : 'no copy'}. Open the details.`,
+                             onOpen: () => { if (onRepository) onRepository(row); }});
+    group.append(el('title', {}, `${machine.label}: ${here ? cell.description || cell.state : 'no copy here'}`));
+    group.append(el('rect', {x: x - wide / 2, y: y - 38, width: wide, height: 96, rx: 10, class: `z-machine ${toneClass(tone)}${here ? '' : ' z-dashed'}`}));
+    group.append(el('text', {x, y: y - 12, class: 'z-label'}, clip(machine.label, Math.floor(letters * 0.8))));
+    group.append(el('text', {x, y: y + 8, class: 'z-detail'}, here ? clip(cell.description || cell.state, letters) : 'no copy here'));
     if (here) {
       const dirty = (facts.staged || 0) + (facts.unstaged || 0) + (facts.untracked || 0);
-      group.append(el('text', {x, y: y + 26, class: 'z-detail'}, [facts.branch ? `on ${clip(facts.branch, 16)}` : '',
-        dirty ? plural(dirty, 'uncommitted file', 'uncommitted files') : '', facts.stashes ? plural(facts.stashes, 'stash', 'stashes') : '']
-        .filter(Boolean).join(' · ') || 'clean'));
+      group.append(el('text', {x, y: y + 26, class: 'z-detail'}, clip([facts.branch ? `on ${clip(facts.branch, 16)}` : '',
+        dirty ? `${dirty} uncommitted` : '', facts.stashes ? plural(facts.stashes, 'stash', 'stashes') : '']
+        .filter(Boolean).join(' · ') || 'clean', letters)));
       group.append(el('text', {x, y: y + 44, class: 'z-detail'}, facts.head ? `commit ${facts.head.slice(0, 10)}` : ''));
     }
   });
@@ -362,7 +367,9 @@ function exists(step, data) {
 }
 
 /** Draw the map at its current zoom into `container`. */
-export function renderZoom(container, data) {
+let onRepository = null;
+export function renderZoom(container, data, options = null) {
+  if (options) onRepository = options.onRepository || null;
   data = byOwner(data);
   current = [container, data];
   while (trail.length && !exists(trail[trail.length - 1], data)) trail.pop();

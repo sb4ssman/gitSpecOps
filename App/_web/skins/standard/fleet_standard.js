@@ -7,6 +7,7 @@ import {columnsOf, copyGrid, GRID_FOOTNOTE, gridNotes, orderedMachines, perspect
 import {organizationChoices, renderOrgs} from './fleet_orgs.js';
 import {MENU, renderClouds, renderMachines as drawMachines, renderMenu} from './fleet_pages.js';
 import {notCountedSection, resolveBox} from './fleet_resolve.js';
+import {referenceSummary, renderReference} from './fleet_reference.js';
 import {renderSettings} from './fleet_settings.js';
 import {renderRequests} from './fleet_requests.js';
 
@@ -112,7 +113,7 @@ function showSecondCopies() {
 /** The menu: each item carries its tile's number and line (the user, 2026-11-16). */
 let activeTab = 'map';
 function renderSummary() {
-  renderMenu(byId('menu'), state.data, activeTab, securitySummary(), selectTab);
+  renderMenu(byId('menu'), state.data, activeTab, securitySummary(), selectTab, referenceSummary());
 }
 
 function renderFilters() {
@@ -221,10 +222,46 @@ function showDetail(row) {
       ];
       for (const [term, value] of entries) facts.append(node('dt', term), node('dd', String(value)));
       section.append(facts);
+      const dirty = (cell.facts.staged || 0) + (cell.facts.unstaged || 0) + (cell.facts.untracked || 0);
+      if (dirty && fleetActions()) section.append(uncommittedThere(row, machine, dirty));
     }
     panel.append(section);
   }
   for (const current of document.querySelectorAll('tbody tr')) current.classList.toggle('selected', current.dataset.repoId === row.id);
+}
+
+/** "What is uncommitted there?": that machine answers with file names and line counts (never
+ *  contents). A machine that is off cannot answer; its counts are its last report. */
+const asked = new Map();
+function uncommittedThere(row, machine, dirty) {
+  const key = `${row.id}/${machine.id}`, box = node('div', undefined, 'detail-changes');
+  const view = asked.get(key);
+  const ask = node('button', view ? 'Ask again' : `Show the ${dirty} uncommitted file${dirty === 1 ? '' : 's'}`, 'quiet'); ask.type = 'button';
+  const redraw = () => { state.selected = null; showDetail(row); };
+  ask.onclick = async () => {
+    asked.set(key, {loading: true}); redraw();
+    try { asked.set(key, {result: await fleetActions().changes(row.id, machine.id)}); }
+    catch (error) {
+      asked.set(key, {error: machine.freshness === 'current' ? error.message
+        : `${machine.label} is not running gitSpecOps right now, so it cannot answer. These counts are its last report; ` +
+          'the file names never leave a machine until it is asked. Open this page there, or ask again when it is on.'});
+    }
+    redraw();
+  };
+  box.append(ask);
+  if (!view) return box;
+  if (view.loading) box.append(node('p', `Asking ${machine.label}…`, 'host-note'));
+  else if (view.error) box.append(node('p', view.error, 'tone-text-warning'));
+  else for (const [index, copy] of (view.result.copies || []).entries()) {
+    box.append(node('p', `${view.result.copies.length > 1 ? `Copy ${index + 1}: ` : ''}${copy.summary}`));
+    const list = node('ul');
+    for (const file of copy.files || []) {
+      const lines = file.added >= 0 && (file.added || file.deleted) ? ` +${file.added} −${file.deleted}` : '';
+      list.append(node('li', `${file.name} · ${file.status}${lines}${file.line_endings_only ? ' · line endings only' : ''}`));
+    }
+    box.append(list);
+  }
+  return box;
 }
 
 function renderRepositories() {
@@ -549,6 +586,8 @@ function renderAll() {
   });
   renderFilters(); renderRepositories(); renderMapPanel(); renderOrgsPanel(); renderSecurity(byId('security'), state.data, connection);
   renderMachines(); renderCloudsPanel(); renderAbout(); renderNotices();
+  renderReference(byId('reference'), state.data.local_actions
+    ? payload => connection.desktopAction('reference', payload, state.data.local_actions.token, {structured: true}) : null, renderSummary);
   renderSummary();  // after Security, so its tile shows the latest audit
   byId('last-updated').textContent = `View received ${state.receivedAt.toLocaleTimeString()}`;
 }

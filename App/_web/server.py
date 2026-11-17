@@ -105,6 +105,10 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
                         "request-send": fleet_action, "request-withdraw": fleet_action,
                         "request-answer": fleet_action, "request-clear": fleet_action, "changes": fleet_action,
                         "repo-action": fleet_action}
+            if fleet_action is not None:
+                # The catalog and the documents: read-only, this computer only (reference.py).
+                from App._web.reference import reference
+                handlers["reference"] = lambda _name, payload: reference(payload)
             if setup is not None and action.startswith("setup/"):
                 handlers[action] = lambda name, payload: setup.act(name.removeprefix("setup/"), payload)
             def refuse(status, message):

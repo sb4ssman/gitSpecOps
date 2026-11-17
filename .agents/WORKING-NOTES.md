@@ -154,8 +154,3 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
   HTTPS certificates (`tailscale cert` / `tailscale serve`) it would also get a padlock. Cost:
   certificate names are written to public transparency logs, so machine names become public.
   If built: accept exactly this machine's own MagicDNS name, nothing else.
-
-## Ideas from the user (2026-11-17), not decided
-- **Catalog** and **Docs** menu items. Catalog: the operations, by layer (Basic, Special,
-  Elaborate) and by what they wrap (git, gh, gitso); `gitso commands --json` already produces
-  it. Docs: the project's documents, read locally or online; `gitso docs` already prints them.
