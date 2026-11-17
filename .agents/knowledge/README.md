@@ -37,3 +37,6 @@ decision and its rationale, a non-obvious constraint, an investigation result.
 - [`venv-and-editors.md`](venv-and-editors.md) — why `.venv` must stay package-free (an editable
   install's startup `.pth` + an editor's stray `^C` = `Fatal Python error: init_import_site`), and
   the VS Code settings that stop terminal-injection breaking interactive prompts.
+- [`external-review-2026-11-17.md`](external-review-2026-11-17.md) — an outside model's read-only
+  review: nine findings with their status (two fixed, the rest unverified), the wider points, and
+  its suggested order of work. A backlog, kept out of WORKING-NOTES.

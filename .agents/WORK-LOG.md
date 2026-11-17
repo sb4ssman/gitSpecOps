@@ -3083,3 +3083,23 @@ No code changed; decisions recorded where they govern.
   (`sleep 0`) and RustDesk holds it while connected; node1 sleeps after 30 min (AC), no requests.
 - macOS without Qt: a native Swift menu-bar icon (App/_tray/macos_menubar.swift), built once by
   the app; running on the iMac. Bundle id carries no personal login (hygiene test).
+
+## 2026-11-17 14:30 - user (claude) - Second copies, safe-to-delete, audit status line, external review filed (branch dev)
+
+- The user asked how to find and retire this machine's 12 second copies. Built it: `copies` cell
+  tag and filter (display.py), the live line links to the list, a copy chooser in Resolve
+  (`copies` op), and `retire-check` ("Safe to delete this copy?"): `_wipe_row` on that one
+  folder plus a byte comparison of every uncommitted or untracked file against the other copies
+  here. Never deletes. Tests in tests/special/test_resolve.py.
+- `not_counted` entries are folders: the checkout there and everything inside (an agent's run
+  folders gain a clone per run). New op `not-counted-folder`, checked to lie inside a library.
+- Bug of mine from the morning: resolve.py treated `enrollment()` (a pair) as the app record, so
+  Settings' not-counted list and Count again failed. Fixed, with a profile-backed test.
+- From the external review (knowledge/external-review-2026-11-17.md): finding 3 fixed (commit
+  and push pass `--settings-home`), finding 9 fixed for resolve.py (Basic's runner; failed reads
+  raise). The rest are recorded there, unverified.
+- Audit: the child reports phases on stderr (`STEP ...`), the job keeps `step` and its age, the
+  page shows a status line; installed scanners ticked by default; scanners and protected values
+  above what to audit.
+- Header: `mark.fleet.short`; the live line says "locally".
+- Not clicked through in a browser by the agent: the new buttons. The Python behind them is tested.

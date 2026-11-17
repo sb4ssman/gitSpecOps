@@ -38,6 +38,8 @@ async function loadEngines() {
   box.replaceChildren(html('p', 'Looking for installed scanners…', 'host-note'));
   try { ui.engines = (await act('security-engines')).engines || []; }
   catch (error) { box.replaceChildren(html('p', error.message, 'tone-warning')); return; }
+  // An installed scanner is used unless the person unticks it (the user, 2026-11-17).
+  if (!ui.enginesChosen) for (const engine of ui.engines) if (engine.installed) ui.useEngines.add(engine.engine);
   box.replaceChildren();
   const builtin = html('div', undefined, 'sec-engine');
   builtin.append(html('strong', '✓ Built-in checks'), html('span', 'Always on: credential shapes, personal details, ' +
@@ -47,7 +49,7 @@ async function loadEngines() {
     const row = html('label', undefined, 'sec-engine');
     const tick = html('input'); tick.type = 'checkbox'; tick.disabled = !engine.installed;
     tick.checked = engine.installed && ui.useEngines.has(engine.engine);
-    tick.onchange = () => { tick.checked ? ui.useEngines.add(engine.engine) : ui.useEngines.delete(engine.engine); };
+    tick.onchange = () => { ui.enginesChosen = true; tick.checked ? ui.useEngines.add(engine.engine) : ui.useEngines.delete(engine.engine); };
     const text = html('span');
     text.append(html('strong', `${engine.label}: ${engine.installed ? 'installed' : 'not installed'}`),
                 html('span', ` ${engine.about}`, 'host-note'));
@@ -319,6 +321,11 @@ function setAudit(audit) {
       `${audit.engines.length ? ` · with ${audit.engines.join(', ')}` : ''}`;
   progress.append(bar, html('span', words));
   box.append(progress);
+  if (audit.state === 'running' && audit.step) {
+    const s = audit.step_seconds || 0;
+    const time = s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`;
+    box.append(html('span', `${audit.current ? nameOf(audit.current) : ''}${audit.copy ? ` (copy ${audit.copy})` : ''}: ${audit.step} · ${time}`, 'sec-status'));
+  }
   const counts = {passed: 0, 'review-required': 0, blocked: 0, incomplete: 0};
   for (const entry of audit.results) counts[entry.security.check_status] = (counts[entry.security.check_status] || 0) + 1;
   const chips = html('div', undefined, 'sec-chips');
@@ -409,13 +416,12 @@ export function renderSecurity(container, data, connection) {
     values.append(html('h3', 'Protected values'), html('p', 'Saved in your gitSpecOps settings on this machine; ' +
       'changes apply to the next audit, no restart needed.', 'host-note'));
     const list = html('div'); list.id = 'security-policy'; values.append(list);
-    const side = html('div', undefined, 'sec-side');
-    side.append(right, values);
-    grid.append(left, side);
+    // Scanners and protected values first, then what to audit (the user, 2026-11-17).
+    grid.append(right, values);
     const run = html('div', undefined, 'sec-run'); run.id = 'security-run';
     const message = html('p', '', 'tone-warning'); message.id = 'security-message'; message.setAttribute('role', 'status');
     const results = html('div', undefined, 'sec-results'); results.id = 'security-results';
-    container.append(grid, run, message, results);
+    container.append(grid, left, run, message, results);
     loadEngines();
     loadPolicy();
     act('security-status').then(result => { setAudit(result.audit); if (result.audit && result.audit.state === 'running') poll(); })

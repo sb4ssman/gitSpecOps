@@ -76,6 +76,9 @@ class MarkTests(unittest.TestCase):
         stale = mark_state(rows, [machine("me"), machine("lap", "stale")], [], joined)
         self.assertEqual(stale["fleet"]["state"], "attention")
         self.assertIn("LAP: not reporting", stale["fleet"]["text"])
+        # The header's short line counts; the names stay in the full text.
+        self.assertEqual(stale["fleet"]["short"], "2 machines, 1 of the others needs attention")
+        self.assertEqual(fleet["fleet"]["short"], "2 machines, all clear")
         clean = mark_state([row({"me": "synced"})], [machine("me", count=1)], [], {"machine_id": "me"})
         self.assertEqual(clean["machine"]["state"], "ok")
         unknown = mark_state(rows, [machine("me")], [], {})

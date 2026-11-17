@@ -31,13 +31,22 @@ export function resolveBox(row, cell, act, redraw) {
   const run = (op, extra = {}, then) => async () => {
     state.busy = op; state.note = 'Working…'; redraw();
     try {
-      const answer = await act(op, extra);
+      const answer = await act(op, {checkout: state.checkout || 0, ...extra});
       state.note = words(answer);
       if (then) then(answer);
     } catch (error) { state.note = error.message; }
     state.busy = null; redraw();
   };
   const facts = (cell && cell.facts) || {};
+  // Several folders of this repository here: choose which one every button acts on.
+  if (cell && cell.copies && cell.copies.length > 1) {
+    if (!state.copies && !state.loadingCopies) {
+      state.loadingCopies = true;
+      act('copies', {}).then(answer => { state.copies = answer.copies; redraw(); })
+        .catch(error => { state.loadingCopies = false; state.note = error.message; redraw(); });
+    }
+    box.append(copyChooser(state, redraw));
+  }
   const tools = html('div', undefined, 'resolve-tools');
   tools.append(
     button('Open folder', run('open-folder'), 'Open this copy in the file browser'),
@@ -53,12 +62,16 @@ export function resolveBox(row, cell, act, redraw) {
     tools.append(button('Check push…', run('push-plan', {}, answer => { state.push = answer; }),
       'secure-push: plans the push and checks what would leave'));
   }
+  tools.append(button('Safe to delete this copy?', run('retire-check', {}, answer => { state.retire = answer; }),
+    'Fetches, then proves every commit is on GitHub and every uncommitted file is the same in another copy. Deletes nothing.'));
   tools.append(button('Don\'t count here', async () => {
     if (!window.confirm('Stop counting this repository on this machine? Settings lists it, to count it again.')) return;
     await run('not-counted')();
   }, 'For a dependency checkout inside a build folder, say'));
   box.append(tools);
   if (state.note) box.append(html('p', state.note, 'host-note'));
+
+  if (state.retire) box.append(retirePanel(state, run, redraw));
 
   if (state.push) {
     const push = html('div', undefined, 'resolve-plan');
@@ -110,11 +123,67 @@ export function resolveBox(row, cell, act, redraw) {
   return box;
 }
 
+function copyChooser(state, redraw) {
+  const choose = html('fieldset', undefined, 'resolve-copies');
+  choose.append(html('legend', 'Which copy on this machine'));
+  if (!state.copies) { choose.append(html('p', 'Finding the copies…', 'host-note')); return choose; }
+  for (const copy of state.copies) {
+    const line = html('label');
+    const pick = html('input'); pick.type = 'radio'; pick.name = 'resolve-copy';
+    pick.checked = (state.checkout || 0) === copy.checkout;
+    pick.onchange = () => {
+      state.checkout = copy.checkout;
+      state.changes = state.commit = state.push = state.retire = null; state.note = '';
+      redraw();
+    };
+    line.append(pick, html('strong', ` ${copy.library}${copy.inside ? ` / ${copy.inside}` : ''}`),
+                html('span', ` · ${copy.branch || 'no branch'} · ${copy.head || 'no commits'}`, 'host-note'));
+    choose.append(line);
+  }
+  return choose;
+}
+
+/** "Safe to delete?": the proof, file by file; the person opens the folder and deletes it. */
+function retirePanel(state, run, redraw) {
+  const answer = state.retire;
+  const panel = html('div', undefined, `resolve-plan ${answer.safe ? 'tone-border-success' : 'tone-border-warning'}`);
+  panel.append(html('strong', answer.verdict, answer.safe ? 'tone-text-success' : 'tone-text-warning'),
+               html('p', answer.path, 'host-note'));
+  const list = (title, rows) => {
+    if (!rows || !rows.length) return;
+    panel.append(html('h5', title));
+    const items = html('ul', undefined, 'resolve-files');
+    for (const row of rows) {
+      const item = html('li');
+      item.append(html('code', ` ${row.status} `), document.createTextNode(`${row.path} — ${row.elsewhere}`));
+      items.append(item);
+    }
+    panel.append(items);
+  };
+  list('Uncommitted and untracked here', answer.files);
+  list('Ignored here (not judged: look before deleting)', answer.ignored);
+  panel.append(html('p', answer.note, 'host-note'),
+               button('Open this copy\'s folder', run('open-folder')),
+               button('Close', () => { state.retire = null; redraw(); }));
+  return panel;
+}
+
 /** Settings: what this machine does not count, each with "Count again". */
 export async function notCountedSection(container, act) {
   container.replaceChildren(html('h4', 'Not counted on this machine'));
   try {
     const {not_counted: list} = await act('not-counted-list', {});
+    const add = html('div', undefined, 'sec-add');
+    const field = html('input'); field.type = 'text'; field.spellcheck = false;
+    field.placeholder = 'A folder inside a library, by its full path';
+    field.setAttribute('aria-label', 'A folder not to count');
+    const note = html('p', '', 'host-note');
+    add.append(field, button('Don\'t count anything in it', async () => {
+      try { note.textContent = (await act('not-counted-folder', {path: field.value.trim()})).message; notCountedSection(container, act); }
+      catch (error) { note.textContent = error.message; }
+    }));
+    container.append(html('p', 'A folder here leaves out every repository inside it, such as an agent\'s run folders ' +
+      'or a build\'s dependencies. Nothing is skipped on its own.', 'host-note'), add, note);
     if (!list.length) { container.append(html('p', 'Every repository in your libraries is counted.', 'host-note')); return; }
     const ul = html('ul');
     for (const path of list) {

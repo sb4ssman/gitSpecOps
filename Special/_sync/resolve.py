@@ -3,19 +3,23 @@
 Why:          the page shows what needs doing everywhere (2026-11-17: "we can SEE the breadth...
               we need to make it EASY to RESOLVE issues"). This puts the existing operations one
               click away, for this machine's own copies only.
-Reads:        this machine's checkouts of one repository (never a path from the page).
+Reads:        this machine's checkouts of one repository (never a path from the page, except a
+              folder to stop counting, which must lie inside one of this machine's libraries).
 May change:   only by the operations it calls, each with its own checks: fetch and fast-forward
               (Basic), secure-commit and secure-push (plan first, applied only by its plan id),
               the not-counted list (enrollment). Opening a folder or an editor changes nothing.
+              "Safe to delete?" fetches and reads; it never deletes. The person deletes.
 Results:      a JSON-ready answer for the page.
 Layer:        Special: this machine, once.
 Status:       working
 
-Commit and push run the same `gitso` commands a terminal would, so their safety checks, plans and
-approvals are the same ones; the page shows the plan and applies it by its id.
+Commit and push run the same `gitso` commands a terminal would, with this app's settings profile,
+so their safety checks, plans and approvals are the same ones; the page shows the plan and applies
+it by its id. Every child goes through Basic's one runner (timeouts kill the whole tree).
 """
 from __future__ import annotations
 
+import filecmp
 import json
 import os
 import shutil
@@ -23,25 +27,32 @@ import subprocess
 import sys
 from pathlib import Path
 
+from Basic._run import run
+
 ROOT = Path(__file__).resolve().parents[2]
 GITSO = ROOT / "gitso.py"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 DIFF_LIMIT = 200_000  # characters of diff shown at once
+LISTED = 200  # files listed by "Safe to delete?"
 OPS = {"open-folder", "open-editor", "changes", "fetch", "pull", "commit-plan", "commit-apply",
-       "push-plan", "push-apply", "not-counted", "count-again", "not-counted-list"}
+       "push-plan", "push-apply", "not-counted", "count-again", "not-counted-list",
+       "not-counted-folder", "copies", "retire-check"}
+#: Ops that only read (or open a window); the peer runs them outside its action lock.
+READ_ONLY = {"changes", "open-folder", "open-editor", "not-counted-list", "copies"}
 
 
-def _git(path: Path, *args: str) -> str:
-    done = subprocess.run(["git", "-C", str(path), *args], capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=120, creationflags=NO_WINDOW)
+def _git(path: Path, *args: str, check: bool = True) -> str:
+    """Git's output. A failed read raises: "could not look" must never read as "nothing here"."""
+    done = run(["git", "-C", str(path), *args], timeout=120)
+    if check and done.returncode:
+        raise ValueError(f"git {args[0]} failed here: {(done.stderr or done.stdout).strip()[-400:]}")
     return done.stdout
 
 
-def _gitso(*args: str) -> dict:
-    """Run a gitso command as a terminal would, answering in JSON."""
-    done = subprocess.run([sys.executable, str(GITSO), *args, "--json"], capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=900, cwd=str(ROOT),
-                          creationflags=NO_WINDOW, env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+def _gitso(*args: str, home=None) -> dict:
+    """Run a gitso command as a terminal would, answering in JSON, with this app's profile."""
+    profile = ["--settings-home", str(home)] if home else []
+    done = run([sys.executable, str(GITSO), *args, *profile, "--json"], timeout=900, cwd=str(ROOT))
     try:
         record = json.loads(done.stdout)
     except ValueError:
@@ -71,13 +82,126 @@ def editor() -> str | None:
     return str(mac) if mac.exists() else None
 
 
+def _status(path: Path, *extra: str) -> list[dict]:
+    lines = [line for line in _git(path, "status", "--porcelain=v1", *extra).splitlines() if line.strip()]
+    return [{"status": line[:2], "path": line[3:].strip().strip('"')} for line in lines]
+
+
 def changes(path: Path) -> dict:
     """What is uncommitted here: each file's status, a summary, and the diff (local only)."""
-    status = [line for line in _git(path, "status", "--porcelain=v1", "-uall").splitlines() if line.strip()]
-    files = [{"status": line[:2], "path": line[3:].strip().strip('"')} for line in status]
+    files = _status(path, "-uall")
     diff = _git(path, "diff") + _git(path, "diff", "--cached")
-    return {"files": files, "summary": _git(path, "diff", "--stat", "HEAD").strip(),
+    return {"files": files, "summary": _git(path, "diff", "--stat", "HEAD", check=False).strip(),
             "diff": diff[:DIFF_LIMIT], "cut": len(diff) > DIFF_LIMIT}
+
+
+def _libraries(home) -> list[Path]:
+    from Special._sync.enrollment import enrollment
+    app = enrollment(home)[1] or {}
+    return [Path(root).resolve() for root in app.get("roots") or []]
+
+
+def _where(path: Path, libraries) -> dict:
+    """A copy as the person knows it: its library's name and the folders inside it."""
+    from Special._sync.manifest import library_name
+    resolved = Path(path).resolve()
+    for root in libraries:
+        if resolved == root or root in resolved.parents:
+            inside = resolved.relative_to(root)
+            return {"library": library_name(root), "inside": str(inside) if str(inside) != "." else ""}
+    return {"library": "", "inside": str(resolved)}
+
+
+def copies(paths, home=None) -> list[dict]:
+    """Each copy of one repository on this machine, in checkout order, for choosing one."""
+    libraries = _libraries(home)
+    found = []
+    for index, path in enumerate(paths):
+        path = Path(path)
+        branch = _git(path, "branch", "--show-current", check=False).strip()
+        head = _git(path, "log", "-1", "--format=%h %cs %s", check=False).strip()
+        found.append({"checkout": index, "path": str(path), **_where(path, libraries),
+                      "branch": branch, "head": head[:120]})
+    return found
+
+
+def retire_check(path: Path, others: list[Path]) -> dict:
+    """Safe to delete this copy? Fetch every remote, then prove: every commit is on a remote,
+    nothing stashed, no operation in progress, and every uncommitted or untracked file is either
+    deleted here or byte-identical in another copy on this machine. Ignored files (.env, build
+    output) are listed, never judged. Nothing is deleted; the person does that."""
+    from Basic._discovery import classify
+    from Special._sync.actions import _wipe_row
+    hit = classify(path)
+    if hit is None:
+        raise ValueError(f"{path.name} is no longer a Git repository")
+    row = _wipe_row(hit, lambda _path: False)
+    files, unsafe_files = [], 0
+    for entry in _status(path, "-uall")[:LISTED]:
+        if entry["status"].strip() == "D":
+            entry["elsewhere"] = "deleted here; nothing to lose"
+        else:
+            entry["elsewhere"] = _compare(path, entry["path"], others)
+            unsafe_files += not entry["elsewhere"].startswith("identical")
+        files.append(entry)
+    ignored = []
+    for entry in _status(path, "--ignored", "--untracked-files=normal")[:LISTED * 2]:
+        if entry["status"] == "!!":
+            entry["elsewhere"] = _exists_elsewhere(entry["path"], others)
+            ignored.append(entry)
+    committed_ok = row["action"] in ("replaceable", "dirty")
+    safe = committed_ok and unsafe_files == 0
+    if safe:
+        verdict = ("Safe to delete: every commit is on a remote, nothing is stashed"
+                   + (", and every changed file is the same in another copy here." if files else
+                      ", and nothing is uncommitted."))
+    elif not committed_ok:
+        verdict = f"Not safe to delete: {row['detail']}"
+    else:
+        verdict = (f"Not safe to delete yet: {unsafe_files} uncommitted or untracked file"
+                   f"{'' if unsafe_files == 1 else 's'} exist only here (or differ). Commit, copy or discard them first.")
+    return {"safe": safe, "verdict": verdict, "action": row["action"], "path": str(path),
+            "files": files, "ignored": ignored[:LISTED],
+            "note": "Ignored files (like .env or build output) are listed, not judged: look at them before deleting. "
+                    "gitSpecOps never deletes a copy; open the folder and delete it yourself."}
+
+
+def _label(path: Path) -> str:
+    return f"{path.parent.name}/{path.name}"
+
+
+def _compare(path: Path, relative: str, others: list[Path]) -> str:
+    """Whether another copy on this machine holds this exact file at the same place."""
+    source, answer = path / relative, "only here"
+    for other in others:
+        target = other / relative
+        try:
+            if not (source.is_file() and target.is_file()):
+                continue
+            if filecmp.cmp(str(source), str(target), shallow=False):
+                return f"identical in {_label(other)}"
+            answer = f"different in {_label(other)}"
+        except OSError:
+            continue
+    return answer
+
+
+def _exists_elsewhere(relative: str, others: list[Path]) -> str:
+    for other in others:
+        if (other / relative.rstrip("/")).exists():
+            return f"also in {_label(other)}"
+    return "only here"
+
+
+def _not_counted_folder(folder: str, home) -> list[str]:
+    from Special._sync.enrollment import change_not_counted
+    target = Path(folder).expanduser()
+    if not folder or not target.is_absolute() or not target.is_dir():
+        raise ValueError("name an existing folder, by its full path")
+    target = target.resolve()
+    if not any(target == root or root in target.parents for root in _libraries(home)):
+        raise ValueError("that folder is not inside one of this machine's libraries")
+    return change_not_counted(add=[str(target)], home=home)
 
 
 def repo_action(op: str, payload: dict, checkouts, *, home=None) -> dict:
@@ -86,22 +210,27 @@ def repo_action(op: str, payload: dict, checkouts, *, home=None) -> dict:
     if op not in OPS:
         raise ValueError("unknown repository action")
     if op == "not-counted-list":
-        config = enrollment(home)
-        return {"not_counted": list((config or {}).get("not_counted") or [])}
+        return {"not_counted": list((enrollment(home)[1] or {}).get("not_counted") or [])}
     if op == "count-again":
         path = str(payload.get("path") or "")
-        current = (enrollment(home) or {}).get("not_counted") or []
+        current = (enrollment(home)[1] or {}).get("not_counted") or []
         if path not in current:
             raise ValueError("that folder is not on the not-counted list")
         return {"not_counted": change_not_counted(remove=[path], home=home),
                 "message": "Counted again from the next read of the library."}
-    paths = list(checkouts(str(payload.get("repo_id") or "")) or [])
+    if op == "not-counted-folder":
+        listed = _not_counted_folder(str(payload.get("path") or ""), home)
+        return {"not_counted": listed,
+                "message": "Nothing inside that folder is counted from the next read. Count again undoes it."}
+    paths = [Path(item) for item in checkouts(str(payload.get("repo_id") or "")) or []]
     if not paths:
         raise ValueError("this repository has no copy on this machine")
+    if op == "copies":
+        return {"copies": copies(paths, home)}
     index = payload.get("checkout", 0)
     if type(index) is not int or not 0 <= index < len(paths):
         raise ValueError("no such copy here")
-    path = Path(paths[index])
+    path = paths[index]
     if op == "open-folder":
         _open(str(path))
         return {"message": f"Opened {path.name} in this computer's file browser."}
@@ -113,6 +242,8 @@ def repo_action(op: str, payload: dict, checkouts, *, home=None) -> dict:
         return {"message": f"Opened {path.name} in VS Code."}
     if op == "changes":
         return {"path_name": path.name, **changes(path)}
+    if op == "retire-check":
+        return retire_check(path, [other for other in paths if other != path])
     if op == "fetch":
         return _gitso("fetch", str(path))
     if op == "pull":
@@ -127,12 +258,12 @@ def repo_action(op: str, payload: dict, checkouts, *, home=None) -> dict:
         args = ["secure-commit", str(path), *files, "-m", message]
         if op == "commit-apply":
             args += ["--apply", str(payload.get("plan_id") or "")]
-        return _gitso(*args)
+        return _gitso(*args, home=home)
     if op in ("push-plan", "push-apply"):
         args = ["secure-push", str(path)]
         if op == "push-apply":
             args += ["--apply", str(payload.get("plan_id") or "")]
-        return _gitso(*args)
+        return _gitso(*args, home=home)
     # not-counted: this folder, by the person's choice; the next read leaves it out.
     return {"not_counted": change_not_counted(add=[str(path)], home=home),
             "message": f"{path.name} here is no longer counted. Settings lists it to count it again."}

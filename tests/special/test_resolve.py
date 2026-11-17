@@ -66,6 +66,61 @@ class ResolveTests(unittest.TestCase):
         self.assertIn(self.repo.resolve(), observer.paths)
         self.assertNotIn(nested.resolve(), observer.paths, "the person said not to count it")
         self.assertEqual(observer.not_counted, 1)
+        # An entry is a folder: everything inside it is left out too (an agent's run folders).
+        config["not_counted"] = [str(library / "build")]
+        observer = IncrementalObserver(config)
+        observer.inventory()
+        self.assertNotIn(nested.resolve(), observer.paths)
+        self.assertIn(self.repo.resolve(), observer.paths)
+
+    def test_the_settings_list_and_a_folder_not_to_count_use_this_profile(self):
+        import json
+        from Special._sync import enrollment
+        library = self.repo.parent
+        home = library.parent / (library.name + "-profile")
+        home.mkdir()
+        self.addCleanup(lambda: __import__("shutil").rmtree(home, ignore_errors=True))
+        (home / "settings.json").write_text(json.dumps({"schema_version": 2}), encoding="utf-8")
+        enrollment.add_libraries([library], home=home)
+        self.assertEqual(repo_action("not-counted-list", {}, self.checkouts, home=home), {"not_counted": []})
+        (library / "runs").mkdir()
+        answer = repo_action("not-counted-folder", {"path": str(library / "runs")}, self.checkouts, home=home)
+        self.assertEqual(answer["not_counted"], [str((library / "runs").resolve())])
+        with self.assertRaises(ValueError, msg="outside every library"):
+            repo_action("not-counted-folder", {"path": str(home)}, self.checkouts, home=home)
+        again = repo_action("count-again", {"path": answer["not_counted"][0]}, self.checkouts, home=home)
+        self.assertEqual(again["not_counted"], [])
+
+    def test_safe_to_delete_needs_every_commit_remote_and_every_file_elsewhere(self):
+        library = self.repo.parent
+        remote = library / "remote.git"
+        git(library, "init", "-q", "--bare", str(remote))
+        git(self.repo, "remote", "add", "origin", str(remote))
+        git(self.repo, "push", "-q", "origin", "HEAD")
+        second = library / "second"
+        git(library, "clone", "-q", str(remote), str(second))
+        both = lambda repo_id: [self.repo, second]
+        listed = repo_action("copies", {"repo_id": "r1"}, both)["copies"]
+        self.assertEqual([copy["checkout"] for copy in listed], [0, 1])
+        clean = repo_action("retire-check", {"repo_id": "r1", "checkout": 1}, both)
+        self.assertTrue(clean["safe"], clean["verdict"])
+        (second / "note.txt").write_text("only here\n")
+        only = repo_action("retire-check", {"repo_id": "r1", "checkout": 1}, both)
+        self.assertFalse(only["safe"])
+        self.assertEqual(only["files"][0]["elsewhere"], "only here")
+        (self.repo / "note.txt").write_text("only here\n")
+        same = repo_action("retire-check", {"repo_id": "r1", "checkout": 1}, both)
+        self.assertTrue(same["safe"], "the same file is in the other copy")
+        git(second, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "commit", "-qm", "local", "--allow-empty")
+        ahead = repo_action("retire-check", {"repo_id": "r1", "checkout": 1}, both)
+        self.assertFalse(ahead["safe"], "a commit on no remote")
+        self.assertIn("Not safe", ahead["verdict"])
+
+    def test_a_failed_read_is_an_error_never_an_empty_answer(self):
+        import shutil
+        shutil.rmtree(self.repo / ".git", ignore_errors=True)
+        with self.assertRaises(ValueError):
+            repo_action("changes", {"repo_id": "r1"}, self.checkouts)
 
 
 if __name__ == "__main__":

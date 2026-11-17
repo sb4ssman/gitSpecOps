@@ -19,6 +19,7 @@ from __future__ import annotations
 import shutil
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -80,8 +81,10 @@ def _without_path(record: dict) -> dict:
 
 
 def audit_checkout(repo, *, history=True, engines=(), settings_home=None, expected_settings=None,
-                   values: dict | None = None) -> dict:
-    """One checkout: working files, then (optionally) every reachable commit. Never clearance."""
+                   values: dict | None = None, step=None) -> dict:
+    """One checkout: working files, then (optionally) every reachable commit. Never clearance.
+    `step(text)` hears each phase as it starts, for the page's status line (2026-11-17)."""
+    step = step or (lambda _text: None)
     result = {"scope": "local-audit", "action_clearance": False,
               "observed_at": datetime.now(timezone.utc).isoformat(), "check_status": "incomplete",
               "working_tree": None, "history": None, "gaps": []}
@@ -95,6 +98,8 @@ def audit_checkout(repo, *, history=True, engines=(), settings_home=None, expect
         if Path(git_output(repo, ["rev-parse", "--show-toplevel"]).strip()).resolve() != repo.resolve():
             raise ValueError("select root")
         policy = load_policy(repo, home=home)
+        scanners = " and ".join(["built-in checks", *engines])
+        step(f"working files ({scanners})")
         tree = scan(repo, policy, material="tree", engines=list(engines))
         result["working_tree"] = _without_path(tree.record())
         # Each finding's real value, in finding order, into the caller's own holder (never the
@@ -105,6 +110,8 @@ def audit_checkout(repo, *, history=True, engines=(), settings_home=None, expect
             values["reports"] = {"working_tree": tree.record(redacted=False)}
         statuses = [tree.check_status]
         if history:
+            commits = git_output(repo, ["rev-list", "--all", "--count"]).strip()
+            step(f"every commit: {commits} commits ({scanners})")
             past = scan(repo, policy, material="history", engines=list(engines))
             result["history"] = _without_path(past.record())
             if values is not None:
@@ -146,7 +153,7 @@ def _trimmed(entry: dict) -> dict:
 
 
 def audit_in_process(repo, *, history=True, engines=(), settings_home=None, expected_settings=None,
-                     values: dict | None = None, should_stop=None) -> dict:
+                     values: dict | None = None, should_stop=None, step=None) -> dict:
     """The same audit in a process of its own (2026-11-17): a large history (FlowNode: 1,547
     commits) took the app's process for many minutes, so the page stopped answering and looked
     crashed. Now the app keeps answering whatever a repository takes, Stop ends the audit at
@@ -160,17 +167,36 @@ def audit_in_process(repo, *, history=True, engines=(), settings_home=None, expe
         argv += ["--settings-home", str(settings_home)]
     child = subprocess.Popen(argv, cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    reader = threading.Thread(target=lambda: setattr(child, "answer", child.communicate()), daemon=True)
+    errors: list[bytes] = []
+
+    def listen():
+        # The child's phases arrive on stderr as "STEP <text>" lines; anything else is kept for
+        # the message if it fails.
+        for line in child.stderr:
+            if line.startswith(b"STEP "):
+                if step is not None:
+                    step(line[5:].decode("utf-8", "replace").strip())
+            else:
+                errors.append(line)
+    listener = threading.Thread(target=listen, daemon=True)
+    listener.start()
+    reader = threading.Thread(target=lambda: setattr(child, "answer", (child.stdout.read(), child.wait())), daemon=True)
     reader.start()
     while reader.is_alive():
         if should_stop is not None and should_stop():
             child.kill()
             reader.join(10)
+            listener.join(5)
+            for pipe in (child.stdout, child.stderr):
+                pipe.close()
             return {"scope": "local-audit", "action_clearance": False, "check_status": "incomplete",
                     "observed_at": datetime.now(timezone.utc).isoformat(), "working_tree": None,
                     "history": None, "gaps": [{"where": "audit", "reason": "Stopped before it finished."}]}
         reader.join(0.5)
-    out, err = getattr(child, "answer", (b"", b""))
+    listener.join(5)
+    for pipe in (child.stdout, child.stderr):
+        pipe.close()
+    out, err = getattr(child, "answer", (b"", None))[0], b"".join(errors)
     try:
         answer = json.loads(out.decode("utf-8"))
     except ValueError:
@@ -222,6 +248,7 @@ class AuditJobs:
             self.serial += 1
             self.job = {"id": self.serial, "state": "running", "history": history, "engines": engines,
                         "total": len(ids), "done": 0, "current": None, "results": [], "stop": False,
+                        "step": None, "step_at": None, "copy": None,
                         "values": [],
                         "started_at": datetime.now(timezone.utc).isoformat(), "finished_at": None}
             job = self.job
@@ -246,23 +273,28 @@ class AuditJobs:
                     "gaps": [{"where": "audit", "reason": "No checkout of this repository on this machine."}]}})
             for number, path in enumerate(paths, 1):
                 found: dict = {}
+                job.update(step="starting", step_at=time.monotonic(), copy=number if len(paths) > 1 else None)
                 record = self.runner(path, history=job["history"], engines=job["engines"],
                                      settings_home=home, expected_settings=expected, values=found,
-                                     should_stop=lambda: job["stop"])
+                                     should_stop=lambda: job["stop"],
+                                     step=lambda text: job.update(step=text, step_at=time.monotonic()))
                 job["values"].append(found)
                 job["results"].append({"repo_id": repo_id, "checkout": number,
                                        "index": len(job["results"]), "security": record})
             job["done"] += 1
         else:
             job["state"] = "finished"
-        job["current"] = None
+        job["current"] = job["step"] = job["copy"] = None
         job["finished_at"] = datetime.now(timezone.utc).isoformat()
 
     def status(self, payload=None) -> dict:
         with self.lock:
             if self.job is None:
                 return {"audit": None}
-            view = {key: value for key, value in self.job.items() if key not in ("stop", "results", "values")}
+            view = {key: value for key, value in self.job.items() if key not in ("stop", "results", "values", "step_at")}
+            # What it is doing now and for how long: a long history looks busy, not frozen.
+            view["step_seconds"] = (int(time.monotonic() - self.job["step_at"])
+                                    if self.job.get("step") and self.job.get("step_at") else None)
             view["results"] = [_trimmed(entry) for entry in self.job["results"]]
             return {"audit": view}
 
@@ -330,8 +362,12 @@ def _main(argv=None) -> int:
     parser.add_argument("--settings-home")
     args = parser.parse_args(argv)
     values: dict = {}
+
+    def step(text):
+        sys.stderr.write(f"STEP {text}\n")
+        sys.stderr.flush()
     result = audit_checkout(args.repo, history=args.history == "1", engines=args.engine,
-                            settings_home=args.settings_home, values=values)
+                            settings_home=args.settings_home, values=values, step=step)
     sys.stdout.write(json.dumps({"result": result, "values": values}))
     sys.stdout.flush()
     return 0

@@ -147,8 +147,11 @@ class AuditTests(unittest.TestCase):
         # A long audit took the app's process and the page stopped answering (2026-11-17).
         from Special._security._audit import audit_in_process
         values: dict = {}
-        result = audit_in_process(self.repo, history=True, settings_home=self.home, values=values)
+        steps = []
+        result = audit_in_process(self.repo, history=True, settings_home=self.home, values=values, step=steps.append)
         self.assertEqual(result["check_status"], "blocked", "the deleted value is still found in history")
+        self.assertTrue(steps and steps[0].startswith("working files"), steps)
+        self.assertTrue(any(step.startswith("every commit:") for step in steps), "the status line hears each phase")
         self.assertNotIn("private-marker", json.dumps(result), "what comes back to the page stays masked")
         self.assertTrue(any("private-marker" in v for v in values.get("history", [])), "values come back for Show")
 

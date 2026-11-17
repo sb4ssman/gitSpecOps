@@ -70,10 +70,12 @@ function renderMark() {
   if (!mark || !mark.machine || !mark.fleet) return;
   const m = mark.machine.state, f = mark.fleet.state;
   const words = `This machine: ${mark.machine.text} · Fleet: ${mark.fleet.text}`;
-  byId('mark-text').textContent = words;
+  // One short line: this machine, and the fleet in a few words; the full line on hover.
+  byId('mark-text').textContent = `This machine: ${mark.machine.text} · Fleet: ${mark.fleet.short || mark.fleet.text}`;
+  byId('mark-text').title = words;
   const activity = state.data.activity || {phase: 'idle', text: ''};
   const working = m === 'starting' || (activity.phase && activity.phase !== 'idle');
-  byId('activity-text').textContent = activity.text ? activity.text[0].toUpperCase() + activity.text.slice(1) : '';
+  renderActivity(activity.text ? activity.text[0].toUpperCase() + activity.text.slice(1) : '');
   byId('activity').classList.toggle('working', Boolean(working));
   const banner = byId('first-observation');
   if (!banner.hidden && activity.text) banner.textContent = `${activity.text[0].toUpperCase() + activity.text.slice(1)}. ` +
@@ -84,6 +86,26 @@ function renderMark() {
   const url = (size, animate) => `/v1/mark.svg?machine=${encodeURIComponent(m)}&fleet=${encodeURIComponent(f)}&size=${size}${animate ? '&working=1' : ''}`;
   byId('mark').src = url(64, working);
   byId('favicon').href = url(32, false);
+}
+
+/** The live line; "N folders are second copies" opens the list of them (the user, 2026-11-17:
+ *  "how do i use my tool to identify the offending duplicates, and see where they live?"). */
+function renderActivity(text) {
+  const line = byId('activity-text');
+  const found = text.match(/\d+ folders? (?:is a|are) second cop(?:y|ies)/);
+  if (!found) { line.textContent = text; return; }
+  const link = node('a', found[0]); link.href = '#repositories';
+  link.title = 'List the repositories with more than one folder on this machine';
+  link.onclick = event => { event.preventDefault(); showSecondCopies(); };
+  line.replaceChildren(text.slice(0, found.index), link, text.slice(found.index + found[0].length));
+}
+
+function showSecondCopies() {
+  controls.query.value = '';
+  controls.status.value = 'copies';
+  controls.machine.value = state.data.this_machine;
+  selectTab('repositories');
+  renderRepositories();
 }
 
 /** The menu: each item carries its tile's number and line (the user, 2026-11-16). */

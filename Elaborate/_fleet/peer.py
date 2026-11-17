@@ -422,7 +422,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         except TypeError:  # a stand-in observer in tests
             return "watching for changes"
         extra = folders - repositories
-        return (f"watching {folders} repository folders for changes"
+        return (f"watching {folders} repository folders locally for changes"
                 + (f" ({repositories} repositories; {extra} folders are second copies)" if extra > 0 else ""))
     from Elaborate._recovery.runtime import RecoveryRuntime
     recovery = RecoveryRuntime(config, observer, log=log)
@@ -495,17 +495,17 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         if action == "repo-action":
             # Resolve on this machine: open, look at changes, fetch, fast-forward, commit and push
             # (plan, then apply), not counted (Special/_sync/resolve.py).
-            from Special._sync.resolve import repo_action
+            from Special._sync.resolve import READ_ONLY, repo_action
             op = str(payload.get("op") or "")
             home = security_settings()[0]
-            if op in ("changes", "open-folder", "open-editor", "not-counted-list"):
+            if op in READ_ONLY:
                 answer = repo_action(op, payload, observer.local_checkouts, home=home)
             else:
                 with action_lock:
                     answer = repo_action(op, payload, observer.local_checkouts, home=home)
             if "not_counted" in answer:
                 config["not_counted"] = answer["not_counted"]  # the running observer reads this
-            if op in ("pull", "commit-apply", "push-apply", "not-counted", "count-again", "fetch"):
+            if op in ("pull", "commit-apply", "push-apply", "not-counted", "not-counted-folder", "count-again", "fetch"):
                 atomic_write_bytes(config_dir / "fleet-rescan.request", b"repository action\n")
             return answer
         if action != "catchup-preview" or payload:

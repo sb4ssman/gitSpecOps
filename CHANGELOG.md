@@ -5,6 +5,20 @@ while the version starts with 0, gitSpecOps is a development preview and anythin
 
 ## Unreleased
 
+- **Second copies, found and retired with proof.** The live line's "N folders are second copies"
+  opens the list (a new filter, "Several copies on one machine"). A repository with several
+  folders here lets you choose which copy the Resolve buttons act on, and "Safe to delete this
+  copy?" fetches, then proves it: every commit on a remote, nothing stashed, and every
+  uncommitted or untracked file byte-identical in another copy here (ignored files are listed,
+  not judged). gitSpecOps deletes nothing; it opens the folder. A not-counted entry now covers
+  everything inside its folder, and Settings can add a folder by path.
+- **The audit page:** scanners and protected values sit above what to audit; installed scanners
+  are ticked by default; a status line shows the phase of the repository being read (working
+  files, then every commit with their count) and for how long.
+- **The header** says this machine and the fleet in a few words; the full line is its tooltip.
+- **Fixes:** the page's commit and push now pass the app's settings profile; a Git read that
+  fails is an error, never an empty answer; Settings' not-counted list read the wrong record.
+
 - **The page, rebuilt around one menu and one vocabulary.** The menu is seven tiles, each with its
   number: Network map (the zoomable picture, now the first page), Repositories, Orgs/Archives,
   Machines, Clouds, Security, Settings (was "App & setup"; `#about` still opens it). Repositories

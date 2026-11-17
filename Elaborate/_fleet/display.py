@@ -82,6 +82,8 @@ def _cell(cell):
         tags.append("ahead")
     if cell.freshness != "current":
         tags.append("stale")
+    if len(cell.repo.get("copies") or []) > 1:
+        tags.append("copies")  # more than one folder of it on this machine
     description = describe_repository(cell.repo)
     if cell.freshness != "current":
         description = f"Last known: {description} ({cell.freshness})"
@@ -205,11 +207,17 @@ def mark_state(rows, machines, reports, settings) -> dict:
                     return f"{trouble(view['id'])} need attention"
                 return "reported a problem"
             fleet = {"state": "attention",
-                     "text": f"{total}; " + ", ".join(f"{view['label']}: {why(view)}" for view in needy)}
+                     "text": f"{total}; " + ", ".join(f"{view['label']}: {why(view)}" for view in needy),
+                     # The header's one line (2026-11-17: "clip it to just this machine, and
+                     # fleet"); the full text above stays for the tray and the tooltip.
+                     "short": f"{total}, {len(needy)} of the others need{'s' if len(needy) == 1 else ''} attention"}
         else:
-            fleet = {"state": "ok", "text": f"{total}; nothing needs attention on the others"}
+            fleet = {"state": "ok", "text": f"{total}; nothing needs attention on the others",
+                     "short": f"{total}, all clear"}
     if settings.get("fleet_name") and settings.get("transport_config"):
         fleet["text"] = f"{settings['fleet_name']}: {fleet['text']}"  # the fleet by its name
+        if "short" in fleet:
+            fleet["short"] = f"{settings['fleet_name']}, {fleet['short']}"
     return {"machine": machine, "fleet": fleet}
 
 
@@ -426,6 +434,7 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
                     {"id": "dirty", "label": "Uncommitted work"},
                     {"id": "ahead", "label": "Unpushed commits"},
                     {"id": "local_only", "label": "No remote (only copy)"},
+                    {"id": "copies", "label": "Several copies on one machine"},
                     {"id": "stale", "label": "Stale reports"},
                     {"id": "missing", "label": "Not reported on a machine"}],
         "notices": [{"id": "cached-refs", "tone": "neutral", "text": remote_notice},
