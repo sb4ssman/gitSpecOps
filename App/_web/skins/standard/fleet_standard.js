@@ -3,7 +3,7 @@ import {FleetConnection} from './fleet_client.js';
 import {ageLabel, GroupExpansion, groupRows, regroup, selectRows} from './fleet_view.js';
 import {renderMap, VIEWS} from './fleet_map.js';
 import {auditThese, renderSecurity, securitySummary} from './fleet_security.js';
-import {columnsOf, copyGrid, GRID_FOOTNOTE, gridNotes, orderedMachines, perspectiveOf} from './fleet_grid.js';
+import {columnsOf, copyGrid, GRID_FOOTNOTE, gridNotes, orderedMachines, perspectiveOf, placeTree} from './fleet_grid.js';
 import {organizationChoices, renderOrgs} from './fleet_orgs.js';
 import {MENU, renderClouds, renderMachines as drawMachines, renderMenu} from './fleet_pages.js';
 import {renderSettings} from './fleet_settings.js';
@@ -205,34 +205,60 @@ function renderRepositories() {
   }
   const perspective = perspectiveOf(data, null);
   const grid = {perspective, columns: columnsOf(orderedMachines(data, perspective), rows)};
-  // By library and folder: each library is a section, its folders inside it (the user,
-  // 2026-11-16). By owner: one level, as before.
-  const libraries = new Map();
-  for (const group of groups) {
-    const key = state.grouping === 'place' ? (group.host || 'Other machines') : '';
-    if (!libraries.has(key)) libraries.set(key, []);
-    libraries.get(key).push(group);
-  }
-  for (const [library, folders] of libraries) {
-    let target = list;
-    if (library) {
-      const outer = node('details', undefined, 'repo-library');
-      const outerId = `library/${library}`;
-      outer.open = state.expansion.isOpen(outerId);
-      outer.addEventListener('toggle', () => { state.expansion.record(outerId, outer.open); saveCollapsedGroups(); });
-      const count = folders.reduce((sum, group) => sum + group.rows.length, 0);
-      const total = folders.reduce((sum, group) => sum + (group.count ?? group.rows.length), 0);
-      const attention = folders.reduce((sum, group) => sum + group.attention, 0);
-      const head = node('summary'); head.append(document.createTextNode(library));
-      head.append(node('span', `${folders.length} folder${folders.length === 1 ? '' : 's'} · ${shownOf(count, total)} · ${attention} need attention`, 'group-meta'));
-      outer.append(head); list.append(outer); target = outer;
-    }
-    for (const group of folders) renderGroup(target, group, data, grid);
-  }
+  if (state.grouping === 'place') renderPlaceTree(list, data, rows, grid);
+  else for (const group of groups) renderGroup(list, group, data, grid);
   list.append(node('p', GRID_FOOTNOTE, 'host-note'));
   gridNotes(list, renderRepositories);
   const selected = rows.find(row => row.id === state.selected);
   if (selected) showDetail(selected); else { state.selected = null; byId('detail').hidden = true; }
+}
+
+// Other machines start collapsed; the ones the person opened stay open across reloads.
+const openedMachines = (() => {
+  try { return new Set(JSON.parse(localStorage.getItem('gitso.openMachines') || '[]')); } catch { return new Set(); }
+})();
+function saveOpenedMachines() {
+  try { localStorage.setItem('gitso.openMachines', JSON.stringify([...openedMachines])); } catch { /* a remembered choice only */ }
+}
+
+/** Machine > Library > Folder > Repositories, labelled at every level; this machine first and
+ *  open, issues first at every level, every control still on the page (the user, 2026-11-16). */
+function renderPlaceTree(list, data, rows, grid) {
+  const here = perspectiveOf(data, null);
+  const chosen = controls.machine.value;
+  for (const branch of placeTree(data, rows, here)) {
+    if (chosen !== 'all' && branch.machine.id !== chosen) continue;
+    if (!branch.repositories) continue;
+    const mine = branch.machine.id === here;
+    const machineId = `m/${branch.machine.id}`;
+    const outer = node('details', undefined, 'repo-machine');
+    outer.open = mine || chosen !== 'all' ? state.expansion.isOpen(machineId) : openedMachines.has(machineId);
+    outer.addEventListener('toggle', () => {
+      if (mine || chosen !== 'all') state.expansion.record(machineId, outer.open);
+      else if (outer.open) openedMachines.add(machineId); else openedMachines.delete(machineId);
+      saveCollapsedGroups(); saveOpenedMachines();
+    });
+    const head = node('summary');
+    head.append(node('span', 'Machine', 'level-label'), document.createTextNode(`${branch.machine.label}${mine ? ' (this machine)' : ''}`));
+    head.append(node('span', `${branch.libraries.length} librar${branch.libraries.length === 1 ? 'y' : 'ies'} · ` +
+      `${branch.repositories} repositories · ${branch.attention} need attention · ${branch.machine.freshness}`, 'group-meta'));
+    outer.append(head); list.append(outer);
+    for (const library of branch.libraries) {
+      const libraryId = `${machineId}/${library.name}`;
+      const inner = node('details', undefined, 'repo-library');
+      inner.open = state.expansion.isOpen(libraryId);
+      inner.addEventListener('toggle', () => { state.expansion.record(libraryId, inner.open); saveCollapsedGroups(); });
+      const libHead = node('summary');
+      libHead.append(node('span', 'Library', 'level-label'), document.createTextNode(library.name));
+      libHead.append(node('span', `${library.folders.length} folder${library.folders.length === 1 ? '' : 's'} · ` +
+        `${library.repositories} repositories · ${library.attention} need attention`, 'group-meta'));
+      inner.append(libHead); outer.append(inner);
+      for (const folder of library.folders) {
+        renderGroup(inner, {id: `${libraryId}/${folder.name}`, label: folder.name, rows: folder.rows,
+                            count: folder.rows.length, attention: folder.attention, level: 'Folder'}, data, grid);
+      }
+    }
+  }
 }
 
 /** One group of the inventory: the shared copy grid, so a copy reads the same as on
@@ -244,7 +270,9 @@ function renderGroup(list, group, data, grid) {
     state.expansion.record(group.id, details.open);
     saveCollapsedGroups();
   });
-  const summary = node('summary'); summary.append(document.createTextNode(group.label));
+  const summary = node('summary');
+  if (group.level) summary.append(node('span', group.level, 'level-label'));
+  summary.append(document.createTextNode(group.label));
   summary.append(node('span', `${shownOf(group.rows.length, group.count ?? group.rows.length)} · ${group.attention} need attention`, 'group-meta'));
   if (state.data.local_actions) {
     const audit = node('button', 'Audit these', 'quiet group-action'); audit.type = 'button';
@@ -501,14 +529,23 @@ byId('grouping').onchange = () => {
 byId('clear-filters').onclick = () => { controls.query.value = ''; controls.status.value = 'attention'; controls.machine.value = 'all'; controls.sort.value = 'attention'; renderRepositories(); };
 byId('expand').onclick = () => {
   state.expansion.expandAll();
-  saveCollapsedGroups();
-  document.querySelectorAll('.repo-group, .repo-library').forEach(item => { item.open = true; });
+  for (const machine of state.data.machines) openedMachines.add(`m/${machine.id}`);
+  saveCollapsedGroups(); saveOpenedMachines();
+  document.querySelectorAll('.repo-group, .repo-library, .repo-machine').forEach(item => { item.open = true; });
 };
 byId('collapse').onclick = () => {
-  state.expansion.collapseAll([...state.data.groups.map(group => group.id),
-    ...new Set(state.data.groups.map(group => `library/${group.host || 'Other machines'}`))]);
+  const ids = [...state.data.groups.map(group => group.id)];
+  for (const branch of placeTree(state.data, state.data.rows, perspectiveOf(state.data, null))) {
+    ids.push(`m/${branch.machine.id}`);
+    for (const library of branch.libraries) {
+      ids.push(`m/${branch.machine.id}/${library.name}`);
+      for (const folder of library.folders) ids.push(`m/${branch.machine.id}/${library.name}/${folder.name}`);
+    }
+  }
+  state.expansion.collapseAll(ids);
+  openedMachines.clear(); saveOpenedMachines();
   saveCollapsedGroups();
-  document.querySelectorAll('.repo-group, .repo-library').forEach(item => { item.open = false; });
+  document.querySelectorAll('.repo-group, .repo-library, .repo-machine').forEach(item => { item.open = false; });
 };
 byId('theme').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 // The menu is on screen from the start; its numbers arrive with the first report.

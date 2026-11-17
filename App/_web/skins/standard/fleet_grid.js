@@ -60,7 +60,7 @@ export const providerUrl = row => {
 };
 
 /** Each folder a machine keeps a repository in: its `copies` when it has several, else itself. */
-const copiesOf = cell => (cell.copies && cell.copies.length ? cell.copies : [{...(cell.facts || {}), place: cell.place}]);
+export const copiesOf = cell => (cell.copies && cell.copies.length ? cell.copies : [{...(cell.facts || {}), place: cell.place}]);
 
 /** Libraries under machines: one column per library a machine keeps these repositories in (two
  *  libraries, two columns), one column when it keeps them in one or none. */
@@ -103,6 +103,44 @@ export function cellIn(row, column) {
   // library the same way).
   return {...cell, copies: null, place: copy.place, facts, tone: cell.freshness === 'current' ? tone : 'warning',
           needs_attention: tone === 'danger' || tone === 'warning'};
+}
+
+/** Machine > Library > Folder > Repositories: the same tree on every machine (the user,
+ *  2026-11-16: "it needs to be fractal"). The machine showing the page comes first, then the
+ *  others by name; at every level, what needs attention first. A repository a machine keeps in
+ *  two libraries is under both: they are two copies. `rows` are already filtered and sorted. */
+export function placeTree(data, rows, thisMachine) {
+  const machines = orderedMachines(data, thisMachine);
+  const byAttention = (a, b) => (b.attention - a.attention) || a.name.localeCompare(b.name);
+  const tree = [];
+  for (const machine of machines) {
+    const libraries = new Map();
+    for (const row of rows) {
+      const cell = row.cells[machine.id];
+      if (!cell || !cell.present) continue;
+      for (const copy of copiesOf(cell)) {
+        const library = (copy.place || {}).library || 'Library not reported';
+        const folder = (copy.place || {}).folder || '(directly in the library)';
+        const column = {machine, library: (copy.place || {}).library, split: Boolean(cell.copies && cell.copies.length)};
+        const here = column.split ? cellIn(row, column) : cell;
+        if (!libraries.has(library)) libraries.set(library, new Map());
+        const folders = libraries.get(library);
+        if (!folders.has(folder)) folders.set(folder, []);
+        if (!folders.get(folder).some(item => item.row.id === row.id)) folders.get(folder).push({row, attention: Boolean(here && here.needs_attention)});
+      }
+    }
+    const libraryList = [...libraries.entries()].map(([name, folders]) => {
+      const folderList = [...folders.entries()].map(([folder, items]) => ({
+        name: folder, rows: items.map(item => item.row), attention: items.filter(item => item.attention).length,
+      })).sort(byAttention);
+      return {name, folders: folderList, repositories: folderList.reduce((n, f) => n + f.rows.length, 0),
+              attention: folderList.reduce((n, f) => n + f.attention, 0)};
+    }).sort(byAttention);
+    tree.push({machine, libraries: libraryList,
+               repositories: libraryList.reduce((n, l) => n + l.repositories, 0),
+               attention: libraryList.reduce((n, l) => n + l.attention, 0)});
+  }
+  return tree;
 }
 
 /** The provider's commit, from the machine that fetched most recently. */
