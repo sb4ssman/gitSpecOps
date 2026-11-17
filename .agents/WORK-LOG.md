@@ -3133,3 +3133,17 @@ No code changed; decisions recorded where they govern.
 - Still open from the review: the operation boundary (the page calling functions, not
   subprocesses), splitting peer.py / the fleet CLI / the setup walkthrough, recovery's own
   runner and scanner, the documents.
+
+## 2026-11-17 20:30 - user (claude) - External review, wave 2: one operation, two faces (branch dev)
+
+- Special/_sync/resolve.py no longer starts `gitso` as a child: commit and push call
+  `commit_checked` / `push_checked` with the app's profile, fetch and pull call Basic's
+  functions. `_planned` applies the terminal's rule: only the plan the page showed, by its id.
+- The page shows a check in words (status, message, masked findings); the record is a click away.
+- Elaborate/_fleet/page_actions.py: the page's actions as a class, out of `run_peer`
+  (peer.py 947 -> 812 lines). The peer builds one and hands `handle` to the web server.
+- Tests: a whole journey in tests/special/test_resolve.py (a non-default profile with its own
+  prohibition, two copies, one chosen, check then apply); tests/elaborate/test_page_actions.py.
+- Not done yet from the review: PeerNetwork and TransportPublisher still live in peer.py (tests
+  patch names there), the fleet CLI and setup walkthrough are not split, recovery keeps its own
+  runner and scanner, and the documents.

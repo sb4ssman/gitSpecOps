@@ -453,7 +453,6 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         save_client_choice(config_dir, config, choice)
 
     desktop = DesktopIntegration(config.get("git_client"), observer.local_repositories, save_client)
-    action_lock = threading.Lock()
 
     def security_settings():
         """The profile as it is now, not as it was when the peer started: a policy change made
@@ -464,60 +463,8 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         home = getattr(getattr(config, "snapshot", None), "home", settings_home)
         return home, load_fleet_settings(home)
 
-    from Special._security._audit import AuditJobs, engines_status
-    from Special._security._policy_edit import policy_change, policy_view
+    from Special._security._audit import AuditJobs
     audits = AuditJobs(observer.local_checkouts, settings=security_settings)
-
-    def dashboard_action(action, payload):
-        """Local dashboard actions call the same headless operations as terminal routes."""
-        if action == "security-engines":
-            return {"engines": engines_status()}
-        if action == "security-policy":
-            return policy_view(security_settings()[0])
-        if action == "security-policy-change":
-            with action_lock:
-                return policy_change(security_settings()[0], payload)
-        if action == "security-start":
-            return audits.start(payload)
-        if action == "security-status":
-            return audits.status()
-        if action == "security-reveal":
-            return audits.reveal(payload)
-        if action == "security-accept":
-            with action_lock:
-                return audits.accept(payload)
-        if action == "security-stop":
-            return audits.stop()
-        if action == "security-preview":
-            from Special._security._advice import inspect_registered
-            with action_lock:
-                home, snapshot = security_settings()
-                return inspect_registered(payload, observer.local_checkouts, settings_home=home, expected_settings=snapshot)
-        if action in ("request-send", "request-withdraw", "request-answer", "request-clear", "changes"):
-            return request_action(action, payload)
-        if action == "repo-action":
-            # Resolve on this machine: open, look at changes, fetch, fast-forward, commit and push
-            # (plan, then apply), not counted (Special/_sync/resolve.py).
-            from Special._sync.resolve import READ_ONLY, repo_action
-            op = str(payload.get("op") or "")
-            home = security_settings()[0]
-            if op in READ_ONLY:
-                answer = repo_action(op, payload, observer.local_checkouts, home=home)
-            else:
-                with action_lock:
-                    answer = repo_action(op, payload, observer.local_checkouts, home=home)
-            if "not_counted" in answer:
-                config["not_counted"] = answer["not_counted"]  # the running observer reads this
-            if op in ("pull", "commit-apply", "push-apply", "not-counted", "not-counted-folder", "count-again", "fetch"):
-                atomic_write_bytes(config_dir / "fleet-rescan.request", b"repository action\n")
-            return answer
-        if action != "catchup-preview" or payload:
-            raise ValueError("unsupported fleet dashboard action")
-        from Special._sync.actions import plan_catchup, render_catchup
-
-        with action_lock:
-            plan = plan_catchup(observer.paths)
-        return {"message": render_catchup(plan), "action": "catchup-preview"}
 
     # Protected values shared with the fleet (shared_policy.py): over Tailscale whenever this
     # machine is in a fleet; sealed through the synced folder when that is turned on.
@@ -529,99 +476,17 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         from Elaborate._fleet.setup_state import name_fleet
         name_fleet(security_settings()[0], config_dir, name=named["name"], at=named["at"])
     # Requests between machines, and what a copy's uncommitted work is (requests.py, changes.py).
-    from Elaborate._fleet.requests import RequestBook, run_request
+    from Elaborate._fleet.page_actions import PageActions
+    from Elaborate._fleet.requests import RequestBook
     book = RequestBook(config_dir, config["machine_id"], config["label"])
-
-    def own_changes(repo_id):
-        from Special._sync.changes import working_changes
-        copies = []
-        for path in observer.local_checkouts(repo_id):
-            try:
-                copies.append(working_changes(path))
-            except ValueError as exc:
-                copies.append({"files": [], "count": 0, "summary": str(exc)})
-        return {"machine": config["label"], "copies": copies}
-
-    def text(value, limit=200):
-        return str(value or "")[:limit]
-
-    def request_action(action, payload):
-        if action == "request-send":
-            items = [{key: text(item.get(key)) for key in ("repo_id", "host", "owner", "name", "folder", "library")}
-                     for item in payload.get("items") or [] if isinstance(item, dict)]
-            if text(payload.get("to")) == config["machine_id"]:
-                # Asked of this machine, from its own page: the person is here, so it runs now,
-                # with the same safe operations (the user, 2026-11-16).
-                request = {"kind": text(payload.get("kind")), "items": items, "from_label": config["label"],
-                           "to_label": config["label"]}
-                if request["kind"] not in ("pull", "clone") or not items:
-                    raise ValueError("choose pull or clone, and at least one repository")
-                status, result = run_and_log("ran here", request)
-                return {"status": status, "message": f"{HEADLINE[status]} here.\n{result}"}
-            sent = book.send(text(payload.get("to")), text(payload.get("to_label")), text(payload.get("kind")), items)
-            book.log("asked", sent)
-            threading.Thread(target=network.knock_others, daemon=True).start()  # so it is picked up now
-            return {"sent": sent, "message": f"Asked {sent['to_label']}. It runs there when that machine next checks in "
-                                             "(about a minute when it is on); the result appears under Requests."}
-        if action == "request-withdraw":
-            book.withdraw(text(payload.get("id")))
-            return {"message": "Withdrawn."}
-        if action == "request-clear":
-            dropped = book.clear(everything_sent=bool(payload.get("everything_sent")))
-            return {"message": f"Cleared {dropped}. The task log keeps the record."}
-        if action == "changes":
-            repo_id, machine_id = text(payload.get("repo_id")), text(payload.get("machine_id"))
-            if machine_id == config["machine_id"]:
-                return own_changes(repo_id)
-            return network.ask(machine_id, f"/v1/changes/{repo_id}")
-        request = next((item for item in book.incoming() if item["id"] == payload.get("id")), None)
-        if request is None or request["status"] != "waiting":
-            raise ValueError("that request is no longer waiting; reload")
-        if payload.get("accept") is None:
-            raise ValueError("answer with accept true or false")
-        if not payload.get("accept"):
-            book.log("dismissed", request)
-            return book.settle(request["id"], "dismissed", "Dismissed here.")
-        return answer_request(request)
-
-    HEADLINE = {"done": "Done", "partial": "Partly done", "failed": "Not done"}
-
-    def run_and_log(event, request):
-        """Run a request with the safe operations; Git's own words stay in this machine's log."""
-        from Elaborate._fleet.requests import perform
-        details = []
-        with action_lock:
-            status, result = perform(request, observer.local_checkouts, config["roots"],
-                                     private=lambda name, detail: details.append(f"{name}: {detail}"))
-        book.log(event, request, "\n".join([result, *details]))
-        atomic_write_bytes(config_dir / "fleet-rescan.request", b"request ran\n")  # see the result
-        return status, result
-
-    def answer_request(request):
-        book.settle(request["id"], "running", "")
-        try:
-            status, result = run_and_log("applied", request)
-        except Exception:  # noqa: BLE001 - a request must end in a state, never stay "running"
-            status, result = "failed", "It could not be run on that machine; its log has the reason."
-        settled = book.settle(request["id"], status, result)
-        threading.Thread(target=network.knock_others, daemon=True).start()  # the asker learns now
-        return settled
-
-    def run_waiting():
-        """Requests from this fleet's machines run on arrival (requests.py): they can only ask
-        for a fast-forward or a clone, neither of which can lose work."""
-        if config.get("auto_requests", True) is False:
-            return
-        for request in book.incoming():
-            if request.get("status") == "waiting":
-                try:
-                    answer_request(request)
-                except ValueError:
-                    continue
+    # Everything this machine's own page can ask for (page_actions.py).
+    actions = PageActions(config, config_dir, observer, book, security_settings, audits)
+    action_lock, dashboard_action, own_changes = actions.lock, actions.handle, actions.own_changes
 
     network = PeerNetwork(config, lambda: latest["report"], store, log=log, shared=shared, adopt_name=adopt_name,
                           requests=book, own_changes=own_changes)
-    network.on_requests = run_waiting
+    actions.network = network
+    network.on_requests = actions.run_waiting
 
     def sealed_folder_loop():
         """The shared protected values through the synced folder, sealed (sealed.py)."""

@@ -13,14 +13,15 @@ Results:      a JSON-ready answer for the page.
 Layer:        Special: this machine, once.
 Status:       working
 
-Commit and push run the same `gitso` commands a terminal would, with this app's settings profile,
-so their safety checks, plans and approvals are the same ones; the page shows the plan and applies
-it by its id. Every child goes through Basic's one runner (timeouts kill the whole tree).
+Every operation here is the same Python function its `gitso` command calls (`commit_checked`,
+`push_checked`, Basic's `fetch` and `fast_forward`), given this app's settings profile and the
+chosen copy. The page and the terminal are two faces on one operation: nothing is rebuilt as a
+command line, so nothing (a profile, a target) can be lost on the way (an outside review,
+2026-11-17). Commit and push plan first; the page applies exactly the plan it showed, by its id.
 """
 from __future__ import annotations
 
 import filecmp
-import json
 import os
 import shutil
 import subprocess
@@ -29,8 +30,6 @@ from pathlib import Path
 
 from Basic._run import run
 
-ROOT = Path(__file__).resolve().parents[2]
-GITSO = ROOT / "gitso.py"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 DIFF_LIMIT = 200_000  # characters of diff shown at once
 LISTED = 200  # files listed by "Safe to delete?"
@@ -49,16 +48,15 @@ def _git(path: Path, *args: str, check: bool = True) -> str:
     return done.stdout
 
 
-def _gitso(*args: str, home=None) -> dict:
-    """Run a gitso command as a terminal would, answering in JSON, with this app's profile."""
-    profile = ["--settings-home", str(home)] if home else []
-    done = run([sys.executable, str(GITSO), *args, *profile, "--json"], timeout=900, cwd=str(ROOT))
-    try:
-        record = json.loads(done.stdout)
-    except ValueError:
-        record = {"ok": False, "message": (done.stderr or done.stdout or "no answer").strip()[-1500:]}
-    record.setdefault("ok", done.returncode == 0)
-    return record
+def _planned(operation, apply_id, good, finished) -> dict:
+    """Plan, or apply exactly the plan the page showed: the rule a terminal's --apply follows
+    (Basic/_cli.run_plan). `operation(apply, approve)` returns the operation's own result."""
+    result = operation(bool(apply_id), apply_id or None)
+    record = result.record()
+    if apply_id and result.plan_id and result.plan_id != apply_id:
+        return {**record, "ok": False, "applied": False,
+                "message": "What would be done changed since you checked it, so nothing was done. Check it again."}
+    return {**record, "ok": result.status in good, "applied": bool(apply_id) and result.status in finished}
 
 
 def _open(target: str) -> None:
@@ -204,6 +202,13 @@ def _not_counted_folder(folder: str, home) -> list[str]:
     return change_not_counted(add=[str(target)], home=home)
 
 
+def _plan_id(payload: dict) -> str:
+    plan = str(payload.get("plan_id") or "")
+    if not plan:
+        raise ValueError("check it first: there is no plan to apply")
+    return plan
+
+
 def repo_action(op: str, payload: dict, checkouts, *, home=None) -> dict:
     """One operation on this machine's copy of a repository. `checkouts(repo_id)` gives its folders."""
     from Special._sync.enrollment import change_not_counted, enrollment
@@ -245,9 +250,14 @@ def repo_action(op: str, payload: dict, checkouts, *, home=None) -> dict:
     if op == "retire-check":
         return retire_check(path, [other for other in paths if other != path])
     if op == "fetch":
-        return _gitso("fetch", str(path))
+        from Basic.fetch import fetch
+        done = fetch(path, quiet=True, timeout=120)
+        return {"ok": done.returncode == 0,
+                "message": "Fetched." if done.returncode == 0 else f"Fetch failed: {(done.stderr or done.stdout).strip()[-300:]}"}
     if op == "pull":
-        return _gitso("pull", str(path))
+        from Basic.pull import fast_forward
+        answer = fast_forward(path)
+        return {"ok": not answer.startswith("failed:"), "message": answer[0].upper() + answer[1:] + "."}
     if op in ("commit-plan", "commit-apply"):
         message = str(payload.get("message") or "").strip()
         files = payload.get("files")
@@ -255,15 +265,16 @@ def repo_action(op: str, payload: dict, checkouts, *, home=None) -> dict:
             raise ValueError("write a commit message (up to 5000 characters)")
         if not isinstance(files, list) or not files or len(files) > 500 or not all(isinstance(f, str) and f for f in files):
             raise ValueError("choose the files to commit")
-        args = ["secure-commit", str(path), *files, "-m", message]
-        if op == "commit-apply":
-            args += ["--apply", str(payload.get("plan_id") or "")]
-        return _gitso(*args, home=home)
+        from Special._security._commit.operation import commit_checked
+        return _planned(lambda apply, approve: commit_checked(path, files, message, settings_home=home,
+                                                              apply=apply, approve=approve),
+                        _plan_id(payload) if op == "commit-apply" else None,
+                        good=("ready", "committed", "nothing-to-commit"), finished=("committed", "nothing-to-commit"))
     if op in ("push-plan", "push-apply"):
-        args = ["secure-push", str(path)]
-        if op == "push-apply":
-            args += ["--apply", str(payload.get("plan_id") or "")]
-        return _gitso(*args, home=home)
+        from Special._security._push import push_checked
+        return _planned(lambda apply, approve: push_checked(path, settings_home=home, apply=apply, approve=approve),
+                        _plan_id(payload) if op == "push-apply" else None,
+                        good=("planned", "pushed", "already-current"), finished=("pushed", "already-current"))
     # not-counted: this folder, by the person's choice; the next read leaves it out.
     return {"not_counted": change_not_counted(add=[str(path)], home=home),
             "message": f"{path.name} here is no longer counted. Settings lists it to count it again."}

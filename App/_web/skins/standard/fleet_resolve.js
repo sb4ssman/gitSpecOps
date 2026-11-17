@@ -75,7 +75,7 @@ export function resolveBox(row, cell, act, redraw) {
 
   if (state.push) {
     const push = html('div', undefined, 'resolve-plan');
-    push.append(html('strong', 'Push plan'), html('pre', JSON.stringify(state.push.plan || state.push, null, 2)));
+    push.append(html('strong', 'Push'), planView(state.push));
     if (state.push.plan_id && !state.push.applied) {
       push.append(button('Push', run('push-apply', {plan_id: state.push.plan_id}, answer => { state.push = answer.applied ? null : answer; })));
     }
@@ -110,7 +110,7 @@ export function resolveBox(row, cell, act, redraw) {
       panel.append(button('Check this commit…', () => run('commit-plan', {message: state.message || '', files: [...state.picked]},
         answer => { state.commit = answer; })(), 'secure-commit: checks the files, message and identity first'));
       if (state.commit) {
-        panel.append(html('pre', JSON.stringify(state.commit.plan || state.commit, null, 2)));
+        panel.append(planView(state.commit));
         if (state.commit.plan_id && !state.commit.applied) {
           panel.append(button('Commit', run('commit-apply', {message: state.message || '', files: [...state.picked], plan_id: state.commit.plan_id},
             answer => { if (answer.applied) { state.commit = null; state.changes = null; state.message = ''; } else state.commit = answer; })));
@@ -121,6 +121,33 @@ export function resolveBox(row, cell, act, redraw) {
     box.append(panel);
   }
   return box;
+}
+
+/** A commit or push check, in words: what it found and what happens next; the full record is
+ *  one click away (an outside review, 2026-11-17: no raw JSON as the main display). */
+const STATUS_WORDS = {
+  ready: 'Checked: ready to commit.', planned: 'Checked: ready to push.', committed: 'Committed.', pushed: 'Pushed.',
+  'already-current': 'Nothing to push: the provider already has it.', 'nothing-to-commit': 'Nothing to commit.',
+  blocked: 'Blocked: a high-severity finding. Resolve it first.', 'review-required': 'Findings need a look before this can go ahead.',
+  'hook-rejected': 'A Git hook in this repository refused the commit.',
+};
+function planView(record) {
+  const view = html('div', undefined, 'resolve-check');
+  const good = record.ok !== false;
+  view.append(html('p', STATUS_WORDS[record.status] || record.status || '', good ? 'tone-text-success' : 'tone-text-warning'));
+  if (record.message) view.append(html('p', record.message, 'host-note'));
+  if (record.failed_hook) view.append(html('p', `Hook: ${record.failed_hook}`, 'host-note'));
+  const findings = ((record.security || {}).findings || []).filter(f => f.classification !== 'quiet' && !f.review_id);
+  if (findings.length) {
+    const list = html('ul', undefined, 'resolve-files');
+    for (const f of findings.slice(0, 40)) list.append(html('li', `${f.severity} · ${f.check} · ${f.where}${f.line ? `:${f.line}` : ''} · ${f.value || ''}`));
+    view.append(html('strong', `${findings.length} finding${findings.length === 1 ? '' : 's'} (values masked)`), list);
+    if (findings.length > 40) view.append(html('p', `${findings.length - 40} more; the Security page lists them.`, 'host-note'));
+  }
+  const more = html('details');
+  more.append(html('summary', 'The full record'), html('pre', JSON.stringify(record, null, 2)));
+  view.append(more);
+  return view;
 }
 
 function copyChooser(state, redraw) {

@@ -123,5 +123,65 @@ class ResolveTests(unittest.TestCase):
             repo_action("changes", {"repo_id": "r1"}, self.checkouts)
 
 
+
+class PageJourneyTests(unittest.TestCase):
+    """One whole journey, as an outside review asked (2026-11-17): a profile that is not the
+    default, two copies, one chosen; check, then apply; the profile, the copy and the effect."""
+
+    def setUp(self):
+        import json
+        import os
+        from unittest.mock import patch
+        folder = tempfile.TemporaryDirectory(prefix="journey-")
+        self.addCleanup(folder.cleanup)
+        self.root = Path(folder.name).resolve()
+        self.default, self.strict = self.root / "default-profile", self.root / "strict-profile"
+        for home, values in ((self.default, []), (self.strict, ["private-marker"])):
+            home.mkdir()
+            (home / "settings.json").write_text(json.dumps(
+                {"schema_version": 2, "defaults": {"security": {"never_publish": values}}}), encoding="utf-8")
+        environment = patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+                                              "GITSPECOPS_HOME": str(self.default), "GIT_OPTIONAL_LOCKS": "0"})
+        environment.start()
+        self.addCleanup(environment.stop)
+        self.copies = []
+        for name in ("first", "second"):
+            repo = self.root / name
+            git(self.root, "init", "-q", "-b", "main", str(repo))
+            for key, value in (("user.name", "orbit-user"), ("user.email", "123+orbit-user@users.noreply.github.com"),
+                               ("commit.gpgsign", "false"), ("core.autocrlf", "false")):
+                git(repo, "config", key, value)
+            (repo / "a.txt").write_text("one\n")
+            git(repo, "add", ".")
+            git(repo, "commit", "-qm", "one")
+            self.copies.append(repo)
+        self.checkouts = lambda repo_id: list(self.copies)
+
+    def act(self, op, home, **extra):
+        return repo_action(op, {"repo_id": "r1", "checkout": 1, **extra}, self.checkouts, home=home)
+
+    def test_the_profile_the_app_runs_with_decides_and_only_the_chosen_copy_changes(self):
+        second = self.copies[1]
+        (second / "a.txt").write_text("the private-marker is here\n")
+        (second / "b.txt").write_text("two\n")
+        files = {"files": ["a.txt", "b.txt"], "message": "two files"}
+        strict = self.act("commit-plan", self.strict, **files)
+        self.assertFalse(strict["ok"], "the strict profile forbids this value; the default one does not")
+        self.assertEqual(strict["status"], "blocked")
+        self.assertFalse(strict["applied"])
+        plan = self.act("commit-plan", self.default, **files)
+        self.assertEqual((plan["status"], plan["applied"]), ("ready", False), plan.get("message"))
+        with self.assertRaises(ValueError, msg="no plan id, nothing applied"):
+            self.act("commit-apply", self.default, **files)
+        stale = self.act("commit-apply", self.default, plan_id="0" * 16, **files)
+        self.assertFalse(stale["applied"], "a plan the page did not show is never applied")
+        done = self.act("commit-apply", self.default, plan_id=plan["plan_id"], **files)
+        self.assertEqual((done["status"], done["applied"]), ("committed", True), done.get("message"))
+        log = subprocess.run(["git", "log", "--format=%s"], cwd=second, capture_output=True, text=True).stdout.split()
+        self.assertEqual(log[0], "two", log)
+        first = subprocess.run(["git", "log", "--format=%s"], cwd=self.copies[0], capture_output=True, text=True).stdout
+        self.assertEqual(first.strip(), "one", "the copy that was not chosen is untouched")
+
+
 if __name__ == "__main__":
     unittest.main()
