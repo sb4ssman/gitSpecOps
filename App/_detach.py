@@ -101,7 +101,14 @@ def _through_desktop_session(argv: list[str]) -> bool:
     run, deleted. Deleting it does not stop what it started. False when Windows refused."""
     if any(name.startswith("GITSPECOPS_") for name in os.environ):
         return False  # a task gets the person's own environment; keep these overrides
-    command = subprocess.list2cmdline(argv)
+    # Inside a console with no window (2026-11-17): the virtual environment's pythonw.exe is a
+    # launcher that starts the real python.exe, a console program, so a plain task opened a blank
+    # console window on the desktop, and closing it killed the app. conhost --headless gives that
+    # console no window at all (checked on Windows 10: "Window Title: N/A").
+    conhost = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "conhost.exe"
+    if not conhost.exists():
+        return False
+    command = subprocess.list2cmdline([str(conhost), "--headless", *argv])
     if len(command) > 261:  # schtasks' limit for the command
         return False
     name = f"gitSpecOps start {os.getpid()}"
