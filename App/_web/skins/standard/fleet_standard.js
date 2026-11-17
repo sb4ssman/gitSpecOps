@@ -6,6 +6,7 @@ import {auditThese, renderSecurity, securitySummary} from './fleet_security.js';
 import {columnsOf, copyGrid, GRID_FOOTNOTE, gridNotes, orderedMachines, perspectiveOf, placeTree} from './fleet_grid.js';
 import {organizationChoices, renderOrgs} from './fleet_orgs.js';
 import {MENU, renderClouds, renderMachines as drawMachines, renderMenu} from './fleet_pages.js';
+import {notCountedSection, resolveBox} from './fleet_resolve.js';
 import {renderSettings} from './fleet_settings.js';
 import {renderRequests} from './fleet_requests.js';
 
@@ -108,8 +109,12 @@ function cellBadge(cell) {
 }
 
 function showDetail(row) {
+  const panel = byId('detail');
+  // Typing a commit message or using a control here: the 3-second refresh waits for you.
+  if (state.selected === row.id && !panel.hidden && panel.contains(document.activeElement)
+      && document.activeElement !== document.body) return;
   state.selected = row.id;
-  const panel = byId('detail'); panel.hidden = false; panel.replaceChildren();
+  panel.hidden = false; panel.replaceChildren();
   const head = node('div', undefined, 'detail-header');
   const identity = node('div'); identity.append(node('span', row.identity.host, 'host-note'), node('h3', row.name));
   const close = node('button', 'Close', 'quiet'); close.type = 'button';
@@ -169,6 +174,13 @@ function showDetail(row) {
         panel.append(details);
       }
     }
+  }
+  // Resolve here: the special operations for this machine's own copy (fleet_resolve.js).
+  const here = row.cells[state.data.this_machine];
+  if (state.data.local_actions && here && here.present) {
+    const act = (op, extra = {}) => connection.desktopAction('repo-action', {op, repo_id: row.id, ...extra},
+      state.data.local_actions.token, {structured: true});
+    panel.append(resolveBox(row, here, act, () => { panel.replaceChildren(); state.selected = null; showDetail(row); }));
   }
   for (const machine of state.data.machines) {
     const cell = row.cells[machine.id];
@@ -425,6 +437,13 @@ function renderAbout() {
   if (state.data.local_actions) {  // this computer only: never on the Tailscale view
     byId('setup-card').hidden = false;
     renderSettings(byId('setup-controls'), connection, () => state.data.local_actions.token);
+  }
+  if (state.data.local_actions && !byId('not-counted')) {
+    // What this machine does not count, each with "Count again" (fleet_resolve.js).
+    const section = node('div', undefined, 'capability'); section.id = 'not-counted';
+    byId('capabilities').before(section);
+    notCountedSection(section, (op, extra = {}) => connection.desktopAction('repo-action', {op, ...extra},
+      state.data.local_actions.token, {structured: true}));
   }
   renderSettingCards(byId('integrations'), integrations);
   renderSettingCards(byId('features'), features);

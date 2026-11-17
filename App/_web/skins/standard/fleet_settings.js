@@ -187,6 +187,18 @@ export function renderSettings(block, connection, token) {
     web.value = shown.web;
     box.append(field('Double-clicking the tray icon opens', face), field('The web view is served', web),
       row(button('Save', () => act('presentation', {face: face.value, web: web.value}, 'Saved. Takes effect when the app restarts.'))));
+    // Your phone and other computers (2026-11-17): the tailnet view, read-only, for your own
+    // Tailscale devices. 127.0.0.1 always means "this device", so it cannot work from a phone.
+    const away = el('p', '', 'host-note');
+    if (s.remote_view) {
+      away.append(document.createTextNode('On your phone or another computer with Tailscale (same account): '));
+      const link = el('a', s.remote_view); link.href = s.remote_view; link.target = '_blank'; link.rel = 'noopener';
+      away.append(link, document.createTextNode(' (read-only; changes are made here).'));
+    } else {
+      away.textContent = 'To open this page from your phone or another computer: choose "Also on my Tailscale devices", '
+        + 'save, restart the app, and install Tailscale on that device with the same account. The address appears here.';
+    }
+    box.append(away);
     return box;
   }
 

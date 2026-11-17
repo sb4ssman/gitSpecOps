@@ -31,6 +31,7 @@ class IncrementalObserver:
         self._fetched_at: dict[Path, str] = {}
         self._fetch_issues: list[str] = []
         self.excluded_from_observation = 0
+        self.not_counted = 0
 
     @property
     def paths(self) -> tuple[Path, ...]:
@@ -69,7 +70,12 @@ class IncrementalObserver:
         self._path_issues.clear()
         self._issues = list(observation.issues)
         self.excluded_from_observation = 0
+        self.not_counted = 0
+        skipped = self.not_counted_paths()
         for repo, location in zip(observation.repositories, observation.locations):
+            if Path(location).resolve() in skipped:
+                self.not_counted += 1  # the person said not to count this one (not_counted)
+                continue
             # Per checkout, not per identity: two checkouts of one repository each stay
             # watched; `build_manifest` merges them into one record when reporting.
             catalog = {**observation.catalog[repo["repo_id"]], "path": str(location)}
@@ -84,6 +90,10 @@ class IncrementalObserver:
         self._fetched_at = {path: stamp for path, stamp in self._fetched_at.items()
                             if path in self._repos}
         return len(self._repos)
+
+    def not_counted_paths(self) -> set[Path]:
+        """The checkouts the person told this machine not to count (enrollment.change_not_counted)."""
+        return {Path(entry).resolve() for entry in self.config.get("not_counted") or []}
 
     def affected_repositories(self, changed: set[Path]) -> set[Path]:
         """Map noisy file events to the deepest known containing checkout."""
@@ -122,8 +132,9 @@ class IncrementalObserver:
                 continue
             # Walk up from the event to the shallowest enclosing checkout still inside a root.
             candidate = path if path.is_dir() else path.parent
+            skipped = self.not_counted_paths()
             while candidate and any(self._within(candidate, root) for root in roots):
-                if (candidate / ".git").exists() and candidate not in known:
+                if (candidate / ".git").exists() and candidate not in known and candidate.resolve() not in skipped:
                     found.add(candidate)
                     break
                 if candidate == candidate.parent:

@@ -480,6 +480,9 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             return audits.status()
         if action == "security-reveal":
             return audits.reveal(payload)
+        if action == "security-accept":
+            with action_lock:
+                return audits.accept(payload)
         if action == "security-stop":
             return audits.stop()
         if action == "security-preview":
@@ -489,6 +492,22 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                 return inspect_registered(payload, observer.local_checkouts, settings_home=home, expected_settings=snapshot)
         if action in ("request-send", "request-withdraw", "request-answer", "request-clear", "changes"):
             return request_action(action, payload)
+        if action == "repo-action":
+            # Resolve on this machine: open, look at changes, fetch, fast-forward, commit and push
+            # (plan, then apply), not counted (Special/_sync/resolve.py).
+            from Special._sync.resolve import repo_action
+            op = str(payload.get("op") or "")
+            home = security_settings()[0]
+            if op in ("changes", "open-folder", "open-editor", "not-counted-list"):
+                answer = repo_action(op, payload, observer.local_checkouts, home=home)
+            else:
+                with action_lock:
+                    answer = repo_action(op, payload, observer.local_checkouts, home=home)
+            if "not_counted" in answer:
+                config["not_counted"] = answer["not_counted"]  # the running observer reads this
+            if op in ("pull", "commit-apply", "push-apply", "not-counted", "count-again", "fetch"):
+                atomic_write_bytes(config_dir / "fleet-rescan.request", b"repository action\n")
+            return answer
         if action != "catchup-preview" or payload:
             raise ValueError("unsupported fleet dashboard action")
         from Special._sync.actions import plan_catchup, render_catchup

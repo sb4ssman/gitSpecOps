@@ -101,12 +101,15 @@ def audit_checkout(repo, *, history=True, engines=(), settings_home=None, expect
         # masked result): the person at this machine may reveal one at a time (the user, 2026-11-16).
         if values is not None:
             values["working_tree"] = [finding.value for finding in tree.findings]
+            # The full private reports, for Accept (a review needs one): memory only until used.
+            values["reports"] = {"working_tree": tree.record(redacted=False)}
         statuses = [tree.check_status]
         if history:
             past = scan(repo, policy, material="history", engines=list(engines))
             result["history"] = _without_path(past.record())
             if values is not None:
                 values["history"] = [finding.value for finding in past.findings]
+                values["reports"]["history"] = past.record(redacted=False)
             statuses.append(past.check_status)
         if any(item.get("severity") == "high"
                for record in (result["working_tree"], result["history"]) if record
@@ -120,6 +123,64 @@ def audit_checkout(repo, *, history=True, engines=(), settings_home=None, expect
         result["gaps"].append({"where": "audit", "reason": "Security scope, policy or material could not be checked; no clearance."})
         result["check_status"] = "incomplete"
     return result
+
+
+ROOT = Path(__file__).resolve().parents[2]
+#: Open findings sent to the page per part (files, history) of one checkout. FlowNode's history
+#: held 18,640, and sending them all on every refresh froze the page (2026-11-17).
+SHOWN = 300
+
+
+def _trimmed(entry: dict) -> dict:
+    """One result as the page polls it: open findings first, at most SHOWN per part, with the
+    true count beside them. Finding ids stay the same, so Show and Accept still find them."""
+    security = dict(entry["security"])
+    for material in ("working_tree", "history"):
+        record = security.get(material)
+        if not record:
+            continue
+        findings = record.get("findings") or []
+        open_ = [f for f in findings if f.get("classification") != "quiet" and not f.get("review_id")]
+        security[material] = {**record, "findings": open_[:SHOWN], "findings_open": len(open_)}
+    return {**entry, "security": security}
+
+
+def audit_in_process(repo, *, history=True, engines=(), settings_home=None, expected_settings=None,
+                     values: dict | None = None, should_stop=None) -> dict:
+    """The same audit in a process of its own (2026-11-17): a large history (FlowNode: 1,547
+    commits) took the app's process for many minutes, so the page stopped answering and looked
+    crashed. Now the app keeps answering whatever a repository takes, Stop ends the audit at
+    once, and nothing a repository holds can take the app down. Values come back on a pipe."""
+    import json
+    import subprocess
+    argv = [sys.executable, "-m", "Special._security._audit", str(repo), "--history", "1" if history else "0"]
+    for engine in engines or ():
+        argv += ["--engine", engine]
+    if settings_home:
+        argv += ["--settings-home", str(settings_home)]
+    child = subprocess.Popen(argv, cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    reader = threading.Thread(target=lambda: setattr(child, "answer", child.communicate()), daemon=True)
+    reader.start()
+    while reader.is_alive():
+        if should_stop is not None and should_stop():
+            child.kill()
+            reader.join(10)
+            return {"scope": "local-audit", "action_clearance": False, "check_status": "incomplete",
+                    "observed_at": datetime.now(timezone.utc).isoformat(), "working_tree": None,
+                    "history": None, "gaps": [{"where": "audit", "reason": "Stopped before it finished."}]}
+        reader.join(0.5)
+    out, err = getattr(child, "answer", (b"", b""))
+    try:
+        answer = json.loads(out.decode("utf-8"))
+    except ValueError:
+        tail = (err or b"").decode("utf-8", "replace").strip().splitlines()[-1:] or ["no answer"]
+        return {"scope": "local-audit", "action_clearance": False, "check_status": "incomplete",
+                "observed_at": datetime.now(timezone.utc).isoformat(), "working_tree": None, "history": None,
+                "gaps": [{"where": "audit", "reason": f"The audit stopped unexpectedly ({tail[0][:200]}); no clearance."}]}
+    if values is not None:
+        values.update(answer.get("values") or {})
+    return answer["result"]
 
 
 def _payload(payload) -> tuple[list[str], bool, list[str]]:
@@ -145,7 +206,7 @@ class AuditJobs:
     `checkouts(repo_id)` yields this machine's observed copies of a repository; ids it does not
     know are reported as such, never resolved from anything the client sent."""
 
-    def __init__(self, checkouts, *, settings=lambda: (None, None), runner=audit_checkout):
+    def __init__(self, checkouts, *, settings=lambda: (None, None), runner=audit_in_process):
         self.checkouts = checkouts
         self.settings = settings
         self.runner = runner
@@ -186,7 +247,8 @@ class AuditJobs:
             for number, path in enumerate(paths, 1):
                 found: dict = {}
                 record = self.runner(path, history=job["history"], engines=job["engines"],
-                                     settings_home=home, expected_settings=expected, values=found)
+                                     settings_home=home, expected_settings=expected, values=found,
+                                     should_stop=lambda: job["stop"])
                 job["values"].append(found)
                 job["results"].append({"repo_id": repo_id, "checkout": number,
                                        "index": len(job["results"]), "security": record})
@@ -201,7 +263,7 @@ class AuditJobs:
             if self.job is None:
                 return {"audit": None}
             view = {key: value for key, value in self.job.items() if key not in ("stop", "results", "values")}
-            view["results"] = list(self.job["results"])
+            view["results"] = [_trimmed(entry) for entry in self.job["results"]]
             return {"audit": view}
 
     def reveal(self, payload) -> dict:
@@ -223,8 +285,57 @@ class AuditJobs:
                 raise ValueError("that finding is not in this audit")
             return {"value": found[number]}
 
+    def accept(self, payload) -> dict:
+        """Accept one finding as reviewed (the user, 2026-11-17), the way `gitso review` does: the
+        audit's full report is saved once to private storage in the security profile, then the
+        review is planned and applied. Only what a review may accept is accepted (a binary file,
+        an uncertain example); anything else is refused with the reason."""
+        if not isinstance(payload, dict) or set(payload) != {"index", "material", "finding_id"}:
+            raise ValueError("send index, material and finding_id")
+        index, material, finding_id = payload["index"], payload["material"], payload["finding_id"]
+        with self.lock:
+            values = (self.job or {}).get("values", [])
+            report = (values[index].get("reports") or {}).get(material) if type(index) is int and 0 <= index < len(values) else None
+        if not report or not isinstance(finding_id, str):
+            raise ValueError("that finding is not in this audit")
+        from Special._security._private_files import write_private_json
+        from Special._security._review_operation import review_finding
+        from Special._settings import select_home
+        home = select_home(self.settings()[0], component="security")[0]
+        path = Path(home) / "audit-reports" / f"{report['scan_id']}.json"
+        if not path.exists():
+            write_private_json(path, report)
+        reason = "Accepted on the Security page"
+        plan = review_finding(path, finding_id, reason, home=home)
+        if plan.status != "planned":
+            return {"status": plan.status, "message": plan.message, "review_id": plan.review_id}
+        done = review_finding(path, finding_id, reason, home=home, apply=True, approve=plan.plan_id)
+        return {"status": done.status, "message": done.message, "review_id": done.review_id}
+
     def stop(self, payload=None) -> dict:
         with self.lock:
             if self.job and self.job["state"] == "running":
                 self.job["stop"] = True
         return self.status()
+
+
+def _main(argv=None) -> int:
+    """The child side of audit_in_process: audit one checkout, answer in JSON on stdout."""
+    import argparse
+    import json
+    parser = argparse.ArgumentParser()
+    parser.add_argument("repo")
+    parser.add_argument("--history", default="1")
+    parser.add_argument("--engine", action="append", default=[])
+    parser.add_argument("--settings-home")
+    args = parser.parse_args(argv)
+    values: dict = {}
+    result = audit_checkout(args.repo, history=args.history == "1", engines=args.engine,
+                            settings_home=args.settings_home, values=values)
+    sys.stdout.write(json.dumps({"result": result, "values": values}))
+    sys.stdout.flush()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

@@ -24,6 +24,7 @@ ASSETS = {
     "/assets/fleet_orgs.js": ("fleet_orgs.js", "text/javascript; charset=utf-8"),
     "/assets/fleet_pages.js": ("fleet_pages.js", "text/javascript; charset=utf-8"),
     "/assets/fleet_explorer.js": ("fleet_explorer.js", "text/javascript; charset=utf-8"),
+    "/assets/fleet_resolve.js": ("fleet_resolve.js", "text/javascript; charset=utf-8"),
     "/setup": ("fleet_setup.html", "text/html; charset=utf-8"),
     "/assets/fleet_setup.js": ("fleet_setup.js", "text/javascript; charset=utf-8"),
 }

@@ -56,7 +56,18 @@ class SetupRoutes:
         except (OSError, ValueError) as exc:
             sign_in = {"supported": False, "enabled": False, "reason": str(exc)}
         machine = state.get("machine") or {}
+        # Where your own phone or other computers open this page: the tailnet view's address
+        # (numeric on purpose: the view refuses names, a guard against DNS tricks). 2026-11-17.
+        remote = None
+        if (machine.get("presentation") or {}).get("web") == "tailnet":
+            try:
+                from App._web.remote import DEFAULT_REMOTE_PORT
+                from Elaborate._fleet.net import local_identity
+                remote = f"http://{local_identity()['ip']}:{int((config or {}).get('remote_port') or DEFAULT_REMOTE_PORT)}/"
+            except (OSError, ValueError, KeyError):
+                remote = None
         return {
+            "remote_view": remote,
             "enrolled": state.get("machine") is not None,
             "libraries": machine.get("libraries", []),
             "presentation": machine.get("presentation"),

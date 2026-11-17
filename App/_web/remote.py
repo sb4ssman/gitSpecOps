@@ -42,8 +42,10 @@ class _Pair:
 
     def __init__(self, *servers):
         self.servers = [server for server in servers if server is not None]
+        self.closed = False
 
     def shutdown(self):
+        self.closed = True
         for server in self.servers:
             server.shutdown()
 
@@ -146,15 +148,33 @@ def with_remote(serve, config: dict, *, identity=None, authenticate=None):
 
     def attach(build_document, desktop_action, fleet_action):
         local, url = serve(build_document, desktop_action, fleet_action)
+        pair = _Pair(local)
+
+        def start(me) -> None:
+            check = authenticate or (lambda ip: peer_identity(ip, me["login"]))
+            remote = make_remote_server((me["ip"], port), build_document, load_ui_assets(),
+                                        fleet_action, check)
+            threading.Thread(target=remote.serve_forever, name="fleet-remote", daemon=True).start()
+            pair.servers.append(remote)
+            print(f"Remote web view: http://{me['ip']}:{port}/ (your Tailscale devices only)", flush=True)
+
         try:
-            me = identity or local_identity()
+            start(identity or local_identity())
         except (OSError, ValueError) as exc:
-            print(f"note: remote web view off: {exc}", flush=True)
-            return local, url
-        check = authenticate or (lambda ip: peer_identity(ip, me["login"]))
-        remote = make_remote_server((me["ip"], port), build_document, load_ui_assets(),
-                                    fleet_action, check)
-        threading.Thread(target=remote.serve_forever, name="fleet-remote", daemon=True).start()
-        print(f"Remote web view: http://{me['ip']}:{port}/ (your Tailscale devices only)", flush=True)
-        return _Pair(local, remote), url
+            # At sign-in after a reboot Tailscale may not be up yet (2026-11-17): keep trying
+            # quietly, as the peer does, instead of leaving the web view off until a restart.
+            print(f"note: remote web view waiting for Tailscale ({exc}); trying every 30 seconds", flush=True)
+
+            def later():
+                pause = threading.Event()
+                while not pause.wait(30.0):
+                    if pair.closed:
+                        return
+                    try:
+                        start(local_identity())
+                        return
+                    except (OSError, ValueError):
+                        continue
+            threading.Thread(target=later, name="fleet-remote-wait", daemon=True).start()
+        return pair, url
     return attach

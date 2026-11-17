@@ -18,7 +18,7 @@ const STATUS = {
 
 const ui = {built: false, container: null, data: null, connection: null, selected: new Set(), engines: [],
             useEngines: new Set(), history: true, audit: null, polling: null, open: new Set(), signature: '',
-            revealed: new Map()};
+            revealed: new Map(), settled: new Map()};
 
 function token() { return ui.data && ui.data.local_actions && ui.data.local_actions.token; }
 async function act(action, payload = {}) {
@@ -264,8 +264,41 @@ function valueCell(entry, material, finding) {
     setAudit(ui.audit);
   };
   cell.append(toggle);
+  // Acknowledge it (the user, 2026-11-17): a review accepts this exact finding (a binary file,
+  // an uncertain example); "Not a secret" puts the value on the safe list, everywhere.
+  const settled = ui.settled.get(key);
+  if (settled) { cell.append(html('span', settled, 'host-note')); return cell; }
+  const accept = html('button', 'Accept', 'repo-link'); accept.type = 'button';
+  accept.title = 'Review: accept this exact finding at this place; it stops being flagged';
+  accept.onclick = async () => {
+    try {
+      const done = await act('security-accept', {index: entry.index, material, finding_id: finding.finding_id});
+      ui.settled.set(key, done.status === 'accepted' || done.status === 'already-reviewed'
+        ? 'Accepted: the next audit will not flag it.' : done.message);
+    } catch (error) { ui.settled.set(key, error.message); }
+    setAudit(ui.audit);
+  };
+  cell.append(document.createTextNode(' '), accept);
+  if (finding.check !== 'binary content') {
+    const safe = html('button', 'Not a secret', 'repo-link'); safe.type = 'button';
+    safe.title = 'Put this exact value on the safe list: no repository will flag it again';
+    safe.onclick = async () => {
+      const word = window.prompt('This value will never be flagged again, in any repository. Type LOOSEN to allow it.');
+      if (word === null) return;
+      try {
+        const value = ui.revealed.get(key) ?? (await act('security-reveal', {index: entry.index, material, finding_id: finding.finding_id})).value;
+        await act('security-policy-change', {list: 'safe_values', add: [value], confirm: word});
+        ui.settled.set(key, 'On the safe list: the next audit will not flag it.');
+      } catch (error) { ui.settled.set(key, error.message); }
+      setAudit(ui.audit);
+    };
+    cell.append(document.createTextNode(' '), safe);
+  }
   return cell;
 }
+
+/** How many open findings a part really has; the page receives the first few hundred. */
+const openOf = (record, list) => (record && typeof record.findings_open === 'number' ? record.findings_open : list.length);
 
 function findingsOf(record) {
   return record && Array.isArray(record.findings)
@@ -300,27 +333,28 @@ function setAudit(audit) {
     const item = html('details', undefined, `sec-result tone-border-${tone}`);
     const summary = html('summary');
     summary.append(html('span', label, `pill tone-${tone}`), html('strong', ` ${nameOf(entry.repo_id)}`),
-                   html('span', ` · files: ${tree.length} · history: ${result.history ? past.length : 'not checked'}` +
+                   html('span', ` · files: ${openOf(result.working_tree, tree)} · history: ${result.history ? openOf(result.history, past) : 'not checked'}` +
                                 `${gaps.length ? ` · ${gaps.length} not inspected` : ''}${entry.checkout > 1 ? ` · copy ${entry.checkout}` : ''}`, 'host-note'));
     item.append(summary, html('p', meaning, 'host-note'));
     for (const [title, list, record, material] of [['In the files as they are now', tree, result.working_tree, 'working_tree'],
                                                    ['In history (every commit)', past, result.history, 'history']]) {
       if (!record) continue;
-      item.append(html('h4', `${title}: ${list.length ? `${list.length} to review` : 'nothing to review'}` +
+      item.append(html('h4', `${title}: ${list.length ? `${openOf(record, list)} to review` : 'nothing to review'}` +
                              ` (${record.files} file version${record.files === 1 ? '' : 's'}${record.commits ? `, ${record.commits} commits` : ''})`));
       if (!list.length) continue;
       const table = html('table', undefined, 'sec-findings');
       const head = html('tr');
       for (const name of ['Severity', 'What', 'Where', 'Value (masked)']) head.append(html('th', name));
       table.append(head);
-      for (const finding of list.slice(0, 200)) {
+      for (const finding of list) {
         const line = html('tr', undefined, finding.severity === 'high' ? 'sec-high' : '');
         line.append(html('td', finding.severity), html('td', `${finding.check} (${finding.classification})`),
                     html('td', `${finding.where}${finding.line ? `:${finding.line}` : ''}`), valueCell(entry, material, finding));
         table.append(line);
       }
       item.append(table);
-      if (list.length > 200) item.append(html('p', `${list.length - 200} more not shown; the terminal scan with --json lists all.`, 'host-note'));
+      const open = openOf(record, list);
+      if (open > list.length) item.append(html('p', `${open - list.length} more not shown here (the first ${list.length} are); the terminal scan with --json lists all.`, 'host-note'));
     }
     for (const gap of gaps) item.append(html('p', `Not inspected: ${gap.where}: ${gap.reason}`, 'tone-warning'));
     box.append(item);

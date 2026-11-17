@@ -100,7 +100,9 @@ def test_without_tailscale_the_view_stays_local_and_the_peer_runs_on():
         server, url = attach(lambda: {}, None, None)
     finally:
         remote.local_identity = original
-    check(server is local and url == "http://127.0.0.1:1/", "the loopback view is returned untouched")
+    # The loopback view runs now; the tailnet view joins it once Tailscale is up (2026-11-17).
+    check(server.servers == [local] and url == "http://127.0.0.1:1/", "the loopback view runs untouched")
+    server.closed = True  # stop the wait for Tailscale: nothing in a test should start a listener
 
 
 def main():
