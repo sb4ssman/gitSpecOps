@@ -3064,3 +3064,22 @@ No code changed; decisions recorded where they govern.
   tested on the 10.15 iMac: activation policy 2 -> 1). Qt on a Mac remains untested.
 - `_build/demo_fleet.py`: an invented, messy fleet through the real manifest and display code;
   the README's new screenshots come from it. README: the page section, the demo, older Macs.
+
+## 2026-11-17 07:30 - user (claude) - Restarts over SSH reach the desktop; one box, two systems (branch dev)
+
+- Windows: SSH runs in session 0, which has no desktop. Every app `gitso update` restarted over
+  SSH ran there with no icon, holding the lock, so it looked dead until killed ("no machine
+  survived a restart"). From session 0 the app now starts through a one-time task that runs
+  only in the signed-in person's desktop, inside `conhost --headless`: the venv's pythonw.exe is
+  a launcher for the console python.exe, and a plain task showed a blank console window whose
+  closing killed the app (it happened once on node1). Checked on node1: Console session,
+  "Window Title: N/A", Qt loaded, no task left behind.
+- Each library reports a disk fingerprint (volume serial and path inside it, keyed with the
+  fleet secret; Basic/_volumes.py; nothing written). A quiet machine's copy on a disk another
+  machine reports live defers to it ("Same disk as X, which reports it now", not counted twice);
+  a library only its own system can read keeps its last-known state. For the dual-boot box.
+- Stale machines: confirmed they stay on every page with last-known work (store never expires).
+- Sleep: gitSpecOps holds no sleep assertion anywhere. The iMac's Energy Saver says never sleep
+  (`sleep 0`) and RustDesk holds it while connected; node1 sleeps after 30 min (AC), no requests.
+- macOS without Qt: a native Swift menu-bar icon (App/_tray/macos_menubar.swift), built once by
+  the app; running on the iMac. Bundle id carries no personal login (hygiene test).
