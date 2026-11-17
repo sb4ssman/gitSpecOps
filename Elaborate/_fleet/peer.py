@@ -206,27 +206,32 @@ class PeerNetwork:
         self.identity = None
         self.port = int((config.get("transports") or {}).get("tailnet", {}).get("port") or 0)
         self.knocked = threading.Event()  # another machine asked to be pulled now (/v1/knock)
+        self.refused = False  # retrying cannot help (a different Tailscale user)
 
     @property
     def enabled(self) -> bool:
         return bool((self.config.get("transports") or {}).get("tailnet"))
 
-    def start(self) -> bool:
-        """Returns whether the tailnet tier actually came up. Never raises."""
+    def start(self, quiet: bool = False) -> bool:
+        """Returns whether the tailnet tier actually came up. Never raises. `quiet` skips
+        repeating the same "unavailable" line on each retry; `refused` is set when retrying
+        cannot help (a different Tailscale user)."""
         if not self.enabled:
             return False
         try:
             self.identity = local_identity()
         except (OSError, ValueError) as exc:
-            # Tailscale missing, stopped, or logged out. Everything else still works.
-            self.log(f"Tailnet tier unavailable ({exc}). Observation, transports and the local "
-                     "dashboard are unaffected.")
+            # Tailscale missing, stopped, not up yet, or logged out. Everything else still works.
+            if not quiet:
+                self.log(f"Tailnet tier unavailable ({exc}); trying again every 30 seconds. "
+                         "Observation, transports and the local dashboard are unaffected.")
             return False
         allowed = (self.config["transports"]["tailnet"].get("allowed_login")
                    or self.identity["login"])
         self.config["transports"]["tailnet"]["allowed_login"] = allowed
         if self.identity["login"] != allowed:
             self.log("Tailscale user changed; tailnet tier disabled pending review.")
+            self.refused = True
             return False
         try:
             self.server = make_peer_server((self.identity["ip"], self.port), self.own_report,
@@ -628,8 +633,19 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             log("Sealing shared settings for the synced folder needs the cryptography package "
                 "(setup, or the Settings tab, installs it); Tailscale still carries them.")
 
-    if network.start():
+    if network.enabled:
         def poll_loop():
+            # At sign-in after a reboot the app can start before Tailscale is up (2026-11-17: every
+            # rebooted machine stopped pulling and serving for good). Keep trying, quietly, until
+            # it is; then serve, ask the others to pull this machine now, and poll as usual.
+            tries = 0
+            while not network.start(quiet=tries > 0):
+                tries += 1
+                if network.refused or stopping.wait(30.0):
+                    return
+            if tries:
+                log(f"Tailscale is up after {tries * 30} seconds; the tailnet tier started.")
+                network.knock_others()
             # Off the observation loop: an unreachable peer can take seconds to time out, and
             # that must never delay noticing a local edit.
             while True:
