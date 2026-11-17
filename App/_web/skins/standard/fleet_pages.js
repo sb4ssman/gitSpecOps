@@ -86,13 +86,26 @@ export function renderMachines(container, data, ageLabel, onOrg) {
     card.append(html('p', `Last report ${ageLabel(machine.age_seconds)} · ${plural(machine.repository_count, 'repository', 'repositories')} · device ID ${machine.id}`, 'host-note'));
     const mine = libraries.filter(entry => entry.machine_id === machine.id);
     if (mine.length) {
+      // Libraries across, their numbers down (the user, 2026-11-17: no sideways scrolling).
       const label = id => (data.machines.find(m => m.id === id) || {label: id}).label;
-      card.append(table(['Library', 'Repos', 'Orgs', 'Attention'], mine.map(entry => {
-        const name = html('span', entry.library || 'not named (an older report)');
+      const t = html('table', undefined, 'data-table machine-libraries');
+      const head = html('tr'); head.append(html('th', 'Library'));
+      for (const entry of mine) {
+        const th = html('th', entry.library || 'not named (an older report)');
         // The same disk from another system on the same box (a dual boot), named.
-        for (const other of entry.same_disk_as || []) name.append(html('span', `same disk as ${label(other.machine_id)}: ${other.library}`, 'host-note'));
-        return [name, entry.repositories, entry.organizations, entry.attention ? `⚑ ${entry.attention}` : '0'];
-      })));
+        for (const other of entry.same_disk_as || []) th.append(html('span', `same disk as ${label(other.machine_id)}: ${other.library}`, 'host-note'));
+        head.append(th);
+      }
+      const thead = html('thead'); thead.append(head); t.append(thead);
+      const body = html('tbody');
+      for (const [name, value] of [['Repositories', e => e.repositories], ['Organizations', e => e.organizations],
+                                   ['Need attention', e => (e.attention ? `⚑ ${e.attention}` : '0')]]) {
+        const line = html('tr'); line.append(html('th', name));
+        for (const entry of mine) line.append(html('td', String(value(entry))));
+        body.append(line);
+      }
+      t.append(body);
+      card.append(t);
     } else card.append(html('p', 'No library reported.', 'host-note'));
     container.append(card);
   }

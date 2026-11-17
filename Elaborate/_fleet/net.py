@@ -145,7 +145,8 @@ class FleetClient:
 
 
 def make_peer_server(address, own_report, secret: str, allowed_login: str, authenticate=None,
-                     own_settings=None, own_name=None, on_knock=None, own_requests=None, own_changes=None):
+                     own_settings=None, own_name=None, on_knock=None, own_requests=None, own_changes=None,
+                     own_known=None):
     """A peer's tailnet endpoint: **read-only**, and it serves only this machine's own state.
 
     The v2 host accepted `POST /v1/report` from clients, which is what made it an authority --
@@ -190,6 +191,13 @@ def make_peer_server(address, own_report, secret: str, allowed_login: str, authe
                         self.send(503, {"error": "no observation yet"})
                         return
                     self.send(200, report)
+                    return
+                if self.path == "/v1/known" and own_known is not None:
+                    # The last reports this machine holds for the other machines: a machine that
+                    # joins while another is off still learns that one's last state (2026-11-17:
+                    # a dual-boot box's Windows side never met its Linux side). Each report is
+                    # validated by the receiver, and an older one never replaces a newer one.
+                    self.send(200, {"reports": own_known()})
                     return
                 if self.path == "/v1/session":
                     self.send(200, {**peer, "fleet_secret": secret,
@@ -254,6 +262,16 @@ def fetch_peer_report(ip: str, port: int, timeout: int = 10) -> dict | None:
     if not isinstance(report, dict) or "manifest" not in report:
         return None
     return report
+
+
+def fetch_known_reports(ip: str, port: int) -> list[dict]:
+    """The last reports a peer holds for other machines. Empty for any failure."""
+    try:
+        answer = FleetClient(f"http://{ip}:{port}").request("/v1/known")
+    except (OSError, ValueError):
+        return []
+    reports = answer.get("reports") if isinstance(answer, dict) else None
+    return [r for r in reports if isinstance(r, dict) and "manifest" in r] if isinstance(reports, list) else []
 
 
 def make_server(address, store, secret: str, allowed_login: str, assets: dict,

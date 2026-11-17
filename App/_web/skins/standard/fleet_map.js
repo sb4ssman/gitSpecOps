@@ -19,8 +19,8 @@ const el = (tag, attrs = {}, text) => {
 };
 
 export const VIEWS = [
-  ['explorer', 'Explorer: every copy, by the dimensions you choose'],
   ['overview', 'Clouds and machines (overview)'],
+  ['explorer', 'Explorer: every copy, by the dimensions you choose'],
   ['machines', 'Machines together'],
 ];
 
@@ -71,9 +71,9 @@ function machinesView(container, data, perspective, onPick) {
 /** Render one view into `container`. `onPick` receives partial option changes. */
 export function renderMap(container, data, options, onPick) {
   // The explorer keeps its own canvas across the page's refreshes (its camera, hover and pins).
-  if (!options.view || options.view === 'explorer') { renderExplorer(container, data, options); return; }
+  if (options.view === 'explorer') { renderExplorer(container, data, options); return; }
   container.replaceChildren();
-  if (options.view === 'overview') { renderZoom(container, data); return; }
+  if (!options.view || options.view === 'overview') { renderZoom(container, data); return; }
   if (!data.machines.length) { container.append(html('p', 'No machine has reported yet.', 'empty')); return; }
   machinesView(container, data, perspectiveOf(data, options.perspective), onPick);
 }

@@ -452,7 +452,7 @@ function shownOf(shown, total) {
 }
 
 // The map's choices survive a reload (the user, 2026-11-16: reloading went back to the zoom map).
-const MAP_DEFAULTS = {view: 'explorer', perspective: null};
+const MAP_DEFAULTS = {view: 'overview', perspective: null};
 const mapOptions = (() => {
   try { return {...MAP_DEFAULTS, ...JSON.parse(localStorage.getItem('gitso.map') || '{}'), perspective: null}; } catch { return {...MAP_DEFAULTS}; }
 })();

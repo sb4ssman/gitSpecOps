@@ -240,7 +240,7 @@ class PeerNetwork:
                                            own_name=lambda: self.config.get("fleet_name"),
                                            on_knock=self.knocked.set,
                                            own_requests=self.requests.published if self.requests else None,
-                                           own_changes=self.own_changes)
+                                           own_changes=self.own_changes, own_known=self.known)
             threading.Thread(target=self.server.serve_forever, daemon=True).start()
         except OSError as exc:
             self.log(f"Could not listen for peers on port {self.port}: {exc}")
@@ -250,8 +250,23 @@ class PeerNetwork:
                  "(read-only; peers pull, nothing is pushed)")
         return True
 
+    def known(self) -> list[dict]:
+        """The last reports held for the other machines, for a peer that has not met them, within
+        the size one answer may have."""
+        mine = self.config["machine_id"]
+        answer, size = [], 0
+        for report in self.store.reports():
+            if report["manifest"].get("machine_id") == mine:
+                continue
+            size += len(json.dumps(report))
+            if size > MAX_REPORT_BYTES - 65536:
+                break
+            answer.append(report)
+        return answer
+
     def poll(self) -> int:
-        """Pull every reachable peer's current report into the local cache."""
+        """Pull every reachable peer's current report into the local cache, then, from what they
+        hold, the last reports of machines that cannot be reached now."""
         if self.server is None:
             return 0
         from Elaborate._fleet.net import discover_hosts
@@ -261,6 +276,7 @@ class PeerNetwork:
         except (OSError, ValueError):
             return 0
         learned = 0
+        live, answering = {self.config["machine_id"]}, []
         for host in candidates:
             if not host.get("serving"):
                 continue  # off, asleep, or not running the app: normal, not an error
@@ -273,10 +289,25 @@ class PeerNetwork:
             except (ValueError, KeyError, OSError):
                 continue  # a peer on a different fleet, or a malformed report
             machine_id = report["manifest"]["machine_id"]
+            live.add(machine_id)
+            answering.append(host)
             self.addresses[machine_id] = host["ip"]
             self.merge_settings(host)
             self.merge_name(host)
             self.merge_requests(host, machine_id)
+        # Machines that are off now: their last state, from those that met them. The store
+        # validates each one and refuses anything older than what it already holds.
+        from Elaborate._fleet.net import fetch_known_reports
+        for host in answering:
+            for report in fetch_known_reports(host["ip"], self.port):
+                machine_id = (report.get("manifest") or {}).get("machine_id")
+                if not machine_id or machine_id in live:
+                    continue
+                try:
+                    self.store.put(machine_id, report)
+                    learned += 1
+                except (ValueError, KeyError, OSError):
+                    continue
         return learned
 
     def merge_requests(self, host, machine_id) -> None:
@@ -401,7 +432,15 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     # `local` is everything this machine observes and is only ever rendered here; `report` is
     # the filtered view peers and transports receive. Keeping them apart is the whole point of
     # a publish basket: withheld work must still be visible to the person sitting at the machine.
-    latest = {"report": None, "local": None, "withheld": set(), "paths": ()}
+    latest = {"report": None, "local": None, "withheld": set(), "paths": (), "previous": None}
+    # This machine's last report from its previous run: shown, as last known, until the first
+    # fresh read finishes, so the machine never disappears from its own page (2026-11-17).
+    try:
+        previous = json.loads((config_dir / "fleet-latest.json").read_bytes())
+        if (previous.get("manifest") or {}).get("machine_id") == config["machine_id"]:
+            latest["previous"] = previous
+    except (OSError, ValueError, AttributeError):
+        pass
     watching = {"incomplete": False}  # Linux's watch limit reached: the library is reread on a timer
 
     def save_client(choice):
@@ -564,6 +603,9 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         if latest["local"] is not None:
             manifests.append(latest["local"]["manifest"])
             names.update(latest["local"].get("names") or {})
+        elif latest["previous"] is not None:  # still reading: the last known state, not nothing
+            manifests.append(latest["previous"]["manifest"])
+            names.update(latest["previous"].get("names") or {})
         return manifests, issues, names
 
     def document():
