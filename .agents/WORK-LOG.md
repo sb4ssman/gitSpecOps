@@ -3178,7 +3178,7 @@ No code changed; decisions recorded where they govern.
   repository, or a library); test in tests/special/test_resolve.py. The list no longer rebuilds
   on a click.
 - The map's organization level, reached through a machine, showed the fleet-wide advice
-  ("current; moonbase-prime unknown"), which read as being about that machine. It now shows that
+  ("current; <another machine> unknown"), which read as being about that machine. It now shows that
   machine's own copy.
 - The overlapping boxes the user saw after `gitso update` were an old script in a tab opened
   before the restart. The server now sends X-GitSpecOps-Page (a digest of the page's files) and
