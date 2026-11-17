@@ -82,10 +82,20 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
   one thing (each menu item carries its tile's details); the network map is the zoomable visual
   that should one day show everything; every other item is tables (parts of the map's grids and
   the repository inventory merge). Consistent choices throughout; rewrite the display contract
-  from this. Open: where Security goes (not in his list).
+  from this. Security sits between Clouds and Settings, with an "audit these" button on repository
+  groups. Clouds = providers and how machines talk (shared folder, Tailscale, a gitso-managed
+  repo). He approved building it 2026-11-16.
 - **A customizable legend for the map** (raised 2026-11-16).
-- **Safari 15 (macOS 10.15) has no CSS color-mix**: every tone colour on the page is missing
-  there. Replace color-mix with precomputed colours, or a fallback, in the rebuild.
+
+## Older Macs (macOS 10.15): parked for completeness, not tonight's detour (2026-11-16)
+- **Safari 15 has no CSS color-mix**: every tone colour on the page is missing there. Replace
+  color-mix with precomputed colours, or a fallback.
+- **A menu-bar icon without Qt:** a Swift prototype worked (`knowledge/macos-menubar-prototype.md`).
+  Still needed: the real mark, start at sign-in, stop together with `gitso tray --stop`.
+- **SSH and the keychain:** `gh` keeps its token in the login keychain, which an SSH session cannot
+  read, and an app restarted by `gitso update` over SSH cannot either; restart it at the Mac
+  itself. `gh auth setup-git` was needed so git uses `gh`'s sign-in.
+- **Sign-in in old Safari:** GitHub's device page did not work in Safari 15; Chrome did.
 - **The Memory Gamma copies on the dual-boot machine** are Windows checkouts read from Linux: Git
   on Linux sees every line ending as a change. Either `core.autocrlf=true` in those repositories,
   or gitSpecOps reporting "line endings only" instead of "dirty".
