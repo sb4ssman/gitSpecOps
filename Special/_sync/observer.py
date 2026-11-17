@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import functools
+
 import socket
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -237,6 +239,20 @@ def observe_roots(roots: list[RootSpec], secret: str | None = None, fetch: bool 
     return observed
 
 
+@functools.lru_cache(maxsize=64)
+def _disk(root: str, secret: str | None) -> str | None:
+    """One library's disk fingerprint, read once per run (Basic/_volumes.py)."""
+    from Basic._volumes import volume_of
+    from Special._sync.manifest import disk_id
+    found = volume_of(root)
+    return disk_id(found[0], found[1], secret) if found else None
+
+
+def _disks(roots, secret: str | None) -> dict:
+    """Each library root's disk fingerprint, keyed as place_of looks them up."""
+    return {str(Path(root)): disk for root in roots or [] if (disk := _disk(str(Path(root)), secret))}
+
+
 def observe_paths(paths: list[Path], secret: str | None = None,
                   fetched_at: dict[Path, str] | None = None, progress=None, roots=None) -> Observation:
     """Inspect known repository roots without rediscovering their parent libraries.
@@ -304,7 +320,7 @@ def observe_paths(paths: list[Path], secret: str | None = None,
             "head": git_stdout(path, ["rev-parse", "--verify", "-q", "HEAD"]),
             "upstream_head": (git_stdout(path, ["rev-parse", "--verify", "-q", "@{upstream}"])
                               if facts.get("upstream") else None),
-            "place": place_of(path, roots),
+            "place": place_of(path, roots, _disks(roots, secret)),
         })
         # Local-only: the catalog is never published, so it may hold the full identity.
         # host/owner are what let `fleet converge` ask a provider to name a peer's hash; `identity`

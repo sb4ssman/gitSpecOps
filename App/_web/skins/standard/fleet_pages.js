@@ -86,9 +86,13 @@ export function renderMachines(container, data, ageLabel, onOrg) {
     card.append(html('p', `Last report ${ageLabel(machine.age_seconds)} · ${plural(machine.repository_count, 'repository', 'repositories')} · device ID ${machine.id}`, 'host-note'));
     const mine = libraries.filter(entry => entry.machine_id === machine.id);
     if (mine.length) {
-      card.append(table(['Library', 'Repos', 'Orgs', 'Attention'], mine.map(entry => [
-        entry.library || 'not named (an older report)', entry.repositories, entry.organizations,
-        entry.attention ? `⚑ ${entry.attention}` : '0'])));
+      const label = id => (data.machines.find(m => m.id === id) || {label: id}).label;
+      card.append(table(['Library', 'Repos', 'Orgs', 'Attention'], mine.map(entry => {
+        const name = html('span', entry.library || 'not named (an older report)');
+        // The same disk from another system on the same box (a dual boot), named.
+        for (const other of entry.same_disk_as || []) name.append(html('span', `same disk as ${label(other.machine_id)}: ${other.library}`, 'host-note'));
+        return [name, entry.repositories, entry.organizations, entry.attention ? `⚑ ${entry.attention}` : '0'];
+      })));
     } else card.append(html('p', 'No library reported.', 'host-note'));
     container.append(card);
   }

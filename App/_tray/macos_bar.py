@@ -26,7 +26,7 @@ PLIST = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleExecutable</key><string>GitSpecOps</string>
-  <key>CFBundleIdentifier</key><string>io.github.sb4ssman.gitspecops.menubar</string>
+  <key>CFBundleIdentifier</key><string>app.gitspecops.menubar</string>
   <key>CFBundleName</key><string>gitSpecOps</string>
   <key>LSUIElement</key><true/>
 </dict></plist>
@@ -51,7 +51,7 @@ def build(folder: Path) -> Path:
     bundle = folder / BUNDLE
     binary = bundle / "Contents" / "MacOS" / "GitSpecOps"
     stamp = folder / "menubar-source.sha256"
-    digest = hashlib.sha256(SOURCE.read_bytes()).hexdigest()
+    digest = hashlib.sha256(SOURCE.read_bytes() + PLIST.encode()).hexdigest()  # code or settings changed
     if binary.exists() and stamp.exists() and stamp.read_text().strip() == digest:
         return bundle
     compiler = swift_compiler()

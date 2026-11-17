@@ -32,6 +32,8 @@ export function perspectiveOf(data, chosen) {
  *  named plainly (the user, 2026-11-16: "same commit as WHAT?"). As of that machine's last fetch. */
 export function copyText(cell, row) {
   if (!cell || !cell.present) return 'not here';
+  // One box, two systems: this quiet copy is on a disk another machine reports live (Python's words).
+  if (cell.same_disk_as) return cell.description;
   const facts = cell.facts || {};
   const host = (row.identity || {}).host;
   const remote = PROVIDER[host] || (host && host !== 'local' ? host : null);
