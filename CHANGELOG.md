@@ -15,6 +15,8 @@ while the version starts with 0, gitSpecOps is a development preview and anythin
 - **The audit page:** scanners and protected values sit above what to audit; installed scanners
   are ticked by default; a status line shows the phase of the repository being read (working
   files, then every commit with their count) and for how long.
+- **"On my other devices"** in the header shows this machine's address for your phone or another
+  computer on your Tailscale account, or how to turn that on.
 - **The header** says this machine and the fleet in a few words; the full line is its tooltip.
 - **Fixes:** the page's commit and push now pass the app's settings profile; a Git read that
   fails is an error, never an empty answer; Settings' not-counted list read the wrong record.

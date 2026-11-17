@@ -66,6 +66,7 @@ function setTheme(theme) {
 let markShown = '';
 function renderMark() {
   byId('first-observation').hidden = Boolean(state.data.machines && state.data.machines.length);
+  byId('away').hidden = !state.data.local_actions;  // offered at this computer only
   const mark = state.data.mark;
   if (!mark || !mark.machine || !mark.fleet) return;
   const m = mark.machine.state, f = mark.fleet.state;
@@ -587,6 +588,26 @@ byId('collapse').onclick = () => {
   openedMachines.clear(); saveOpenedMachines();
   saveCollapsedGroups();
   document.querySelectorAll('.repo-group, .repo-library, .repo-machine').forEach(item => { item.open = false; });
+};
+// "On my other devices": where your phone or another computer opens this page (2026-11-17).
+byId('away').onclick = async () => {
+  const note = byId('away-note');
+  if (!note.hidden) { note.hidden = true; return; }
+  note.hidden = false; note.textContent = 'Looking…';
+  try {
+    const s = (await connection.desktopAction('setup/settings', {}, state.data.local_actions.token, {structured: true})).settings;
+    if (s.remote_view) {
+      const link = node('a', s.remote_view); link.href = s.remote_view; link.target = '_blank'; link.rel = 'noopener';
+      const copy = node('button', 'Copy', 'quiet'); copy.type = 'button';
+      copy.onclick = async () => { try { await navigator.clipboard.writeText(s.remote_view); copy.textContent = 'Copied'; } catch { copy.textContent = 'Select it and copy'; } };
+      note.replaceChildren('The view from this machine, for your phone or another computer with Tailscale on the same account: ', link, ' ', copy,
+        ' It is read-only and shows the fleet as this machine sees it.');
+    } else {
+      const open = node('a', 'Settings'); open.href = '#settings'; open.onclick = event => { event.preventDefault(); note.hidden = true; selectTab('settings'); };
+      note.replaceChildren('Not shared with your other devices yet. In ', open,
+        ', under "How the app shows itself", choose "Also on my Tailscale devices", save, and restart the app. Install Tailscale on the other device with the same account.');
+    }
+  } catch (error) { note.textContent = error.message; }
 };
 byId('theme').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 // The menu is on screen from the start; its numbers arrive with the first report.

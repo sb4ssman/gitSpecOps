@@ -147,3 +147,15 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
   `architecture-layers.md`, still describe settings migration and older files removed on
   2026-11-13. `.agents/README.md`'s Sync Suggester sections predate the layer move, and its smoke checks
   still name the old scripts (`update_archive.py`, `sync_archive.py`, `duplicate_org.py`).
+
+## Tailscale names for the other-devices view (noted 2026-11-17; the user: not yet)
+- The tailnet view answers only to the numeric address (a guard against DNS tricks). Accepting
+  the machine's own `<name>.<tailnet>.ts.net` would give a readable address; with Tailscale's
+  HTTPS certificates (`tailscale cert` / `tailscale serve`) it would also get a padlock. Cost:
+  certificate names are written to public transparency logs, so machine names become public.
+  If built: accept exactly this machine's own MagicDNS name, nothing else.
+
+## Ideas from the user (2026-11-17), not decided
+- **Catalog** and **Docs** menu items. Catalog: the operations, by layer (Basic, Special,
+  Elaborate) and by what they wrap (git, gh, gitso); `gitso commands --json` already produces
+  it. Docs: the project's documents, read locally or online; `gitso docs` already prints them.

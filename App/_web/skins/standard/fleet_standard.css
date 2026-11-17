@@ -76,3 +76,5 @@ main{padding:0 32px}.section-title{margin:24px 0 18px}.section-title p{margin:5p
 .sec-status{display:block;font-size:13px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
 .sec-grid{grid-template-columns:minmax(0,2fr) minmax(0,3fr);margin-bottom:16px}
 @media (max-width:900px){.sec-grid{grid-template-columns:1fr}}
+.away-note{margin:0;padding:8px 16px;font-size:13px;background:color-mix(in srgb,var(--accent) 10%,transparent);border-bottom:1px solid var(--border)}
+.away-note button{padding:2px 8px;min-height:0;font-size:12px}
