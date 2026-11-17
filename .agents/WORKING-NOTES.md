@@ -77,6 +77,15 @@ _Last tended: 2026-11-14. Pruned to open work; what was done is in the log entry
   automatically") so a request needs no one at that machine. Clones stay manual unless chosen.
 - **Scrutinize the display contract against the page** (`docs/DISPLAY-CONTRACT.md`): every fact
   worked out once in Python; skins only draw, so an LCARS-style skin can rearrange everything.
+- **Page rebuild (raised 2026-11-16, to discuss before building):** menu order Network map,
+  Repositories, Orgs/Archives, Machines, Clouds, Settings; the menu and the summary tiles become
+  one thing (each menu item carries its tile's details); the network map is the zoomable visual
+  that should one day show everything; every other item is tables (parts of the map's grids and
+  the repository inventory merge). Consistent choices throughout; rewrite the display contract
+  from this. Open: where Security goes (not in his list).
+- **A customizable legend for the map** (raised 2026-11-16).
+- **Safari 15 (macOS 10.15) has no CSS color-mix**: every tone colour on the page is missing
+  there. Replace color-mix with precomputed colours, or a fallback, in the rebuild.
 - **The Memory Gamma copies on the dual-boot machine** are Windows checkouts read from Linux: Git
   on Linux sees every line ending as a change. Either `core.autocrlf=true` in those repositories,
   or gitSpecOps reporting "line endings only" instead of "dirty".
