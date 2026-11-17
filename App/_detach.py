@@ -85,6 +85,43 @@ def running(config_dir=None, settings_home=None) -> bool:
         return True
 
 
+def _session_id() -> int | None:
+    """This process's Windows session: 0 is the services session (SSH, services), which has no
+    desktop; the signed-in person's desktop is 1 or higher."""
+    import ctypes
+    kernel = ctypes.windll.kernel32
+    session = ctypes.c_ulong()
+    return session.value if kernel.ProcessIdToSessionId(kernel.GetCurrentProcessId(), ctypes.byref(session)) else None
+
+
+def _through_desktop_session(argv: list[str]) -> bool:
+    """From session 0, start `argv` in the signed-in person's desktop instead (2026-11-17: every app
+    `gitso update` restarted over SSH ran in session 0, with no icon, holding the lock, so it looked
+    dead until killed). A one-time task that runs only in that person's interactive session: made,
+    run, deleted. Deleting it does not stop what it started. False when Windows refused."""
+    if any(name.startswith("GITSPECOPS_") for name in os.environ):
+        return False  # a task gets the person's own environment; keep these overrides
+    command = subprocess.list2cmdline(argv)
+    if len(command) > 261:  # schtasks' limit for the command
+        return False
+    name = f"gitSpecOps start {os.getpid()}"
+
+    def schtasks(*args):
+        return subprocess.run(["schtasks", *args], capture_output=True, text=True, timeout=60,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    try:
+        if schtasks("/create", "/tn", name, "/tr", command, "/sc", "once", "/st", "23:59", "/it", "/f").returncode:
+            return False
+        return schtasks("/run", "/tn", name).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+    finally:
+        try:
+            schtasks("/delete", "/tn", name, "/f")
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+
 def _through_windows(argv: list[str]) -> int | None:
     """Ask Windows (WMI) to start `argv`; its process id, or None when that was refused."""
     if any(name.startswith("GITSPECOPS_") for name in os.environ):
@@ -136,6 +173,15 @@ def start(arguments: list[str] | None = None, *, wait: float = 5.0) -> str:
         return ALREADY
     # --detached: run in place, and give up any console this start gave it (App/_tray/qt.py).
     argv = [str(interpreter()), str(TRAY), "--detached", *(arguments or [])]
+    if os.name == "nt" and _session_id() == 0 and _through_desktop_session(argv):
+        # Started in the person's desktop: no process id comes back, so the lock says when it runs.
+        import time
+        for _ in range(int(max(wait, 1) * 4)):
+            if running():
+                return STARTED
+            time.sleep(0.5)
+        raise RuntimeError("the app did not start in your desktop session; is anyone signed in? "
+                           "Start it there with gitso tray")
     pid = _through_windows(argv) if os.name == "nt" else None
     if pid is not None:
         code = _exit_code(pid, wait)

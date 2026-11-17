@@ -73,6 +73,22 @@ class WindowsStartsItTests(unittest.TestCase):
         patcher = patch.object(_detach, "running", return_value=False)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # A desktop session unless a test says otherwise (CI runners run in session 0).
+        session = patch.object(_detach, "_session_id", return_value=1)
+        session.start()
+        self.addCleanup(session.stop)
+
+    def test_from_session_0_it_starts_in_the_desktop_session(self):
+        # SSH and services run in session 0, which has no desktop (2026-11-17).
+        with patch.object(_detach, "_session_id", return_value=0),                 patch.object(_detach, "_through_desktop_session", return_value=True) as desktop,                 patch.object(_detach, "running", side_effect=[False, True]),                 patch.object(_detach, "_through_windows") as through:
+            self.assertEqual(_detach.start(wait=0), _detach.STARTED)
+        self.assertEqual(desktop.call_args.args[0][1:], [str(_detach.TRAY), "--detached"])
+        through.assert_not_called()
+
+    def test_settings_overrides_keep_the_session_0_start_off(self):
+        with patch.dict(_detach.os.environ, {"GITSPECOPS_SYNC_HOME": "C:/somewhere"}),                 patch.object(_detach.subprocess, "run") as run:
+            self.assertFalse(_detach._through_desktop_session(["pythonw", "tray.py"]))
+        run.assert_not_called()
 
     def test_windows_starts_it_and_nothing_is_started_as_a_child(self):
         with patch.object(_detach, "_through_windows", return_value=4321) as through,                 patch.object(_detach, "_exit_code", return_value=None) as exit_code,                 patch.object(_detach.subprocess, "Popen") as popen:
