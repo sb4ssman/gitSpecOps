@@ -118,9 +118,9 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
     try:
         tray_lock.__enter__()
     except ValueError:
+        from App._detach import where_the_icon_is
         QtWidgets.QMessageBox.information(
-            None, "gitSpecOps", "gitSpecOps is already running for this profile. Its icon is by the "
-            "clock (Windows may tuck it under the ^ arrow).")
+            None, "gitSpecOps", f"gitSpecOps is already running for this profile: {where_the_icon_is()}.")
         return 0
 
     profile = profile_arguments(config_dir, settings_home)

@@ -33,8 +33,28 @@ _WMI_START = ("$si = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly
               "@{CommandLine=$env:GITSO_START; CurrentDirectory=$env:GITSO_START_IN; "
               "ProcessStartupInformation=$si}; "
               "if ($r.ReturnValue -eq 0) { $r.ProcessId } else { exit 1 }")
-STARTED = "started on its own: its icon is by the clock (Windows may tuck it under the ^ arrow)"
-ALREADY = "already running: its icon is by the clock (Windows may tuck it under the ^ arrow)"
+
+
+def where_the_icon_is() -> str:
+    """Where to find the running app, said truthfully for this computer: a Mac too old for Qt
+    runs it with no icon at all (macOS 10.15, 2026-11-16: "its icon is by the clock" was wrong)."""
+    import importlib.util
+    import sys
+    try:
+        has_qt = importlib.util.find_spec("PySide6") is not None
+    except (ImportError, ValueError):
+        has_qt = False
+    if not has_qt:
+        return "it has no icon on this computer (no Qt for it); open the page with gitso tray --open"
+    if sys.platform == "darwin":
+        return "its icon is in the menu bar"
+    if os.name == "nt":
+        return "its icon is by the clock (Windows may tuck it under the ^ arrow)"
+    return "its icon is in the system tray"
+
+
+STARTED = f"started on its own: {where_the_icon_is()}"
+ALREADY = f"already running: {where_the_icon_is()}"
 
 
 def interpreter() -> Path:
