@@ -69,14 +69,20 @@ audits chosen repositories, files and every commit, and any group of repositorie
 
 ## What never happens
 
-- No force push, no `reset --hard`, no rebase, merge or delete as an automatic action, ever.
-- Nothing changes a repository by itself. Watching only watches; every change is a command you
-  ran, shown as a plan first.
+- No force push, no rebase, no merge, no delete, and no `reset --hard` in any repository of
+  yours. (Restoring a recovery snapshot works in a throwaway checkout of its own and may roll
+  that back; it never touches your checkout.)
+- Nothing changes a repository by itself. Watching only watches. A change is a command you ran,
+  shown as a plan first, or one of the two things you can ask another of your own machines to
+  do, which cannot lose work: a fast-forward after a fresh fetch, and a clone that replaces
+  nothing.
 - Nothing is scanned before you name the folders, and "find my libraries" looks only where you
   say, after you say so.
 - No credentials stored: Git, `gh` and Tailscale use your own sign-ins.
 - Nothing leaves your machine except what you chose to share: status facts, and repository names
-  only if you allow them. Never paths, diffs, file contents or commit messages.
+  only if you allow them. Never paths, diffs or commit messages. File contents leave only in
+  recovery snapshots, which are off until you enrol them.
+  [Exactly what travels, and who can read it](docs/DATA-FLOWS.md).
 
 ---
 
@@ -118,9 +124,11 @@ switched off".
 | **Protect** | scans; secure-commit and secure-push; history cleanup | findings on the map, on request | audit every machine *(planned)* | |
 | **Agents can** | work on folders you name | work on this machine | observe the whole fleet | |
 
-Built: asking another machine to fast-forward or clone (it shows the request and acts on your
-approval there). Planned: applying such requests automatically under a consent you set. A private
-GitHub repository as a fourth way to share is built but **experimental and untested**.
+Built: having another of your machines fast-forward or clone; it runs there when that machine
+next checks in, and the result comes back (a setting makes it wait for approval there instead).
+Planned: committing and pushing on another machine, approved from this one. A private GitHub
+repository as another way to share is built but **experimental and untested**.
+[What works today, and what has only been tested](docs/STATUS.md).
 
 ## Commands
 
@@ -151,6 +159,11 @@ a subject's actions.
 - [For AI agents](docs/FOR-AI-AGENTS.md): plans, approvals and machine-readable results.
 - [Command reference](docs/COMMANDS.md): every command's own description.
 - [Architecture, safety model and tests](docs/ARCHITECTURE.md).
+- [What works today](docs/STATUS.md): built, used, tested and run natively, per capability.
+- [What leaves a machine](docs/DATA-FLOWS.md): per route, what travels and who can read it.
+- [One operation, end to end](docs/ONE-OPERATION.md): a commit from the page, from the click
+  to the test.
+- [Three problems, and how they were solved](docs/CASE-STUDIES.md).
 
 ## License
 

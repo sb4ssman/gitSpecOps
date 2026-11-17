@@ -11,6 +11,16 @@ or migrates organization to organization. Previews, checks for name collisions b
 call, shows its plan and asks (a script applies it with `--apply PLAN_ID`), and writes resumable run files so an interrupted migration
 continues instead of restarting.
 
+**What is copied:** Git content: branches, tags and notes, and on a migration the repository's
+visibility and description. **Not copied:** issues, pull requests, releases, wikis, permissions,
+repository settings, secrets and Git LFS payloads. It copies the code and its history; it is not
+a backup of an organization.
+
+**Security is your choice, asked each time.** An upload or a migration is an exact copy unless
+you answer yes to the security question in its setup. With yes, each history is read first; a
+repository with a high-severity finding is held, nothing is created for it, its clone is kept,
+and you are told how to make a clean copy (`gitso history clean`) to upload instead.
+
 ### Keep archives current
 
 ```sh

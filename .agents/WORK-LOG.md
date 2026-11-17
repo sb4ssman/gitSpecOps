@@ -3147,3 +3147,21 @@ No code changed; decisions recorded where they govern.
 - Not done yet from the review: PeerNetwork and TransportPublisher still live in peer.py (tests
   patch names there), the fleet CLI and setup walkthrough are not split, recovery keeps its own
   runner and scanner, and the documents.
+
+## 2026-11-17 22:00 - user (claude) - External review, wave 3: the documents; history out of the brief (branch dev)
+
+- New, for people: docs/STATUS.md (built / used / tested / run natively, per capability, with
+  "not confirmed" where the agent does not know), docs/DATA-FLOWS.md (per route: what travels,
+  who can read it, how to stop), docs/ONE-OPERATION.md (a commit from the page, click to
+  test), docs/CASE-STUDIES.md (three problems: the failed assumption, the design, the test,
+  what is open).
+- README: the absolute claims now state their exceptions (recovery's disposable checkout;
+  recovery snapshots hold file contents; the two requests that run on arrival). ARCHIVES.md says
+  what org copy does not copy.
+- `.agents/README.md` went from 854 to 210 lines. Lines from "Repo Shape" on (design notes with
+  dates, old script names) moved unedited to knowledge/history/. Added: "One operation, two
+  faces", a current layout table, and the 2026-11-17 amendment to rule 2 (safe requests run on
+  arrival).
+- WORKING-NOTES pruned to open work: mission items 1 to 3, PR #7, requests on arrival, the
+  legend, review-from-the-page and self-update were done.
+- Decision recorded with the user: the scripts are the product; the page is a face on them.

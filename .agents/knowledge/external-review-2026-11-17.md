@@ -66,3 +66,15 @@ newer integrations do not always keep the guarantees of the older core.
 5. Publish the capability matrix.
 6. Polish resolution: previews, true completion states, recovery after failure, an attention queue.
 7. Only then expand (native window, richer remote actions).
+
+## Where the wider points stand (2026-11-17, end of day)
+
+| Point | Status |
+|---|---|
+| One operation boundary | Done for the page's repository actions: they call the functions, with profile and target (`Special/_sync/resolve.py`, `Elaborate/_fleet/page_actions.py`). The brief states the rule. |
+| One meaning of "protected" | Org copy is now a stated choice. Requests carry fixed sentences. Recovery's own scanner and runners: open. |
+| Absolute claims | README corrected; `docs/DATA-FLOWS.md` is the per-route table. |
+| Tests at the user-action boundary | One whole journey (non-default profile, two copies, plan then apply); page actions; hostile Git configuration; unreadable folders. Open: malformed peer records, interruptions, names needing quoting, browser tests. |
+| Large files | The page's actions are out of `peer.py`. The fleet CLI, the walkthrough and the network classes: open. |
+| Documents | `docs/STATUS.md`, `ONE-OPERATION.md`, `CASE-STUDIES.md`; history moved out of the brief. |
+| Product | Requests end as done / partly done / not done; plans shown in words; what org copy does not copy is stated. Open: the attention queue, labelled counts, keyboard and contrast review. |

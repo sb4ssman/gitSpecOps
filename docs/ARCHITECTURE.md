@@ -2,7 +2,11 @@
 
 ## Safety model
 
-- **Fast-forward only, everywhere.** Pulls are `--ff-only`; every push is a non-force push.
+- **Fast-forward only, everywhere.** Pulls are `--ff-only`; every push is a non-force push. Both
+  name their remote and branch, so Git's configuration cannot widen or redirect them.
+- **One operation, two faces.** An operation is a Python function; a `gitso` command and a
+  button on the page both call it, with the settings profile and the target given explicitly.
+  [One operation, end to end](ONE-OPERATION.md) follows a click down to its tests.
 - **Detect, show the plan, approve, run, review.** A command that changes things works out its
   plan, with an id that is a digest of its content, and changes nothing. A person at a terminal
   is asked; a program applies it with `--apply PLAN_ID`, and a plan that changed in between is
