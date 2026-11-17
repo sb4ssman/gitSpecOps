@@ -5,6 +5,26 @@ while the version starts with 0, gitSpecOps is a development preview and anythin
 
 ## Unreleased
 
+- **Requests between machines run on arrival.** A request can only ask for a fast-forward after
+  a fresh fetch or a clone that replaces nothing, and only a machine of the same fleet can send
+  one, so the receiving machine now runs it when it next checks in, without a second approval
+  there (`auto_requests: false` restores Apply). A request acts on the copy in the library you
+  chose, and ends as done, partly done or not done, never "done" over a failure. Other machines
+  are told fixed sentences per repository; Git's own words stay in that machine's task log.
+- **Push and pull do exactly what was approved.** `gitso push` names its remote and one plain
+  refspec, so a configured force refspec, a mirror remote or `push.default` cannot widen or
+  overwrite; `gitso pull` and catch-up name the remote and branch, and refuse a branch that
+  tracks another remote.
+- **Safe-to-wipe is never SAFE over a folder it could not read.** Such a folder is listed and
+  blocks the verdict.
+- **A clone lands inside the library that was approved:** the real target is checked, links
+  included, before anything is created.
+- **Org copy asks about security.** No (the default) is an exact copy. Yes reads each history
+  first; a repository with a high-severity finding is held, nothing is created for it, and you
+  are told how to make a clean copy. Uploads send branches, tags and notes only.
+- **A namespace's repository list is complete or it is an error** (the limit is 20,000, and a
+  list that fills it is refused).
+
 - **Reference**, a new menu item between Security and Settings: the catalog of operations by
   layer, each with its manual (and Git's own, for the Basic ones), this project's documents, and
   the online manuals of the tools it drives. Reading only.

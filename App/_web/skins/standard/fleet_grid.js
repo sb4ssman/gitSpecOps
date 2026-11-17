@@ -200,10 +200,10 @@ export function copyGrid(data, rows, options) {
   const thead = html('thead'); thead.append(head, under); table.append(thead);
   const body = html('tbody');
   if (actions && asks) {
-    // Ask a machine to bring these copies forward, or to clone the ones it lacks. The machine
-    // doing the work checks each one again; another machine shows the request for approval.
+    // Have a machine bring these copies forward, or clone the ones it lacks. The machine doing
+    // the work checks each one again and runs it on arrival (both operations cannot lose work).
     const line = html('tr', undefined, 'map-asks');
-    const label = html('td'); label.append(html('span', 'Ask a machine:', 'host-note'));
+    const label = html('td'); label.append(html('span', 'Do it on a machine:', 'host-note'));
     line.append(label, html('td'));
     for (const column of columns) {
       const machine = column.machine;

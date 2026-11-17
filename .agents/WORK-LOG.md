@@ -3116,3 +3116,20 @@ No code changed; decisions recorded where they govern.
   File names are never in a report (counts only), so a machine that is off cannot answer; the
   page says that instead of failing.
 - Working notes: the Catalog/Docs idea is built (removed there); Tailscale names stay noted.
+
+## 2026-11-17 19:00 - user (claude) - External review, wave 1: the safety and scope defects (branch dev)
+
+- The user agreed with the whole review (knowledge/external-review-2026-11-17.md) and asked for
+  all of it. This wave: findings 1, 2, 4, 5, 6, 7, 8, 9b. Each has its status in that file.
+- `upstream_of` lives in Basic/_facts.py (a command may not import a sibling command).
+- Requests: `perform()` returns (status, public text); `run_request` keeps its old shape.
+  The peer runs waiting requests when they arrive (`network.on_requests`), sets "running", and
+  always ends in done / partial / failed. Decision by the user: remote management without
+  walking to the other machine; "no one uses the tool yet", so behaviour may change freely.
+- Org copy: the user's design, not the reviewer's: a question in setup, exact copy by default.
+  The "rewrite in the interim" is the held clone plus `gitso history clean`; not yet one step.
+- New tests: basic/test_pinned_push_pull.py, special/test_scope_proofs.py (the link test needs
+  link privileges; it is skipped on this Windows machine), duplicator/test_security_hold.py.
+- Still open from the review: the operation boundary (the page calling functions, not
+  subprocesses), splitting peer.py / the fleet CLI / the setup walkthrough, recovery's own
+  runner and scanner, the documents.

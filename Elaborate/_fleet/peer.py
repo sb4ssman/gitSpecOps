@@ -201,6 +201,7 @@ class PeerNetwork:
         self.adopt_name = adopt_name  # saves a newer fleet name heard from a machine of this fleet
         self.requests = requests  # requests.RequestBook: asked of others, asked of this machine
         self.own_changes = own_changes  # repo_id -> this machine's uncommitted-work summary
+        self.on_requests = None  # called when requests arrive (the peer runs the safe ones)
         self.addresses: dict[str, str] = {}  # machine_id -> its Tailscale address, from the last round
         self.server = None
         self.identity = None
@@ -321,7 +322,9 @@ class PeerNetwork:
         except (OSError, ValueError, KeyError, TypeError):
             return  # an older peer without requests
         if new:
-            self.log(f"{new} request(s) from {host.get('label', 'another machine')} wait on this machine's page.")
+            self.log(f"{new} request(s) from {host.get('label', 'another machine')} arrived.")
+            if self.on_requests is not None:
+                threading.Thread(target=self.on_requests, name="requests", daemon=True).start()
 
     def ask(self, machine_id: str, path: str):
         """A read from one fleet machine by its id, through its Tailscale address."""
@@ -544,7 +547,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
 
     def request_action(action, payload):
         if action == "request-send":
-            items = [{key: text(item.get(key)) for key in ("repo_id", "host", "owner", "name", "folder")}
+            items = [{key: text(item.get(key)) for key in ("repo_id", "host", "owner", "name", "folder", "library")}
                      for item in payload.get("items") or [] if isinstance(item, dict)]
             if text(payload.get("to")) == config["machine_id"]:
                 # Asked of this machine, from its own page: the person is here, so it runs now,
@@ -553,15 +556,13 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                            "to_label": config["label"]}
                 if request["kind"] not in ("pull", "clone") or not items:
                     raise ValueError("choose pull or clone, and at least one repository")
-                with action_lock:
-                    result = run_request(request, observer.local_checkouts, config["roots"])
-                book.log("ran here", request, result)
-                atomic_write_bytes(config_dir / "fleet-rescan.request", b"ran here\n")
-                return {"message": f"Done here.\n{result}"}
+                status, result = run_and_log("ran here", request)
+                return {"status": status, "message": f"{HEADLINE[status]} here.\n{result}"}
             sent = book.send(text(payload.get("to")), text(payload.get("to_label")), text(payload.get("kind")), items)
             book.log("asked", sent)
             threading.Thread(target=network.knock_others, daemon=True).start()  # so it is picked up now
-            return {"sent": sent, "message": f"Asked {sent['to_label']}; it shows on that machine's page."}
+            return {"sent": sent, "message": f"Asked {sent['to_label']}. It runs there when that machine next checks in "
+                                             "(about a minute when it is on); the result appears under Requests."}
         if action == "request-withdraw":
             book.withdraw(text(payload.get("id")))
             return {"message": "Withdrawn."}
@@ -576,18 +577,51 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         request = next((item for item in book.incoming() if item["id"] == payload.get("id")), None)
         if request is None or request["status"] != "waiting":
             raise ValueError("that request is no longer waiting; reload")
+        if payload.get("accept") is None:
+            raise ValueError("answer with accept true or false")
         if not payload.get("accept"):
             book.log("dismissed", request)
             return book.settle(request["id"], "dismissed", "Dismissed here.")
+        return answer_request(request)
+
+    HEADLINE = {"done": "Done", "partial": "Partly done", "failed": "Not done"}
+
+    def run_and_log(event, request):
+        """Run a request with the safe operations; Git's own words stay in this machine's log."""
+        from Elaborate._fleet.requests import perform
+        details = []
         with action_lock:
-            result = run_request(request, observer.local_checkouts, config["roots"])
-        book.log("applied", request, result)
-        atomic_write_bytes(config_dir / "fleet-rescan.request", b"request applied\n")  # see the result
+            status, result = perform(request, observer.local_checkouts, config["roots"],
+                                     private=lambda name, detail: details.append(f"{name}: {detail}"))
+        book.log(event, request, "\n".join([result, *details]))
+        atomic_write_bytes(config_dir / "fleet-rescan.request", b"request ran\n")  # see the result
+        return status, result
+
+    def answer_request(request):
+        book.settle(request["id"], "running", "")
+        try:
+            status, result = run_and_log("applied", request)
+        except Exception:  # noqa: BLE001 - a request must end in a state, never stay "running"
+            status, result = "failed", "It could not be run on that machine; its log has the reason."
+        settled = book.settle(request["id"], status, result)
         threading.Thread(target=network.knock_others, daemon=True).start()  # the asker learns now
-        return book.settle(request["id"], "done", result)
+        return settled
+
+    def run_waiting():
+        """Requests from this fleet's machines run on arrival (requests.py): they can only ask
+        for a fast-forward or a clone, neither of which can lose work."""
+        if config.get("auto_requests", True) is False:
+            return
+        for request in book.incoming():
+            if request.get("status") == "waiting":
+                try:
+                    answer_request(request)
+                except ValueError:
+                    continue
 
     network = PeerNetwork(config, lambda: latest["report"], store, log=log, shared=shared, adopt_name=adopt_name,
                           requests=book, own_changes=own_changes)
+    network.on_requests = run_waiting
 
     def sealed_folder_loop():
         """The shared protected values through the synced folder, sealed (sealed.py)."""
@@ -673,8 +707,8 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                       "unobserved_count": observer.excluded_from_observation})
         document["activity"] = dict(activity)
         incoming = book.incoming()
-        document["requests"] = {"waiting": [item for item in incoming if item["status"] == "waiting"],
-                                "answered": [item for item in incoming if item["status"] != "waiting"][:10],
+        document["requests"] = {"waiting": [item for item in incoming if item["status"] in ("waiting", "running")],
+                                "answered": [item for item in incoming if item["status"] not in ("waiting", "running")][:10],
                                 "sent": book.outgoing()}
         return document
 

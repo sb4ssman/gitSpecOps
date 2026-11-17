@@ -88,3 +88,4 @@ main{padding:0 32px}.section-title{margin:24px 0 18px}.section-title p{margin:5p
 .ref-item:hover{border-color:var(--accent)}
 .ref-more{margin:0 0 4px 10px;font-size:12px}
 .ref-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;max-height:74vh;overflow:auto}
+.request-trouble{border-left:3px solid var(--warning);padding-left:10px}

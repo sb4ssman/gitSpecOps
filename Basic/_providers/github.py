@@ -84,13 +84,26 @@ def _ref_from_json(item: dict) -> RepoRef:
     )
 
 
+#: `gh repo list` pages on its own up to --limit. A list that fills the limit may be cut short,
+#: and a cut list must never pass for the whole namespace (an outside review, 2026-11-17: at
+#: 1,000 a copy was silently incomplete and a missing remote looked local-only).
+LIST_LIMIT = 20000
+
+
+def _complete(items: list, owner: str) -> list:
+    if len(items) >= LIST_LIMIT:
+        raise GhError(f"{owner} has {LIST_LIMIT} repositories or more; the list is incomplete, "
+                      "so nothing was decided from it")
+    return items
+
+
 class GitHubProvider:
     name = "github"
 
     def list_repos(self, owner: str) -> tuple[list[RepoRef] | None, str | None]:
         try:
-            proc = run_gh(["repo", "list", owner, "--json", _FIELDS, "--limit", "1000"])
-            return [_ref_from_json(item) for item in json.loads(proc.stdout)], None
+            proc = run_gh(["repo", "list", owner, "--json", _FIELDS, "--limit", str(LIST_LIMIT)])
+            return [_ref_from_json(item) for item in _complete(json.loads(proc.stdout), owner)], None
         except GhError as exc:
             return None, str(exc)
         except json.JSONDecodeError as exc:
@@ -127,11 +140,11 @@ def org_access_error(org: str) -> str | None:
 
 def fetch_org_repos(org: str) -> list[dict]:
     """A namespace's repositories with size/visibility details. Raises GhError or JSONDecodeError."""
-    result = run_gh(["repo", "list", org, "--limit", "1000", "--json", _REPO_FIELDS])
+    result = run_gh(["repo", "list", org, "--limit", str(LIST_LIMIT), "--json", _REPO_FIELDS])
     text = (result.stdout or "").strip()
     if not text:
         raise GhError(f"gh returned an empty repo list for {org}")
-    return json.loads(text)
+    return _complete(json.loads(text), org)
 
 
 def check_repo_for_lfs(org: str, repo_name: str, timeout: float = 20) -> bool:

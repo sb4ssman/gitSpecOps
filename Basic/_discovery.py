@@ -103,12 +103,15 @@ def entry_device_id(entry) -> int | None:
 
 def find_repos(root: Path, max_depth: int | None = None, include_hidden: bool = False,
                cross_filesystems: bool = False, skip_names: frozenset | set | None = None,
-               progress: callable | None = None) -> list[RepoHit]:
+               progress: callable | None = None, gaps: list | None = None) -> list[RepoHit]:
     """Walk root; return every repository found, sorted by path.
 
     max_depth None = unlimited. include_hidden: also scan dotted dirs (never entering
     `.git` internals). cross_filesystems False = stay on root's device (like find -xdev).
     progress: optional callback progress(scanned_dirs, found, current_dir).
+    gaps: a list that receives {"path", "reason"} for every folder the walk could not look
+    into (unreadable, or on another filesystem). A caller that must prove something about
+    *everything* under root (safe-to-wipe) passes it, and an entry there means "not proven".
     """
     if skip_names is None:
         skip_names = DEFAULT_SKIP_NAMES
@@ -123,13 +126,17 @@ def find_repos(root: Path, max_depth: int | None = None, include_hidden: bool = 
         current, depth = stack.pop()
         try:
             entries = list(os.scandir(current))
-        except OSError:
+        except OSError as exc:
+            if gaps is not None:
+                gaps.append({"path": str(current), "reason": f"could not be read ({exc.strerror or 'error'})"})
             continue
         for entry in entries:
             try:
                 if not entry.is_dir(follow_symlinks=False):
                     continue
-            except OSError:
+            except OSError as exc:
+                if gaps is not None:
+                    gaps.append({"path": entry.path, "reason": f"could not be read ({exc.strerror or 'error'})"})
                 continue
             scanned += 1
             name = entry.name
@@ -140,6 +147,8 @@ def find_repos(root: Path, max_depth: int | None = None, include_hidden: bool = 
                 # Exclude only on positive evidence of a different filesystem. An unknown
                 # device must never mean "skip", or an entire drive disappears from the scan.
                 if child_dev is not None and child_dev != root_dev:
+                    if gaps is not None:
+                        gaps.append({"path": entry.path, "reason": "is on another filesystem; not entered"})
                     continue
             child = Path(entry.path)
             hit = classify(child)
