@@ -91,10 +91,11 @@ function cloud(svg, x, y, width, host, detail, tone, onOpen) {
   group.append(el('text', {x, y: y + 16, class: 'z-detail'}, detail));
   return group;
 }
-function machineBox(svg, x, y, machine, detail, tone, onOpen) {
+function machineBox(svg, x, y, machine, detail, tone, onOpen, width = 176) {
+  // As wide as its column allows: five machines in 176 each overlapped (2026-11-17).
   const group = node(svg, {label: `${machine.label}: ${detail}. Open.`, onOpen});
-  group.append(el('rect', {x: x - 88, y: y - 38, width: 176, height: 76, rx: 10, class: `z-machine ${toneClass(tone)}`}));
-  group.append(el('text', {x, y: y - 10, class: 'z-label'}, clip(machine.label, 20)));
+  group.append(el('rect', {x: x - width / 2, y: y - 38, width, height: 76, rx: 10, class: `z-machine ${toneClass(tone)}`}));
+  group.append(el('text', {x, y: y - 10, class: 'z-label'}, clip(machine.label, Math.max(8, Math.floor(width / 9)))));
   group.append(el('text', {x, y: y + 9, class: 'z-detail'}, detail));
   group.append(el('text', {x, y: y + 25, class: 'z-detail'}, machine.freshness === 'current' ? 'reporting' : machine.freshness));
   return group;
@@ -191,12 +192,13 @@ function fleetLevel(container, data) {
           host.host === 'local' ? 'muted' : host.attention ? 'warning' : 'success',
           () => { zoomTo({kind: 'cloud', id: host.host}); rerender(); });
   }
+  const boxWidth = Math.min(176, 1000 / (machines.length + 1) - 14);
   for (const machine of machines) {
     const [x, y] = machineAt.get(machine.id);
     const {count, bad} = onMachine(data, machine.id);
     machineBox(svg, x, y, machine, `${count} repos${bad ? ` · ${bad} ⚑` : ''}`,
                machine.freshness !== 'current' ? 'warning' : bad ? 'warning' : 'success',
-               () => { zoomTo({kind: 'machine', id: machine.id}); rerender(); });
+               () => { zoomTo({kind: 'machine', id: machine.id}); rerender(); }, boxWidth);
   }
   const column = 1000 / (machines.length + 1), width = Math.floor((column - 24) / 7.2);
   for (const machine of machines) {                         // each machine's library, below

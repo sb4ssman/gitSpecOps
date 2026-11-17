@@ -452,7 +452,7 @@ function shownOf(shown, total) {
 }
 
 // The map's choices survive a reload (the user, 2026-11-16: reloading went back to the zoom map).
-const MAP_DEFAULTS = {view: 'zoom', perspective: null, group: 'all', repo: null};
+const MAP_DEFAULTS = {view: 'explorer', perspective: null};
 const mapOptions = (() => {
   try { return {...MAP_DEFAULTS, ...JSON.parse(localStorage.getItem('gitso.map') || '{}'), perspective: null}; } catch { return {...MAP_DEFAULTS}; }
 })();
@@ -471,7 +471,7 @@ function renderMapPanel() {
   mapOptions.view = byId('map-view').value;
   fillSelect(byId('map-perspective'), data.machines.map(m => [m.id, m.label]), perspectiveOf(data, mapOptions.perspective));
   mapOptions.perspective = byId('map-perspective').value || null;
-  byId('map-perspective').closest('label').hidden = mapOptions.view === 'zoom';
+  byId('map-perspective').closest('label').hidden = mapOptions.view !== 'machines';
   // Never a blank map: while the library is still being read, say so; if drawing fails, say why
   // and what to do (the user, 2026-11-16).
   const box = byId('map');
@@ -482,7 +482,7 @@ function renderMapPanel() {
     return;
   }
   try {
-    renderMap(box, data, {...mapOptions, actions: fleetActions()}, change => { Object.assign(mapOptions, change); saveMapOptions(); renderMapPanel(); });
+    renderMap(box, data, {...mapOptions, actions: fleetActions(), onRepository: openRepository}, change => { Object.assign(mapOptions, change); saveMapOptions(); renderMapPanel(); });
   } catch (error) {
     box.replaceChildren(node('p', `The map could not be drawn (${error.message}). Switch to another map view above; `
       + 'if this one keeps failing, tell us the message.', 'tone-text-warning'));
