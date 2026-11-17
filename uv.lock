@@ -1,6 +1,13 @@
 version = 1
 revision = 3
 requires-python = ">=3.11"
+resolution-markers = [
+    "platform_release >= '22' and platform_release < '23' and sys_platform == 'darwin'",
+    "platform_release >= '21' and platform_release < '22' and sys_platform == 'darwin'",
+    "platform_release >= '20' and platform_release < '21' and sys_platform == 'darwin'",
+    "platform_release >= '23' or sys_platform != 'darwin'",
+    "platform_release < '20' and sys_platform == 'darwin'",
+]
 
 [[package]]
 name = "cffi"
@@ -176,7 +183,10 @@ source = { virtual = "." }
 
 [package.optional-dependencies]
 app = [
-    { name = "pyside6-essentials" },
+    { name = "pyside6-essentials", version = "6.7.3", source = { registry = "https://pypi.org/simple" }, marker = "platform_release >= '20' and platform_release < '21' and sys_platform == 'darwin'" },
+    { name = "pyside6-essentials", version = "6.9.3", source = { registry = "https://pypi.org/simple" }, marker = "platform_release >= '21' and platform_release < '22' and sys_platform == 'darwin'" },
+    { name = "pyside6-essentials", version = "6.11.3", source = { registry = "https://pypi.org/simple" }, marker = "platform_release >= '22' and platform_release < '23' and sys_platform == 'darwin'" },
+    { name = "pyside6-essentials", version = "6.12.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_release >= '23' or sys_platform != 'darwin'" },
 ]
 crypto = [
     { name = "cryptography" },
@@ -185,7 +195,10 @@ crypto = [
 [package.metadata]
 requires-dist = [
     { name = "cryptography", marker = "extra == 'crypto'", specifier = ">=43" },
-    { name = "pyside6-essentials", marker = "extra == 'app'", specifier = ">=6.12" },
+    { name = "pyside6-essentials", marker = "platform_release >= '20' and platform_release < '21' and sys_platform == 'darwin' and extra == 'app'", specifier = ">=6.7,<6.8" },
+    { name = "pyside6-essentials", marker = "platform_release >= '21' and platform_release < '22' and sys_platform == 'darwin' and extra == 'app'", specifier = ">=6.9,<6.10" },
+    { name = "pyside6-essentials", marker = "platform_release >= '22' and platform_release < '23' and sys_platform == 'darwin' and extra == 'app'", specifier = ">=6.11,<6.12" },
+    { name = "pyside6-essentials", marker = "(platform_release >= '23' and extra == 'app') or (sys_platform != 'darwin' and extra == 'app')", specifier = ">=6.12" },
 ]
 provides-extras = ["app", "crypto"]
 
@@ -200,10 +213,55 @@ wheels = [
 
 [[package]]
 name = "pyside6-essentials"
+version = "6.7.3"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "platform_release >= '20' and platform_release < '21' and sys_platform == 'darwin'",
+]
+dependencies = [
+    { name = "shiboken6", version = "6.7.3", source = { registry = "https://pypi.org/simple" }, marker = "platform_release >= '20' and platform_release < '21' and sys_platform == 'darwin'" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bf/d8/053a3a95454ebc5313b3a4a9167b2f959fc6eaee3536b6e4269b75ce9716/PySide6_Essentials-6.7.3-cp39-abi3-macosx_11_0_universal2.whl", hash = "sha256:f9e08a4e9e7dc7b5ab72fde20abce8c97df7af1b802d9743f098f577dfe1f649", size = 158595022, upload-time = "2024-09-27T07:50:20.107Z" },
+]
+
+[[package]]
+name = "pyside6-essentials"
+version = "6.9.3"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "platform_release >= '21' and platform_release < '22' and sys_platform == 'darwin'",
+]
+dependencies = [
+    { name = "shiboken6", version = "6.9.3", source = { registry = "https://pypi.org/simple" }, marker = "platform_release >= '21' and platform_release < '22' and sys_platform == 'darwin'" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/80/a9/51549844900837c70e5c89cbd840956c2533732ef4f05c2b656e35ca8182/pyside6_essentials-6.9.3-cp39-abi3-macosx_12_0_universal2.whl", hash = "sha256:ad3664ff0ced9f92ed7872e512c86328894d29f262e6c3400400232a36dda357", size = 134586559, upload-time = "2025-09-30T12:06:22.681Z" },
+]
+
+[[package]]
+name = "pyside6-essentials"
+version = "6.11.3"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "platform_release >= '22' and platform_release < '23' and sys_platform == 'darwin'",
+]
+dependencies = [
+    { name = "shiboken6", version = "6.11.3", source = { registry = "https://pypi.org/simple" }, marker = "platform_release >= '22' and platform_release < '23' and sys_platform == 'darwin'" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c1/48/55362ced49bf8dafd4220c38cc0a0acb4b822cb60ea91e777007a3c1ec81/pyside6_essentials-6.11.3-cp310-abi3-macosx_13_0_universal2.whl", hash = "sha256:e153290e03ef5bae4b29c584db0193e14d291a21c32030f6953fe98879b3202c", size = 111067342, upload-time = "2026-10-26T12:50:43.961Z" },
+]
+
+[[package]]
+name = "pyside6-essentials"
 version = "6.12.0"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "platform_release >= '23' or sys_platform != 'darwin'",
+]
 dependencies = [
-    { name = "shiboken6" },
+    { name = "shiboken6", version = "6.12.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_release >= '23' or sys_platform != 'darwin'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e1/90/d528f8dd3f9f20712bc719e10c698d27c998e1dd76ed3f33b6fb606d0972/pyside6_essentials-6.12.0-cp310-abi3-macosx_14_0_universal2.whl", hash = "sha256:0867b709a724db28b161227c7d6ecb5ed10cc09226a53542417ac6dee1308239", size = 116002775, upload-time = "2026-10-08T09:09:54.453Z" },
@@ -215,8 +273,44 @@ wheels = [
 
 [[package]]
 name = "shiboken6"
+version = "6.7.3"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "platform_release >= '20' and platform_release < '21' and sys_platform == 'darwin'",
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ef/7f/85d2234371fd260393760656e1f5977c0b6e270a0a6aca6bf7231a3e60de/shiboken6-6.7.3-cp39-abi3-macosx_11_0_universal2.whl", hash = "sha256:285fe3cf79be3135fe1ad1e2b9ff6db3a48698887425af6aa6ed7a05a9abc3d6", size = 388568, upload-time = "2024-09-27T07:51:06.762Z" },
+]
+
+[[package]]
+name = "shiboken6"
+version = "6.9.3"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "platform_release >= '21' and platform_release < '22' and sys_platform == 'darwin'",
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6b/ed/eac552326349629f8c3a89b57a754a860d9665aea78c172777395905d36b/shiboken6-6.9.3-cp39-abi3-macosx_12_0_universal2.whl", hash = "sha256:e9b240828790b8e21a50e66449a5aa8b99f9b8a538c80c1a325fa04f8364985e", size = 400999, upload-time = "2025-09-30T12:00:08.123Z" },
+]
+
+[[package]]
+name = "shiboken6"
+version = "6.11.3"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "platform_release >= '22' and platform_release < '23' and sys_platform == 'darwin'",
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d0/3f/75730e62db2597eadc0076ab8c264912fec6d54cdf506b0326229404825c/shiboken6-6.11.3-cp310-abi3-macosx_13_0_universal2.whl", hash = "sha256:9287279112201e18a7820d29ce9dc4ceca4148c681f4189aff6f4cea652d43af", size = 476645, upload-time = "2026-10-26T12:51:35.699Z" },
+]
+
+[[package]]
+name = "shiboken6"
 version = "6.12.0"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "platform_release >= '23' or sys_platform != 'darwin'",
+]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b5/45/11536fba5f50a57671eb14441c6098096f3e57074e54c9d7d66039a5831e/shiboken6-6.12.0-cp310-abi3-macosx_14_0_universal2.whl", hash = "sha256:47105e05baf57d35453e07d240bbe59cb4b8d9565377ea5134ff9fb37d4f5c02", size = 479653, upload-time = "2026-10-08T09:10:41.506Z" },
     { url = "https://files.pythonhosted.org/packages/49/c2/a04fa003b4360e99d8e3fc2829abacf37396ace63ea1cd616402209ec7c6/shiboken6-6.12.0-cp310-abi3-manylinux_2_34_x86_64.whl", hash = "sha256:3bde565bb0890044b5c7f63808adddede5abc241e9395a2bfed61919884d6240", size = 279268, upload-time = "2026-10-08T09:10:42.982Z" },

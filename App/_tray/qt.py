@@ -106,6 +106,8 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([sys.argv[0]])
     app.setQuitOnLastWindowClosed(False)
+    from App._tray.macos import menu_bar_only
+    menu_bar_only()  # macOS: the menu bar only, no "Python" in the Dock; nothing elsewhere
     if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
         raise TrayUnavailable("this desktop has no system tray")
     # One tray per profile, held for this tray's whole life: a second copy (2026-11-15) doubled
