@@ -45,6 +45,10 @@ def where_the_icon_is() -> str:
     except (ImportError, ValueError):
         has_qt = False
     if not has_qt:
+        if sys.platform == "darwin":
+            from App._tray.macos_bar import swift_compiler
+            if swift_compiler():  # the native icon (App/_tray/macos_bar.py)
+                return "its icon is in the menu bar"
         return "it has no icon on this computer (no Qt for it); open the page with gitso tray --open"
     if sys.platform == "darwin":
         return "its icon is in the menu bar"
