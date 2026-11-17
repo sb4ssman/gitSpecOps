@@ -47,6 +47,16 @@ class RequestBookTests(unittest.TestCase):
         self.prime.receive(self.desk.outgoing(), "desk")
         self.assertEqual([item["status"] for item in self.prime.incoming()], ["dismissed"])
 
+    def test_the_asking_machine_learns_what_happened(self):
+        sent = self.desk.send("prime", "Prime", "pull", [{"repo_id": "a" * 32, "name": "alpha"}])
+        self.prime.receive(self.desk.published(), "desk")
+        self.prime.settle(sent["id"], "done", "alpha: pulled")
+        self.prime.log("applied", self.prime.incoming()[0], "alpha: pulled")
+        self.desk.receive(self.prime.published(), "prime")
+        mine = self.desk.outgoing()[0]
+        self.assertEqual((mine["status"], mine["result"]), ("done", "alpha: pulled"))
+        self.assertIn('"event": "applied"', (self.root / "prime" / "tasks.log").read_text())
+
     def test_bad_requests_are_refused(self):
         with self.assertRaises(ValueError):
             self.desk.send("prime", "Prime", "delete", [{"repo_id": "a"}])
@@ -76,6 +86,16 @@ class ApplyTests(unittest.TestCase):
     def test_a_clone_request_without_names_is_refused_in_words(self):
         result = run_request({"kind": "clone", "items": [{"repo_id": "r1", "name": "x"}]}, lambda _id: [], ["/nowhere"])
         self.assertIn("not known here", result)
+
+    def test_a_clone_naming_a_folder_path_is_refused(self):
+        item = {"host": "github.com", "owner": "o", "name": "x", "folder": "../outside"}
+        result = run_request({"kind": "clone", "items": [item]}, lambda _id: [], ["/nowhere"])
+        self.assertIn("not a plain folder name", result)
+
+    def test_a_clone_naming_an_unknown_library_clones_nothing(self):
+        item = {"host": "github.com", "owner": "o", "name": "x", "folder": "o", "library": "Elsewhere"}
+        result = run_request({"kind": "clone", "items": [item]}, lambda _id: [], ["/nowhere/Github"])
+        self.assertIn("no library called Elsewhere", result)
 
 
 class ChangesTests(unittest.TestCase):

@@ -73,9 +73,43 @@ class RequestBook:
         with self.lock:
             return [item for item in self._read(self.out_path) if _fresh(item.get("at", ""))]
 
+    def published(self) -> list[dict]:
+        """What GET /v1/requests serves: this machine's requests, and its answers to the requests
+        others sent it, so the asking machine learns what happened (the user, 2026-11-16)."""
+        answers = [{"answer_for": item["id"], "from": self.machine_id, "to": item["from"],
+                    "status": item["status"], "result": item.get("result", "")[:2000], "at": item["at"]}
+                   for item in self.incoming() if item["status"] != "waiting"]
+        return self.outgoing() + answers
+
+    def log(self, event: str, request: dict, result: str = "") -> None:
+        """The task log: every request sent, applied or dismissed, and every local run, one JSON
+        line each, kept in the fleet folder (tasks.log). Names and counts; never a path."""
+        line = {"at": _now().isoformat(), "event": event, "id": request.get("id"), "kind": request.get("kind"),
+                "from": request.get("from_label") or request.get("from"), "to": request.get("to_label") or request.get("to"),
+                "repositories": [item.get("name") or item.get("repo_id", "")[:8] for item in request.get("items", [])][:50],
+                "result": result.splitlines()[:20]}
+        try:
+            with open(self.out_path.with_name("tasks.log"), "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(line) + "\n")
+        except OSError:
+            pass
+
     def withdraw(self, request_id: str) -> None:
         with self.lock:
             self._write(self.out_path, [item for item in self._read(self.out_path) if item.get("id") != request_id])
+
+    def clear(self, everything_sent: bool = False) -> int:
+        """Drop finished requests here: this machine's answered ones and the answers it gave; with
+        `everything_sent`, also what it is still waiting on (stale requests, the user, 2026-11-16).
+        The task log keeps the record. Returns how many were dropped."""
+        with self.lock:
+            sent = self._read(self.out_path)
+            kept_sent = [] if everything_sent else [item for item in sent if item.get("status") not in ("done", "dismissed")]
+            book = self._read(self.in_path)
+            kept_in = {key: value for key, value in book.items() if value.get("status") == "waiting"}
+            self._write(self.out_path, kept_sent)
+            self._write(self.in_path, kept_in)
+            return len(sent) - len(kept_sent) + len(book) - len(kept_in)
 
     # ---------------------------------------------------------------- answering
     def receive(self, requests, from_machine: str) -> int:
@@ -84,6 +118,19 @@ class RequestBook:
             return 0
         added = 0
         with self.lock:
+            # Answers to what this machine asked: kept on its own request, so its page says what
+            # happened over there.
+            sent = self._read(self.out_path)
+            answered = False
+            for item in requests:
+                if (isinstance(item, dict) and item.get("answer_for") and item.get("to") == self.machine_id
+                        and item.get("from") == from_machine):
+                    for request in sent:
+                        if request.get("id") == item["answer_for"] and request.get("status") != item.get("status"):
+                            request.update(status=str(item.get("status"))[:20], result=str(item.get("result"))[:2000])
+                            answered = True
+            if answered:
+                self._write(self.out_path, sent)
             book = self._read(self.in_path)
             for item in requests:
                 if (not isinstance(item, dict) or item.get("to") != self.machine_id
@@ -121,11 +168,22 @@ def run_request(request: dict, local_checkouts, libraries: list[str]) -> str:
         return render_catchup(apply_catchup(plan_catchup(paths)), applied=True)
     lines = []
     for item in request["items"]:
-        host, owner, name, folder = (str(item.get(key) or "") for key in ("host", "owner", "name", "folder"))
+        host, owner, name, folder, wanted = (str(item.get(key) or "") for key in (
+            "host", "owner", "name", "folder", "library"))
         if not all(part and "/" not in part and "\\" not in part and ".." not in part for part in (host, owner, name)):
             lines.append(f"{name or 'a repository'}: its name is not known here (the asking machine withholds names)")
             continue
-        library = Path(libraries[0])
+        if folder and any(mark in folder for mark in ("/", "\\", "..", ":")):
+            lines.append(f"{name}: the folder it names is not a plain folder name, so nothing was cloned")
+            continue
+        # The library the asking page's column named (one machine may keep several); the first
+        # library when it names none.
+        from Special._sync.manifest import library_name
+        chosen = [root for root in libraries if library_name(root, libraries) == wanted] if wanted else libraries[:1]
+        if not chosen:
+            lines.append(f"{name}: no library called {wanted} here, so nothing was cloned")
+            continue
+        library = Path(chosen[0])
         target = library / (folder or owner) / name
         if target.exists():
             lines.append(f"{name}: already here, left as it is")

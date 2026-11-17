@@ -157,7 +157,7 @@ def detect() -> dict:
     from Special._sync.git_client import discover_clients
 
     found = {"git": shutil.which("git"), "gh": shutil.which("gh"), "uv": shutil.which("uv"),
-             "gitso": shutil.which("gitso"), "tailscale": shutil.which("tailscale"),
+             "gitso": shutil.which("gitso"), "tailscale": _tailscale(),
              "venv": VENV_PYTHON.exists(),
              "desktop": (VENV_DIR / "Lib/site-packages/PySide6").exists()
              or any(VENV_DIR.glob("lib/python*/site-packages/PySide6"))}
@@ -531,6 +531,12 @@ def area_machine(found: dict, plan: Plan) -> None:
                  + ". Reads folder names and each repository's Git status, never file contents.",
                  lambda: _add_libraries(picked))
     plan.enrolled_after = found["enrolled"] or bool(picked)
+
+
+def _tailscale() -> str | None:
+    """Tailscale's command, also where the Windows and Mac apps keep it (Elaborate/_fleet/net.py)."""
+    from Elaborate._fleet.net import tailscale_executable
+    return tailscale_executable()
 
 
 def _change_libraries(removed, picked) -> str:

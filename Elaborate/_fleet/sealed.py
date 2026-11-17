@@ -10,7 +10,7 @@ Layer:        Elaborate: other machines.
 Status:       working
 
 AES-256-GCM from the `cryptography` package (optional: `uv sync --extra app --extra crypto`,
-or setup / the App & setup tab). The key is HKDF-SHA256 of the fleet key, so changing the fleet
+or setup / the Settings tab). The key is HKDF-SHA256 of the fleet key, so changing the fleet
 key changes it; the machine id is bound in as associated data, so a file renamed to another
 machine's name does not open. Without the package nothing is written to the folder, and
 Tailscale alone carries the values.

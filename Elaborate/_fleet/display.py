@@ -15,6 +15,9 @@ from Basic._version import VERSION  # read from pyproject.toml, where it is writ
 CONTRACT_NAME = "gitspecops.fleet.display"
 CONTRACT_VERSION = 1
 PRODUCT_NAME = "gitSpecOps"
+#: Readable names for the clouds repositories come from; any other host is shown as itself.
+PROVIDER_NAMES = {"github.com": "GitHub", "gitlab.com": "GitLab", "bitbucket.org": "Bitbucket",
+                  "local": "No remote (only on machines)"}
 
 
 def _row_place(row, here=None) -> dict | None:
@@ -31,7 +34,11 @@ def _row_place(row, here=None) -> dict | None:
     if not places:
         return None
     (library, folder), _count = max(places.items(), key=lambda item: (item[1], item[0]))
-    return {"library": library, "folder": folder}
+    # Not on this machine: say whose library it is, so it never merges into a library here of
+    # the same name (the user: machine, then library, then folder).
+    owner = next((machine_id for machine_id, cell in row.cells.items() if cell.present and cell.repo.get("place")
+                  and (cell.repo["place"]["library"], cell.repo["place"]["folder"]) == (library, folder)), None)
+    return {"library": library, "folder": folder, "machine": owner if here else None}
 
 
 def _duration(seconds: float) -> str:
@@ -48,7 +55,7 @@ def staleness_text(stale_seconds: float, transports: dict) -> str:
     2026-11-16: the page's fixed wording did not match the choice)."""
     if not transports:
         return ("This machine is not in a fleet, so only its own report is shown. Setup's Fleet "
-                "step, or the App & setup tab, starts or joins one.")
+                "step, or the Settings tab, starts or joins one.")
     ways = []
     if "tailnet" in transports:
         ways.append(f"over Tailscale every {_duration((transports['tailnet'] or {}).get('seconds') or 300)}")
@@ -91,11 +98,13 @@ def _cell(cell):
     return {"present": True, "freshness": cell.freshness, "state": cell.effective_state,
             "description": description, "tone": tone, "tags": tags,
             "place": cell.repo.get("place"),  # where this machine keeps its copy (names only)
+            # Each folder's own facts when this machine keeps it in more than one library.
+            "copies": cell.repo.get("copies"),
             "needs_attention": SEVERITY.get(cell.effective_state, 0) >= SEVERITY["stashed"],
             "facts": {key: cell.repo.get(key) for key in (
                 "staged", "unstaged", "untracked", "stashes", "ahead", "behind",
                 "operation", "has_upstream", "upstream_observed_at", "has_remote", "unpushed",
-                "branch", "head",
+                "branch", "head", "upstream_head", "checkouts",
                 "identity")}}
 
 
@@ -189,16 +198,21 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
         names.update(report["names"])
     catalog = {rid: {"display_name": f"{v['owner']}/{v['name']}"} for rid, v in names.items()}
     rows, groups, place_groups = [], {}, {}
+    labels = {view.machine_id: view.label for view in views}
     for row in build_rows(views, catalog):
         identity = names[row.repo_id]
         group_id = f"{identity['host']}/{identity['owner']}"
         group = groups.setdefault(group_id, {"id": group_id, "label": identity["owner"],
                                             "host": identity["host"], "count": 0, "attention": 0})
         place = _row_place(row, settings.get("machine_id"))
-        place_id = (f"place/{place['library']}/{place['folder']}" if place else "place/unknown")
+        elsewhere = (place or {}).get("machine")
+        library = (f"{place['library']} on {labels.get(elsewhere, elsewhere)}" if elsewhere else place["library"]) if place else None
+        place_id = (f"place/{elsewhere + '/' if elsewhere else ''}{place['library']}/{place['folder']}"
+                    if place else "place/unknown")
+        place = {"library": place["library"], "folder": place["folder"]} if place else None
         place_group = place_groups.setdefault(place_id, {
             "id": place_id, "label": (place["folder"] or "(directly in the library)") if place
-            else "Folder not shared", "host": place["library"] if place else "Other machines",
+            else "Folder not shared", "host": library if place else "Other machines",
             "count": 0, "attention": 0})
         cells = {mid: _cell(cell) for mid, cell in row.cells.items()}
         # Attention means unfinished work somewhere: stashed or worse, including work an old
@@ -244,7 +258,7 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
         row["desktop_action"] = {
             "available": bool(desktop.get("available") and local),
             "label": f"Open in {desktop.get('label') or 'desktop Git client'}",
-            "reason": (desktop.get("reason") or "Choose a desktop Git client in App & setup.")
+            "reason": (desktop.get("reason") or "Choose a desktop Git client in Settings.")
                       if local else "This repository has no observed checkout on this machine.",
         }
         row["security_action"] = {
@@ -277,6 +291,46 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
         # Unknown unless every copy shares its commit: a withheld head proves nothing.
         row["copies"] = {"present": len(present),
                          "heads_agree": None if not heads or None in heads else len(set(heads)) == 1}
+    # Libraries under machines (the user, 2026-11-16): each machine's libraries, with how many
+    # repositories each holds and how many of those copies need attention. From each copy's place,
+    # or each of its folders when the machine keeps it in several.
+    libraries: dict = {}
+    for row in rows:
+        for machine_id, cell in row["cells"].items():
+            if not cell["present"]:
+                continue
+            folders = cell.get("copies")
+            # One folder: the copy's own attention. Several: each folder's own facts, so a clean
+            # backup library is not flagged for a dirty working copy in another library.
+            per_library: dict = {}
+            if folders:
+                for copy in folders:
+                    library = (copy.get("place") or {}).get("library") or ""
+                    unfinished = any(copy.get(key) for key in (
+                        "staged", "unstaged", "untracked", "stashes", "ahead", "behind"))
+                    per_library[library] = per_library.get(library, False) or unfinished
+            else:
+                per_library[(cell.get("place") or {}).get("library") or ""] = cell["needs_attention"]
+            for library, attention in per_library.items():
+                entry = libraries.setdefault((machine_id, library), {
+                    "machine_id": machine_id, "library": library or None, "repositories": 0,
+                    "attention": 0, "organizations": set()})
+                entry["repositories"] += 1
+                entry["attention"] += int(bool(attention))
+                entry["organizations"].add(row["namespace"])
+    library_list = [{**entry, "organizations": len(entry["organizations"])}
+                    for _, entry in sorted(libraries.items(), key=lambda item: (item[0][0].casefold(), item[0][1].casefold()))]
+    # Clouds: each provider the repositories come from, with its owners.
+    providers: dict = {}
+    for row in rows:
+        host = row["identity"]["host"]
+        entry = providers.setdefault(host, {"host": host, "label": PROVIDER_NAMES.get(host, host),
+                                            "owners": set(), "repositories": 0, "attention": 0})
+        entry["owners"].add(row["namespace"])
+        entry["repositories"] += 1
+        entry["attention"] += int(row["needs_attention"])
+    provider_list = [{**entry, "owners": len(entry["owners"])} for entry in
+                     sorted(providers.values(), key=lambda e: (e["host"] == "local", -e["repositories"]))]
     basket_notices = []
     if withheld_ids:
         basket_notices.append({"id": "withheld", "tone": "warning",
@@ -300,11 +354,16 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
         "product": {"name": PRODUCT_NAME, "version": VERSION, "channel": "development"},
         "generated_at": now.isoformat(), "fleet_id": fleet_id,
         "fleet_name": settings.get("fleet_name") if transport_config else None,
+        "this_machine": settings.get("machine_id"),  # which column is the machine showing this page
         "summary": {"repositories": len(rows), "attention": sum(r["needs_attention"] for r in rows),
                     "machines": len(machines),
                     "current_machines": sum(m["freshness"] == "current" for m in machines),
-                    "stale_machines": sum(m["freshness"] != "current" for m in machines)},
+                    "stale_machines": sum(m["freshness"] != "current" for m in machines),
+                    "organizations": len({row["namespace"] for row in rows}),
+                    "libraries": len(library_list), "providers": len(provider_list),
+                    "copies": sum(entry["repositories"] for entry in library_list)},
         "machines": machines, "groups": sorted(groups.values(), key=lambda g: g["id"].casefold()),
+        "libraries": library_list, "providers": provider_list,
         # The same rows by where they live (library, then folder): the page's default grouping.
         "place_groups": sorted(place_groups.values(), key=lambda g: (g["id"] == "place/unknown",
                                                                       g["host"].casefold(), g["label"].casefold())),

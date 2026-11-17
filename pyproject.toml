@@ -27,7 +27,14 @@ dependencies = []
 [project.optional-dependencies]
 # The App's tray and window (Qt). Nothing below App/ may import it; the web view needs none.
 # Install with: uv sync --extra app
-app = ["PySide6-Essentials>=6.12"]
+# Each macOS gets the newest Qt built for it (Qt's Mac builds: 6.12 needs macOS 14, 6.11 macOS 13,
+# 6.9 macOS 12, 6.7 macOS 11). platform_release is the Darwin version: macOS 14 is Darwin 23.
+app = [
+    "PySide6-Essentials>=6.12; sys_platform != 'darwin' or platform_release >= '23'",
+    "PySide6-Essentials>=6.11,<6.12; sys_platform == 'darwin' and platform_release >= '22' and platform_release < '23'",
+    "PySide6-Essentials>=6.9,<6.10; sys_platform == 'darwin' and platform_release >= '21' and platform_release < '22'",
+    "PySide6-Essentials>=6.7,<6.8; sys_platform == 'darwin' and platform_release >= '20' and platform_release < '21'",
+]
 # Sealing the shared protected values for a synced folder (Elaborate/_fleet/sealed.py). Optional:
 # setup or the App & setup tab installs it. Install with: uv sync --extra app --extra crypto
 crypto = ["cryptography>=43"]

@@ -12,6 +12,14 @@ export function acceptDisplay(value) {
   }
   return value;
 }
+/* AbortSignal.timeout is missing from older browsers (Safari on macOS 10.15); every request
+   failed there. A controller and a timer do the same job everywhere. */
+export function timeoutSignal(ms) {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(ms);
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
 export class FleetConnection extends EventTarget {
   constructor({fetcher = globalThis.fetch.bind(globalThis), interval = 3000} = {}) {
     super(); this.fetcher = fetcher; this.interval = interval; this.busy = false; this.timer = null;
@@ -20,7 +28,7 @@ export class FleetConnection extends EventTarget {
     if (this.busy) return;
     this.busy = true; this.dispatchEvent(new CustomEvent('loading'));
     try {
-      const response = await this.fetcher('/v1/dashboard', {cache: 'no-store', signal: AbortSignal.timeout(15000)});
+      const response = await this.fetcher('/v1/dashboard', {cache: 'no-store', signal: timeoutSignal(15000)});
       if (!response.ok) throw new Error(`Host returned ${response.status}.`);
       const data = acceptDisplay(await response.json());
       this.dispatchEvent(new CustomEvent('display', {detail: {data, receivedAt: new Date()}}));
@@ -30,15 +38,15 @@ export class FleetConnection extends EventTarget {
   }
   async desktopAction(action, payload, token, {structured = false} = {}) {
     if (!['git-client', 'open-git-client', 'catchup-preview', 'security-preview', 'security-engines',
-         'security-start', 'security-status', 'security-stop', 'security-policy',
+         'security-start', 'security-status', 'security-stop', 'security-reveal', 'security-policy',
          'security-policy-change', 'setup/open-folder', 'setup/settings', 'setup/connections', 'setup/fetch',
-         'setup/sign-in', 'setup/fleets', 'setup/name-fleet', 'setup/add', 'setup/remove', 'setup/presentation', 'setup/baskets', 'setup/show-key', 'setup/join', 'setup/leave', 'setup/shared-answer', 'request-send', 'request-withdraw', 'request-answer', 'changes',
+         'setup/sign-in', 'setup/fleets', 'setup/name-fleet', 'setup/add', 'setup/remove', 'setup/presentation', 'setup/baskets', 'setup/show-key', 'setup/join', 'setup/leave', 'setup/shared-answer', 'request-send', 'request-withdraw', 'request-answer', 'request-clear', 'changes', 'setup/tasks',
          'setup/seal'].includes(action) || !token) {
       throw new Error('Desktop actions are unavailable in this dashboard.');
     }
     const response = await this.fetcher(`/v1/${action}`, {
       method: 'POST', headers: {'Content-Type': 'application/json', 'X-GitSpecOps-Token': token},
-      body: JSON.stringify(payload), signal: AbortSignal.timeout(action === 'security-preview' ? 120000 : action.startsWith('setup/') ? 60000 : 15000),
+      body: JSON.stringify(payload), signal: timeoutSignal(action === 'security-preview' ? 120000 : action.startsWith('setup/') ? 60000 : 15000),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'The desktop action failed.');

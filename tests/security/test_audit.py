@@ -91,6 +91,28 @@ class AuditTests(unittest.TestCase):
         self.assertNotEqual(by_id["known"]["check_status"], "passed")
         self.assertEqual(by_id["stranger"]["check_status"], "incomplete", "an unknown id is never resolved")
 
+    def test_a_finding_is_revealed_only_on_request_and_never_in_the_status(self):
+        jobs = AuditJobs(lambda repo_id: [self.repo],
+                         runner=lambda path, **kwargs: audit_checkout(path, settings_home=self.home, **{
+                             key: kwargs[key] for key in ("history", "values")}))
+        jobs.start({"repo_ids": ["known"], "history": True})
+        for _ in range(200):
+            audit = jobs.status()["audit"]
+            if audit["state"] != "running":
+                break
+            threading.Event().wait(0.05)
+        self.assertNotIn("private-marker", json.dumps(jobs.status()), "the polled status stays masked")
+        entry = audit["results"][0]
+        finding = next(f for f in entry["security"]["history"]["findings"] if f["classification"] != "quiet")
+        shown = jobs.reveal({"index": entry["index"], "material": "history", "finding_id": finding["finding_id"]})
+        self.assertIn("private-marker", shown["value"])
+        for bad in ({"index": 9, "material": "history", "finding_id": finding["finding_id"]},
+                    {"index": 0, "material": "path", "finding_id": finding["finding_id"]},
+                    {"index": 0, "material": "history", "finding_id": "finding-999999"},
+                    {"index": 0, "material": "history", "finding_id": "x", "extra": 1}):
+            with self.assertRaises(ValueError, msg=bad):
+                jobs.reveal(bad)
+
     def test_a_running_audit_can_be_stopped(self):
         gate = threading.Event()
         jobs = AuditJobs(lambda repo_id: [self.repo],

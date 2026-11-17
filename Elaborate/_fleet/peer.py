@@ -234,7 +234,7 @@ class PeerNetwork:
                                            own_settings=self.shared.record if self.shared else None,
                                            own_name=lambda: self.config.get("fleet_name"),
                                            on_knock=self.knocked.set,
-                                           own_requests=self.requests.outgoing if self.requests else None,
+                                           own_requests=self.requests.published if self.requests else None,
                                            own_changes=self.own_changes)
             threading.Thread(target=self.server.serve_forever, daemon=True).start()
         except OSError as exc:
@@ -349,7 +349,7 @@ class PeerNetwork:
         if result["applied"] or result["asked"]:
             self.log(f"Shared protected values from {host.get('label', 'a peer')}: "
                      + "; ".join(result["applied"] + [f"{len(result['asked'])} change(s) to answer "
-                                                       "on the App & setup tab"] * bool(result["asked"])))
+                                                       "on the Settings tab"] * bool(result["asked"])))
 
     def stop(self):
         if self.server is not None:
@@ -434,6 +434,8 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             return audits.start(payload)
         if action == "security-status":
             return audits.status()
+        if action == "security-reveal":
+            return audits.reveal(payload)
         if action == "security-stop":
             return audits.stop()
         if action == "security-preview":
@@ -441,7 +443,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             with action_lock:
                 home, snapshot = security_settings()
                 return inspect_registered(payload, observer.local_checkouts, settings_home=home, expected_settings=snapshot)
-        if action in ("request-send", "request-withdraw", "request-answer", "changes"):
+        if action in ("request-send", "request-withdraw", "request-answer", "request-clear", "changes"):
             return request_action(action, payload)
         if action != "catchup-preview" or payload:
             raise ValueError("unsupported fleet dashboard action")
@@ -481,12 +483,28 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         if action == "request-send":
             items = [{key: text(item.get(key)) for key in ("repo_id", "host", "owner", "name", "folder")}
                      for item in payload.get("items") or [] if isinstance(item, dict)]
+            if text(payload.get("to")) == config["machine_id"]:
+                # Asked of this machine, from its own page: the person is here, so it runs now,
+                # with the same safe operations (the user, 2026-11-16).
+                request = {"kind": text(payload.get("kind")), "items": items, "from_label": config["label"],
+                           "to_label": config["label"]}
+                if request["kind"] not in ("pull", "clone") or not items:
+                    raise ValueError("choose pull or clone, and at least one repository")
+                with action_lock:
+                    result = run_request(request, observer.local_checkouts, config["roots"])
+                book.log("ran here", request, result)
+                atomic_write_bytes(config_dir / "fleet-rescan.request", b"ran here\n")
+                return {"message": f"Done here.\n{result}"}
             sent = book.send(text(payload.get("to")), text(payload.get("to_label")), text(payload.get("kind")), items)
+            book.log("asked", sent)
             threading.Thread(target=network.knock_others, daemon=True).start()  # so it is picked up now
             return {"sent": sent, "message": f"Asked {sent['to_label']}; it shows on that machine's page."}
         if action == "request-withdraw":
             book.withdraw(text(payload.get("id")))
             return {"message": "Withdrawn."}
+        if action == "request-clear":
+            dropped = book.clear(everything_sent=bool(payload.get("everything_sent")))
+            return {"message": f"Cleared {dropped}. The task log keeps the record."}
         if action == "changes":
             repo_id, machine_id = text(payload.get("repo_id")), text(payload.get("machine_id"))
             if machine_id == config["machine_id"]:
@@ -496,10 +514,13 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         if request is None or request["status"] != "waiting":
             raise ValueError("that request is no longer waiting; reload")
         if not payload.get("accept"):
+            book.log("dismissed", request)
             return book.settle(request["id"], "dismissed", "Dismissed here.")
         with action_lock:
             result = run_request(request, observer.local_checkouts, config["roots"])
+        book.log("applied", request, result)
         atomic_write_bytes(config_dir / "fleet-rescan.request", b"request applied\n")  # see the result
+        threading.Thread(target=network.knock_others, daemon=True).start()  # the asker learns now
         return book.settle(request["id"], "done", result)
 
     network = PeerNetwork(config, lambda: latest["report"], store, log=log, shared=shared, adopt_name=adopt_name,
@@ -564,7 +585,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             if waiting:
                 issues = list(issues) + [
                     f"{waiting} change(s) to protected values made on other machines wait for your "
-                    "answer: App & setup tab, Shared protected values."]
+                    "answer: Settings tab, Shared protected values."]
         document = display_from_manifests(
             manifests, fleet_id=fleet_id, names=names, issues=issues,
             stale_seconds=stale_seconds,
@@ -605,7 +626,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             threading.Thread(target=sealed_folder_loop, name="fleet-sealed-settings", daemon=True).start()
         else:
             log("Sealing shared settings for the synced folder needs the cryptography package "
-                "(setup, or the App & setup tab, installs it); Tailscale still carries them.")
+                "(setup, or the Settings tab, installs it); Tailscale still carries them.")
 
     if network.start():
         def poll_loop():

@@ -42,10 +42,11 @@ export function groupRows(data, rows) {
 }
 export function ageLabel(seconds) {
   if (seconds === null) return 'Unknown';
-  if (seconds < 60) return `${Math.floor(seconds)} seconds ago`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
-  return `${Math.floor(seconds / 86400)} days ago`;
+  const ago = (n, unit) => `${n} ${unit}${n === 1 ? '' : 's'} ago`;
+  if (seconds < 60) return ago(Math.floor(seconds), 'second');
+  if (seconds < 3600) return ago(Math.floor(seconds / 60), 'minute');
+  if (seconds < 86400) return ago(Math.floor(seconds / 3600), 'hour');
+  return ago(Math.floor(seconds / 86400), 'day');
 }
 
 export class GroupExpansion {

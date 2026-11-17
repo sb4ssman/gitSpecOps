@@ -302,6 +302,8 @@ def observe_paths(paths: list[Path], secret: str | None = None,
             "name": {"host": host, "owner": owner, "name": name},
             "branch": facts.get("branch"),
             "head": git_stdout(path, ["rev-parse", "--verify", "-q", "HEAD"]),
+            "upstream_head": (git_stdout(path, ["rev-parse", "--verify", "-q", "@{upstream}"])
+                              if facts.get("upstream") else None),
             "place": place_of(path, roots),
         })
         # Local-only: the catalog is never published, so it may hold the full identity.

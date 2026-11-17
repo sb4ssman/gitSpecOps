@@ -17,7 +17,8 @@ const STATUS = {
 };
 
 const ui = {built: false, container: null, data: null, connection: null, selected: new Set(), engines: [],
-            useEngines: new Set(), history: true, audit: null, polling: null, open: new Set(), signature: ''};
+            useEngines: new Set(), history: true, audit: null, polling: null, open: new Set(), signature: '',
+            revealed: new Map()};
 
 function token() { return ui.data && ui.data.local_actions && ui.data.local_actions.token; }
 async function act(action, payload = {}) {
@@ -244,6 +245,28 @@ function poll() {
 }
 
 // ---- results ------------------------------------------------------------------------------------
+/** A finding's value: masked, with Show to ask this machine's app for the real one. It comes
+ *  from the audit in the app's memory, over this page's local channel, and is kept only in this
+ *  tab until hidden or reloaded (the user, 2026-11-16: "I should be able to unmask locally"). */
+function valueCell(entry, material, finding) {
+  const cell = html('td');
+  const key = `${ui.audit && ui.audit.id}/${entry.index}/${material}/${finding.finding_id}`;
+  const shown = ui.revealed.get(key);
+  cell.append(html('code', shown === undefined ? finding.value : shown), document.createTextNode(' '));
+  if (entry.index === undefined || !finding.finding_id) return cell;
+  const toggle = html('button', shown === undefined ? 'Show' : 'Hide', 'repo-link'); toggle.type = 'button';
+  toggle.onclick = async () => {
+    if (ui.revealed.has(key)) ui.revealed.delete(key);
+    else {
+      try { ui.revealed.set(key, (await act('security-reveal', {index: entry.index, material, finding_id: finding.finding_id})).value); }
+      catch (error) { say(error.message); return; }
+    }
+    setAudit(ui.audit);
+  };
+  cell.append(toggle);
+  return cell;
+}
+
 function findingsOf(record) {
   return record && Array.isArray(record.findings)
     ? record.findings.filter(item => item.classification !== 'quiet' && !item.review_id) : [];
@@ -280,20 +303,20 @@ function setAudit(audit) {
                    html('span', ` · files: ${tree.length} · history: ${result.history ? past.length : 'not checked'}` +
                                 `${gaps.length ? ` · ${gaps.length} not inspected` : ''}${entry.checkout > 1 ? ` · copy ${entry.checkout}` : ''}`, 'host-note'));
     item.append(summary, html('p', meaning, 'host-note'));
-    for (const [title, list, record] of [['In the files as they are now', tree, result.working_tree],
-                                         ['In history (every commit)', past, result.history]]) {
+    for (const [title, list, record, material] of [['In the files as they are now', tree, result.working_tree, 'working_tree'],
+                                                   ['In history (every commit)', past, result.history, 'history']]) {
       if (!record) continue;
       item.append(html('h4', `${title}: ${list.length ? `${list.length} to review` : 'nothing to review'}` +
                              ` (${record.files} file version${record.files === 1 ? '' : 's'}${record.commits ? `, ${record.commits} commits` : ''})`));
       if (!list.length) continue;
       const table = html('table', undefined, 'sec-findings');
       const head = html('tr');
-      for (const name of ['Severity', 'What', 'Where', 'Masked value']) head.append(html('th', name));
+      for (const name of ['Severity', 'What', 'Where', 'Value (masked)']) head.append(html('th', name));
       table.append(head);
       for (const finding of list.slice(0, 200)) {
         const line = html('tr', undefined, finding.severity === 'high' ? 'sec-high' : '');
         line.append(html('td', finding.severity), html('td', `${finding.check} (${finding.classification})`),
-                    html('td', `${finding.where}${finding.line ? `:${finding.line}` : ''}`), html('td', finding.value));
+                    html('td', `${finding.where}${finding.line ? `:${finding.line}` : ''}`), valueCell(entry, material, finding));
         table.append(line);
       }
       item.append(table);
@@ -302,6 +325,33 @@ function setAudit(audit) {
     for (const gap of gaps) item.append(html('p', `Not inspected: ${gap.where}: ${gap.reason}`, 'tone-warning'));
     box.append(item);
   }
+}
+
+/** The Security menu tile: the last audit's outcome since the app started, or how to start one. */
+export function securitySummary() {
+  const audit = ui.audit;
+  if (!audit) return ['Audit', 'files and every commit'];
+  if (audit.state === 'running') return [`${audit.done}/${audit.total}`, 'auditing now'];
+  const blocked = audit.results.filter(entry => entry.security.check_status === 'blocked').length;
+  const review = audit.results.filter(entry => entry.security.check_status === 'review-required').length;
+  return [String(audit.done), blocked ? `checked · ${blocked} blocked` : review ? `checked · ${review} to review` : 'checked · all passed'];
+}
+
+/** "Audit these" from a repository group elsewhere on the page: choose exactly those that have a
+ *  copy here, open their groups, and say how many were chosen. The audit itself still waits for
+ *  the person's Audit button. Returns how many could be chosen. */
+export function auditThese(repoIds) {
+  if (!ui.data) return 0;
+  const here = new Set(localRows().map(row => row.id));
+  const chosen = repoIds.filter(id => here.has(id));
+  ui.selected = new Set(chosen);
+  for (const row of localRows()) if (ui.selected.has(row.id)) ui.open.add(row.group_id);
+  if (ui.built) {
+    renderScope();
+    const skipped = repoIds.length - chosen.length;
+    say(`${chosen.length} chosen${skipped ? `; ${skipped} have no copy on this machine, so they cannot be audited here` : ''}. Press Audit to start.`);
+  }
+  return chosen.length;
 }
 
 // ---- entry ------------------------------------------------------------------------------------

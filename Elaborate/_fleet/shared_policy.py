@@ -6,7 +6,7 @@ Reads:        this machine's three policy lists (never_publish, never_publish_wo
               in the common settings profile; other machines' shared records.
 May change:   those three lists, only to strengthen protection; anything that would loosen it
               (a never-publish value removed elsewhere, an allowed value added elsewhere) waits as
-              a question until the person answers it on the App & setup tab.
+              a question until the person answers it on the Settings tab.
 Results:      this machine's shared record; what a merge did and what it asks.
 Layer:        Elaborate: other machines.
 Status:       working

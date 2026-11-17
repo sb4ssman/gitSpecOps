@@ -81,9 +81,18 @@ MANIFEST_KEYS = frozenset({
 #: Readable fields, present only in a manifest whose `carries_names` is true.
 # `place`: the library's and the folder's names on that machine (never a path); the user
 # approved sharing them 2026-11-15, as names, wherever names are shared.
-NAME_KEYS = frozenset({"name", "branch", "head", "place"})
+# `upstream_head`: the commit its provider branch was on at the last fetch, so a page can show
+# GitHub's commit beside each copy's (the user, 2026-11-16). `copies`: when one machine holds a
+# repository in more than one folder, each folder's own facts, so every library gets its own column.
+NAME_KEYS = frozenset({"name", "branch", "head", "place", "upstream_head", "copies"})
 PLACE_LIMIT = 120
+#: A library at the top of a Windows drive ends its name with the drive: " (T:\)".
+DRIVE_SUFFIX = _re.compile(r" \([A-Z]:\\\)$")
 IDENTITY_NAME_KEYS = ("host", "owner", "name")
+#: What each entry of `copies` holds: one folder's facts, never a path.
+COPY_KEYS = frozenset({"place", "head", "upstream_head", "branch", "ahead", "behind", "staged",
+                       "unstaged", "untracked", "stashes", "has_upstream"})
+COPY_LIMIT = 16
 REPOSITORY_KEYS = frozenset({
     "repo_id", "branch_id", "has_upstream", "upstream_observed_at", "ahead", "behind",
     "staged", "unstaged", "untracked", "stashes", "operation",
@@ -219,7 +228,11 @@ def merge_checkouts(repositories: list[dict]) -> list[dict]:
                if any("place" in repo for repo in group) else {}),
             "checkouts": sum(int(repo.get("checkouts") or 1) for repo in group),
         })
-        for key in ("branch", "head"):
+        if any("place" in repo for repo in group):
+            # Names are carried: keep each folder's own facts beside the combined ones.
+            record["copies"] = [{key: repo[key] for key in COPY_KEYS if key in repo}
+                                for repo in group][:COPY_LIMIT]
+        for key in ("branch", "head", "upstream_head"):
             if key in record and len({repo.get(key) for repo in group}) > 1:
                 record[key] = None
         merged.append(record)
@@ -283,6 +296,9 @@ def _validate_place(place, label: str) -> None:
         raise ValueError(f"{label} must hold exactly library and folder")
     for key in ("library", "folder"):
         value = place[key]
+        if key == "library" and isinstance(value, str):
+            # The one exception: a library at a drive's top names its drive, "Github (T:\)".
+            value = DRIVE_SUFFIX.sub("", value)
         if not isinstance(value, str) or len(value) > PLACE_LIMIT or any(c in value for c in "/\\:\0"):
             raise ValueError(f"{label}.{key} must be a folder name, not a path")
 
@@ -301,8 +317,36 @@ def place_of(path, roots) -> dict | None:
         return None
     root = max(owners, key=lambda r: len(r.parts))  # the innermost library holding it
     parts = path.relative_to(root).parts
-    library = (root.name or str(root).rstrip("\\/:")).replace(":", "")[:PLACE_LIMIT]
-    return {"library": library, "folder": parts[-2][:PLACE_LIMIT] if len(parts) > 1 else ""}
+    return {"library": library_name(root, roots), "folder": parts[-2][:PLACE_LIMIT] if len(parts) > 1 else ""}
+
+
+def library_name(root, roots=None) -> str:
+    """A library's name: its folder's name and, always, what holds it, so every machine's
+    libraries read alike (the user, 2026-11-16: "Github (B:\\)", "Github (T:\\)",
+    "Github (memory-lambda)"). A library in a home folder says "~", never the account's name; one
+    at a drive's top names the drive. `roots` is no longer needed; callers may still pass it."""
+    from pathlib import Path
+
+    def bare(folder: Path) -> str:
+        return (folder.name or str(folder).rstrip("\\/:")).replace(":", "")
+    root = Path(root)
+    name = bare(root)
+    parent = root.parent
+    try:
+        home = Path.home()
+    except (KeyError, RuntimeError):
+        home = None
+    if parent == root:
+        holder = ""
+    elif home is not None and parent == home:
+        holder = "~"
+    elif not parent.name and parent.drive[-2:-1].isalpha() and parent.drive.endswith(":"):
+        holder = parent.drive.upper() + "\\"
+    else:
+        holder = bare(parent)
+    if holder:
+        name = f"{name[:PLACE_LIMIT - len(holder) - 3]} ({holder})"
+    return name[:PLACE_LIMIT]
 
 
 def _validate_names(repo: dict, label: str) -> None:
@@ -314,14 +358,32 @@ def _validate_names(repo: dict, label: str) -> None:
     branch = repo.get("branch")
     if branch is not None and (not isinstance(branch, str) or not branch):
         raise ValueError(f"{label}.branch must be a non-empty string or null")
-    head = repo.get("head")
-    if head is not None:
-        if not isinstance(head, str) or len(head) not in (40, 64):
-            raise ValueError(f"{label}.head must be a full commit id or null")
-        try:
-            int(head, 16)
-        except ValueError as exc:
-            raise ValueError(f"{label}.head is not hexadecimal") from exc
+    for key in ("head", "upstream_head"):
+        head = repo.get(key)
+        if head is not None:
+            if not isinstance(head, str) or len(head) not in (40, 64):
+                raise ValueError(f"{label}.{key} must be a full commit id or null")
+            try:
+                int(head, 16)
+            except ValueError as exc:
+                raise ValueError(f"{label}.{key} is not hexadecimal") from exc
+    copies = repo.get("copies")
+    if copies is None:
+        return
+    if not isinstance(copies, list) or not 1 < len(copies) <= COPY_LIMIT:
+        raise ValueError(f"{label}.copies must list 2 to {COPY_LIMIT} folders")
+    for index, copy in enumerate(copies):
+        where = f"{label}.copies[{index}]"
+        if not isinstance(copy, dict) or set(copy) - COPY_KEYS:
+            raise ValueError(f"{where} must hold only {sorted(COPY_KEYS)}")
+        _validate_names({key: copy[key] for key in ("branch", "head", "upstream_head") if key in copy}, where)
+        _validate_place(copy.get("place"), f"{where}.place")
+        for key in ("ahead", "behind", "staged", "unstaged", "untracked", "stashes"):
+            value = copy.get(key)
+            if value is not None and (type(value) is not int or value < 0):
+                raise ValueError(f"{where}.{key} must be a non-negative integer or null")
+        if not isinstance(copy.get("has_upstream", False), bool):
+            raise ValueError(f"{where}.has_upstream must be a boolean")
 
 
 def validate_manifest(value: object) -> dict:

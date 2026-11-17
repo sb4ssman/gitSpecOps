@@ -1,4 +1,4 @@
-/* App & setup: change this machine's setup from the page (the user, 2026-11-16).
+/* Settings: change this machine's setup from the page (the user, 2026-11-16).
  * Every control calls a setup route (App/_web/setup.py), which calls the same functions as
  * setup and the commands. Changes to the fleet show their plan first and apply only on "Apply".
  * Built once and redrawn only after an action, so the page's refresh never wipes what is typed. */
@@ -258,6 +258,40 @@ export function renderSettings(block, connection, token) {
     return box;
   }
 
+  function tasksSection() {
+    // The task log: what was asked of other machines, what was applied or dismissed here, and what
+    // ran here; plus clearing finished or stale requests (the user, 2026-11-16).
+    const box = section('Requests and the task log', 'Every request this machine sent, applied or dismissed, and every fleet action run here, newest first. Kept in tasks.log in the settings folder.');
+    const list = el('div');
+    const clear = async payload => {
+      try {
+        const done = await connection.desktopAction('request-clear', payload, token(), {structured: true});
+        state.message = done.message; await connection.refresh();
+      } catch (error) { state.message = error.message; }
+      draw();
+    };
+    box.append(row(
+      button('Show the task log', async () => {
+        try {
+          const tasks = (await call('tasks')).tasks;
+          if (!tasks.length) { list.replaceChildren(el('p', 'Nothing yet.', 'host-note')); return; }
+          const items = el('ul');
+          for (const task of tasks.slice(0, 100)) {
+            const item = el('li', `${new Date(task.at).toLocaleString()} · ${task.event} · ${task.kind || ''} · `
+              + `${task.from || ''} → ${task.to || ''} · ${(task.repositories || []).join(', ')}`);
+            if ((task.result || []).length) item.title = task.result.join('\n');  // the result, on hover
+            items.append(item);
+          }
+          list.replaceChildren(items);
+        } catch (error) { list.replaceChildren(el('p', error.message, 'tone-text-warning')); }
+      }),
+      button('Clear finished requests', () => clear({})),
+      button('Clear every request this machine sent', () => {
+        if (window.confirm('Withdraw every request this machine has sent, waiting or not? The task log keeps the record.')) clear({everything_sent: true});
+      })), list);
+    return box;
+  }
+
   function draw() {
     block.replaceChildren();
     const status = el('p', state.message, 'host-note'); status.setAttribute('role', 'status');
@@ -268,7 +302,7 @@ export function renderSettings(block, connection, token) {
     if (!s.enrolled) { block.append(el('p', 'This machine has no library yet: run setup first.', 'host-note')); return; }
     const grid = el('div', undefined, 'setup-sections');
     grid.append(fleetSection(s), connectionsSection(s), librariesSection(s), sharedSection(s), fetchSection(s),
-      basketsSection(s), displaySection(s), signInSection(s));
+      basketsSection(s), displaySection(s), signInSection(s), tasksSection());
     block.append(grid);
   }
 

@@ -23,7 +23,7 @@ from pathlib import Path
 
 ACTIONS = ("find", "add", "remove", "presentation", "join", "leave", "open-folder",
            "settings", "connections", "fetch", "sign-in", "fleets", "show-key", "shared-answer", "seal",
-           "name-fleet", "baskets")
+           "name-fleet", "baskets", "tasks")
 PLANNED = ("find", "add", "join", "leave", "connections", "show-key", "seal")
 QUESTIONS = {"find": "Look in these folders?", "add": "Enroll these library folders?",
              "join": "Join with these choices?", "leave": "Leave the fleet?",
@@ -45,7 +45,7 @@ class SetupRoutes:
         return setup_state(self.home, self.config_dir, readiness=readiness)
 
     def settings(self) -> dict:
-        """Every setting the App & setup tab can change, as it is now. Never the fleet key."""
+        """Every setting the Settings tab can change, as it is now. Never the fleet key."""
         from Elaborate._fleet import autostart
         state = self.state()
         config = self._config()
@@ -263,6 +263,20 @@ class SetupRoutes:
             return {"settings": self.settings(), "applied": True}
         if action == "fleets":
             return {"fleets": self._fleets(), "applied": True}
+        if action == "tasks":
+            # The task log (Elaborate/_fleet/requests.py): requests sent, applied, dismissed, and
+            # local runs, newest first. Names and counts only.
+            import json
+            from Special._settings.fleet import fleet_directory
+            path = fleet_directory(self.config_dir, home=self.home) / "tasks.log"
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()[-200:] if path.exists() else []
+            entries = []
+            for line in reversed(lines):
+                try:
+                    entries.append(json.loads(line))
+                except ValueError:
+                    continue
+            return {"applied": True, "tasks": entries}
         if action == "baskets":
             # Which repositories this machine observes, and which it publishes to the fleet.
             # Capture stays with the fleet baskets command and a confirmed recovery location.
@@ -294,7 +308,7 @@ class SetupRoutes:
             if config is None:
                 raise ValueError("this machine is not enrolled")
             return {"key": config["fleet_secret"], "applied": True,
-                    "notice": "Copy it into setup, or the App & setup tab, on the machine joining."}
+                    "notice": "Copy it into setup, or the Settings tab, on the machine joining."}
         if action == "fetch":
             minutes = payload.get("minutes")
             if minutes not in FETCH_CHOICES:

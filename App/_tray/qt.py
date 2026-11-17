@@ -106,6 +106,8 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([sys.argv[0]])
     app.setQuitOnLastWindowClosed(False)
+    from App._tray.macos import menu_bar_only
+    menu_bar_only()  # macOS: the menu bar only, no "Python" in the Dock; nothing elsewhere
     if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
         raise TrayUnavailable("this desktop has no system tray")
     # One tray per profile, held for this tray's whole life: a second copy (2026-11-15) doubled
@@ -430,6 +432,8 @@ def _control(args) -> int:
 
 def main(argv=None) -> int:
     from Basic import _cli
+    from Basic._console import include_user_tools
+    include_user_tools()  # scanners and gh installed for this user only (~/.local/bin)
     parser = _cli.parser("tray", __doc__.split("\n", 1)[0])
     parser.add_argument("--config-dir", type=Path, help="local fleet state directory")
     parser.add_argument("--settings-home", type=Path, help="common profile; defaults to the user-data home")
@@ -489,7 +493,39 @@ def main(argv=None) -> int:
         return run_tray(args.config_dir, args.settings_home, view=args.view, web=args.web,
                         open_on_start=args.open_on_start, remote=args.remote)
     except TrayUnavailable as exc:
+        if args.detached or sys.stdout is None:
+            # Started on its own or at sign-in, on a system without Qt for it (macOS 10.15 has no
+            # Qt 6 build, 2026-11-16): run the same app without an icon rather than not at all.
+            return _run_without_icon(args)
         return _cli.fail(args, "tray", f"{exc}. Without a tray, gitso serve-web serves the web view.")
     except (OSError, ValueError) as exc:
         return _cli.fail(args, "tray", f"{failure_reason(str(exc))}.")
+
+
+def _run_without_icon(args) -> int:
+    """The app with no tray icon: the same peer and web view. It holds the tray's lock, so
+    `gitso tray` (status, --follow, --open, --stop) treats it as the running app."""
+    import signal
+
+    from App._launch import run_app
+    from App._tray.control import QUIT_REQUEST
+    from Special._settings.fleet import fleet_directory
+    from Special._sync.lock import TRAY_LOCK, app_lock
+    directory = fleet_directory(args.config_dir, home=args.settings_home)
+    stopping = threading.Event()
+    for name in ("SIGINT", "SIGTERM"):
+        signal.signal(getattr(signal, name), lambda *_: stopping.set())
+    with app_lock(directory, TRAY_LOCK):
+        quit_request = directory / QUIT_REQUEST
+        quit_request.unlink(missing_ok=True)
+
+        def watch_for_quit():
+            while not stopping.wait(1.0):
+                if quit_request.exists():
+                    quit_request.unlink(missing_ok=True)
+                    stopping.set()
+        threading.Thread(target=watch_for_quit, name="quit-request", daemon=True).start()
+        _record_process(args.config_dir, args.settings_home)
+        return run_app(args.config_dir, args.settings_home, stopping=stopping, face="web",
+                       web=args.web, remote=args.remote)
 

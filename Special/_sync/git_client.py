@@ -102,7 +102,7 @@ class DesktopIntegration:
                     "choices": [{"id": key, "label": LABELS[key]}
                                 for key in self.candidates],
                     "reason": ("Open a local checkout for review and Git operations in your client."
-                               if available else "Choose an installed desktop Git client in App & setup."
+                               if available else "Choose an installed desktop Git client in Settings."
                                if self.candidates else "No supported desktop Git client found.")}
 
     def handle(self, action, payload):
