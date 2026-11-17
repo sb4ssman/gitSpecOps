@@ -11,6 +11,7 @@ between OS users sharing this machine. Tailnet peer endpoints remain GET-only.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import secrets
 import threading
@@ -27,9 +28,17 @@ LOOPBACK = "127.0.0.1"
 DEFAULT_PORT = 8760
 
 
+def _page_version(assets: dict) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(assets):
+        digest.update(path.encode() + b"\0" + assets[path][0])
+    return digest.hexdigest()[:16]
+
+
 def make_local_server(address, build_document, assets, desktop_action=None, fleet_action=None,
                       setup=None):
     """`setup`: SetupRoutes (App/_web/setup.py) to mount /setup and its actions, or None."""
+    page_version = _page_version(assets)
     if address[0] != LOOPBACK:
         raise ValueError("the local dashboard must bind to loopback")
     action_token = secrets.token_urlsafe(32)
@@ -46,6 +55,10 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
             data = json.dumps(value).encode() if kind == "application/json" else value
             self.send_response(status)
             self.send_header("Content-Type", kind)
+            # Which page this server hands out: an open tab that sees it change (the app was
+            # updated and restarted) reloads, instead of running yesterday's scripts against
+            # today's data (2026-11-17: a map drawn by an old script after `gitso update`).
+            self.send_header("X-GitSpecOps-Page", page_version)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")

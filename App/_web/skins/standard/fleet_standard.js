@@ -359,7 +359,7 @@ function renderGroup(list, group, data, grid) {
 }
 
 function renderMachines() {
-  drawMachines(byId('machine-list'), state.data, ageLabel);
+  drawMachines(byId('machine-list'), state.data, ageLabel, null, fleetActions(), renderMachines);
 }
 
 function renderCloudsPanel() {
@@ -586,8 +586,11 @@ function renderAll() {
   });
   renderFilters(); renderRepositories(); renderMapPanel(); renderOrgsPanel(); renderSecurity(byId('security'), state.data, connection);
   renderMachines(); renderCloudsPanel(); renderAbout(); renderNotices();
-  renderReference(byId('reference'), state.data.local_actions
-    ? payload => connection.desktopAction('reference', payload, state.data.local_actions.token, {structured: true}) : null, renderSummary);
+  renderReference(byId('reference'), state.data.local_actions ? {
+    call: payload => connection.desktopAction('reference', payload, state.data.local_actions.token, {structured: true}),
+    data: () => state.data, actions: fleetActions,
+    repoAction: payload => connection.desktopAction('repo-action', payload, state.data.local_actions.token, {structured: true}),
+  } : null, renderSummary);
   renderSummary();  // after Security, so its tile shows the latest audit
   byId('last-updated').textContent = `View received ${state.receivedAt.toLocaleTimeString()}`;
 }

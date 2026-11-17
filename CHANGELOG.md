@@ -5,6 +5,21 @@ while the version starts with 0, gitSpecOps is a development preview and anythin
 
 ## Unreleased
 
+- **The operations as buttons, in every view.** The map's machine and organization levels, each
+  repository's view, and every card on Machines carry "Fast-forward N behind" (and, for a chosen
+  organization or repository, "Clone N missing"), on this machine now or sent to another to run
+  when it next checks in. Through a machine, an organization's list says that machine's own copy,
+  not the fleet's advice. The repository view has a button to its details (changes, commit,
+  push, safe to delete).
+- **Reference: one place to read and use an operation.** Choose one: its manual, its source code,
+  and a Use it form: which machine, pointed at a repository, an organization or a library, more
+  arguments. On this machine it opens a terminal in that folder with the command running, so its
+  own screen and questions are in front of you; on another machine, a fast-forward or a clone is
+  sent. Choosing an item keeps your place in the list.
+- **The menu fits one row** when the screen allows, and wraps when it does not.
+- **An open tab reloads itself** when the app was updated and restarted, instead of running the
+  old page against new data.
+
 - **Requests between machines run on arrival.** A request can only ask for a fast-forward after
   a fresh fetch or a clone that replaces nothing, and only a machine of the same fleet can send
   one, so the receiving machine now runs it when it next checks in, without a second approval

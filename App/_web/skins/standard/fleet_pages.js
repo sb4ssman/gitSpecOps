@@ -3,6 +3,7 @@
  * integrations) or a count of them. Nothing here decides what a state means.
  */
 import {html, PROVIDER} from './fleet_grid.js';
+import {machineActions} from './fleet_actions.js';
 
 /** The menu, in the user's order (2026-11-16). `id` is the panel and the address (#map). */
 export const MENU = [
@@ -75,7 +76,7 @@ function table(headings, rows) {
 }
 
 /** Machines, each with its libraries under it. */
-export function renderMachines(container, data, ageLabel, onOrg) {
+export function renderMachines(container, data, ageLabel, onOrg, actions = null, redraw = () => {}) {
   container.replaceChildren();
   if (!data.machines.length) { container.append(html('p', 'No machine has reported yet.', 'empty')); return; }
   const libraries = data.libraries || [];
@@ -109,6 +110,9 @@ export function renderMachines(container, data, ageLabel, onOrg) {
       t.append(body);
       card.append(t);
     } else card.append(html('p', 'No library reported.', 'host-note'));
+    // What this machine can be brought up to date with, as buttons (fleet_actions.js).
+    const bar = machineActions({data, rows: data.rows, machine, scope: 'everything it has', actions, redraw, clone: false});
+    if (bar) card.append(bar);
     container.append(card);
   }
   const issues = data.issues || [];

@@ -3165,3 +3165,22 @@ No code changed; decisions recorded where they govern.
 - WORKING-NOTES pruned to open work: mission items 1 to 3, PR #7, requests on arrival, the
   legend, review-from-the-page and self-update were done.
 - Decision recorded with the user: the scripts are the product; the page is a face on them.
+
+## 2026-11-17 23:30 - user (claude) - Operations as buttons in every view; Reference can use an operation (branch dev)
+
+- The user: "the app needs to be the conduit to the special operations"; every view is a slice
+  of the same rows and must be able to act. App/_web/skins/standard/fleet_actions.js gives every
+  view the same bar per machine: fast-forward the behind copies, clone the missing ones (only for
+  a chosen organization or repository; never "everything the fleet has" in one click). Used by
+  the zoom map's machine, organization and repository levels, Machines cards, and Reference.
+- Reference: the source with each manual, and a Use it form. `run-command` (resolve.py) opens a
+  terminal with one command from gitso's own catalog, in a folder this machine knows (a copy of a
+  repository, or a library); test in tests/special/test_resolve.py. The list no longer rebuilds
+  on a click.
+- The map's organization level, reached through a machine, showed the fleet-wide advice
+  ("current; moonbase-prime unknown"), which read as being about that machine. It now shows that
+  machine's own copy.
+- The overlapping boxes the user saw after `gitso update` were an old script in a tab opened
+  before the restart. The server now sends X-GitSpecOps-Page (a digest of the page's files) and
+  a tab that sees it change reloads.
+- Not clicked through in a browser by the agent.

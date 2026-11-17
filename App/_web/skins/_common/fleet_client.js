@@ -30,6 +30,10 @@ export class FleetConnection extends EventTarget {
     try {
       const response = await this.fetcher('/v1/dashboard', {cache: 'no-store', signal: timeoutSignal(15000)});
       if (!response.ok) throw new Error(`Host returned ${response.status}.`);
+      // The app was updated and restarted: this tab's scripts are the old ones. Load the new page.
+      const page = response.headers && response.headers.get('X-GitSpecOps-Page');
+      if (page && this.page && page !== this.page) { location.reload(); return; }
+      if (page) this.page = page;
       const data = acceptDisplay(await response.json());
       this.dispatchEvent(new CustomEvent('display', {detail: {data, receivedAt: new Date()}}));
     } catch (error) {

@@ -97,8 +97,12 @@ def reference(payload: dict) -> dict:
         chosen = next((command for command in _commands() if command["command"] == payload["command"]), None)
         if chosen is None:
             raise ValueError("no such command")
+        try:
+            source = (ROOT / chosen["script"]).read_text(encoding="utf-8-sig")[:TEXT_LIMIT]
+        except OSError:
+            source = ""
         return {"title": f"gitso {chosen['command']}", "script": chosen["script"],
-                "text": _gitso("docs", *chosen["command"].split())[:TEXT_LIMIT]}
+                "text": _gitso("docs", *chosen["command"].split())[:TEXT_LIMIT], "source": source}
     if "document" in payload:
         path = _documents().get(str(payload["document"]))
         if path is None:

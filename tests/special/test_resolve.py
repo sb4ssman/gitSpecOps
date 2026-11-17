@@ -116,6 +116,22 @@ class ResolveTests(unittest.TestCase):
         self.assertFalse(ahead["safe"], "a commit on no remote")
         self.assertIn("Not safe", ahead["verdict"])
 
+    def test_a_terminal_runs_only_a_catalog_command_in_a_folder_this_machine_knows(self):
+        from unittest.mock import patch
+        from Special._sync import resolve
+        with patch.object(resolve, "_terminal") as terminal:
+            answer = repo_action("run-command", {"repo_id": "r1", "command": "history scan", "arguments": "--json"},
+                                 self.checkouts)
+        argv, cwd = terminal.call_args.args
+        self.assertEqual(argv[-4:], ["history", "scan", str(self.repo), "--json"])
+        self.assertEqual(cwd, self.repo)
+        self.assertIn("history scan", answer["message"])
+        for bad in ({"command": "rm -rf"}, {"command": "history scan", "repo_id": "elsewhere"},
+                    {"command": "status", "arguments": "x" * 600}):
+            with patch.object(resolve, "_terminal") as terminal, self.assertRaises(ValueError, msg=bad):
+                repo_action("run-command", bad, self.checkouts)
+            terminal.assert_not_called()
+
     def test_a_failed_read_is_an_error_never_an_empty_answer(self):
         import shutil
         shutil.rmtree(self.repo / ".git", ignore_errors=True)

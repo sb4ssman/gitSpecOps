@@ -22,10 +22,14 @@ command line, so nothing (a profile, a target) can be lost on the way (an outsid
 from __future__ import annotations
 
 import filecmp
+import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
+from functools import lru_cache
 from pathlib import Path
 
 from Basic._run import run
@@ -35,9 +39,10 @@ DIFF_LIMIT = 200_000  # characters of diff shown at once
 LISTED = 200  # files listed by "Safe to delete?"
 OPS = {"open-folder", "open-editor", "changes", "fetch", "pull", "commit-plan", "commit-apply",
        "push-plan", "push-apply", "not-counted", "count-again", "not-counted-list",
-       "not-counted-folder", "copies", "retire-check"}
+       "not-counted-folder", "copies", "retire-check", "run-command"}
 #: Ops that only read (or open a window); the peer runs them outside its action lock.
-READ_ONLY = {"changes", "open-folder", "open-editor", "not-counted-list", "copies"}
+READ_ONLY = {"changes", "open-folder", "open-editor", "not-counted-list", "copies", "run-command"}
+GITSO = Path(__file__).resolve().parents[2] / "gitso.py"
 
 
 def _git(path: Path, *args: str, check: bool = True) -> str:
@@ -202,6 +207,72 @@ def _not_counted_folder(folder: str, home) -> list[str]:
     return change_not_counted(add=[str(target)], home=home)
 
 
+@lru_cache(maxsize=1)
+def _catalog() -> frozenset:
+    """The names `gitso commands` lists: the only things the page may ask a terminal to run."""
+    done = run([sys.executable, str(GITSO), "commands", "--json"], timeout=60, cwd=str(GITSO.parent))
+    try:
+        return frozenset(entry["command"] for entry in json.loads(done.stdout)["commands"])
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ValueError("the catalog could not be read") from exc
+
+
+def _terminal(argv: list[str], cwd: Path) -> None:
+    """A terminal window, in `cwd`, running `argv` and staying open: the operation's own screen,
+    plan and questions in front of the person who asked for it."""
+    if os.name == "nt":
+        subprocess.Popen(["cmd.exe", "/k", *argv], cwd=str(cwd), creationflags=subprocess.CREATE_NEW_CONSOLE)
+        return
+    line = " ".join(shlex.quote(part) for part in argv)
+    if sys.platform == "darwin":
+        script = Path(tempfile.gettempdir()) / "gitspecops-run.command"
+        script.write_text(f"#!/bin/sh\ncd {shlex.quote(str(cwd))}\n{line}\nexec \"${{SHELL:-/bin/sh}}\"\n", encoding="utf-8")
+        script.chmod(0o700)
+        subprocess.Popen(["open", str(script)])
+        return
+    shell = f"{line}; exec \"${{SHELL:-/bin/sh}}\""
+    for program, flag in (("x-terminal-emulator", "-e"), ("gnome-terminal", "--"), ("konsole", "-e"), ("xterm", "-e")):
+        found = shutil.which(program)
+        if found:
+            subprocess.Popen([found, flag, "sh", "-c", shell], cwd=str(cwd))
+            return
+    raise ValueError("no terminal program was found on this machine")
+
+
+def run_command(payload: dict, checkouts, home=None) -> dict:
+    """Open a terminal with one gitso command, pointed at a repository or a library of this
+    machine (the user, 2026-11-17: choose an operation in Reference and use it). The command
+    must be in gitso's own catalog; the folder comes from this machine's records, never from
+    the page. More arguments are the person's own typing, passed as they would type them."""
+    command = str(payload.get("command") or "")
+    if command not in _catalog():
+        raise ValueError("no such gitso command")
+    more = str(payload.get("arguments") or "")
+    if len(more) > 500:
+        raise ValueError("too many arguments")
+    try:
+        extra = shlex.split(more, posix=os.name != "nt")
+    except ValueError as exc:
+        raise ValueError(f"the arguments could not be read: {exc}") from exc
+    target, libraries = None, _libraries(home)
+    if payload.get("repo_id"):
+        paths = [Path(item) for item in checkouts(str(payload["repo_id"])) or []]
+        index = payload.get("checkout", 0)
+        if not paths or type(index) is not int or not 0 <= index < len(paths):
+            raise ValueError("this repository has no such copy on this machine")
+        target = paths[index]
+    elif payload.get("library"):
+        from Special._sync.manifest import library_name
+        target = next((root for root in libraries if library_name(root) == payload["library"]), None)
+        if target is None:
+            raise ValueError("no such library on this machine")
+    cwd = target or (libraries[0] if libraries else Path.home())
+    argv = [sys.executable, str(GITSO), *command.split(), *([str(target)] if target else []), *extra]
+    _terminal(argv, cwd)
+    shown = " ".join(["gitso", command, *([target.name] if target else []), *extra])
+    return {"message": f"A terminal opened in {cwd.name} running: {shown}"}
+
+
 def _plan_id(payload: dict) -> str:
     plan = str(payload.get("plan_id") or "")
     if not plan:
@@ -223,6 +294,8 @@ def repo_action(op: str, payload: dict, checkouts, *, home=None) -> dict:
             raise ValueError("that folder is not on the not-counted list")
         return {"not_counted": change_not_counted(remove=[path], home=home),
                 "message": "Counted again from the next read of the library."}
+    if op == "run-command":
+        return run_command(payload, checkouts, home)
     if op == "not-counted-folder":
         listed = _not_counted_folder(str(payload.get("path") or ""), home)
         return {"not_counted": listed,

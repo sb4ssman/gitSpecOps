@@ -11,6 +11,7 @@
  * not "synced"; attention, tones and advice come from Python. Library paths stay private, so a
  * machine's tree is its hosts and organizations. Every mark has text; colour is never alone.
  */
+import {actionBars} from './fleet_actions.js';
 import {byOwner} from './fleet_view.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -288,6 +289,7 @@ function machineLevel(container, data, machineId) {
       y += 24;
     }
   }
+  actionBars(container, {data, rows: data.rows, scope: 'everything it has', actions, redraw: rerender, only: machineId, clone: false});
 }
 
 function organizationLevel(container, data, groupId, machineId) {
@@ -303,12 +305,17 @@ function organizationLevel(container, data, groupId, machineId) {
   rows.forEach((row, i) => {
     const y = top + i * 28 + 14, tone = worstTone(row, machineId);
     svg.append(el('path', {d: `M166 ${mid} C260 ${mid} 260 ${y} 330 ${y}`, class: `z-link z-thin ${toneClass(tone)}`}));
-    const item = node(svg, {label: `${row.name}: ${row.advice}. Open.`,
+    // Reached through a machine: this machine's own copy, in its own words (the fleet-wide
+    // advice named other machines here, which read as if it were about this one; 2026-11-17).
+    const cell = machineId ? row.cells[machineId] : null;
+    const words = !machineId ? row.advice : cell && cell.present ? cell.description || cell.state : 'no copy on this machine';
+    const item = node(svg, {label: `${row.name}: ${words}. Open.`,
                             onOpen: () => { zoomTo({kind: 'repository', id: row.id}); rerender(); }});
     item.append(el('circle', {cx: 340, cy: y, r: 7, class: `z-dot ${toneClass(tone)}`}));
     item.append(el('text', {x: 356, y: y + 4, class: 'z-row'}, `${clip(row.identity ? row.identity.name : row.name, 32)}`));
-    item.append(el('text', {x: 620, y: y + 4, class: 'z-row z-muted-text'}, clip(row.advice, 52)));
+    item.append(el('text', {x: 620, y: y + 4, class: 'z-row z-muted-text'}, clip(words, 52)));
   });
+  actionBars(container, {data, rows, scope: group ? group.label : '', actions, redraw: rerender, only: machineId || null});
 }
 
 function repositoryLevel(container, data, repoId) {
@@ -347,6 +354,13 @@ function repositoryLevel(container, data, repoId) {
       group.append(el('text', {x, y: y + 44, class: 'z-detail'}, facts.head ? `commit ${facts.head.slice(0, 10)}` : ''));
     }
   });
+  // What can be done about it, per machine; and the way to everything else (commit, push, diff).
+  actionBars(container, {data, rows: [row], scope: '', actions, redraw: rerender});
+  if (onRepository) {
+    const open = html('button', 'Open the details: changes, commit, push, safe to delete'); open.type = 'button';
+    open.onclick = () => onRepository(row);
+    const line = html('div', undefined, 'act-bars'); line.append(open); container.append(line);
+  }
 }
 
 // ---- the frame around the levels ------------------------------------------------------------
@@ -367,9 +381,9 @@ function exists(step, data) {
 }
 
 /** Draw the map at its current zoom into `container`. */
-let onRepository = null;
+let onRepository = null, actions = null;
 export function renderZoom(container, data, options = null) {
-  if (options) onRepository = options.onRepository || null;
+  if (options) { onRepository = options.onRepository || null; actions = options.actions || null; }
   data = byOwner(data);
   current = [container, data];
   while (trail.length && !exists(trail[trail.length - 1], data)) trail.pop();
