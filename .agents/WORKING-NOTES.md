@@ -7,6 +7,44 @@ Verify an item against the code before acting on it.
 _Last tended: 2026-11-17. Pruned to open work; what was done is in the log entries of that day.
 What works today, per capability, is in [`docs/STATUS.md`](../docs/STATUS.md)._
 
+## Handoff, 2026-11-17 (from the agent that worked 2026-11-14 to 17)
+
+The user has run `gitso update` on four machines and glanced at the page. **Nothing built on
+2026-11-17 has been tested by a person.** Every Python operation behind the page has tests (113
+files pass); the page's own scripts have none, and no new button has been clicked through.
+
+**What the user wants, in his words:** "the app needs to be the conduit to the special
+operations". Every view is a slice of the same rows and must be able to act. The scripts are
+the product; the page and the tray are faces on the same functions (`docs/ONE-OPERATION.md`).
+Remote management: see work on a machine, act on it from any machine.
+
+**Built 2026-11-17, untested by a person, most likely to need fixes:**
+- `App/_web/skins/standard/fleet_actions.js`: fast-forward / clone bars on the map's levels,
+  Machines cards and Reference. Requests now run on arrival (`auto_requests`, default on).
+- Reference's Use it form; `run-command` in `Special/_sync/resolve.py` opens a terminal with a
+  catalog command in a folder this machine knows (Windows `cmd /k`; macOS a `.command` file;
+  Linux the first terminal found). Only Windows was exercised, and only by a mocked test.
+- The Resolve box (commit, push, safe to delete, copy chooser, not counted), Accept and Not a
+  secret on audit findings, "On my other devices", the map's repository boxes.
+- `X-GitSpecOps-Page`: an open tab reloads when the app's page files change.
+
+**Screenshots:** the README's images predate the menu tiles, Reference and the buttons. Retake
+them from the demo fleet (`_build/demo_fleet.py`, port 8799: invented machines and
+repositories), never from the user's real fleet, and ask before capturing any real screen. The
+user wants to reuse one of them on his two sites, so make one wide image of the map and one of
+Reference worth showing.
+
+**How this user works (keep to it):** answer the question asked, plainly and short. Ask before
+anything that runs in the background (tray, peer, scheduled tasks) or over SSH on another
+machine, and never capture a screen without asking. Work with the Destructive Command Guard,
+never around it; no force-push, reset, rebase or branch deletion. This repository is public:
+run `tests/repo/test_repo_hygiene.py` before every commit and **stop if it fails** (on
+2026-11-17 a machine name reached a pushed commit because the failure was not stopped on).
+Machine names, real paths and the user's name and email stay out. Work happens on `dev`;
+merging to `main` is the user's call.
+
+**Open from the outside review:** listed below under "From the outside review".
+
 ## Next, in order
 1. **A person's pass over the page's new buttons** (2026-11-17): Resolve (open, changes, commit,
    push, safe to delete, not counted), the copy chooser, Accept and Not a secret, Reference,
