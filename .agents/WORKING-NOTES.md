@@ -34,15 +34,6 @@ repositories), never from the user's real fleet, and ask before capturing any re
 user wants to reuse one of them on his two sites, so make one wide image of the map and one of
 Reference worth showing.
 
-**How this user works (keep to it):** answer the question asked, plainly and short. Ask before
-anything that runs in the background (tray, peer, scheduled tasks) or over SSH on another
-machine, and never capture a screen without asking. Work with the Destructive Command Guard,
-never around it; no force-push, reset, rebase or branch deletion. This repository is public:
-run `tests/repo/test_repo_hygiene.py` before every commit and **stop if it fails** (on
-2026-11-17 a machine name reached a pushed commit because the failure was not stopped on).
-Machine names, real paths and the user's name and email stay out. Work happens on `dev`;
-merging to `main` is the user's call.
-
 **Open from the outside review:** listed below under "From the outside review".
 
 ## Next, in order

@@ -77,6 +77,18 @@ goal for seventeen days (the archived design notes record the correction).
 
 ## Directives (how to work in this repo)
 
+### How this user works
+
+Answer the question asked, plainly and briefly. Explain the plan before acting and always say
+what was not verified. Ask before running anything in the background (tray, peer, or scheduled
+tasks), acting over SSH, or capturing any screen. Work with the Destructive Command Guard, never
+around it. Do not force-push, reset, rebase, or delete branches. Work on `dev`; merging to
+`main` is the user's call. Commit and push only when asked.
+
+This repository is public. Keep machine names, real paths, and the user's name and email out.
+Run `tests/repo/test_repo_hygiene.py` before every commit and **stop if it fails**. On
+2026-11-17 a machine name reached a pushed commit because a hygiene failure was ignored.
+
 ### Canonical product contract
 
 Read [knowledge/product-contract.md](knowledge/product-contract.md) before work on setup,

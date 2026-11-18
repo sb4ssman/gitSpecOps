@@ -3195,3 +3195,8 @@ No code changed; decisions recorded where they govern.
   issues for the accessible copies. The wipe audit still requires coverage of every library.
 - Disposable Windows fixtures cover partial startup, remount, all roots absent, and the
   unchanged last complete report. Native Linux remount acceptance remains open.
+
+## 2026-11-18 09:14 - user (Codex) - Keep agent working rules in the permanent brief
+
+- Moved the handoff's working rules into Directives, added the hard stops to AGENTS.md, and
+  replaced the duplicate CLAUDE.md with a three-line pointer.
