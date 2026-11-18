@@ -46,6 +46,9 @@ merging to `main` is the user's call.
 **Open from the outside review:** listed below under "From the outside review".
 
 ## Next, in order
+The missing-library fallback is covered with disposable repositories on Windows. Confirm the
+dashboard and `fleet doctor` during the next real Linux mount outage and after remounting.
+
 1. **A person's pass over the page's new buttons** (2026-11-17): Resolve (open, changes, commit,
    push, safe to delete, not counted), the copy chooser, Accept and Not a secret, Reference,
    "On my other devices", requests running on arrival between two real machines. The Python

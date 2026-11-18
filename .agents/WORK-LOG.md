@@ -3184,3 +3184,14 @@ No code changed; decisions recorded where they govern.
   before the restart. The server now sends X-GitSpecOps-Page (a digest of the page's files) and
   a tab that sees it change reloads.
 - Not clicked through in a browser by the agent.
+
+## 2026-11-18 07:47 - user (Codex) - Keep the app usable when a library is unavailable
+
+- A disconnected library stays enrolled. The peer inventories and watches available libraries,
+  keeps serving the dashboard even with none, and rebuilds its inventory when availability
+  changes. While partial, it leaves the last complete fleet report at its original timestamp.
+  Doctor lists unavailable paths locally; clone requests refuse an unavailable destination.
+- Kept the shared operations as the product boundary: the app continues surfacing and resolving
+  issues for the accessible copies. The wipe audit still requires coverage of every library.
+- Disposable Windows fixtures cover partial startup, remount, all roots absent, and the
+  unchanged last complete report. Native Linux remount acceptance remains open.

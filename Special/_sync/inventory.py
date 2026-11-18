@@ -60,10 +60,11 @@ class IncrementalObserver:
         return {repo["repo_id"]: baskets.namespace_of(self._catalog[path])
                 for path, repo in list(self._repos.items()) if path in self._catalog}
 
-    def inventory(self, progress=None) -> int:
+    def inventory(self, progress=None, *, roots=None) -> int:
         """Discover every repository under the roots and read each one. `progress(done, total,
         path)` is called per repository, for a caller that shows the work as it happens."""
-        roots = [RootSpec(Path(root), True) for root in self.config["roots"]]
+        roots = [RootSpec(Path(root), True)
+                 for root in (self.config["roots"] if roots is None else roots)]
         observation = observe_roots(roots, self.config["fleet_secret"], progress=progress)
         self._repos.clear()
         self._catalog.clear()

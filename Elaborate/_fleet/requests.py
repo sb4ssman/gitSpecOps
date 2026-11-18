@@ -244,6 +244,11 @@ def perform(request: dict, local_checkouts, libraries: list[str], private=None) 
             bad += 1
             lines.append(f"{name}: no library called {wanted} here, so nothing was cloned")
             continue
+        from Special._sync.observer import library_available
+        if not library_available(chosen[0]):
+            bad += 1
+            lines.append(f"{name}: the selected library is unavailable; nothing was cloned")
+            continue
         library = Path(chosen[0]).resolve()
         target = library / (folder or owner) / name
         if target.exists():

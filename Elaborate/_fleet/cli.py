@@ -57,7 +57,7 @@ def load_saved(directory: Path, *, home=None) -> dict:
     config = snapshot.config("app") if snapshot is not None else None
     if config is None:
         raise ValueError("this machine is not enrolled; enroll it with: gitso machine add <library folder>")
-    return validate(config)
+    return validate(config, allow_unavailable=True)
 
 
 def profile_arguments(directory, home=None):
@@ -698,11 +698,17 @@ def command_recovery(args, directory: Path, out, approval) -> int:
 
 
 def command_doctor(config: dict, out) -> int:
+    from Special._sync.observer import library_available
+
     shown = {k: v for k, v in config.items() if k != "fleet_secret"}
     out.data(configuration=shown, fleet_id=fleet_id_for(config["fleet_secret"]),
              dashboard=f"http://127.0.0.1:{config['local_port']}/")
     out.say(f"fleet id: {fleet_id_for(config['fleet_secret'])}  (key is set and hidden)")
     out.say(f"dashboard: http://127.0.0.1:{config['local_port']}/  — local, always available")
+    unavailable = [root for root in config["roots"] if not library_available(root)]
+    for root in unavailable:
+        out.say(f"  library unavailable: {root} (check the mount and permissions)")
+    out.data(unavailable_libraries=unavailable)
     peers_seen = []
     if (config.get("transports") or {}).get("tailnet"):
         try:

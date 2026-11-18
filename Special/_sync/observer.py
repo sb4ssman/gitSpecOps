@@ -192,6 +192,22 @@ def fetch_repositories(paths: list[Path], workers: int = DEFAULT_FETCH_WORKERS,
     return fetched_at, issues
 
 
+def library_available(root: Path | str) -> bool:
+    """Check a configured library without walking it or following user-created links."""
+    import os
+    from Special._runtime.files import traverses_link
+
+    try:
+        path = Path(root)
+        if traverses_link(path):
+            return False
+        with os.scandir(path) as entries:
+            next(entries, None)
+        return True
+    except OSError:
+        return False
+
+
 def _discover(roots: list[RootSpec], issues: list[str]) -> list[Path]:
     """Every work-tree repository inside the configured roots, de-duplicated."""
     found: list[Path] = []
@@ -200,8 +216,8 @@ def _discover(roots: list[RootSpec], issues: list[str]) -> list[Path]:
         root = spec.path.expanduser()
         try:
             hits = find_repos(root, max_depth=None if spec.recursive else 0)
-        except NotADirectoryError:
-            issues.append(f"not a directory: {root}")
+        except OSError:
+            issues.append(f"library unavailable: {root}")
             continue
         for hit in hits:
             path = Path(hit.path).resolve()

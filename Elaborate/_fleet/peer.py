@@ -37,7 +37,7 @@ from Basic._files import atomic_write_bytes
 from Elaborate._transport.folder import FolderTransport
 from Elaborate._fleet.local_view import display_from_manifests
 from Special._sync.manifest import fleet_id_for, names_over, without_names
-from Special._sync.observer import fetch_repositories
+from Special._sync.observer import fetch_repositories, library_available
 from Elaborate._transport.repo import RepoTransport
 from Elaborate._fleet.watcher import semantic_fingerprint
 
@@ -410,6 +410,12 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     publisher = TransportPublisher(config.get("transports") or {},
                                    names={name: names_over(config, name) for name in ("folder", "repo")})
     observer = IncrementalObserver(config)
+    configured_roots = tuple(config["roots"])
+
+    def available_roots():
+        return tuple(root for root in configured_roots if library_available(root))
+
+    active_roots = available_roots()
     # What this peer is doing right now, in words, for the tray's status line and the web view:
     # people should see the work happen. Counts only; never a path or a repository name.
     activity = {"phase": "starting", "text": "starting up", "done": 0, "total": 0}
@@ -426,7 +432,9 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             return "watching for changes"
         extra = folders - repositories
         return (f"watching {folders} repository folders locally for changes"
-                + (f" ({repositories} repositories; {extra} folders are second copies)" if extra > 0 else ""))
+                + (f" ({repositories} repositories; {extra} folders are second copies)" if extra > 0 else "")
+                + (f"; {len(configured_roots) - len(active_roots)} libraries unavailable"
+                   if active_roots != configured_roots else ""))
     from Elaborate._recovery.runtime import RecoveryRuntime
     recovery = RecoveryRuntime(config, observer, log=log)
     stale_seconds = stale_after(config)
@@ -440,11 +448,12 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     # fresh read finishes, so the machine never disappears from its own page (2026-11-17).
     try:
         previous = json.loads((config_dir / "fleet-latest.json").read_bytes())
-        if (previous.get("manifest") or {}).get("machine_id") == config["machine_id"]:
+        manifest = previous.get("manifest") or {}
+        if manifest.get("machine_id") == config["machine_id"] and manifest.get("fleet_id") == fleet_id:
             latest["previous"] = previous
     except (OSError, ValueError, AttributeError):
         pass
-    watching = {"incomplete": False}  # Linux's watch limit reached: the library is reread on a timer
+    watching = {"incomplete": False, "unavailable": False}
 
     def save_client(choice):
         # Only local UI choices reach here; executable paths never cross a transport.
@@ -530,6 +539,11 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         manifests, issues, names = sources()
         if latest["local"] is not None:
             issues = list(issues) + list(latest["local"].get("issues") or [])
+        if active_roots != configured_roots:
+            issues = list(issues) + [
+                f"{len(configured_roots) - len(active_roots)} configured libraries are unavailable. "
+                "Showing available libraries only. Fleet status remains last known until they return. "
+                "Run 'gitso fleet doctor' on this machine to see the paths."]
         if pending_new:
             listed = ", ".join(sorted(p.name for p in sorted(pending_new))[:5])
             more = "" if len(pending_new) <= 5 else f" (+{len(pending_new) - 5} more)"
@@ -542,6 +556,9 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                 f"changes; the library is reread every {SWEEP_SECONDS // 60} minutes instead. To "
                 "watch everything, raise the limit: sudo sysctl fs.inotify.max_user_watches=524288 "
                 "(add fs.inotify.max_user_watches=524288 to /etc/sysctl.conf to keep it)."]
+        if watching["unavailable"]:
+            issues = list(issues) + [
+                "File watching is unavailable; available libraries are checked periodically."]
         if shared is not None:
             try:
                 waiting = len(shared.questions())
@@ -638,10 +655,19 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
 
     def open_events():
         # Linux watches only the repositories and the folders leading to them (events.py).
-        return event_source or NativeEvents([Path(root) for root in config["roots"]],
-                                            repositories=list(observer.paths))
+        if event_source is not None:
+            return event_source
+        if not active_roots:
+            return None
+        try:
+            return NativeEvents([Path(root) for root in active_roots],
+                                repositories=list(observer.paths))
+        except OSError:
+            log("File watching is unavailable; inventory will be refreshed periodically.")
+            return None
 
     def watch_note(events) -> None:
+        watching["unavailable"] = events is None and bool(active_roots)
         if getattr(events, "incomplete", False):
             log("Linux's file-watch limit was reached, so some folders are not watched; the "
                 f"library is reread every {SWEEP_SECONDS // 60} minutes instead.")
@@ -653,7 +679,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     try:
         started = time.monotonic()
         doing("finding", "finding the repositories in your library")
-        count = observer.inventory(progress=lambda done, total, _path: doing(
+        count = observer.inventory(roots=active_roots, progress=lambda done, total, _path: doing(
             "reading", f"reading Git status: {done} of {total} repositories", done, total))
         doing("publishing", f"found {count} repositories; putting this machine's state together", count, count)
         log(f"Initial inventory found {count} repositories in {time.monotonic() - started:.1f}s. "
@@ -667,6 +693,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         stop_serving()
         raise
     next_sweep = time.monotonic() + SWEEP_SECONDS
+    next_root_check = time.monotonic() + WATCH_RESTART_SECONDS
     request_path = config_dir / "fleet-rescan.request"
     fingerprint = None
     next_heartbeat = 0.0
@@ -685,7 +712,8 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         delay = fetch_minutes * 60
         while not stopping.wait(delay):
             delay = fetch_minutes * 60
-            paths = list(latest["paths"])
+            roots = available_roots()
+            paths = [path for path in latest["paths"] if any(path.is_relative_to(root) for root in roots)]
             if paths:
                 doing("fetching", f"fetching remotes (read-only): {len(paths)} repositories", 0, len(paths))
                 fetched, problems = fetch_repositories(paths)
@@ -699,6 +727,14 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         nonlocal fingerprint, next_heartbeat
         local = observer.report()
         shared, withheld = observer.shared_report(local)
+        latest["local"], latest["withheld"], latest["paths"] = local, withheld, observer.paths
+        next_heartbeat = time.monotonic() + heartbeat_seconds
+        if (active_roots != configured_roots or available_roots() != configured_roots
+                or any(issue.startswith("library unavailable") for issue in local["issues"])):
+            # A partial inventory would turn unavailable repositories into apparently missing
+            # ones on other machines. Keep the last complete report at its original timestamp.
+            fingerprint = None
+            return False
         # What Tailscale peers may fetch: without names unless that connection carries them.
         live = shared if names_over(config, "tailnet") else {
             **shared, "names": {}, "manifest": without_names(shared["manifest"])}
@@ -706,9 +742,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         if len(raw) > MAX_REPORT_BYTES or len(json.dumps(shared).encode()) > MAX_REPORT_BYTES:
             raise ValueError("report exceeds the size limit")
         atomic_write_bytes(config_dir / "fleet-latest.json", raw)
-        latest["local"], latest["report"], latest["withheld"] = local, live, withheld
-        latest["paths"] = observer.paths
-        next_heartbeat = time.monotonic() + heartbeat_seconds
+        latest["report"] = live
         # Fingerprinted on the shared view, so a change confined to a withheld namespace
         # correctly publishes nothing new -- only the per-slot heartbeat.
         current = semantic_fingerprint(shared["manifest"]) + json.dumps(
@@ -739,31 +773,44 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             try:
                 force_inventory = False
                 try:
-                    changed = source.wait(timeout=1.0, debounce=config["debounce_seconds"])
-                except OSError as exc:
-                    log(f"Filesystem watching stopped ({exc}). Restarting it and taking a fresh "
-                        "inventory, because changes made meanwhile were not seen.")
+                    if source is None:
+                        stopping.wait(1.0)
+                        changed = set()
+                    else:
+                        changed = source.wait(timeout=1.0, debounce=config["debounce_seconds"])
+                except OSError:
+                    log("Filesystem watching stopped. Refreshing inventory and reopening the watch.")
                     source.close()
-                    if stopping.wait(WATCH_RESTART_SECONDS):
-                        break
-                    source = open_events()
+                    source = None
                     changed, force_inventory = set(), True
                 else:
-                    if _overflowed(source):
+                    if source is not None and _overflowed(source):
                         log("More filesystem changes arrived at once than could be tracked "
                             "individually; taking a fresh inventory.")
                         force_inventory = True
                 reason = None
-                if getattr(source, "incomplete", False) and time.monotonic() >= next_sweep:
+                now = time.monotonic()
+                rescan_requested = request_path.exists()
+                available = active_roots
+                if force_inventory or rescan_requested or now >= next_root_check:
+                    available = available_roots()
+                    if available != active_roots:
+                        force_inventory = True
+                        log(f"{len(available)} of {len(configured_roots)} configured libraries available.")
+                    next_root_check = now + WATCH_RESTART_SECONDS
+                needs_sweep = (source is None and bool(active_roots)) or getattr(source, "incomplete", False)
+                if needs_sweep and now >= next_sweep:
                     force_inventory, next_sweep = True, time.monotonic() + SWEEP_SECONDS
-                if force_inventory or request_path.exists():
+                if force_inventory or rescan_requested:
                     request_path.unlink(missing_ok=True)
                     started = time.monotonic()
                     doing("finding", "rescanning: finding the repositories in your library")
-                    count = observer.inventory(progress=lambda done, total, _path: doing(
+                    count = observer.inventory(roots=available, progress=lambda done, total, _path: doing(
                         "reading", f"rescanning: reading Git status: {done} of {total}", done, total))
-                    if event_source is None:  # watch what this inventory found, new clones included
-                        source.close()
+                    active_roots = available
+                    if event_source is None or source is None:
+                        if source is not None:
+                            source.close()
                         source = open_events()
                         watch_note(source)
                     doing("idle", watching_text())
@@ -797,7 +844,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                 elif time.monotonic() >= next_heartbeat:
                     recovery.acknowledge_available()
                     observe("heartbeat")
-                published = publisher.flush(log=log)
+                published = publisher.flush(log=log) if active_roots == configured_roots else []
                 if published:
                     log(f"Published pending status to {', '.join(published)}")
             except (OSError, ValueError) as exc:
@@ -807,6 +854,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         print(f"error: {exc}", file=sys.stderr, flush=True)
         raise
     finally:
-        source.close()
+        if source is not None:
+            source.close()
         stop_serving()
     return 0
