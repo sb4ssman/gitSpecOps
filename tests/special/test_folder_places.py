@@ -34,6 +34,59 @@ def report(machine, place):
             "names": NAMES, "issues": []}
 
 
+class SameDiskTests(unittest.TestCase):
+    """One box, two systems (2026-11-17): a shared disk's library is one library from either."""
+
+    def test_linux_and_windows_read_one_ntfs_disk_as_the_same_key(self):
+        from Basic._volumes import _key
+        from Special._sync.manifest import disk_id
+        linux, windows = _key("54D8D96AD8D94ABE"), _key("D8D94ABE")  # findmnt UUID; Windows serial
+        self.assertEqual(linux, windows)
+        self.assertEqual(disk_id(linux, "github", "33" * 32), disk_id(windows, "GitHub", "33" * 32))
+        self.assertNotEqual(disk_id(linux, "github", "33" * 32), disk_id(linux, "other", "33" * 32))
+
+    def test_a_quiet_copy_on_a_disk_another_machine_reports_now_defers_to_it(self):
+        from datetime import datetime, timedelta, timezone
+        from Special._sync.manifest import disk_id
+        now = datetime.now(timezone.utc)
+        stamp = lambda t: t.replace(microsecond=0).isoformat().replace("+00:00", "Z")  # noqa: E731
+        disk = disk_id("D8D94ABE", "github", "33" * 32)
+        dirty = {**repo({"library": "Github (Memory Gamma)", "folder": "Org", "disk": disk}), "unstaged": 4}
+        clean = repo({"library": "GitHub (D:\\)", "folder": "Org", "disk": disk})
+        quiet = {"manifest": build_manifest(FLEET, "box-linux", "Box Linux", [dirty], stamp(now - timedelta(days=1)),
+                                            carries_names=True), "names": NAMES, "issues": []}
+        live = {"manifest": build_manifest(FLEET, "box-win", "Box Win", [clean], stamp(now), carries_names=True),
+                "names": NAMES, "issues": []}
+        document = build_display([quiet, live], FLEET, now=now)
+        row = document["rows"][0]
+        cell = row["cells"]["box-linux"]
+        self.assertTrue(cell["present"], "the quiet machine's copy stays on the page")
+        self.assertEqual(cell["same_disk_as"], "box-win")
+        self.assertIn("Box Win", cell["description"])
+        self.assertFalse(cell["needs_attention"], "the live report speaks for the same files")
+        self.assertFalse(row["needs_attention"])
+        linux = next(e for e in document["libraries"] if e["machine_id"] == "box-linux")
+        self.assertEqual(linux["same_disk_as"], [{"machine_id": "box-win", "library": "GitHub (D:\\)"}])
+
+    def test_a_quiet_copy_only_its_own_system_can_read_keeps_its_work_visible(self):
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        stamp = (now - timedelta(days=1)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        dirty = {**repo({"library": "Github (memory-lambda)", "folder": "Org", "disk": "a" * 16}), "unstaged": 4}
+        quiet = {"manifest": build_manifest(FLEET, "box-linux", "Box Linux", [dirty], stamp, carries_names=True),
+                 "names": NAMES, "issues": []}
+        document = build_display([quiet], FLEET, now=now)
+        cell = document["rows"][0]["cells"]["box-linux"]
+        self.assertTrue(cell["needs_attention"], "last-known unfinished work stays flagged")
+        self.assertNotIn("same_disk_as", cell)
+
+    def test_a_disk_that_is_not_a_fingerprint_is_refused(self):
+        bad = build_manifest(FLEET, "m", "m", [repo({"library": "Lib", "folder": "Org"})], carries_names=True)
+        bad["repositories"][0]["place"] = {"library": "Lib", "folder": "Org", "disk": "C:/"}
+        with self.assertRaises(ValueError):
+            validate_manifest(bad)
+
+
 class PlaceTests(unittest.TestCase):
     def test_a_place_is_the_library_and_folder_names_only(self):
         library = Path(tempfile.gettempdir()) / "Library"

@@ -14,6 +14,7 @@ import sys
 import tempfile
 import threading
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import setup  # noqa: E402
@@ -23,9 +24,11 @@ setup()
 import Elaborate._transport.repo as repo_transport  # noqa: E402
 from Basic._providers.github import GhError  # noqa: E402
 from Elaborate._fleet.local_view import display_from_manifests  # noqa: E402
+from Elaborate._fleet.cli import command_doctor, load_saved  # noqa: E402
 from Elaborate._fleet.net import fetch_peer_report, make_peer_server  # noqa: E402
 from Elaborate._fleet.peer import TransportPublisher, run_peer  # noqa: E402
 from Special._sync.enrollment import new_config  # noqa: E402
+from Special._sync.enrollment import add_libraries  # noqa: E402
 from Special._sync.manifest import build_manifest, fleet_id_for  # noqa: E402
 
 SECRET = "44" * 32
@@ -64,6 +67,70 @@ def machines_seen(transports) -> set:
     manifests, issues = TransportPublisher(transports).read_all()
     check(not issues, issues)
     return {manifest["machine_id"] for manifest in manifests}, manifests
+
+
+def test_peer_recovers_a_missing_library_without_publishing_partial_inventory():
+    with tempfile.TemporaryDirectory(prefix="fleet-mount-") as temp:
+        root = Path(temp)
+        local = library(root / "local", ["local"])
+        mounted = library(root / "mounted", ["external"])
+        detached = root / "detached"
+        shared = root / "shared"
+        shared.mkdir()
+        state = root / "runtime"
+        home = root / "profile"
+        add_libraries([local, mounted], home=home)
+        mounted.rename(detached)
+        config = load_saved(state, home=home)
+        out = Mock()
+        command_doctor(config, out)
+        check(out.data.call_args_list[1].kwargs["unavailable_libraries"] == [str(mounted)],
+              "doctor must identify the unavailable library in the actual saved profile")
+        detached.rename(mounted)
+        config.update(machine_id="machine-a", fleet_secret=SECRET,
+                      transports={"folder": {"path": str(shared), "seconds": 1}})
+        run_once(config, state)
+        cache = state / "fleet-latest.json"
+        complete = cache.read_bytes()
+        mounted.rename(detached)
+        stopping = threading.Event()
+        dashboard = Mock()
+        serve = Mock(return_value=(dashboard, "http://127.0.0.1:1/"))
+        first, second = Mock(incomplete=False), Mock(incomplete=False)
+
+        def remount(**_kwargs):
+            document = serve.call_args.args[0]()
+            check(document["summary"]["repositories"] == 1, "the local library remains visible")
+            check("libraries are unavailable" in str(document["issues"]), "partial scope must be visible")
+            check(cache.read_bytes() == complete, "partial inventory must not replace the complete report")
+            check(len(machines_seen(config["transports"])[1][0]["repositories"]) == 2,
+                  "the durable report must remain complete")
+            detached.rename(mounted)
+            return set()
+
+        first.wait.side_effect = remount
+        second.wait.side_effect = lambda **_: (stopping.set() or set())
+        with patch("Elaborate._fleet.peer.NativeEvents", side_effect=[first, second]) as watches, \
+             patch("Elaborate._fleet.peer.WATCH_RESTART_SECONDS", 0):
+            run_peer(config, state, stopping, serve=serve, settings_home=home, log=lambda *_: None)
+        check(watches.call_args_list[0].args[0] == [local], "only available libraries are watched")
+        check(watches.call_args_list[1].args[0] == [local, mounted], "the returned library is watched")
+        check(len(json.loads(cache.read_bytes())["manifest"]["repositories"]) == 2,
+              "full inventory resumes when the library comes back")
+
+
+def test_peer_serves_dashboard_without_any_available_library():
+    with tempfile.TemporaryDirectory(prefix="fleet-no-mount-") as temp:
+        root = Path(temp)
+        config = new_config("machine-a", "A", [root / "disconnected"], SECRET)
+        serve = Mock(return_value=(Mock(), "http://127.0.0.1:1/"))
+        with patch("Elaborate._fleet.peer.NativeEvents") as watches:
+            run_peer(config, root, threading.Event(), once=True, serve=serve, log=lambda *_: None)
+            watches.assert_not_called()
+        document = serve.call_args.args[0]()
+        check(document["summary"]["machines"] == 1, "the local machine should still be visible")
+        check("libraries are unavailable" in str(document["issues"]), "zero coverage must be visible")
+        check(not (root / "fleet-latest.json").exists(), "zero coverage must not become a fresh report")
 
 
 def test_two_machines_share_status_through_a_synced_folder():

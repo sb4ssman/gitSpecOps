@@ -67,12 +67,16 @@ FLEET_ID_LABEL = b"gitspecops-fleet-id"
 BRANCH_LABEL = b"branch:"
 ROOT_LABEL = b"root:"
 LOCAL_LABEL = b"local:"
+DISK_LABEL = b"disk:"
 #: How a record's repo_id was derived. "remote" is the only kind a host provider can resolve.
 IDENTITY_KINDS = frozenset({"remote", "root", "local"})
 # 128 bits for a repository and 64 for a branch. Both are far beyond collision range for any
 # realistic fleet, and the saving is what keeps a large manifest inside one API read.
 REPO_ID_HEX = 32
 BRANCH_ID_HEX = 16
+#: A library's disk fingerprint (place.disk): the same disk and folder give the same value on
+#: every machine and every OS in the fleet, and say nothing to anyone without the fleet key.
+DISK_ID_HEX = 16
 
 MANIFEST_KEYS = frozenset({
     "schema_version", "fleet_id", "machine_id", "machine_label", "observed_at", "repositories",
@@ -139,6 +143,13 @@ def _digest(data: bytes, secret: str | None, length: int) -> str:
     if not is_fleet_secret(secret):
         raise ValueError("fleet secret must be 64 hexadecimal characters")
     return hmac.new(bytes.fromhex(secret), data, hashlib.sha256).hexdigest()[:length]
+
+
+def disk_id(volume_key: str, inside: str, secret: str | None = None) -> str:
+    """A library's disk fingerprint: its volume's serial and its path inside that volume, keyed
+    with the fleet secret. Two systems booting one box see a shared disk's library as one."""
+    return _digest(DISK_LABEL + f"{volume_key.upper()}\0{inside.casefold()}".encode("utf-8"), secret,
+                   DISK_ID_HEX)
 
 
 def repository_id(host: str, owner: str, name: str, secret: str | None = None) -> str:
@@ -292,8 +303,10 @@ def _validate_place(place, label: str) -> None:
     """None, or {"library": name, "folder": name}: names only, never a path."""
     if place is None:
         return
-    if not isinstance(place, dict) or set(place) != {"library", "folder"}:
-        raise ValueError(f"{label} must hold exactly library and folder")
+    if not isinstance(place, dict) or set(place) - {"disk"} != {"library", "folder"}:
+        raise ValueError(f"{label} must hold exactly library and folder (and optionally disk)")
+    if "disk" in place:
+        _require_digest(place["disk"], DISK_ID_HEX, f"{label}.disk")
     for key in ("library", "folder"):
         value = place[key]
         if key == "library" and isinstance(value, str):
@@ -303,7 +316,7 @@ def _validate_place(place, label: str) -> None:
             raise ValueError(f"{label}.{key} must be a folder name, not a path")
 
 
-def place_of(path, roots) -> dict | None:
+def place_of(path, roots, disks: dict | None = None) -> dict | None:
     """Where a checkout sits: its library's name and the folder that holds it, its parent ("" when
     it sits directly in the library). Names only: a path never leaves the machine.
 
@@ -317,7 +330,11 @@ def place_of(path, roots) -> dict | None:
         return None
     root = max(owners, key=lambda r: len(r.parts))  # the innermost library holding it
     parts = path.relative_to(root).parts
-    return {"library": library_name(root, roots), "folder": parts[-2][:PLACE_LIMIT] if len(parts) > 1 else ""}
+    place = {"library": library_name(root, roots), "folder": parts[-2][:PLACE_LIMIT] if len(parts) > 1 else ""}
+    disk = (disks or {}).get(str(root))
+    if disk:
+        place["disk"] = disk  # the same library seen from another OS on the same box
+    return place
 
 
 def library_name(root, roots=None) -> str:

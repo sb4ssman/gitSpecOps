@@ -82,6 +82,8 @@ def _cell(cell):
         tags.append("ahead")
     if cell.freshness != "current":
         tags.append("stale")
+    if len(cell.repo.get("copies") or []) > 1:
+        tags.append("copies")  # more than one folder of it on this machine
     description = describe_repository(cell.repo)
     if cell.freshness != "current":
         description = f"Last known: {description} ({cell.freshness})"
@@ -106,6 +108,41 @@ def _cell(cell):
                 "operation", "has_upstream", "upstream_observed_at", "has_remote", "unpushed",
                 "branch", "head", "upstream_head", "checkouts",
                 "identity")}}
+
+
+def _defer_to_live_disks(rows, labels) -> None:
+    """One box, two operating systems (2026-11-17): a machine that is not reporting kept a copy on
+    a disk that another machine reports live right now. They are the same files, so the live
+    report speaks for them: the quiet copy stays shown, says where it is seen now, and its old
+    unfinished work no longer counts twice. A copy on a disk only it can read (a Linux-only or
+    BitLocker library) keeps its last-known state and attention, as every stale copy does."""
+    live = {}
+    for row in rows:
+        for machine_id, cell in row["cells"].items():
+            if not cell["present"] or cell["freshness"] != "current":
+                continue
+            for copy in cell.get("copies") or [{"place": cell.get("place")}]:
+                disk = (copy.get("place") or {}).get("disk")
+                if disk:
+                    live.setdefault((row["id"], disk), machine_id)
+    for row in rows:
+        changed = False
+        for machine_id, cell in row["cells"].items():
+            if not cell["present"] or cell["freshness"] == "current":
+                continue
+            disks = [(copy.get("place") or {}).get("disk") for copy in cell.get("copies") or [{"place": cell.get("place")}]]
+            seen = {live.get((row["id"], disk)) for disk in disks}
+            if not disks or None in disks or None in seen or machine_id in seen:
+                continue
+            other = sorted(seen)[0]
+            cell["same_disk_as"] = other
+            cell["description"] = f"Same disk as {labels.get(other, other)}, which reports it now"
+            cell["tone"] = "muted"
+            cell["needs_attention"] = False
+            cell["tags"] = sorted((set(cell["tags"]) - {"attention"}) | {"same_disk"})
+            changed = True
+        if changed:
+            row["needs_attention"] = any(c["present"] and c["needs_attention"] for c in row["cells"].values())
 
 
 def _remote_checked(row, now, fetch_seconds) -> bool:
@@ -170,11 +207,17 @@ def mark_state(rows, machines, reports, settings) -> dict:
                     return f"{trouble(view['id'])} need attention"
                 return "reported a problem"
             fleet = {"state": "attention",
-                     "text": f"{total}; " + ", ".join(f"{view['label']}: {why(view)}" for view in needy)}
+                     "text": f"{total}; " + ", ".join(f"{view['label']}: {why(view)}" for view in needy),
+                     # The header's one line (2026-11-17: "clip it to just this machine, and
+                     # fleet"); the full text above stays for the tray and the tooltip.
+                     "short": f"{total}, {len(needy)} of the others need{'s' if len(needy) == 1 else ''} attention"}
         else:
-            fleet = {"state": "ok", "text": f"{total}; nothing needs attention on the others"}
+            fleet = {"state": "ok", "text": f"{total}; nothing needs attention on the others",
+                     "short": f"{total}, all clear"}
     if settings.get("fleet_name") and settings.get("transport_config"):
         fleet["text"] = f"{settings['fleet_name']}: {fleet['text']}"  # the fleet by its name
+        if "short" in fleet:
+            fleet["short"] = f"{settings['fleet_name']}, {fleet['short']}"
     return {"machine": machine, "fleet": fleet}
 
 
@@ -246,6 +289,7 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
                  "age_seconds": age_seconds(v.observed_at, now), "freshness": v.freshness,
                  "observed_at": v.observed_at, "repository_count": len(v.repositories),
                  "tone": "success" if v.freshness == "current" else "warning"} for v in views]
+    _defer_to_live_disks(rows, {m["id"]: m["label"] for m in machines})
     for row in rows:
         local = row["id"] in local_ids
         # Withholding is stated per row. A repository this machine keeps to itself looks
@@ -311,15 +355,23 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
                     per_library[library] = per_library.get(library, False) or unfinished
             else:
                 per_library[(cell.get("place") or {}).get("library") or ""] = cell["needs_attention"]
+            disks = {((copy.get("place") or {}).get("library") or "", (copy.get("place") or {}).get("disk"))
+                     for copy in (folders or [{"place": cell.get("place")}])}
             for library, attention in per_library.items():
                 entry = libraries.setdefault((machine_id, library), {
                     "machine_id": machine_id, "library": library or None, "repositories": 0,
-                    "attention": 0, "organizations": set()})
+                    "attention": 0, "organizations": set(), "disk": None})
                 entry["repositories"] += 1
-                entry["attention"] += int(bool(attention))
+                entry["attention"] += int(bool(attention) and not cell.get("same_disk_as"))
                 entry["organizations"].add(row["namespace"])
+                entry["disk"] = entry["disk"] or next((d for name, d in disks if name == library and d), None)
     library_list = [{**entry, "organizations": len(entry["organizations"])}
                     for _, entry in sorted(libraries.items(), key=lambda item: (item[0][0].casefold(), item[0][1].casefold()))]
+    # The same disk seen from another machine (one box, two OSes): name the other library.
+    for entry in library_list:
+        entry["same_disk_as"] = [{"machine_id": other["machine_id"], "library": other["library"]}
+                                 for other in library_list
+                                 if entry["disk"] and other is not entry and other["disk"] == entry["disk"]]
     # Clouds: each provider the repositories come from, with its owners.
     providers: dict = {}
     for row in rows:
@@ -382,6 +434,7 @@ def build_display(reports, fleet_id, now=None, stale_seconds=120, settings=None)
                     {"id": "dirty", "label": "Uncommitted work"},
                     {"id": "ahead", "label": "Unpushed commits"},
                     {"id": "local_only", "label": "No remote (only copy)"},
+                    {"id": "copies", "label": "Several copies on one machine"},
                     {"id": "stale", "label": "Stale reports"},
                     {"id": "missing", "label": "Not reported on a machine"}],
         "notices": [{"id": "cached-refs", "tone": "neutral", "text": remote_notice},

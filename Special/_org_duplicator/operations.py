@@ -10,6 +10,7 @@ Import workers from Special._org_duplicator.operations; importing never starts a
 """
 
 import os
+from pathlib import Path
 import random
 import time
 
@@ -140,8 +141,50 @@ def download_single_repo(repo, idx, total_repos, source_org, temp_dir, use_mirro
         return {'status': 'failed', 'repo': repo_name, 'time': elapsed, 'error': str(e)}
 
 
-def process_upload_repo(repo, dest_org, completed_file, success_log, error_log):
-    """Process a single repository upload."""
+#: The refs an upload or a migration sends: branches, tags and notes. Pull-request refs
+#: (refs/pull/) belong to the source host and remote-tracking refs (refs/remotes/) to this clone;
+#: neither is part of the repository being copied.
+EXPORTED_REFS = ("refs/heads/", "refs/tags/", "refs/notes/")
+
+
+def exported_refs(repo_path) -> list[str]:
+    result = run_checked(['git', '-C', repo_path, 'for-each-ref', '--format=%(refname)', 'refs/'],
+                         timeout=GIT_OP_TIMEOUT_SECONDS)
+    return [ref for ref in result.stdout.split('\n') if ref.startswith(EXPORTED_REFS)]
+
+
+def security_hold(repo_path, settings_home=None):
+    """Why this repository's history must not be pushed as it is, or None.
+
+    Asked for by the person (the question in setup; an exact copy needs no check). The same
+    scan `gitso history scan` runs, with the saved security policy: a high-severity finding
+    (a credential, a never-publish value) holds the repository. Nothing is created or pushed
+    for a held repository, and its folder is kept so its history can be cleaned first."""
+    from Special._security._material import scan
+    from Special._security._me import load_policy
+    from Special._settings import select_home
+    home = select_home(settings_home, component="security")[0]
+    report = scan(Path(repo_path), load_policy(repo_path, home=home), material="history")
+    high = [item for item in report.findings
+            if item.severity == "high" and not getattr(item, "review_id", None)]
+    if not high:
+        return None
+    kinds = sorted({item.check for item in high})
+    return (f"{len(high)} high-severity finding(s) in its history ({', '.join(kinds)}). Nothing was created "
+            f"or pushed. See them: gitso history scan \"{repo_path}\". Make a clean copy: gitso history clean "
+            f"\"{repo_path}\" (it writes a new private mirror and never changes this one), then upload "
+            "that mirror.")
+
+
+def _held(repo_name, reason, start_time, error_log):
+    log_message(f"⏸ {repo_name} HELD: {reason}", error_log)
+    print(f"  ⏸ Held: {reason}")
+    print()
+    return {'status': 'held', 'repo': repo_name, 'elapsed': time.time() - start_time, 'reason': reason}
+
+
+def process_upload_repo(repo, dest_org, completed_file, success_log, error_log, security=False):
+    """Process a single repository upload. `security`: check its history first (security_hold)."""
     repo_name = repo['name']
     repo_path = repo['path']
     start_time = time.time()
@@ -152,6 +195,12 @@ def process_upload_repo(repo, dest_org, completed_file, success_log, error_log):
         print("  → Mirror repository")
 
     try:
+        if security:
+            print("  → Checking its history before anything is created...")
+            reason = security_hold(repo_path)
+            if reason:
+                return _held(repo_name, reason, start_time, error_log)
+
         # Step 1: Create repo in dest org (default to private)
         print(f"  → Creating in {dest_org}...")
         if not ensure_repo(dest_org, repo_name, private=True):
@@ -164,13 +213,7 @@ def process_upload_repo(repo, dest_org, completed_file, success_log, error_log):
         max_retries = RETRY_ATTEMPTS
         for attempt in range(max_retries):
             try:
-                # Get list of all refs
-                result = run_checked(
-                    ['git', '-C', repo_path, 'for-each-ref', '--format=%(refname)', 'refs/'], timeout=GIT_OP_TIMEOUT_SECONDS)
-
-                # Filter out pull request refs
-                all_refs = result.stdout.strip().split('\n')
-                good_refs = [ref for ref in all_refs if ref and not ref.startswith('refs/pull/')]
+                good_refs = exported_refs(repo_path)
 
                 # Push only the good refs
                 if good_refs:
@@ -204,8 +247,10 @@ def process_upload_repo(repo, dest_org, completed_file, success_log, error_log):
         return {'status': 'failed', 'elapsed': elapsed, 'error': str(e)}
 
 
-def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, success_log, error_log):
-    """Process a single repository migration."""
+def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, success_log, error_log,
+                         security=False):
+    """Process a single repository migration. `security`: check the cloned history before the
+    destination is created; a held repository's clone is kept in the working folder."""
     repo_name = repo['name']
     start_time = time.time()
     is_private = repo['isPrivate']
@@ -252,6 +297,13 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
                 else:
                     raise
 
+        if security:
+            print("  → Checking its history before anything is created...")
+            reason = security_hold(repo_temp_path)
+            if reason:
+                created = False  # the clone stays: it is what gets cleaned
+                return _held(repo_name, reason, start_time, error_log)
+
         # Step 2: Create repo in dest org
         print(f"  → Creating in {dest_org}...")
         create_repo(dest_org, repo_name, private=is_private, description=description)
@@ -263,13 +315,7 @@ def process_migrate_repo(repo, source_org, dest_org, temp_dir, completed_file, s
         # Retry logic for push
         for attempt in range(max_retries):
             try:
-                # First, get list of all refs
-                result = run_checked(
-                    ['git', '-C', repo_temp_path, 'for-each-ref', '--format=%(refname)', 'refs/'], timeout=GIT_OP_TIMEOUT_SECONDS)
-
-                # Filter out pull request refs
-                all_refs = result.stdout.strip().split('\n')
-                good_refs = [ref for ref in all_refs if ref and not ref.startswith('refs/pull/')]
+                good_refs = exported_refs(repo_temp_path)
 
                 # Push only the good refs
                 if good_refs:

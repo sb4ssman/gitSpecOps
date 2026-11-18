@@ -169,7 +169,9 @@ check("publish_checked(" in push_body,
       "archive publication no longer invokes the policy-aware operation")
 basic_push = (ROOT / "Basic" / "push.py").read_text(encoding="utf-8")
 basic_push_code = basic_push.split('"""', 2)[2]  # the docstring names what is forbidden
-check('run_git(repo, ["push"]' in basic_push_code, "Basic/push.py is no longer a bare `git push`")
+# The push names its remote and one plain refspec (2026-11-17): configuration cannot widen it.
+check("push_snapshot(repo, remote, tip, destination)" in basic_push_code and 'run_git(repo, ["push"]' not in basic_push_code,
+      "Basic/push.py no longer pins its remote and refspec")
 for forbidden in ("--force", "--force-with-lease", "--mirror", "+refs"):
     check(forbidden not in basic_push_code, f"Basic/push.py code mentions {forbidden}")
 

@@ -30,7 +30,7 @@ def _local(roots) -> dict:
             "machine_id": LOCAL_ID, "label": LOCAL_ID, "share_names": True}
 
 
-def load_selection(config_dir=None, *, home=None, roots=None) -> dict:
+def load_selection(config_dir=None, *, home=None, roots=None, allow_unavailable=False) -> dict:
     """Roots from the command line win; otherwise the saved enrollment, read-only."""
     if roots:
         missing = [str(root) for root in roots if not Path(root).expanduser().is_dir()]
@@ -42,7 +42,8 @@ def load_selection(config_dir=None, *, home=None, roots=None) -> dict:
     if config is None:
         raise ValueError("no saved repository roots; pass --root, or enroll with "
                          "gitso machine add <library folder>")
-    if not config.get("roots") or any(not Path(root).is_dir() for root in config["roots"]):
+    if not config.get("roots") or (not allow_unavailable and any(
+            not Path(root).is_dir() for root in config["roots"])):
         raise ValueError("every configured repository root must exist")
     if not is_fleet_secret(config.get("fleet_secret")):
         raise ValueError("the saved configuration has no valid fleet identity")

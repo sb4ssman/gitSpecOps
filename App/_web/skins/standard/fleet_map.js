@@ -7,6 +7,7 @@
  * `freshness`, `map.links`). Colour is never the only signal: every mark has text.
  */
 import {renderZoom} from './fleet_zoom.js';
+import {renderExplorer} from './fleet_explorer.js';
 import {html, orderedMachines, perspectiveOf, toneOfFreshness} from './fleet_grid.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -18,7 +19,8 @@ const el = (tag, attrs = {}, text) => {
 };
 
 export const VIEWS = [
-  ['zoom', 'Zoomable map: clouds and machines'],
+  ['overview', 'Clouds and machines (overview)'],
+  ['explorer', 'Explorer: every copy, by the dimensions you choose'],
   ['machines', 'Machines together'],
 ];
 
@@ -68,8 +70,10 @@ function machinesView(container, data, perspective, onPick) {
 
 /** Render one view into `container`. `onPick` receives partial option changes. */
 export function renderMap(container, data, options, onPick) {
+  // The explorer keeps its own canvas across the page's refreshes (its camera, hover and pins).
+  if (options.view === 'explorer') { renderExplorer(container, data, options); return; }
   container.replaceChildren();
-  if (options.view !== 'machines') { renderZoom(container, data); return; }
+  if (!options.view || options.view === 'overview') { renderZoom(container, data, options); return; }
   if (!data.machines.length) { container.append(html('p', 'No machine has reported yet.', 'empty')); return; }
   machinesView(container, data, perspectiveOf(data, options.perspective), onPick);
 }

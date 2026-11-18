@@ -18,7 +18,7 @@ const STATUS = {
 
 const ui = {built: false, container: null, data: null, connection: null, selected: new Set(), engines: [],
             useEngines: new Set(), history: true, audit: null, polling: null, open: new Set(), signature: '',
-            revealed: new Map()};
+            revealed: new Map(), settled: new Map()};
 
 function token() { return ui.data && ui.data.local_actions && ui.data.local_actions.token; }
 async function act(action, payload = {}) {
@@ -38,6 +38,8 @@ async function loadEngines() {
   box.replaceChildren(html('p', 'Looking for installed scanners…', 'host-note'));
   try { ui.engines = (await act('security-engines')).engines || []; }
   catch (error) { box.replaceChildren(html('p', error.message, 'tone-warning')); return; }
+  // An installed scanner is used unless the person unticks it (the user, 2026-11-17).
+  if (!ui.enginesChosen) for (const engine of ui.engines) if (engine.installed) ui.useEngines.add(engine.engine);
   box.replaceChildren();
   const builtin = html('div', undefined, 'sec-engine');
   builtin.append(html('strong', '✓ Built-in checks'), html('span', 'Always on: credential shapes, personal details, ' +
@@ -47,7 +49,7 @@ async function loadEngines() {
     const row = html('label', undefined, 'sec-engine');
     const tick = html('input'); tick.type = 'checkbox'; tick.disabled = !engine.installed;
     tick.checked = engine.installed && ui.useEngines.has(engine.engine);
-    tick.onchange = () => { tick.checked ? ui.useEngines.add(engine.engine) : ui.useEngines.delete(engine.engine); };
+    tick.onchange = () => { ui.enginesChosen = true; tick.checked ? ui.useEngines.add(engine.engine) : ui.useEngines.delete(engine.engine); };
     const text = html('span');
     text.append(html('strong', `${engine.label}: ${engine.installed ? 'installed' : 'not installed'}`),
                 html('span', ` ${engine.about}`, 'host-note'));
@@ -252,6 +254,11 @@ function valueCell(entry, material, finding) {
   const cell = html('td');
   const key = `${ui.audit && ui.audit.id}/${entry.index}/${material}/${finding.finding_id}`;
   const shown = ui.revealed.get(key);
+  const updateCell = () => {
+    const updated = valueCell(entry, material, finding);
+    cell.replaceWith(updated);
+    updated.querySelector('button')?.focus({preventScroll: true});
+  };
   cell.append(html('code', shown === undefined ? finding.value : shown), document.createTextNode(' '));
   if (entry.index === undefined || !finding.finding_id) return cell;
   const toggle = html('button', shown === undefined ? 'Show' : 'Hide', 'repo-link'); toggle.type = 'button';
@@ -261,11 +268,44 @@ function valueCell(entry, material, finding) {
       try { ui.revealed.set(key, (await act('security-reveal', {index: entry.index, material, finding_id: finding.finding_id})).value); }
       catch (error) { say(error.message); return; }
     }
-    setAudit(ui.audit);
+    updateCell();
   };
   cell.append(toggle);
+  // Acknowledge it (the user, 2026-11-17): a review accepts this exact finding (a binary file,
+  // an uncertain example); "Not a secret" puts the value on the safe list, everywhere.
+  const settled = ui.settled.get(key);
+  if (settled) { cell.append(html('span', settled, 'host-note')); return cell; }
+  const accept = html('button', 'Accept', 'repo-link'); accept.type = 'button';
+  accept.title = 'Review: accept this exact finding at this place; it stops being flagged';
+  accept.onclick = async () => {
+    try {
+      const done = await act('security-accept', {index: entry.index, material, finding_id: finding.finding_id});
+      ui.settled.set(key, done.status === 'accepted' || done.status === 'already-reviewed'
+        ? 'Accepted: the next audit will not flag it.' : done.message);
+    } catch (error) { say(error.message); return; }
+    updateCell();
+  };
+  cell.append(document.createTextNode(' '), accept);
+  if (finding.check !== 'binary content') {
+    const safe = html('button', 'Not a secret', 'repo-link'); safe.type = 'button';
+    safe.title = 'Put this exact value on the safe list: no repository will flag it again';
+    safe.onclick = async () => {
+      const word = window.prompt('This value will never be flagged again, in any repository. Type LOOSEN to allow it.');
+      if (word === null) return;
+      try {
+        const value = ui.revealed.get(key) ?? (await act('security-reveal', {index: entry.index, material, finding_id: finding.finding_id})).value;
+        await act('security-policy-change', {list: 'safe_values', add: [value], confirm: word});
+        ui.settled.set(key, 'On the safe list: the next audit will not flag it.');
+      } catch (error) { say(error.message); return; }
+      updateCell();
+    };
+    cell.append(document.createTextNode(' '), safe);
+  }
   return cell;
 }
+
+/** How many open findings a part really has; the page receives the first few hundred. */
+const openOf = (record, list) => (record && typeof record.findings_open === 'number' ? record.findings_open : list.length);
 
 function findingsOf(record) {
   return record && Array.isArray(record.findings)
@@ -273,9 +313,12 @@ function findingsOf(record) {
 }
 
 function setAudit(audit) {
+  const box = document.getElementById('security-results');
+  const expanded = new Set(ui.audit?.id === audit?.id
+    ? [...box.querySelectorAll('details.sec-result[open]')].map(item => item.dataset.resultKey)
+    : []);
   ui.audit = audit;
   renderRunBar();
-  const box = document.getElementById('security-results');
   box.replaceChildren();
   if (!audit) { box.append(html('p', 'No audit has run since gitSpecOps started. Results are kept only here, until it restarts.', 'host-note')); return; }
   const progress = html('div', undefined, 'sec-progress');
@@ -286,6 +329,11 @@ function setAudit(audit) {
       `${audit.engines.length ? ` · with ${audit.engines.join(', ')}` : ''}`;
   progress.append(bar, html('span', words));
   box.append(progress);
+  if (audit.state === 'running' && audit.step) {
+    const s = audit.step_seconds || 0;
+    const time = s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`;
+    box.append(html('span', `${audit.current ? nameOf(audit.current) : ''}${audit.copy ? ` (copy ${audit.copy})` : ''}: ${audit.step} · ${time}`, 'sec-status'));
+  }
   const counts = {passed: 0, 'review-required': 0, blocked: 0, incomplete: 0};
   for (const entry of audit.results) counts[entry.security.check_status] = (counts[entry.security.check_status] || 0) + 1;
   const chips = html('div', undefined, 'sec-chips');
@@ -298,29 +346,32 @@ function setAudit(audit) {
     const tree = findingsOf(result.working_tree), past = findingsOf(result.history);
     const gaps = [...(result.gaps || []), ...((result.working_tree || {}).gaps || []), ...((result.history || {}).gaps || [])];
     const item = html('details', undefined, `sec-result tone-border-${tone}`);
+    item.dataset.resultKey = `${entry.repo_id}/${entry.checkout}`;
+    item.open = expanded.has(item.dataset.resultKey);
     const summary = html('summary');
     summary.append(html('span', label, `pill tone-${tone}`), html('strong', ` ${nameOf(entry.repo_id)}`),
-                   html('span', ` · files: ${tree.length} · history: ${result.history ? past.length : 'not checked'}` +
+                   html('span', ` · files: ${openOf(result.working_tree, tree)} · history: ${result.history ? openOf(result.history, past) : 'not checked'}` +
                                 `${gaps.length ? ` · ${gaps.length} not inspected` : ''}${entry.checkout > 1 ? ` · copy ${entry.checkout}` : ''}`, 'host-note'));
     item.append(summary, html('p', meaning, 'host-note'));
     for (const [title, list, record, material] of [['In the files as they are now', tree, result.working_tree, 'working_tree'],
                                                    ['In history (every commit)', past, result.history, 'history']]) {
       if (!record) continue;
-      item.append(html('h4', `${title}: ${list.length ? `${list.length} to review` : 'nothing to review'}` +
+      item.append(html('h4', `${title}: ${list.length ? `${openOf(record, list)} to review` : 'nothing to review'}` +
                              ` (${record.files} file version${record.files === 1 ? '' : 's'}${record.commits ? `, ${record.commits} commits` : ''})`));
       if (!list.length) continue;
       const table = html('table', undefined, 'sec-findings');
       const head = html('tr');
       for (const name of ['Severity', 'What', 'Where', 'Value (masked)']) head.append(html('th', name));
       table.append(head);
-      for (const finding of list.slice(0, 200)) {
+      for (const finding of list) {
         const line = html('tr', undefined, finding.severity === 'high' ? 'sec-high' : '');
         line.append(html('td', finding.severity), html('td', `${finding.check} (${finding.classification})`),
                     html('td', `${finding.where}${finding.line ? `:${finding.line}` : ''}`), valueCell(entry, material, finding));
         table.append(line);
       }
       item.append(table);
-      if (list.length > 200) item.append(html('p', `${list.length - 200} more not shown; the terminal scan with --json lists all.`, 'host-note'));
+      const open = openOf(record, list);
+      if (open > list.length) item.append(html('p', `${open - list.length} more not shown here (the first ${list.length} are); the terminal scan with --json lists all.`, 'host-note'));
     }
     for (const gap of gaps) item.append(html('p', `Not inspected: ${gap.where}: ${gap.reason}`, 'tone-warning'));
     box.append(item);
@@ -375,13 +426,12 @@ export function renderSecurity(container, data, connection) {
     values.append(html('h3', 'Protected values'), html('p', 'Saved in your gitSpecOps settings on this machine; ' +
       'changes apply to the next audit, no restart needed.', 'host-note'));
     const list = html('div'); list.id = 'security-policy'; values.append(list);
-    const side = html('div', undefined, 'sec-side');
-    side.append(right, values);
-    grid.append(left, side);
+    // Scanners and protected values first, then what to audit (the user, 2026-11-17).
+    grid.append(right, values);
     const run = html('div', undefined, 'sec-run'); run.id = 'security-run';
     const message = html('p', '', 'tone-warning'); message.id = 'security-message'; message.setAttribute('role', 'status');
     const results = html('div', undefined, 'sec-results'); results.id = 'security-results';
-    container.append(grid, run, message, results);
+    container.append(grid, left, run, message, results);
     loadEngines();
     loadPolicy();
     act('security-status').then(result => { setAudit(result.audit); if (result.audit && result.audit.state === 'running') poll(); })

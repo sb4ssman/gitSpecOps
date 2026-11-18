@@ -65,6 +65,15 @@ class SetupControlsTests(unittest.TestCase):
         self.assertEqual(Path(self.transports()["folder"]["path"]), self.synced.resolve())
         self.assertTrue(self.changes, "the app is told, so it reconnects")
 
+    def test_incoming_requests_wait_by_default_and_opt_in_is_saved(self):
+        self.assertFalse(self.routes.settings()["auto_requests"])
+        plan = self.routes.act("auto-requests", {"enabled": True})
+        self.assertFalse(self.routes.settings()["auto_requests"])
+        self.routes.act("auto-requests", {"enabled": True, "apply": plan["plan_id"]})
+        self.assertTrue(SetupRoutes(self.home, self.state_dir).settings()["auto_requests"])
+        self.approved("auto-requests", {"enabled": False})
+        self.assertFalse(self.routes.settings()["auto_requests"])
+
     def test_connections_change_and_turn_off(self):
         self.approved("connections", {"folder": str(self.synced), "tailnet": True, "tailnet_seconds": 300})
         self.assertEqual(set(self.transports()), {"folder", "tailnet"})

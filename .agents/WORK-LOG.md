@@ -3064,3 +3064,147 @@ No code changed; decisions recorded where they govern.
   tested on the 10.15 iMac: activation policy 2 -> 1). Qt on a Mac remains untested.
 - `_build/demo_fleet.py`: an invented, messy fleet through the real manifest and display code;
   the README's new screenshots come from it. README: the page section, the demo, older Macs.
+
+## 2026-11-17 07:30 - user (claude) - Restarts over SSH reach the desktop; one box, two systems (branch dev)
+
+- Windows: SSH runs in session 0, which has no desktop. Every app `gitso update` restarted over
+  SSH ran there with no icon, holding the lock, so it looked dead until killed ("no machine
+  survived a restart"). From session 0 the app now starts through a one-time task that runs
+  only in the signed-in person's desktop, inside `conhost --headless`: the venv's pythonw.exe is
+  a launcher for the console python.exe, and a plain task showed a blank console window whose
+  closing killed the app (it happened once on node1). Checked on node1: Console session,
+  "Window Title: N/A", Qt loaded, no task left behind.
+- Each library reports a disk fingerprint (volume serial and path inside it, keyed with the
+  fleet secret; Basic/_volumes.py; nothing written). A quiet machine's copy on a disk another
+  machine reports live defers to it ("Same disk as X, which reports it now", not counted twice);
+  a library only its own system can read keeps its last-known state. For the dual-boot box.
+- Stale machines: confirmed they stay on every page with last-known work (store never expires).
+- Sleep: gitSpecOps holds no sleep assertion anywhere. The iMac's Energy Saver says never sleep
+  (`sleep 0`) and RustDesk holds it while connected; node1 sleeps after 30 min (AC), no requests.
+- macOS without Qt: a native Swift menu-bar icon (App/_tray/macos_menubar.swift), built once by
+  the app; running on the iMac. Bundle id carries no personal login (hygiene test).
+
+## 2026-11-17 14:30 - user (claude) - Second copies, safe-to-delete, audit status line, external review filed (branch dev)
+
+- The user asked how to find and retire this machine's 12 second copies. Built it: `copies` cell
+  tag and filter (display.py), the live line links to the list, a copy chooser in Resolve
+  (`copies` op), and `retire-check` ("Safe to delete this copy?"): `_wipe_row` on that one
+  folder plus a byte comparison of every uncommitted or untracked file against the other copies
+  here. Never deletes. Tests in tests/special/test_resolve.py.
+- `not_counted` entries are folders: the checkout there and everything inside (an agent's run
+  folders gain a clone per run). New op `not-counted-folder`, checked to lie inside a library.
+- Bug of mine from the morning: resolve.py treated `enrollment()` (a pair) as the app record, so
+  Settings' not-counted list and Count again failed. Fixed, with a profile-backed test.
+- From the external review (knowledge/external-review-2026-11-17.md): finding 3 fixed (commit
+  and push pass `--settings-home`), finding 9 fixed for resolve.py (Basic's runner; failed reads
+  raise). The rest are recorded there, unverified.
+- Audit: the child reports phases on stderr (`STEP ...`), the job keeps `step` and its age, the
+  page shows a status line; installed scanners ticked by default; scanners and protected values
+  above what to audit.
+- Header: `mark.fleet.short`; the live line says "locally".
+- Not clicked through in a browser by the agent: the new buttons. The Python behind them is tested.
+
+## 2026-11-17 16:00 - user (claude) - Reference page; the map's repository boxes; ask a machine what is uncommitted (branch dev)
+
+- Reference (App/_web/reference.py, fleet_reference.js): gitso's command table grouped by layer,
+  each script's docstring as its manual, README + docs/*.md + CHANGELOG by listed id only (no
+  path from the page), online manuals. Served as the local `reference` action. Menu: between
+  Security and Settings. tests/app/test_reference.py.
+- "On my other devices" header button (setup/settings' `remote_view`).
+- Zoom map, repository level: box width follows the column; a click opens the details.
+- Details: "Show the N uncommitted files" per machine, through the existing `changes` action.
+  File names are never in a report (counts only), so a machine that is off cannot answer; the
+  page says that instead of failing.
+- Working notes: the Catalog/Docs idea is built (removed there); Tailscale names stay noted.
+
+## 2026-11-17 19:00 - user (claude) - External review, wave 1: the safety and scope defects (branch dev)
+
+- The user agreed with the whole review (knowledge/external-review-2026-11-17.md) and asked for
+  all of it. This wave: findings 1, 2, 4, 5, 6, 7, 8, 9b. Each has its status in that file.
+- `upstream_of` lives in Basic/_facts.py (a command may not import a sibling command).
+- Requests: `perform()` returns (status, public text); `run_request` keeps its old shape.
+  The peer runs waiting requests when they arrive (`network.on_requests`), sets "running", and
+  always ends in done / partial / failed. Decision by the user: remote management without
+  walking to the other machine; "no one uses the tool yet", so behaviour may change freely.
+- Org copy: the user's design, not the reviewer's: a question in setup, exact copy by default.
+  The "rewrite in the interim" is the held clone plus `gitso history clean`; not yet one step.
+- New tests: basic/test_pinned_push_pull.py, special/test_scope_proofs.py (the link test needs
+  link privileges; it is skipped on this Windows machine), duplicator/test_security_hold.py.
+- Still open from the review: the operation boundary (the page calling functions, not
+  subprocesses), splitting peer.py / the fleet CLI / the setup walkthrough, recovery's own
+  runner and scanner, the documents.
+
+## 2026-11-17 20:30 - user (claude) - External review, wave 2: one operation, two faces (branch dev)
+
+- Special/_sync/resolve.py no longer starts `gitso` as a child: commit and push call
+  `commit_checked` / `push_checked` with the app's profile, fetch and pull call Basic's
+  functions. `_planned` applies the terminal's rule: only the plan the page showed, by its id.
+- The page shows a check in words (status, message, masked findings); the record is a click away.
+- Elaborate/_fleet/page_actions.py: the page's actions as a class, out of `run_peer`
+  (peer.py 947 -> 812 lines). The peer builds one and hands `handle` to the web server.
+- Tests: a whole journey in tests/special/test_resolve.py (a non-default profile with its own
+  prohibition, two copies, one chosen, check then apply); tests/elaborate/test_page_actions.py.
+- Not done yet from the review: PeerNetwork and TransportPublisher still live in peer.py (tests
+  patch names there), the fleet CLI and setup walkthrough are not split, recovery keeps its own
+  runner and scanner, and the documents.
+
+## 2026-11-17 22:00 - user (claude) - External review, wave 3: the documents; history out of the brief (branch dev)
+
+- New, for people: docs/STATUS.md (built / used / tested / run natively, per capability, with
+  "not confirmed" where the agent does not know), docs/DATA-FLOWS.md (per route: what travels,
+  who can read it, how to stop), docs/ONE-OPERATION.md (a commit from the page, click to
+  test), docs/CASE-STUDIES.md (three problems: the failed assumption, the design, the test,
+  what is open).
+- README: the absolute claims now state their exceptions (recovery's disposable checkout;
+  recovery snapshots hold file contents; the two requests that run on arrival). ARCHIVES.md says
+  what org copy does not copy.
+- `.agents/README.md` went from 854 to 210 lines. Lines from "Repo Shape" on (design notes with
+  dates, old script names) moved unedited to knowledge/history/. Added: "One operation, two
+  faces", a current layout table, and the 2026-11-17 amendment to rule 2 (safe requests run on
+  arrival).
+- WORKING-NOTES pruned to open work: mission items 1 to 3, PR #7, requests on arrival, the
+  legend, review-from-the-page and self-update were done.
+- Decision recorded with the user: the scripts are the product; the page is a face on them.
+
+## 2026-11-17 23:30 - user (claude) - Operations as buttons in every view; Reference can use an operation (branch dev)
+
+- The user: "the app needs to be the conduit to the special operations"; every view is a slice
+  of the same rows and must be able to act. App/_web/skins/standard/fleet_actions.js gives every
+  view the same bar per machine: fast-forward the behind copies, clone the missing ones (only for
+  a chosen organization or repository; never "everything the fleet has" in one click). Used by
+  the zoom map's machine, organization and repository levels, Machines cards, and Reference.
+- Reference: the source with each manual, and a Use it form. `run-command` (resolve.py) opens a
+  terminal with one command from gitso's own catalog, in a folder this machine knows (a copy of a
+  repository, or a library); test in tests/special/test_resolve.py. The list no longer rebuilds
+  on a click.
+- The map's organization level, reached through a machine, showed the fleet-wide advice
+  ("current; <another machine> unknown"), which read as being about that machine. It now shows that
+  machine's own copy.
+- The overlapping boxes the user saw after `gitso update` were an old script in a tab opened
+  before the restart. The server now sends X-GitSpecOps-Page (a digest of the page's files) and
+  a tab that sees it change reloads.
+- Not clicked through in a browser by the agent.
+
+## 2026-11-18 07:47 - user (Codex) - Keep the app usable when a library is unavailable
+
+- A disconnected library stays enrolled. The peer inventories and watches available libraries,
+  keeps serving the dashboard even with none, and rebuilds its inventory when availability
+  changes. While partial, it leaves the last complete fleet report at its original timestamp.
+  Doctor lists unavailable paths locally; clone requests refuse an unavailable destination.
+- Kept the shared operations as the product boundary: the app continues surfacing and resolving
+  issues for the accessible copies. The wipe audit still requires coverage of every library.
+- Disposable Windows fixtures cover partial startup, remount, all roots absent, and the
+  unchanged last complete report. Native Linux remount acceptance remains open.
+
+## 2026-11-18 09:14 - user (Codex) - Keep agent working rules in the permanent brief
+
+- Moved the handoff's working rules into Directives, added the hard stops to AGENTS.md, and
+  replaced the duplicate CLAUDE.md with a three-line pointer.
+
+## 2026-11-18 09:58 - user (Codex) - Keep audit findings open and make fleet scope explicit
+
+- Security finding actions update their own cell; progress redraws preserve expanded results.
+- Incoming clone and fast-forward requests wait for Apply unless the receiving machine opts
+  in through Settings. Send previews explain that choice.
+- Read-only CLI commands report unavailable libraries alongside reachable work. Wipe proofs
+  and mutation commands retain their scope requirements.

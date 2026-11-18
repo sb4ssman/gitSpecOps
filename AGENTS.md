@@ -10,6 +10,15 @@ the app that brings them together.
 opens with **What this is for**, and that section outranks every rule below it: if a rule
 contradicts the goal, the goal wins and the rule is the defect.
 
+## Before you act
+
+- Explain the plan first.
+- Ask before running anything in the background (tray, peer, or scheduled tasks), acting over SSH, or capturing a screen.
+- Work with the Destructive Command Guard. Do not force-push, reset, rebase, or delete branches.
+- Stay on `dev`. Commit and push only when asked.
+- Run `tests/repo/test_repo_hygiene.py` before every commit and stop if it fails.
+- Always say what was not verified.
+
 Three things that are easy to get backwards:
 
 - **These tools perform Git operations** — that is the product, not a compromise. The boundary is

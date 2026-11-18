@@ -260,12 +260,13 @@ def audit_repos(args) -> int:
     from Special._sync.actions import audit_repositories, every_repository, render_audit
     from Special._sync.selection import load_selection
 
-    selection = load_selection(args.config_dir, home=args.settings_home, roots=args.root)
+    selection = load_selection(args.config_dir, home=args.settings_home, roots=args.root,
+                               allow_unavailable=True)
     # Its own walk, not the observer's inventory: that drops the repositories without an origin
     # which are exactly what an audit exists to find.
     hits, problems = every_repository(selection["roots"])
     rows = [{"path": row["path"], "name": row["name"], "origin": None,
-             "findings": ["configured root missing"]} for row in problems]
+             "findings": [row["detail"]]} for row in problems]
     rows += [{"path": Path(hit.path), "name": Path(hit.path).name, "origin": None,
               "findings": ["bare repository (not audited)"]} for hit in hits if hit.kind == "bare"]
     rows += audit_repositories([hit.path for hit in hits if hit.kind != "bare"])
@@ -336,18 +337,23 @@ def materialize_main(argv=None) -> int:
 
 def list_live_buffers(args) -> int:
     from Special._sync.selection import load_selection
+    from Special._sync.observer import library_available
     from Special._sync.vscode_buffers import default_backup_root, inspect
 
-    selection = load_selection(args.config_dir, home=args.settings_home, roots=args.root)
+    selection = load_selection(args.config_dir, home=args.settings_home, roots=args.root,
+                               allow_unavailable=True)
     root = args.backup_root or default_backup_root()
     if root is None or not root.is_dir():
         raise ValueError("select an existing VS Code Backups folder with --backup-root")
-    items = inspect(selection["roots"], root)
-    return _cli.report(args, "machine buffers", ok=True, page="Unsaved editor buffers", context=(str(root),),
+    available = [path for path in selection["roots"] if library_available(path)]
+    unavailable = [path for path in selection["roots"] if path not in available]
+    items = inspect(available, root) if available else []
+    return _cli.report(args, "machine buffers", ok=not unavailable, page="Unsaved editor buffers", context=(str(root),),
                        rows=[(Path(str(item.get("path", ""))).name or "buffer", item.get("path", ""))
                              for item in items],
-                       message="Local metadata only; no editor buffer content was read out, sent or stored.",
-                       buffers=items)
+                       message="Local metadata only; no editor buffer content was read out, sent or stored."
+                               + (" Unavailable libraries: " + ", ".join(unavailable) if unavailable else ""),
+                       buffers=items, unavailable_libraries=unavailable)
 
 
 def list_live_buffers_main(argv=None) -> int:

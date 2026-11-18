@@ -66,7 +66,7 @@ def save_client_choice(directory: Path, config: dict, choice):
     config["git_client"] = choice
 
 
-def validate(config: dict) -> dict:
+def validate(config: dict, *, allow_unavailable=False) -> dict:
     validate_choice(config.get("git_client"))
     if config.get("version") != CONFIG_VERSION or config.get("mode") != "peer":
         raise ValueError("unsupported fleet app configuration")
@@ -78,7 +78,11 @@ def validate(config: dict) -> dict:
         raise ValueError("initial inventory discovery has not been acknowledged")
     if config.get("observation_mode") != "filesystem-events":
         raise ValueError("unsupported observation mode")
-    if not config.get("roots") or any(not Path(p).is_dir() for p in config["roots"]):
+    roots = config.get("roots")
+    if not isinstance(roots, list) or not roots or any(
+            not isinstance(root, str) or not root or not Path(root).is_absolute() for root in roots):
+        raise ValueError("configure at least one absolute repository root")
+    if not allow_unavailable and any(not Path(root).is_dir() for root in roots):
         raise ValueError("every configured repository root must exist")
     scopes = baskets.validate_scopes(config.get("baskets"))
     recovery = config.get("recovery")

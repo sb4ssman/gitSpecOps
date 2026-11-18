@@ -191,6 +191,11 @@ A push without `--force` is refused by git itself unless it is a fast-forward of
 the mirror image of `pull --ff-only`. There is no parameter here that could add `--force`,
 `--force-with-lease`, a `+refspec`, or `--mirror`, and there must never be one. Deciding
 *whether* to push (ahead-only, clean, freshly re-checked) belongs to the caller.
+
+The promise is enforced, not left to Git's configuration (an outside review, 2026-11-17): a bare
+`git push` lets a configured push refspec (`+refs/...`), a mirror remote or `push.default`
+decide what leaves. This names the upstream remote and one plain refspec (this commit to the
+branch it tracks), and switches off mirror, tags and submodule pushes for the call.
 ```
 
 ## Special: this machine, once

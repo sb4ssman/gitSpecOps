@@ -187,6 +187,18 @@ export function renderSettings(block, connection, token) {
     web.value = shown.web;
     box.append(field('Double-clicking the tray icon opens', face), field('The web view is served', web),
       row(button('Save', () => act('presentation', {face: face.value, web: web.value}, 'Saved. Takes effect when the app restarts.'))));
+    // Your phone and other computers (2026-11-17): the tailnet view, read-only, for your own
+    // Tailscale devices. 127.0.0.1 always means "this device", so it cannot work from a phone.
+    const away = el('p', '', 'host-note');
+    if (s.remote_view) {
+      away.append(document.createTextNode('On your phone or another computer with Tailscale (same account): '));
+      const link = el('a', s.remote_view); link.href = s.remote_view; link.target = '_blank'; link.rel = 'noopener';
+      away.append(link, document.createTextNode(' (read-only; changes are made here).'));
+    } else {
+      away.textContent = 'To open this page from your phone or another computer: choose "Also on my Tailscale devices", '
+        + 'save, restart the app, and install Tailscale on that device with the same account. The address appears here.';
+    }
+    box.append(away);
     return box;
   }
 
@@ -258,10 +270,14 @@ export function renderSettings(block, connection, token) {
     return box;
   }
 
-  function tasksSection() {
+  function tasksSection(s) {
     // The task log: what was asked of other machines, what was applied or dismissed here, and what
     // ran here; plus clearing finished or stale requests (the user, 2026-11-16).
     const box = section('Requests and the task log', 'Every request this machine sent, applied or dismissed, and every fleet action run here, newest first. Kept in tasks.log in the settings folder.');
+    const automatic = check('Run incoming fast-forward and clone requests automatically', s.auto_requests);
+    box.append(automatic.label, el('p', 'When off, requests wait for Apply on this machine.', 'host-note'),
+      row(button('Review request setting', () => planned('auto-requests', {enabled: automatic.input.checked},
+        done => load(done.notice || 'Saved.')))));
     const list = el('div');
     const clear = async payload => {
       try {
@@ -302,7 +318,7 @@ export function renderSettings(block, connection, token) {
     if (!s.enrolled) { block.append(el('p', 'This machine has no library yet: run setup first.', 'host-note')); return; }
     const grid = el('div', undefined, 'setup-sections');
     grid.append(fleetSection(s), connectionsSection(s), librariesSection(s), sharedSection(s), fetchSection(s),
-      basketsSection(s), displaySection(s), signInSection(s), tasksSection());
+      basketsSection(s), displaySection(s), signInSection(s), tasksSection(s));
     block.append(grid);
   }
 

@@ -80,8 +80,44 @@ class ApplyTests(unittest.TestCase):
             git(other, "commit", "-qam", "two"); git(other, "push", "-q", "origin", "HEAD:main")
             request = {"kind": "pull", "items": [{"repo_id": "r1"}]}
             result = run_request(request, lambda repo_id: [work] if repo_id == "r1" else [], [str(root)])
-            self.assertIn("pulled", result.lower())
+            self.assertIn("fast-forwarded", result)
             self.assertEqual((work / "a.txt").read_text(), "two\n")
+
+    def test_only_the_copy_in_the_named_library_moves_and_the_end_is_honest(self):
+        from Elaborate._fleet.requests import perform
+        from Special._sync.manifest import library_name
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            origin, other = root / "origin.git", root / "other"
+            first, second = root / "one" / "work", root / "two" / "work"
+            git(root, "init", "-q", "--bare", "-b", "main", str(origin))
+            git(root, "clone", "-q", str(origin), str(other))
+            git(other, "config", "user.email", "t@example.invalid"); git(other, "config", "user.name", "t")
+            (other / "a.txt").write_text("one\n")
+            git(other, "add", "."); git(other, "commit", "-qm", "one"); git(other, "push", "-q", "origin", "HEAD:main")
+            for copy in (first, second):
+                copy.parent.mkdir()
+                git(root, "clone", "-q", str(origin), str(copy))
+            (other / "a.txt").write_text("two\n")
+            git(other, "commit", "-qam", "two"); git(other, "push", "-q", "origin", "HEAD:main")
+            libraries = [str(root / "one"), str(root / "two")]
+            both = lambda repo_id: [first, second] if repo_id == "r1" else []
+            item = {"repo_id": "r1", "name": "work", "library": library_name(root / "two")}
+            status, text = perform({"kind": "pull", "items": [item]}, both, libraries)
+            self.assertEqual((status, (second / "a.txt").read_text()), ("done", "two\n"))
+            self.assertEqual((first / "a.txt").read_text(), "one\n", "the other library's copy was not touched")
+            # A copy with uncommitted work is not moved; with one that is, the end is "partial".
+            (first / "note.txt").write_text("mine\n")
+            private = []
+            status, text = perform({"kind": "pull", "items": [{"repo_id": "r1", "name": "work"},
+                                                               {"repo_id": "gone", "name": "absent"}]},
+                                   both, libraries, private=lambda name, detail: private.append(detail))
+            self.assertEqual(status, "partial", text)
+            self.assertIn("has uncommitted work", text)
+            self.assertIn("absent: no copy here", text)
+            self.assertNotIn(str(root), text, "no path reaches another machine")
+            status, _ = perform({"kind": "pull", "items": [{"repo_id": "gone", "name": "absent"}]}, both, libraries)
+            self.assertEqual(status, "failed")
 
     def test_a_clone_request_without_names_is_refused_in_words(self):
         result = run_request({"kind": "clone", "items": [{"repo_id": "r1", "name": "x"}]}, lambda _id: [], ["/nowhere"])

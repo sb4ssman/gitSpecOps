@@ -78,13 +78,13 @@ subtext, same colours, one shade per machine, equal column widths.
 | `rows` | Repository identity, explicit attention decision, tags, advice, place and per-machine cells. |
 | `map` | `links`: machine pairs sharing repositories, how many, how many differ, how many need attention. |
 | `issues` | Sanitized observation issues attached to machine IDs. |
-| `filters` | Filter vocabulary and labels supported by this contract instance. |
+| `filters` | Filter vocabulary and labels supported by this contract instance (`copies`: several folders of one repository on one machine). |
 | `notices` | Host-authored limitations or qualifications that every skin must expose. |
 | `capabilities` | Feature availability and a human reason. |
 | `integrations` | How machines talk: Tailscale, a shared (synchronized) folder, a gitso-managed state repository; each `enabled`/`available` with a detail line. |
 | `features` | Event-driven observation, remote Git actions, recovery snapshots. |
 | `requests` | Requests between machines: waiting here, answered, sent. |
-| `activity`, `mark` | What the app is doing now, and the mark's two states (this machine, the fleet). |
+| `activity`, `mark` | What the app is doing now, and the mark's two states (this machine, the fleet). `mark.fleet.short` is the header's few words; `text` names each machine that needs something. |
 | `local_actions` | Present only on the page served to this computer: the token for its local actions. Never on the Tailscale view. |
 
 ## Semantic rules

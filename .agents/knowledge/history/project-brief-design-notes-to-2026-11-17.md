@@ -1,0 +1,701 @@
+# Project brief: design notes up to 2026-11-17 (archived)
+
+Moved out of `.agents/README.md` on 2026-11-17, unedited, so the brief says what is true now
+(an outside review: history and present behaviour were interleaved). These sections record
+how the repository's shape, the archive tools, the org duplicator and the Sync Suggester were
+designed, with their dates. **They are history: paths, script names and counts in here may no
+longer exist.** For what works today read `docs/STATUS.md`; for the layers,
+`knowledge/architecture-layers.md`.
+
+---
+
+## Repo Shape
+
+> **Target architecture agreed 2026-09-20:** a composition stack built down from git —
+> `Basic → Special → Elaborate → App` — with a one-way import rule, the host seam in
+> `Basic/providers/`, three skins under `App/skins/`, and `_build/ docs/ _tests/` at the root.
+> See [`knowledge/architecture-layers.md`](knowledge/architecture-layers.md) for the model and the
+> full target tree. The migration finished 2026-11-11 (WORK-LOG); the section below predates it
+> in places, so check the tree itself.
+
+This repo is intentionally small. Keep it that way.
+
+The entry-point tools are:
+
+- `Special/archive.py` (local front door: registry, launchers, update/sync)
+- `Elaborate/archive_schedule.py` (scheduling and existing-launcher compatibility)
+- `Special/archive_update.py` (standalone, git-only, update-only)
+- `Special/org_copy.py`
+- `Elaborate/fleet_publish.py` (cross-machine status, and the group operations that act
+  on it — observation never mutates, mutation is always an invoked command)
+
+The archive manager and direct commands share implementations in `Special/_archive/`:
+updater.py, sync.py, manager.py, plan.py and registry.py. The local manager does not import
+Elaborate or scheduling. archive update integrates common settings, headless
+structured results and counts-only logging through update_operation.py/update_cli.py and
+Special/_runtime/. The manager/registry now read archive choices from existing common v2
+profiles, with separate receipts; their output/logging and other consumers await adoption.
+
+Active tree/history scanners now use common security settings through the resolver. They accept
+--settings-home; --legacy-policy explicitly reads original text lists only without a common
+settings file. Common protected values accumulate and exact safe/block conflicts fail. The
+private Special/_settings/security.py editor reuses the shared revision-checked writer; no
+policy editor UI is enabled. Recovery/hygiene/action policy adoption remains open.
+
+Fleet CLI/app configuration readers and savers now use Special/_settings/fleet.py for existing
+common enrollment. --settings-home selects the profile; --config-dir selects fleet state and
+legacy inputs independently. CLI single-transport and app multiple-transport choices remain
+distinct. All app settings commands and the dashboard client choice save to their loaded
+authority; common saves require source revisions. Legacy-only profiles remain usable without
+automatic common migration. Existing launchers, global cutover ownership, common output/logging
+and native rollout still need deliberate follow-through; general fleet conversion remains unavailable.
+
+Settings migration and the existing-settings switch were retired on 2026-11-13: there are no
+users with older settings. See knowledge/settings-schema.md.
+
+The archive operations use:
+
+- `Special/archive_sync.py` (plan/apply: detect -> plan -> decide -> execute -> review)
+- `Special/_archive/plan.py` (the judgment: fast-forward eligibility, drift buckets, publish
+  classification; its tests are `tests/special/test_archive_plan.py`)
+- the git operations themselves are `Basic/pull.py` (ff-only), `Basic/push.py` (never forced),
+  `Basic/clone.py` (never over an existing folder), `Basic/fetch.py` and `Basic/reset_keep.py`
+  (moves a branch, never overwrites an edit, never `--hard`)
+- the cross-git provider seam is `Basic/_providers/` (phase 2, 2026-09-21)
+
+The optional bootstrap helper is:
+
+- `_build/setup_gitspecops.py` (builds a bare `.venv` — `uv sync`,
+  or the stdlib `venv` module as a fallback; the project itself is never installed into it)
+
+The setup menu offers the walkthrough (which includes an Archives part), one command from a
+list, the Python environment and a check of this computer. Archive preferences are set by
+registering archives (archive), not by a separate settings screen.
+
+Archive planning and duplicator helpers use explicit imports from private Special folders.
+The old `git-sync-suggester/` tree is resolved into the layers (2026-11-11); see the tree in
+`knowledge/architecture-layers.md`.
+These are plain source scripts, without an installable `src/` package or console-script entry
+point. The common front door is `gitso.py`: it lists every command from its header and
+dispatches the one chosen.
+
+### `Basic/` and `_os/` — the bottom of the stack (phase 1, 2026-09-21)
+
+`Basic/` holds the careful primitives every operation builds on. Underscored files are plumbing;
+the others are commands, runnable by path:
+
+- `_run.py` — **the one subprocess wrapper**, for git and host CLIs alike: a required timeout that
+  kills the whole process tree when it expires, `GIT_TERMINAL_PROMPT=0` for git, UTF-8 decoding,
+  and failures as flagged results (`run`, `run_git`) or exceptions (`run_checked`,
+  `CommandTimeout`). Nothing else calls `subprocess` for git or `gh`.
+  **The tree kill matters on Windows:** the venv `python.exe` and `cmd\git.exe` are launchers
+  whose child is the real program; killing only the launcher left the child holding the output
+  pipe, so a timed-out call hung until the child exited on its own — a timeout that did not
+  bound anything. Both earlier wrappers had this.
+  `stream()` (2026-10-20) is its streaming face, for `git cat-file --batch`: same environment,
+  a deadline that kills the tree, and a raise -- never a short read passed off as complete.
+- `_facts.py` — read-only repository facts (`repo_facts`, ahead/behind, top level), plus
+  (2026-10-20) `ref_snapshot` (raises: it is taken as proof), `remote_refs` (what the remote
+  serves now), `would_track` (False only on positive evidence) and the identity facts
+  (`identity_settings` with each value's source; `next_commit_identity`, git's own guesses
+  included).
+- `_objects.py` — reading a range of history: every file version under **every** path it had
+  (from per-commit diffs; `rev-list --objects` names each object once, so identical content
+  hid a second file name), commit records parsed from the raw objects (no mailmap, no signing
+  tool), and streamed file contents.
+- `_identity.py` — parse any remote URL into host/owner/name.
+- `_discovery.py` — find repositories on disk. **Cross-filesystem exclusion happens only on
+  positive evidence** — an unknown device id never means "skip". Windows is why:
+  `os.DirEntry.stat()` there returns a cached record with `st_dev == 0`, and comparing that
+  against the root's real device number once made an entire drive scan come back empty.
+- `_console.py` — `enable_unicode_output()`, called first in every entry point. The status
+  glyphs (`✓ ✗ ⚠ ✎ ↑ ↓ ↕ ⚑ →`) are not cp1252-encodable, which is what Python picks for a
+  **redirected** stream on Windows, so `check > status.txt`, a launcher log, or any pipe died
+  with `UnicodeEncodeError` *after* the real work succeeded. Printing must never be the thing that fails.
+- `_confirm.py` — the approve step: prompts, `--answers` scripted queue, activation-noise filter,
+  `confirm_typed("PUBLISH", ...)`. Running out of answers is a clean `SystemExit`, never a "yes".
+- `_files.py` — `atomic_write_bytes`, for every state file.
+- `_paths.py` — the per-user state folder (`config_home()`, `sync_home()`); never the checkout.
+- `status.py`, `discover.py` — read-only commands over `_facts` and `_discovery`.
+- `commit.py` (2026-10-20) — commits exactly the named paths; no `-a`, `--amend`, empty commit
+  or hook skipping exists in its code (pinned).
+
+`_os/` sits beneath every layer and holds per-OS components: `_os/windows/`, `_os/linux/` and
+`_os/macos/` carry the same files with the same functions (`tests/os/test_os_parity.py`), and
+callers import `from _os.current import <component>` without ever branching on the OS. Today:
+`paths` (the per-user config base) and `process` (spawn options and whole-tree kill).
+
+`Basic/_providers/` is the host seam (phase 2, 2026-09-21): `_registry.py` (the
+`RemoteProvider` Protocol, `register_provider`, `provider_for`/`provider_for_host`) and
+`github.py`, which holds **every `gh` invocation** in the project and registers itself on import.
+The registry imports its built-in providers the first time it is asked, so no caller has to.
+`run_gh` sets `GH_PROMPT_DISABLED=1`, so `gh` fails instead of asking, the same way
+`GIT_TERMINAL_PROMPT=0` stops git from asking.
+
+`shared/` is gone (2026-10-20): the version number is written once, in `pyproject.toml`, and
+`Basic/_version.py` reads it (its only users are Sync Suggester's modules; its
+final home is settled in phase 3c). Scripts reach all of these with the small repo-root `sys.path`
+bootstrap they already carry.
+
+## Launchers
+
+**No per-tool shortcuts.** `gitso.py` is the one front door: `python gitso.py <command>` runs any
+tool, and every `.py` entry can also be run directly (`python3 Special/archive_update.py --help`).
+Setup writes no launchers into the repository (decided 2026-11-13: per-tool shortcuts in the
+root do not match the product). `run_setup.{bat,ps1,sh}` stay committed — they bootstrap setup
+itself. The per-archive `update_archive` launchers and the
+`refresh_managed_archives` launcher are generated by the Special manager and Elaborate scheduler
+through `_os/*/launcher.py` (they bake in real paths) and follow the same prefer-`.venv` scheme.
+The refresh-all launcher lives in the per-user state folder, not the checkout: a scheduled task
+points at it, and that path must survive the code moving (2026-09-22).
+
+## Archive Tools
+
+`Special/archive_update.py` is the low-level, git-only updater. It scans direct children of archive roots and only updates repos that:
+
+- are Git work trees rooted at that child folder
+- have an approved `origin` remote
+- have clean work tree and index state
+
+It now consumes common component settings. Saved roots/exclusions and output/logging preferences
+are overridden per invocation. What is printed follows the terminal (one record or a screen);
+--save-report also saves the report as a JSON file and --no-log disables the counts-only log.
+The public run_update API is headless. The settings contract is in
+[settings-schema.md](knowledge/settings-schema.md).
+
+It should use fast-forward pulls only. It must not merge, rebase, reset, delete repos, install dependencies, run project code, or recurse through arbitrary nested directories.
+
+`Special/archive_sync.py` and the manager share headless `_archive/operation.py`.
+Update delegates to the updater; sync adds provider discovery and clones; explicit repair flags
+select origin/folder changes. Failed/nonexistent provider discovery never invents clones or
+orphans. Publication is a separate request and checks exact outgoing history before each push.
+Every presentation result is masked, with actual report/log artifacts; stdout is the default.
+
+`Special/archive.py` owns registration, status, forgetting and registered refresh.
+New per-archive launchers invoke its --refresh with a fixed selected home; current saved
+mode/allowances are resolved on each run. New refresh-all launchers also invoke this manager.
+`Elaborate/archive_schedule.py` handles scheduling actions only. Registration has no direct
+pull/clone/repair pipeline; it may offer a normal refresh after registration. No generated
+archive launcher selects publication or repairs. See the shared runner contract in
+[settings-schema.md](knowledge/settings-schema.md).
+
+The registry is per-user runtime state, outside the checkout (`Special/_archive/registry.py`).
+Common v2 settings own choices when present; legacy-only profiles retain their registry.
+Common saves mark receipts as version 2 so missing settings cannot reactivate old copies.
+Locks/source revisions refuse stale saves; partial multi-file failures are explicit. Existing
+launchers need reviewed regeneration before real migration. Manager refresh and direct archive sync now use the common runtime; other security/fleet consumers
+and native/multimachine acceptance remain open.
+
+```text
+<per-user config>/gitSpecOps/gitspecops_managed_archives.json   # GITSPECOPS_HOME overrides
+<per-user config>/gitSpecOps/archive_manage.log
+<per-user config>/gitSpecOps/refresh_managed_archives.{bat,ps1 | sh}
+```
+
+### The push direction ("publish") — shipped 2026-09-03, first slice
+
+`sync_archive.py --publish` and `push_repo.py` share the outgoing-history security gate. It is
+deliberately narrow, and the narrowness is the feature:
+
+- **Non-force push only.** `git push` with no `--force`, so git itself refuses anything that is
+  not a fast-forward — the mirror of `pull --ff-only`. The pull-direction guarantees are NOT
+  reused; `_archive_plan.build_publish_plan()` is a separate pure classifier.
+- **Only ahead-only, clean repositories are eligible.** Diverged goes to a human; behind-only
+  needs a pull first; detached or no-upstream means the direction is unknown; in-sync is a no-op.
+- **`--publish` is its own apply class** and *refuses* to run alongside
+  `--update/--sync/--reconcile/--rename-folders`. `archive_manage.py` never emits it, so
+  generated launchers and the scheduled task can never push. `tests/test_archive_publish.py`
+  asserts both of those, so the invariant cannot rot quietly.
+- **Fetch, then re-check, then push.** The remote may move between planning and pushing; the
+  re-check catches that and reports "remote moved — needs a human" instead of forcing.
+- **Dirtiness is broader here than for pulling.** `repo_facts` reports tracked changes only,
+  which is correct for fast-forward eligibility — untracked files never block a pull. For
+  publishing, the question is "is someone mid-edit here?", and an untracked file answers it, so
+  `_publish_dirty()` uses `git status --porcelain`. Keep this policy in the publish path; making
+  the shared fact stricter would needlessly narrow pull eligibility. `--include-dirty` pushes the
+  committed work anyway. **Nothing is ever auto-committed, under any flag.**
+- each folder's plan is shown first and applies on approval (`--apply PLAN_ID`); pushes are paced (`--publish-pause`) so a
+  bulk publish cannot become a CI storm.
+
+Checked publication now includes outgoing-history privacy/secret checking and masked findings.
+Per-agent branches, provider PR creation and protected-branch awareness remain separate future
+work. Publication never auto-commits. Explicit named-file commits use the checked commit operation.
+
+### Original design notes for the push direction
+
+Historical design rationale, superseded by the shipped `--publish` slice above. A need (e.g. an org where an agent
+edits many repos and that work must go back upstream) is the opposite direction. Notes for
+whoever builds it, so the safety model is not broken:
+
+- Pull is safe because fast-forward can never destroy data or require a choice. Push needs
+  write auth, can overwrite remote history, and can trigger CI / other agents. Do NOT reuse
+  the pull guarantees; build a narrower set.
+- The provably-safe primitive is "publish" = `git push` WITHOUT `--force` (git refuses a
+  non-fast-forward, mirroring `--ff-only` on pull). Classify each repo by ahead/behind vs its
+  upstream (`git rev-list --left-right --count @{u}...HEAD`): ahead-only -> ff-push; in sync ->
+  nothing; uncommitted -> surface, never auto-commit; diverged -> human only; detached/no
+  upstream -> skip.
+- Agent considerations: agents leave dirty trees (committing is a policy opt-in, not default);
+  do not push agents straight to default branches - prefer a per-agent/per-run branch + PR
+  (add `open_pr()` to the provider seam); fetch immediately before each push and let non-force
+  rejection mean "remote moved, needs human"; rate-limit to avoid CI/agent storms; give agent
+  commits their own identity/trailers; guard blast radius (a plan first, applied by its id, protected-branch awareness, optional secret/size checks); make runs idempotent and
+  resumable.
+- Architecture: keep the layers. `git_inspect` gains ahead/behind facts; `archive_diff` gains a
+  pure push-direction classifier; `archive_sync` gains a `--publish` phase that is its OWN apply
+  class and is NEVER bundled into `--update`/`--sync` nor baked into scheduled launchers (same
+  rule that keeps `--reconcile`/`--rename-folders` interactive-only); the provider gains
+  `open_pr()`. Ship the ahead-only ff-push slice first; layer auto-commit and branch+PR behind
+  explicit flags once the org workflow is settled.
+
+## GitHub Org Duplicator
+
+`Special/org_copy.py` is the interactive, confirmation-heavy orchestrator. It checks `git`, `gh`, authentication, and org access before moving repositories. **It is GitHub-specific by design** (org concept, `gh repo create`, LFS probing); multi-host support is a stated goal, tracked in `WORKING-NOTES.md`, and will enter through the shared provider seam — the archive tools are the multi-host frontier. Its plumbing is grouped in `Special/_org_duplicator/`, imported by full path (`from Special._org_duplicator.batch import ...`). Earlier script paths remain compatibility wrappers; setup uses the public Special entry points:
+
+- generic pieces live lower in the stack: prompts, `--answers`, the selection grammar and
+  directory prompts in `Basic/_confirm.py`; the print lock and `format_size` in `Basic/_console.py`;
+  subprocesses in `Basic/_run.py` (`gh_common.py` dissolved on 2026-09-22)
+- `remote.py` - the duplicator's prerequisite checks (print and stop) and pooled LFS probe;
+  the `gh` calls themselves are in `Basic/_providers/github.py`
+- `local_repos.py` - adapts shared repo discovery for direct/recursive upload scans + safe deletion
+- `tracking.py` - resume state / run files, and the run log
+- `operations.py` - the per-repo download/upload/migrate workers, plus the download-behavior text
+- `batch.py` - modes 4 (batch) and 5 (single) flows, incl. their flag resolution
+
+Run/resume files remain in the existing ignored `Special/duplicate_org/runs/` directory.
+Moving helpers does not move, clear or recreate that state. Keep new GitHub/`gh` calls in
+`Basic/_providers/github.py` and new filesystem logic in `local_repos.py`; the orchestrator
+should stay flow-only.
+
+**Subprocess timing rules.** Every `gh` call goes through `Basic/_providers/github.run_gh` (120s
+default); every git call through `Basic/_run.run_checked` with `operations.GIT_OP_TIMEOUT_SECONDS` (3600s ceiling — a git op with no progress that
+long is hung, not slow — plus a forced `GIT_TERMINAL_PROMPT=0` so a missing credential fails fast
+instead of deadlocking a worker pool). Both raise `RuntimeError`/`GhError` on timeout; nothing
+blocks unbounded. Retries in `operations.py` use jittered backoff (`_retry_backoff`). The LFS
+`.gitattributes` probe (`remote._check_lfs_flags`) is pooled (8 workers, 20s each) — it is a
+warning-only signal and must never gate or stall a run.
+
+**Non-interactive layer (added 2026-08-31).** Run with no flags it is still the interactive menu.
+`parse_args()` in the orchestrator adds `--batch` / `--single` plus `--namespaces --dest
+--[no-]private --[no-]archived --[no-]forks --format --parallel` for an unattended batch (its plan,
+then `--apply PLAN_ID`),
+and `--answers FILE` feeds any remaining prompt (one line each; blank = default) for every mode.
+This is why it exists: VS Code / CI type venv-activation lines into an open prompt and corrupt
+`input()`. `Basic/_confirm.use_scripted_answers()` holds the queue; `prompt_input()` serves from it,
+skips activation-noise lines (`_ACTIVATION_MARKERS`), and raises a clean `SystemExit` (not an
+`EOFError` traceback) when an answer is needed and none is available. `resolve_directory()` is the
+non-prompting twin of `prompt_for_directory()`. Argparse flags in the one script are fine — still
+no `src/` package, no console-script entry point. Modes 1-3 are flag-less for now (use `--answers`);
+giving them real flags can follow the same pattern.
+
+**Mode 5 spec resolution.** `_batch._resolve_repo_or_prompt()` resolves the `owner/name`/URL spec
+*before* asking for a target directory and shows the matched repo. A bare token (no `/`, no
+`://`) is the trap: `gh repo view <name>` silently prepends the authenticated user as owner, so
+`_resolve_one_repo()` rejects a failed bare name with a specific message, and a bare name that
+*does* resolve (to one of your own repos) prints `⚠ owner was assumed` and asks to confirm.
+`setup_operation()` no longer pre-collects the spec/dir for mode 5 — `run_single_repo(None, None)`
+drives the prompts itself.
+
+Run/resume files live under:
+
+```text
+Special/duplicate_org/runs/
+```
+
+Keep output and tracking files there. Do not move them back to the repo root.
+
+## Sync Suggester
+
+**Current fleet model (2026-09-11):** every machine is an independent peer. There is no
+host authority and no client enrollment dependency. `Elaborate/fleet.py` guides first run;
+`Elaborate/fleet.py peer` configures directly, and `Elaborate/peer.py` resumes. Old v1/v2 configurations migrate
+to v3 while preserving the fleet key. `host` and `connect` are retired commands.
+
+`app/fleet_peer.py` observes locally, publishes to configured folder/GitHub transports,
+serves a loopback dashboard, and optionally pulls reports from tailnet peers (every 5 minutes by default; setup asks).
+`app/fleet_config.py` owns peer configuration. SQLite is a local cache, never an authority.
+`gh` is required only for the GitHub transport; Tailscale is optional and independent.
+One acknowledged inventory is followed by native filesystem events and targeted checks;
+there is no periodic repository scan. Newly detected checkouts are announced, then included
+only after `Elaborate/peer.py rescan`. All transports currently carry status, not recovery content.
+See [the current user guide](../docs/FLEET.md) and
+[the tier roadmap](knowledge/tiers-and-capture.md).
+
+The folders `core/`, `fleet/`, and `app/` group plain modules; `_paths.py` handles imports.
+The legacy `init`/`check`/`watch` commands below use a separate `config.json` and a single
+transport. Their polling and transport exclusivity rules do not describe the peer runtime.
+
+**Lifecycle shell (2026-09-11):** `fleet_tray.py` (native Windows tray via ctypes; no runtime
+dependency) and `fleet_autostart.py` (per-user start-at-sign-in: registry Run key / XDG autostart /
+LaunchAgent, plus an explicit systemd `--user` option) make the app survive a closed terminal.
+`App/tray.py` and `Elaborate/start_at_sign_in.py {status,enable,disable}` are the commands; `tray` degrades to a
+foreground run where no tray exists, so one registered command works fleet-wide. Two rules:
+start-at-sign-in is **per-user, never a service** (the app must run as the interactive user or the
+`gh` login, Git ownership and Tailscale identity all differ), and the tray is **a skin** — it
+reads `summary` from the display contract and refuses an unknown contract version rather than
+recomputing anything. `Elaborate._fleet.cli._main` gained a `stopping`/`on_ready` seam for it, because
+`signal.signal` cannot run off the main thread and the Win32 message loop owns that thread.
+
+**Display boundary (2026-09-05):** `fleet_display.py` is the pure, versioned display-model
+builder. It owns presentation semantics such as attention, tones, filter tags, notices and
+capability availability. `fleet_client.js` owns transport/compatibility; `fleet_view.js` owns
+generic selectors; `fleet_dashboard.html` + `fleet_standard.*` are only the standard skin.
+Future skins, including LCARS, must consume the same `gitspecops.fleet.display` contract and
+must not reimplement Git/freshness policy. See `docs/DISPLAY-CONTRACT.md`.
+
+`Special/machine_check.py` (this machine) and `Elaborate/fleet_suggest.py` (the fleet) are
+the entry points; `App/tray.py` runs the peer with its web view. **This tool performs Git operations** — that is the
+product. It exists so that a user with many repositories, spread across many orgs and several
+machines, can see the whole picture from any one of them and then *act on it*: group fast-forward
+everything after three weeks away, publish ahead-only work, clone a missing set, rescue
+uncommitted work stranded on a machine that is now switched off.
+
+> **Correction, 2026-09-20.** From 2026-09-03 to 2026-09-19 this section claimed the tool "never
+> pulls, pushes, commits, stashes, or otherwise touches an observed repository." That described
+> the first vertical slice — which genuinely only observed and printed advice — and it was written
+> into this brief as if it were a safety principle. It was not one. It contradicted the recorded
+> product goal ("convergence is the product, not just observation", in the original Sync Suggester design record (removed 2026-11-14; in git history before that day)) from the day
+> both were written, and
+> because this file is what every session reads first, the stale scope kept outranking the goal.
+> **Do not restore that framing.** The boundary below is the real one.
+
+**The boundary: observation never mutates; mutation is always a command the user invoked.** The
+observer, the manifest publisher, the watcher, the dashboard, the tray and the scheduled fetch
+read local Git facts, publish this machine's status manifest, and read what other machines left
+behind — none of them may change a repository as a side effect of observing, or of time passing.
+The mutating operations (`Special/machine_catch_up.py --apply`, `Special/machine_materialize.py --apply`, recovery restore)
+are separate named commands that refuse to run beside a live peer and follow the same
+detect → plan → approve → execute → review ladder as the archive updater. The flat modules are:
+
+- `observer.py` - bounded direct-child/recursive discovery and local Git observation
+- `manifest.py` - salted identities, fleet secret/id, v2 privacy boundary, JSON validation
+- `folder_transport.py` - one manifest per machine, same-directory atomic replacement
+  (`atomic_write_bytes` is the shared primitive; `config.py` uses it too)
+- `repo_transport.py` - the same interface backed by a private GitHub repo via the
+  Contents API through `gh` — never cloned
+- `config.py` - persistent local config + the local-only catalog (the privacy pressure point:
+  it is the file mapping an opaque `repo_id` back to a readable name and a path on this disk)
+- `advice.py` - pure single-machine classification and the local ASCII table.
+  `classify_repository` gives one **headline** state for severity ordering; anything that renders
+  or advises must use `repository_flags`/`describe_repository`/`secondary_facts`, because a single
+  state necessarily hides the rest (dirty AND ahead reported only "dirty" until 2026-09-04)
+- `aggregate.py` - freshness, cross-machine advice, and the control-tower dashboard
+- `watcher.py` - the polling loop; pure enough to test with an injected clock
+- `convergence.py` - which repositories peers have that this machine lacks, and naming them
+
+The medium-tier recovery chain (built 2026-09-12 … 2026-09-19) lives beside them in `core/`. None
+of it runs until the user has separately confirmed a private recovery location *and* selected
+namespaces in the capture basket — an unenrolled machine captures nothing:
+
+- `capture.py` - builds a snapshot of staged/unstaged/selected-untracked work, only after a
+  filesystem quiet period, under a per-repository `CapturePolicy` (obey `.gitignore`, secret
+  protection, `allow_paths`). Relaxations are recorded in the bundle rather than being silent.
+- `secret_scan.py` - the screen that runs before content is ever written into a bundle
+- `patch_parse.py` - parsing bundles back into reviewable hunks
+- `snapshot_store.py` - bundle storage, retention and size caps
+- `snapshot_preview.py` - read what a bundle would do, without touching a repository
+- `snapshot_restore.py` - `prepare_disposable_checkout`: restore into a throwaway clone. A
+  snapshot is never applied over a live working tree.
+- `retirement.py` - **the proof is exact.** It recreates a bundle's resulting tree in a temporary
+  index, freshly fetches origin, and permits retirement only if the upstream tree is *identical*.
+  Clean state, ahead/behind counts, or an old snapshot never suffice.
+- `vscode_buffers.py` - reads VS Code's own backup store for unsaved editor buffers. Bounded,
+  root-confined, **metadata only** — it never outputs or transmits buffer content.
+
+**Snapshots are not encrypted**, deliberately; the trust-boundary argument and the per-tier
+authority table are in `docs/RECOVERY-DESIGN.md`. Do not reopen it without a
+concrete threat the three tiers do not already cover, and do not add a dependency for it.
+
+### Command surface
+
+The legacy read-only commands `init`, `check`, `dashboard`, `fleet converge`, `alias`, `watch`, and
+`fleet doctor` all run. **`handoff` stays reserved on purpose** — moving unfinished work between machines
+is a mutation flow and gets its own design pass rather than hiding inside the watcher.
+
+The peer runtime's commands are separate files in `Elaborate/` (setup_fleet, peer, doctor,
+preflight, recovery, start_at_login, check_safe_to_wipe), routed into `Elaborate/_fleet/cli.py`;
+the tray is `App/tray.py`. The subcommand names below are those CLI's own:
+
+- `setup`, `peer`, `run`, `tray`, `autostart`, `rescan`, `baskets` — configuration and lifecycle
+- `fleet preflight` - read-only: is Git / the optional GitHub and Tailscale tiers / the loopback port
+  usable, and where might a synced folder already be. Creates no configuration.
+- `audit` - read-only fleet-scale report of missing origins/upstreams, plain-HTTP origins,
+  detached heads, local-only commits, behind state and tracked changes
+- `catchup` - fresh non-interactive fetch of every observed checkout, then a printed plan.
+  An approved plan fast-forwards **only** clean behind-only checkouts; every other state is listed
+  for a human. It cannot commit, push, stash, reset, merge, rebase, or recurse submodules, and it
+  refuses to run beside a live peer via the per-configuration lock.
+- `machine materialize` - a reviewed **clone-only** plan for the locally observed working set, applied
+  by its plan id. It never replaces or updates an existing destination, validates portable path
+  components, and rejects destinations that would escape the library through a symlink.
+- `live-buffers` - explicit, local-only, content-free VS Code unsaved-buffer evidence
+- `safe-to-wipe` - accepts a dirty checkout **only** for an exact current snapshot acknowledged by
+  another peer. Never for unpushed commits, never for a merely recent snapshot.
+
+`catchup`, `machine materialize` and the recovery applies are the only mutating paths here, they are all
+terminal-first and explicitly confirmed, and the dashboard and tray remain skins: they may invoke
+the same planner and show its summary, but must never carry their own Git policy.
+
+Four rules hold this design together; do not quietly relax any of them:
+
+- **Silence is never good news.** A machine report that is not current can never produce an "all
+  clear". A stale *clean* report becomes `unknown`; a stale *dirty*/*ahead*/*diverged*/*operation*
+  report keeps its warning as last-known unresolved work. `WORK_STATES` and `_effective_state()`
+  in `aggregate.py` are where that lives, and `tests/test_sync_aggregate.py` pins every case.
+- **Machine freshness and remote freshness are separate.** A manifest written a second ago says
+  nothing about how old its remote-tracking refs are. `upstream_observed_at` is stamped per
+  repository by `--fetch` and evaluated against its own freshness thresholds, so the dashboard
+  footnote counts exactly the ↑/↓ values that are actually cached and says how stale they are.
+  Never collapse these two clocks into one.
+- **The watch must not churn.** It republishes only on a semantic change (`semantic_fingerprint`
+  deliberately ignores `observed_at`) plus a heartbeat, because a manifest rewritten every cycle
+  would make the user's cloud client upload constantly and bury the write that mattered.
+- **Observation never mutates; mutation is always an invoked command.** This is the rule that
+  replaced "Sync Suggester never writes" (see the correction note above). Nothing on the observing
+  side — the peer loop, the watcher, the tray, the dashboard, the scheduled fetch — may change a
+  repository, ever, for any reason, including "it was obviously safe". Mutating operations live on
+  the command side, are named and confirmed, refuse to run beside a live peer through the
+  per-configuration lock, and follow detect → plan → approve → execute → review. When a mutation
+  needs org-wide discovery, call `archive_sync` through the provider seam rather than regrowing a
+  cloner here — that is a de-duplication argument, not a safety boundary.
+
+Local state lives outside the repo — `GITSPECOPS_SYNC_HOME`, else XDG on POSIX / `%APPDATA%` on
+Windows, under `gitSpecOps/sync-suggester/`. `config.json` and `catalog.json` are per-machine and
+never enter the state directory.
+
+### Transports
+
+Two, behind one small interface (`list_manifests` / `read_manifest` / `write_own_manifest` /
+`fleet doctor`). `open_transport()` in the CLI is the single place that decides which is in play, and a
+config may hold `state_dir` **or** `state_repo`, never both — two places to publish means two
+disagreeing sources of truth.
+
+**The property both must preserve: one file per machine, single writer.** That is why there is no
+conflict-resolution code anywhere in this codebase, and any shared-document design would import
+that entire bug class. Do not add a transport that breaks it.
+
+`repo_transport.py` uses the GitHub Contents API rather than cloning, because a clone means a
+working copy on every machine plus a commit/pull/push cycle plus merge handling, for what is a few
+KB of JSON. Read returns the blob `sha`; the write sends that `sha` back, so a concurrent write is
+rejected with 409 and re-read rather than clobbered. Retries once, then gives up — it never forces.
+
+Its rules:
+
+- **Never call it from a git hook.** A network round trip inside `git commit` is unacceptable. A
+  hook writes local state; upload happens elsewhere.
+- **A public state repository is refused**, not warned about (`--allow-public-state-repo` is the
+  deliberate escape hatch). Branch names alone say a great deal about what someone is working on.
+- **Creating the repository is a separate, explicitly requested act** (`create_state_repo()` /
+  `--create-state-repo`). Making a repository on someone's account must never be a side effect of
+  a status command.
+- Auth is the user's own `gh` login — nothing here stores or manages a credential.
+
+### Compression (`compress_manifests`, off by default)
+
+`init --compress-manifests` gzips published manifests. Measured on a real 20-repository
+manifest: 6425 -> 769 bytes, about 8:1, because status records are highly repetitive. That is
+what decides how many repositories fit inside one Contents API read at scale.
+
+**It stays off by default deliberately.** An uncompressed manifest is readable by anyone looking
+at the folder or the repository, and that inspectability is worth more than headroom most users
+never need.
+
+Two details that matter:
+
+- The file is named `<machine>.json.gz` when compressed, so the extension tells the truth. Both
+  extensions are listed and readable, and `decode_manifest` detects gzip by magic bytes rather
+  than filename, so a renamed file still reads.
+- **Toggling the setting changes the filename**, so the writers delete the counterpart — two
+  files for one machine would read as two machines' worth of state. `load_manifests` also keeps
+  only the newest manifest per `machine_id`, which makes that cleanup non-critical rather than
+  load-bearing.
+- `gzip.compress(..., mtime=0)` keeps output deterministic: identical content must produce
+  identical bytes, or every publish would look like a change.
+
+### Fetching (the only network activity)
+
+`--fetch` on `check`/`watch` is the only network access on the *observation* side (the mutating
+commands obviously reach the network too). Rules:
+
+- It runs `git fetch --quiet` with **no refspec**, which moves remote-tracking refs only — never a
+  local branch, never the working tree. That is precisely why a fetch is allowed on the
+  observation side at all: it is the one network operation that changes nothing the user owns.
+- `GIT_TERMINAL_PROMPT=0` is forced. This is the lesson the org duplicator already paid for: a
+  repository whose credentials expired otherwise blocks on an invisible prompt until the timeout
+  instead of failing in under a second.
+- Bounded: a small thread pool (network-bound, so parallelism is a large win) with a per-fetch
+  timeout. A failure is collected and the repository keeps its cached counts; a fetcher that
+  *raises* is caught too, because one repository must never cost the observation of the rest.
+- `upstream_observed_at` is stamped only for repositories that actually succeeded. Never stamp
+  optimistically — the whole point is to be able to distinguish measured from remembered.
+- The fetch boundary is injectable (`observe_roots(..., fetcher=...)`), which is how the tests
+  exercise success and failure with no connection at all. A real fetch of even a bogus host still
+  performs a DNS lookup, so an "offline" suite that fetches for real is not offline.
+
+`operation` (rebase/merge/cherry-pick/revert/bisect in progress) is detected from marker paths in
+the git dir. It had been in the schema and the advice logic from the start but was never populated
+— worth remembering that a field the classifier handles is not the same as a field anyone sets.
+
+### Convergence and the deterministic-hash trick
+
+`fleet converge` answers "which repositories do my peers have that I do not?". The privacy boundary
+makes that harder than it sounds: a peer publishes only `HMAC(fleet_secret, host/owner/name)`, so
+a machine cannot clone what it cannot name.
+
+The resolution is that the hash is deterministic. Enumerate candidates through the provider seam
+for the namespaces this machine already works in, hash each under the same fleet secret, and match.
+Consequences worth preserving:
+
+- A repository the provider can see is named **without any name crossing the transport**.
+- A repository the user genuinely cannot see stays an opaque id. That is the correct answer; do
+  not add a guessing fallback.
+- The local catalog is consulted first, so a name already known costs no network call.
+- Namespaces default to the ones this machine already has repositories in — not "every org on the
+  account". The tool looks where the user already is rather than enumerating their whole presence.
+
+Namespace-level work has no repository URL to parse, so it resolves a provider by host through
+`Basic/_providers/_registry.provider_for_host()`; `provider_for(url)` is a thin wrapper over it.
+Providers register themselves and the registry loads them, so nothing needs to be imported first.
+(Until 2026-09-21 a CLI helper, `_register_providers()`, had to import an archive-tool facade for
+this, and it did so by putting another tool's folder on `sys.path`.)
+
+### Manifest schema v5 and the fleet secret
+
+**v5 (built 2026-10-21): names by default.** Each record may carry `name` (`{host, owner,
+name}`), the readable `branch` and the checked-out `head`; the envelope's `carries_names` says
+whether it does, and `validate_manifest` refuses those fields in a manifest that says it does
+not. `build_manifest` strips them unless `carries_names=True`, so the *code* defaults to off and
+the *setting* (`share_names`, fleet config; `--withhold-names`; a setup question) defaults to
+on. Off means off on every route, the live tier included; the machine's own dashboard still
+names its own repositories. Readers take a carried name when they know none themselves, from
+any manifest, before building rows — so a names-off machine can never replace another machine's
+real name with a placeholder. The salted ids below stay: records are matched on them. The
+legacy `check`/`watch` path publishes names-free v5 until phase 3c removes it.
+
+Synced manifests identify repositories by `HMAC-SHA256(fleet_secret, host/owner/name)` — never
+paths or URLs. A repository with no usable remote is identified by an HMAC of its
+root commit instead (v4, 2026-10-19; v3 dropped such repositories from the map entirely), and
+checkouts sharing an identity on one machine are merged into one record that hides no work. Three rules govern the secret; none of them are negotiable:
+
+- **It is generated by `init` on the first machine and carried to the others by the user**
+  (`init --fleet-secret <hex>`). It lives only in each machine's local `config.json`.
+- **It must never be written into the state directory.** A secret stored beside the data it
+  protects protects nothing — that is the whole reason v2 is stronger than v1's bare SHA-256 over
+  a brute-forceable `host/owner/name`.
+- **Never print it.** `init` shows it once, on purpose, when creating a fleet; `fleet doctor` and the
+  config dump show `(set, hidden)` and the public `fleet_id` instead.
+
+`fleet_id` (`HMAC(secret, "…fleet-id")[:16]`) is published so a machine that joined with the wrong
+secret is *detected*. Without it, that machine's every `repo_id` would simply differ and it would
+look like it shared no repositories with anyone — a configuration error disguised as a data error.
+`split_by_fleet` separates those manifests and the dashboard names the machine and the fix.
+
+**v3 closed the last clear-text fields.** `branch` became `branch_id` (HMAC under the fleet
+secret, readable names in the local-only catalog's `branches` map), and `upstream` became the
+boolean `has_upstream` because every consumer only tested it for truthiness. Identifiers shrank to
+128 bits for a repository and 64 for a branch — beyond collision range here, and record size is
+what decides how many repositories fit in one manifest at scale. A v3/v4 record was salted
+digests and small integers; v5 adds names back, deliberately and by setting (above).
+
+**How much the salt is worth depends on the transport**, and that is not a contradiction of the
+"never store the secret beside the data" rule — it is the scope of it. A cloud folder's provider
+reads everything, so the secret must travel out of band. A private repo's access is already gated
+and GitHub already hosts the repositories being described, so a key stored there adds no reader.
+That asymmetry is what allows a zero-friction join for the repo transport and forbids it for the
+folder one. See [`knowledge/manifest-privacy.md`](knowledge/manifest-privacy.md).
+
+Changing the schema again once several machines publish into one folder is expensive, so
+schema-affecting work goes first. `validate_manifest` refuses an unknown `schema_version` — with a
+specific "re-run check on that machine" message for a v1 file — so a mixed-version fleet fails
+loudly instead of silently mis-joining. The complete product/design record was the original Sync Suggester design record (removed 2026-11-14; in git history before that day).
+
+## Generated And Ignored State
+
+These are local artifacts and should remain ignored:
+
+- `.venv/`
+- `*.egg-info/`
+- `Special/duplicate_org/runs/`
+
+If tests or `uv run` recreate egg-info metadata, remove or ignore it according to `.gitignore`;
+do not treat it as source. `uv.lock` IS tracked (2026-11-13): it pins the App's Qt version so
+every machine gets the same one. Change it only with `uv lock`, alongside a dependency change.
+
+## Validation
+
+Useful checks:
+
+Run the whole offline suite with one command — every test file is synthetic, needs no network,
+and touches no real repository:
+
+```powershell
+uv run python tests\run_all.py
+```
+
+Manual experiments live in tracked `tests/probes/`, with synthetic fixtures and their own
+instructions. The runner explicitly excludes probes. Their generated profiles, raw logs and
+results stay in temporary storage or ignored `.agents/output/`; never track personal output.
+
+Tests are grouped by area — `tests/archive/`, `tests/duplicator/`, `tests/sync/`,
+`tests/fleet/`, `tests/repo/` — and each bootstraps imports through `tests/_bootstrap.py`
+(`setup("sync")`, `setup("duplicator")`, ...), which adds only the tool folders that file
+actually imports. All three tools are flat script directories, so putting every one of them on
+`sys.path` would let a module in one shadow a same-named module in another.
+
+**`tests/repo/test_repo_hygiene.py` is the sanitization guard.** It scans *tracked* files for
+secrets, local paths, real addresses, tracked generated launchers, and a missing LICENSE. Every
+pattern in it corresponds to something this repository actually shipped or nearly shipped. When
+it fails, fix the file; only widen its allowlist after deciding the match is genuinely
+documentation or invented fixture data. It reports on the working tree only — no test can clean
+git history.
+
+Individually, plus the compile and `--help` smoke checks:
+
+```powershell
+uv run python -m py_compile _build/setup_gitspecops.py Special\update_archive.py Special\sync_archive.py Elaborate/archive_schedule.py Special\duplicate_org.py
+uv run python Special\update_archive.py --help
+uv run python Elaborate/archive_schedule.py --help
+uv run python Special\duplicate_org.py --help
+uv run python Elaborate/fleet_publish.py --help
+uv run python tests\duplicator\test_selection.py
+uv run python tests\duplicator\test_local_repos.py
+uv run python tests\duplicator\test_batch_args.py
+uv run python tests\sync\test_sync_scaffold.py
+uv run python tests\sync\test_sync_config.py
+uv run python tests\sync\test_sync_aggregate.py
+uv run python tests\sync\test_sync_watch.py
+uv run python tests\sync\test_sync_converge.py
+uv run python tests\sync\test_sync_observe.py
+uv run python tests\archive\test_archive_publish.py
+uv run python tests\sync\test_repo_transport.py
+```
+
+A fleet is testable on one box: give each simulated machine its own `--config-dir` pointed at one
+shared `--state-dir`. Joining with a deliberately wrong `--fleet-secret` should be *reported*, not
+silently empty.
+
+Sync Suggester's **observation** commands (`init`, `check`, `watch`, `dashboard`, `fleet doctor`,
+`fleet preflight`, `audit`) change no repository, so they are safe to smoke-test live against real
+roots — point them at a scratch config dir so they cannot disturb the real one. Do **not** smoke-test
+the mutating commands (`catchup --apply`, `materialize --apply`, recovery restore) against real
+roots; they have their own disposable-Git tests:
+
+```powershell
+uv run python Elaborate/fleet_publish.py --config-dir <scratch> init --machine-id test --root <path> --state-dir <scratch>\state
+uv run python Elaborate/fleet_publish.py --config-dir <scratch> check
+uv run python Elaborate/peer.py --config-dir <scratch> --interval 2 --heartbeat 0 --cycles 3
+```
+
+Do not run live GitHub duplication, archive refreshes, or scheduled-task creation/removal as validation unless the user explicitly requests it.
+
+## Style
+
+Prefer boring, visible, local behavior:
+
+- direct script calls through `uv run python`
+- explicit output directories
+- JSON or text files in obvious `runs/` folders
+- progress output for long scans
+- typed confirmation before remote writes or bulk updates
+
+Avoid hidden background behavior, broad filesystem traversal, clever packaging, or surprising cleanup.

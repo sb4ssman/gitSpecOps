@@ -79,6 +79,20 @@ def upstream_force_updated(repo_path: Path) -> bool:
     return proc.returncode == 0 and "forced-update" in proc.stdout
 
 
+def upstream_of(repo: Path | str) -> tuple[str, str] | None:
+    """(remote, refs/heads/<branch>) the checked-out branch tracks, or None: detached, no
+    upstream, or an upstream that is not a branch on a named remote."""
+    branch = run_git(repo, ["symbolic-ref", "--quiet", "--short", "HEAD"])
+    name = branch.stdout.strip()
+    if branch.returncode or not name:
+        return None
+    remote = run_git(repo, ["config", "--get", f"branch.{name}.remote"]).stdout.strip()
+    merge = run_git(repo, ["config", "--get", f"branch.{name}.merge"]).stdout.strip()
+    if not remote or remote == "." or remote.startswith("-") or not merge.startswith("refs/heads/"):
+        return None
+    return remote, merge
+
+
 def remote_urls(repo_path: Path) -> dict[str, str]:
     """Every remote's fetch URL, by name. Empty when there is no remote (or git failed)."""
     proc = run_git(repo_path, ["remote", "-v"])

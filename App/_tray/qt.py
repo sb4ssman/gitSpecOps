@@ -118,9 +118,9 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
     try:
         tray_lock.__enter__()
     except ValueError:
+        from App._detach import where_the_icon_is
         QtWidgets.QMessageBox.information(
-            None, "gitSpecOps", "gitSpecOps is already running for this profile. Its icon is by the "
-            "clock (Windows may tuck it under the ^ arrow).")
+            None, "gitSpecOps", f"gitSpecOps is already running for this profile: {where_the_icon_is()}.")
         return 0
 
     profile = profile_arguments(config_dir, settings_home)
@@ -502,6 +502,16 @@ def main(argv=None) -> int:
         return _cli.fail(args, "tray", f"{failure_reason(str(exc))}.")
 
 
+def _log_line(directory, text: str) -> None:
+    """One line in the fleet folder's menubar.log: what became of the Mac menu-bar icon."""
+    from datetime import datetime
+    try:
+        with open(Path(directory) / "menubar.log", "a", encoding="utf-8") as log:
+            log.write(f"{datetime.now().isoformat(timespec='seconds')}  {text}\n")
+    except OSError:
+        pass
+
+
 def _run_without_icon(args) -> int:
     """The app with no tray icon: the same peer and web view. It holds the tray's lock, so
     `gitso tray` (status, --follow, --open, --stop) treats it as the running app."""
@@ -526,6 +536,13 @@ def _run_without_icon(args) -> int:
                     stopping.set()
         threading.Thread(target=watch_for_quit, name="quit-request", daemon=True).start()
         _record_process(args.config_dir, args.settings_home)
+        if sys.platform == "darwin":
+            # A Mac without Qt still gets an icon: the native menu-bar one, built here once.
+            from App._tray import macos_bar
+            from App._tray.control import web_address
+            page = web_address(args.settings_home)
+            threading.Thread(target=lambda: _log_line(directory, macos_bar.start(directory, page)),
+                             name="menu-bar-icon", daemon=True).start()
         return run_app(args.config_dir, args.settings_home, stopping=stopping, face="web",
                        web=args.web, remote=args.remote)
 

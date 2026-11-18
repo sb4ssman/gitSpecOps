@@ -234,8 +234,16 @@ gitso fleet doctor
 gitso peer rescan
 ```
 
-Startup performs one inventory. Linux inotify or Windows `ReadDirectoryChangesW` then triggers
-targeted Git status checks only for changed repositories. There is no periodic repository scan.
+Startup inventories the libraries this machine can read. A disconnected library stays enrolled:
+the app and fleet view stay up, local actions are available for observed copies, and
+`gitso fleet doctor` lists the unavailable paths on this machine. Status sent to other machines
+stays last known until all configured libraries are readable, so an unmounted drive does not
+look like missing copies. The peer checks library availability every few seconds and inventories
+again when it changes. `gitso peer rescan` can also request that check immediately.
+
+Linux inotify, Windows `ReadDirectoryChangesW`, or macOS FSEvents then triggers targeted Git
+status checks for changed repositories. Normally there is no periodic repository scan; if the
+file watcher cannot start, the peer refreshes inventory every 10 minutes and retries the watcher.
 On Linux only the repositories and the folders leading to them are watched, since Linux allows a
 fixed number of watches (often about 120,000) and a large drive has more folders than that. If
 even that runs out, the app keeps running, rereads the library every 10 minutes, and says so on

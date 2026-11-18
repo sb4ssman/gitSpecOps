@@ -113,6 +113,54 @@ class AuditTests(unittest.TestCase):
             with self.assertRaises(ValueError, msg=bad):
                 jobs.reveal(bad)
 
+    def test_accept_reviews_a_binary_file_and_the_next_audit_leaves_it(self):
+        # The Security page's Accept (2026-11-17): the same review `gitso review` saves.
+        (self.repo / "font.woff2").write_bytes(b"wOF2\x00\x01\x00\x00binary font bytes\x00" * 20)
+        self.git(self.repo, "add", "font.woff2")
+        self.git(self.repo, "commit", "-q", "-m", "font")
+
+        def run_audit():
+            jobs = AuditJobs(lambda repo_id: [self.repo],
+                             runner=lambda path, **kwargs: audit_checkout(path, settings_home=self.home, **{
+                                 key: kwargs[key] for key in ("history", "values")}))
+            jobs.start({"repo_ids": ["known"], "history": False})
+            for _ in range(400):
+                audit = jobs.status()["audit"]
+                if audit["state"] != "running":
+                    break
+                threading.Event().wait(0.05)
+            return jobs, audit
+
+        jobs, audit = run_audit()
+        entry = audit["results"][0]
+        binary = [f for f in entry["security"]["working_tree"]["findings"]
+                  if f["check"] == "binary content" and not f.get("review_id")]
+        self.assertTrue(binary, "the binary file is a finding to review")
+        done = jobs.accept({"index": entry["index"], "material": "working_tree", "finding_id": binary[0]["finding_id"]})
+        self.assertEqual(done["status"], "accepted", done)
+        _, again = run_audit()
+        open_findings = [f for f in again["results"][0]["security"]["working_tree"]["findings"]
+                         if f["check"] == "binary content" and not f.get("review_id")]
+        self.assertEqual(open_findings, [], "the next audit leaves the accepted file alone")
+
+    def test_the_audit_runs_in_its_own_process_and_reports_back(self):
+        # A long audit took the app's process and the page stopped answering (2026-11-17).
+        from Special._security._audit import audit_in_process
+        values: dict = {}
+        steps = []
+        result = audit_in_process(self.repo, history=True, settings_home=self.home, values=values, step=steps.append)
+        self.assertEqual(result["check_status"], "blocked", "the deleted value is still found in history")
+        self.assertTrue(steps and steps[0].startswith("working files"), steps)
+        self.assertTrue(any(step.startswith("every commit:") for step in steps), "the status line hears each phase")
+        self.assertNotIn("private-marker", json.dumps(result), "what comes back to the page stays masked")
+        self.assertTrue(any("private-marker" in v for v in values.get("history", [])), "values come back for Show")
+
+    def test_stop_ends_an_audit_process_at_once(self):
+        from Special._security._audit import audit_in_process
+        result = audit_in_process(self.repo, history=True, settings_home=self.home, should_stop=lambda: True)
+        self.assertEqual(result["check_status"], "incomplete")
+        self.assertIn("Stopped", result["gaps"][0]["reason"])
+
     def test_a_running_audit_can_be_stopped(self):
         gate = threading.Event()
         jobs = AuditJobs(lambda repo_id: [self.repo],

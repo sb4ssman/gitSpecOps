@@ -11,6 +11,7 @@ between OS users sharing this machine. Tailnet peer endpoints remain GET-only.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import secrets
 import threading
@@ -27,9 +28,17 @@ LOOPBACK = "127.0.0.1"
 DEFAULT_PORT = 8760
 
 
+def _page_version(assets: dict) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(assets):
+        digest.update(path.encode() + b"\0" + assets[path][0])
+    return digest.hexdigest()[:16]
+
+
 def make_local_server(address, build_document, assets, desktop_action=None, fleet_action=None,
                       setup=None):
     """`setup`: SetupRoutes (App/_web/setup.py) to mount /setup and its actions, or None."""
+    page_version = _page_version(assets)
     if address[0] != LOOPBACK:
         raise ValueError("the local dashboard must bind to loopback")
     action_token = secrets.token_urlsafe(32)
@@ -46,6 +55,10 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
             data = json.dumps(value).encode() if kind == "application/json" else value
             self.send_response(status)
             self.send_header("Content-Type", kind)
+            # Which page this server hands out: an open tab that sees it change (the app was
+            # updated and restarted) reloads, instead of running yesterday's scripts against
+            # today's data (2026-11-17: a map drawn by an old script after `gitso update`).
+            self.send_header("X-GitSpecOps-Page", page_version)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
@@ -99,11 +112,16 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
                         # The security audit: local only (never on the tailnet listener).
                         "security-engines": fleet_action, "security-start": fleet_action,
                         "security-status": fleet_action, "security-stop": fleet_action,
-                        "security-reveal": fleet_action,
+                        "security-reveal": fleet_action, "security-accept": fleet_action,
                         "security-policy": fleet_action, "security-policy-change": fleet_action,
                         # Requests between machines and uncommitted-work summaries (Elaborate/_fleet/requests.py).
                         "request-send": fleet_action, "request-withdraw": fleet_action,
-                        "request-answer": fleet_action, "request-clear": fleet_action, "changes": fleet_action}
+                        "request-answer": fleet_action, "request-clear": fleet_action, "changes": fleet_action,
+                        "repo-action": fleet_action}
+            if fleet_action is not None:
+                # The catalog and the documents: read-only, this computer only (reference.py).
+                from App._web.reference import reference
+                handlers["reference"] = lambda _name, payload: reference(payload)
             if setup is not None and action.startswith("setup/"):
                 handlers[action] = lambda name, payload: setup.act(name.removeprefix("setup/"), payload)
             def refuse(status, message):
@@ -133,7 +151,7 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
                 length = int(self.headers.get("Content-Length", "0"))
                 # A whole organization's repository ids fit in 64 KiB; everything else stays small.
                 limit = (4096 if action.startswith(("setup/", "security-policy")) else
-                         65536 if action in ("security-start", "request-send") else 1024)
+                         65536 if action in ("security-start", "request-send", "repo-action") else 1024)
                 if not 0 < length <= limit or self.headers.get("Transfer-Encoding"):
                     raise ValueError("invalid action size")
                 payload = json.loads(self.rfile.read(length))

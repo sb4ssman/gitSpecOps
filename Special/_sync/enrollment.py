@@ -149,6 +149,25 @@ def change_libraries(remove=(), add=(), *, home=None) -> list[str]:
     return roots
 
 
+def change_not_counted(add=(), remove=(), *, home=None) -> list[str]:
+    """Repositories this machine does not count (2026-11-17): a nested checkout the person names,
+    by its folder. Nothing is skipped on its own; each entry is the person's choice, and removing
+    it counts that repository again at the next read. Paths stay on this machine."""
+    snapshot = _snapshot(home)
+    config = snapshot.config("app")
+    if config is None:
+        raise ValueError("this machine is not enrolled")
+    dropping = {str(Path(path).expanduser().resolve()) for path in remove}
+    current = [entry for entry in config.get("not_counted") or [] if entry not in dropping]
+    for path in add:
+        entry = str(Path(path).expanduser().resolve())
+        if entry not in current:
+            current.append(entry)
+    config["not_counted"] = current
+    save_fleet_config(config, component="app", home=home)
+    return current
+
+
 def remove_library(path, *, home=None) -> list[str]:
     snapshot = _snapshot(home)
     config = snapshot.config("app")
@@ -162,6 +181,18 @@ def remove_library(path, *, home=None) -> list[str]:
     config["roots"] = [root for root in config["roots"] if root != target]
     save_fleet_config(config, component="app", home=home)
     return config["roots"]
+
+
+def set_auto_requests(enabled: bool, *, home=None) -> None:
+    """Save this machine's explicit choice for incoming fast-forward and clone requests."""
+    if type(enabled) is not bool:
+        raise ValueError("choose whether incoming requests run on arrival")
+    snapshot = _snapshot(home)
+    config = snapshot.config("app")
+    if config is None:
+        raise ValueError("this machine is not enrolled")
+    config["auto_requests"] = enabled
+    save_fleet_config(config, component="app", home=home)
 
 
 def set_fetch_minutes(minutes: int, *, home=None) -> int:

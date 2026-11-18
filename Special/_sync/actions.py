@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 
 from Basic._discovery import RepoHit, classify, find_repos
-from Basic._facts import repo_facts, unpushed_commits
+from Basic._facts import repo_facts, unpushed_commits, upstream_of
 from Basic._identity import parse_remote_url
 from Basic._run import run_git
 
@@ -55,6 +55,29 @@ def _safe_materialization_target(destination: Path, host: object, owner: object,
     except OSError:
         return None
     return target
+
+
+def target_inside_library(target: Path, library: Path) -> bool:
+    """Whether a clone at `target` would really land inside `library`: the one destination check
+    every caller uses, on the actual target (an outside review, 2026-11-17: a rebuilt path was
+    checked instead, so a link under the real destination could lead outside).
+
+    Every folder between the library and the target must have a portable name, and the nearest
+    folder that already exists must resolve (links followed) to a place inside the library."""
+    try:
+        library = Path(library).resolve(strict=True)
+        target = Path(target)
+        lexical = Path(library, *target.relative_to(library).parts) if target.is_absolute() else None
+        if lexical is None or lexical == library:
+            return False
+        if not all(_safe_component(part) for part in lexical.relative_to(library).parts):
+            return False
+        existing = lexical.parent
+        while not existing.exists():
+            existing = existing.parent
+        return existing.resolve(strict=True).is_relative_to(library) and not lexical.is_symlink()
+    except (OSError, ValueError):
+        return False
 
 
 def _message(proc) -> str:
@@ -137,7 +160,15 @@ def apply_catchup(plan: list[dict]) -> list[dict]:
             continue
         # Explicitly disable recursive submodule updates: this action is about this checkout's
         # current branch, not arbitrary nested repositories.
-        pulled = run_git(item["path"], ["-c", "submodule.recurse=false", "pull", "--ff-only"],
+        # The remote that was fetched and judged is the one pulled, by name, with the branch
+        # it tracks: never whatever the configuration would pick (2026-11-17).
+        target = upstream_of(item["path"])
+        if target is None or target[0] != "origin":
+            results.append({**item, "action": "pull_failed",
+                            "detail": "This branch does not track a branch on origin; left as it is."})
+            continue
+        pulled = run_git(item["path"], ["-c", "submodule.recurse=false", "pull", "--ff-only", "--no-rebase",
+                                        "--", "origin", target[1]],
                          timeout=PULL_TIMEOUT_SECONDS, env=NON_INTERACTIVE_GIT_ENV)
         if pulled.returncode:
             results.append({**item, "action": "pull_failed", "detail": _message(pulled)})
@@ -226,8 +257,15 @@ def every_repository(roots) -> tuple[list[RepoHit], list[dict]]:
                                        "under it was checked."})
             continue
         own = classify(root)
+        gaps: list[dict] = []
         hits = ([own] if own else []) + find_repos(root, max_depth=None, include_hidden=True,
-                                                   skip_names=frozenset({".git"}))
+                                                   skip_names=frozenset({".git"}), gaps=gaps)
+        # A folder the walk could not enter may hold a repository: it blocks the verdict (an
+        # outside review, 2026-11-17: SAFE was possible over an unreadable subfolder).
+        problems += [{"path": Path(gap["path"]), "name": Path(gap["path"]).name or gap["path"],
+                      "action": "not_checked",
+                      "detail": f"This folder {gap['reason']}; nothing under it was checked."}
+                     for gap in gaps]
         for hit in hits:
             found.setdefault(Path(hit.path).resolve(), hit)
     return [found[path] for path in sorted(found, key=lambda p: str(p).casefold())], problems
@@ -311,7 +349,7 @@ WIPE_SCOPE_NOTE = ("Checked: every Git repository under the configured roots, hi
 def render_wipe(rows: list[dict]) -> tuple[str, bool]:
     """The verdict text and whether it is SAFE. No repositories at all is never SAFE."""
     lines = ["SAFE-TO-WIPE AUDIT (fresh fetch of every remote; no working tree was changed)"]
-    repositories = [row for row in rows if row["action"] != "root_missing"]
+    repositories = [row for row in rows if row["action"] not in ("root_missing", "not_checked")]
     unsafe = [row for row in rows if row["action"] not in WIPE_SAFE_ACTIONS]
     recovered = [row for row in rows if row["action"] == "recoverable"]
     if not repositories and not unsafe:
@@ -392,10 +430,14 @@ def apply_materialize(plan: list[dict]) -> list[dict]:
             results.append({**item, "action": "exists",
                             "detail": "Destination appeared after planning; left untouched."})
             continue
-        target.parent.mkdir(parents=True, exist_ok=True)
         library = item.get("library")
-        if not isinstance(library, Path) or not _safe_materialization_target(
-                library, target.parent.parent.name, target.parent.name, target.name):
+        # The actual target, before anything is created and again just before the clone.
+        if not isinstance(library, Path) or not target_inside_library(target, library):
+            results.append({**item, "action": "clone_failed",
+                            "detail": "The destination is not inside the chosen library; nothing was created."})
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not target_inside_library(target, library) or target.exists():
             results.append({**item, "action": "clone_failed",
                             "detail": "Destination changed after planning; left it untouched."})
             continue

@@ -37,7 +37,7 @@ from Basic._files import atomic_write_bytes
 from Elaborate._transport.folder import FolderTransport
 from Elaborate._fleet.local_view import display_from_manifests
 from Special._sync.manifest import fleet_id_for, names_over, without_names
-from Special._sync.observer import fetch_repositories
+from Special._sync.observer import fetch_repositories, library_available
 from Elaborate._transport.repo import RepoTransport
 from Elaborate._fleet.watcher import semantic_fingerprint
 
@@ -201,32 +201,38 @@ class PeerNetwork:
         self.adopt_name = adopt_name  # saves a newer fleet name heard from a machine of this fleet
         self.requests = requests  # requests.RequestBook: asked of others, asked of this machine
         self.own_changes = own_changes  # repo_id -> this machine's uncommitted-work summary
+        self.on_requests = None  # called when requests arrive (the peer runs the safe ones)
         self.addresses: dict[str, str] = {}  # machine_id -> its Tailscale address, from the last round
         self.server = None
         self.identity = None
         self.port = int((config.get("transports") or {}).get("tailnet", {}).get("port") or 0)
         self.knocked = threading.Event()  # another machine asked to be pulled now (/v1/knock)
+        self.refused = False  # retrying cannot help (a different Tailscale user)
 
     @property
     def enabled(self) -> bool:
         return bool((self.config.get("transports") or {}).get("tailnet"))
 
-    def start(self) -> bool:
-        """Returns whether the tailnet tier actually came up. Never raises."""
+    def start(self, quiet: bool = False) -> bool:
+        """Returns whether the tailnet tier actually came up. Never raises. `quiet` skips
+        repeating the same "unavailable" line on each retry; `refused` is set when retrying
+        cannot help (a different Tailscale user)."""
         if not self.enabled:
             return False
         try:
             self.identity = local_identity()
         except (OSError, ValueError) as exc:
-            # Tailscale missing, stopped, or logged out. Everything else still works.
-            self.log(f"Tailnet tier unavailable ({exc}). Observation, transports and the local "
-                     "dashboard are unaffected.")
+            # Tailscale missing, stopped, not up yet, or logged out. Everything else still works.
+            if not quiet:
+                self.log(f"Tailnet tier unavailable ({exc}); trying again every 30 seconds. "
+                         "Observation, transports and the local dashboard are unaffected.")
             return False
         allowed = (self.config["transports"]["tailnet"].get("allowed_login")
                    or self.identity["login"])
         self.config["transports"]["tailnet"]["allowed_login"] = allowed
         if self.identity["login"] != allowed:
             self.log("Tailscale user changed; tailnet tier disabled pending review.")
+            self.refused = True
             return False
         try:
             self.server = make_peer_server((self.identity["ip"], self.port), self.own_report,
@@ -235,7 +241,7 @@ class PeerNetwork:
                                            own_name=lambda: self.config.get("fleet_name"),
                                            on_knock=self.knocked.set,
                                            own_requests=self.requests.published if self.requests else None,
-                                           own_changes=self.own_changes)
+                                           own_changes=self.own_changes, own_known=self.known)
             threading.Thread(target=self.server.serve_forever, daemon=True).start()
         except OSError as exc:
             self.log(f"Could not listen for peers on port {self.port}: {exc}")
@@ -245,8 +251,23 @@ class PeerNetwork:
                  "(read-only; peers pull, nothing is pushed)")
         return True
 
+    def known(self) -> list[dict]:
+        """The last reports held for the other machines, for a peer that has not met them, within
+        the size one answer may have."""
+        mine = self.config["machine_id"]
+        answer, size = [], 0
+        for report in self.store.reports():
+            if report["manifest"].get("machine_id") == mine:
+                continue
+            size += len(json.dumps(report))
+            if size > MAX_REPORT_BYTES - 65536:
+                break
+            answer.append(report)
+        return answer
+
     def poll(self) -> int:
-        """Pull every reachable peer's current report into the local cache."""
+        """Pull every reachable peer's current report into the local cache, then, from what they
+        hold, the last reports of machines that cannot be reached now."""
         if self.server is None:
             return 0
         from Elaborate._fleet.net import discover_hosts
@@ -256,6 +277,7 @@ class PeerNetwork:
         except (OSError, ValueError):
             return 0
         learned = 0
+        live, answering = {self.config["machine_id"]}, []
         for host in candidates:
             if not host.get("serving"):
                 continue  # off, asleep, or not running the app: normal, not an error
@@ -268,10 +290,25 @@ class PeerNetwork:
             except (ValueError, KeyError, OSError):
                 continue  # a peer on a different fleet, or a malformed report
             machine_id = report["manifest"]["machine_id"]
+            live.add(machine_id)
+            answering.append(host)
             self.addresses[machine_id] = host["ip"]
             self.merge_settings(host)
             self.merge_name(host)
             self.merge_requests(host, machine_id)
+        # Machines that are off now: their last state, from those that met them. The store
+        # validates each one and refuses anything older than what it already holds.
+        from Elaborate._fleet.net import fetch_known_reports
+        for host in answering:
+            for report in fetch_known_reports(host["ip"], self.port):
+                machine_id = (report.get("manifest") or {}).get("machine_id")
+                if not machine_id or machine_id in live:
+                    continue
+                try:
+                    self.store.put(machine_id, report)
+                    learned += 1
+                except (ValueError, KeyError, OSError):
+                    continue
         return learned
 
     def merge_requests(self, host, machine_id) -> None:
@@ -285,7 +322,9 @@ class PeerNetwork:
         except (OSError, ValueError, KeyError, TypeError):
             return  # an older peer without requests
         if new:
-            self.log(f"{new} request(s) from {host.get('label', 'another machine')} wait on this machine's page.")
+            self.log(f"{new} request(s) from {host.get('label', 'another machine')} arrived.")
+            if self.on_requests is not None:
+                threading.Thread(target=self.on_requests, name="requests", daemon=True).start()
 
     def ask(self, machine_id: str, path: str):
         """A read from one fleet machine by its id, through its Tailscale address."""
@@ -371,6 +410,12 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     publisher = TransportPublisher(config.get("transports") or {},
                                    names={name: names_over(config, name) for name in ("folder", "repo")})
     observer = IncrementalObserver(config)
+    configured_roots = tuple(config["roots"])
+
+    def available_roots():
+        return tuple(root for root in configured_roots if library_available(root))
+
+    active_roots = available_roots()
     # What this peer is doing right now, in words, for the tray's status line and the web view:
     # people should see the work happen. Counts only; never a path or a repository name.
     activity = {"phase": "starting", "text": "starting up", "done": 0, "total": 0}
@@ -386,8 +431,10 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         except TypeError:  # a stand-in observer in tests
             return "watching for changes"
         extra = folders - repositories
-        return (f"watching {folders} repository folders for changes"
-                + (f" ({repositories} repositories; {extra} folders are second copies)" if extra > 0 else ""))
+        return (f"watching {folders} repository folders locally for changes"
+                + (f" ({repositories} repositories; {extra} folders are second copies)" if extra > 0 else "")
+                + (f"; {len(configured_roots) - len(active_roots)} libraries unavailable"
+                   if active_roots != configured_roots else ""))
     from Elaborate._recovery.runtime import RecoveryRuntime
     recovery = RecoveryRuntime(config, observer, log=log)
     stale_seconds = stale_after(config)
@@ -396,8 +443,17 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     # `local` is everything this machine observes and is only ever rendered here; `report` is
     # the filtered view peers and transports receive. Keeping them apart is the whole point of
     # a publish basket: withheld work must still be visible to the person sitting at the machine.
-    latest = {"report": None, "local": None, "withheld": set(), "paths": ()}
-    watching = {"incomplete": False}  # Linux's watch limit reached: the library is reread on a timer
+    latest = {"report": None, "local": None, "withheld": set(), "paths": (), "previous": None}
+    # This machine's last report from its previous run: shown, as last known, until the first
+    # fresh read finishes, so the machine never disappears from its own page (2026-11-17).
+    try:
+        previous = json.loads((config_dir / "fleet-latest.json").read_bytes())
+        manifest = previous.get("manifest") or {}
+        if manifest.get("machine_id") == config["machine_id"] and manifest.get("fleet_id") == fleet_id:
+            latest["previous"] = previous
+    except (OSError, ValueError, AttributeError):
+        pass
+    watching = {"incomplete": False, "unavailable": False}
 
     def save_client(choice):
         # Only local UI choices reach here; executable paths never cross a transport.
@@ -406,7 +462,6 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         save_client_choice(config_dir, config, choice)
 
     desktop = DesktopIntegration(config.get("git_client"), observer.local_repositories, save_client)
-    action_lock = threading.Lock()
 
     def security_settings():
         """The profile as it is now, not as it was when the peer started: a policy change made
@@ -417,41 +472,8 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         home = getattr(getattr(config, "snapshot", None), "home", settings_home)
         return home, load_fleet_settings(home)
 
-    from Special._security._audit import AuditJobs, engines_status
-    from Special._security._policy_edit import policy_change, policy_view
+    from Special._security._audit import AuditJobs
     audits = AuditJobs(observer.local_checkouts, settings=security_settings)
-
-    def dashboard_action(action, payload):
-        """Local dashboard actions call the same headless operations as terminal routes."""
-        if action == "security-engines":
-            return {"engines": engines_status()}
-        if action == "security-policy":
-            return policy_view(security_settings()[0])
-        if action == "security-policy-change":
-            with action_lock:
-                return policy_change(security_settings()[0], payload)
-        if action == "security-start":
-            return audits.start(payload)
-        if action == "security-status":
-            return audits.status()
-        if action == "security-reveal":
-            return audits.reveal(payload)
-        if action == "security-stop":
-            return audits.stop()
-        if action == "security-preview":
-            from Special._security._advice import inspect_registered
-            with action_lock:
-                home, snapshot = security_settings()
-                return inspect_registered(payload, observer.local_checkouts, settings_home=home, expected_settings=snapshot)
-        if action in ("request-send", "request-withdraw", "request-answer", "request-clear", "changes"):
-            return request_action(action, payload)
-        if action != "catchup-preview" or payload:
-            raise ValueError("unsupported fleet dashboard action")
-        from Special._sync.actions import plan_catchup, render_catchup
-
-        with action_lock:
-            plan = plan_catchup(observer.paths)
-        return {"message": render_catchup(plan), "action": "catchup-preview"}
 
     # Protected values shared with the fleet (shared_policy.py): over Tailscale whenever this
     # machine is in a fleet; sealed through the synced folder when that is turned on.
@@ -463,68 +485,17 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         from Elaborate._fleet.setup_state import name_fleet
         name_fleet(security_settings()[0], config_dir, name=named["name"], at=named["at"])
     # Requests between machines, and what a copy's uncommitted work is (requests.py, changes.py).
-    from Elaborate._fleet.requests import RequestBook, run_request
+    from Elaborate._fleet.page_actions import PageActions
+    from Elaborate._fleet.requests import RequestBook
     book = RequestBook(config_dir, config["machine_id"], config["label"])
-
-    def own_changes(repo_id):
-        from Special._sync.changes import working_changes
-        copies = []
-        for path in observer.local_checkouts(repo_id):
-            try:
-                copies.append(working_changes(path))
-            except ValueError as exc:
-                copies.append({"files": [], "count": 0, "summary": str(exc)})
-        return {"machine": config["label"], "copies": copies}
-
-    def text(value, limit=200):
-        return str(value or "")[:limit]
-
-    def request_action(action, payload):
-        if action == "request-send":
-            items = [{key: text(item.get(key)) for key in ("repo_id", "host", "owner", "name", "folder")}
-                     for item in payload.get("items") or [] if isinstance(item, dict)]
-            if text(payload.get("to")) == config["machine_id"]:
-                # Asked of this machine, from its own page: the person is here, so it runs now,
-                # with the same safe operations (the user, 2026-11-16).
-                request = {"kind": text(payload.get("kind")), "items": items, "from_label": config["label"],
-                           "to_label": config["label"]}
-                if request["kind"] not in ("pull", "clone") or not items:
-                    raise ValueError("choose pull or clone, and at least one repository")
-                with action_lock:
-                    result = run_request(request, observer.local_checkouts, config["roots"])
-                book.log("ran here", request, result)
-                atomic_write_bytes(config_dir / "fleet-rescan.request", b"ran here\n")
-                return {"message": f"Done here.\n{result}"}
-            sent = book.send(text(payload.get("to")), text(payload.get("to_label")), text(payload.get("kind")), items)
-            book.log("asked", sent)
-            threading.Thread(target=network.knock_others, daemon=True).start()  # so it is picked up now
-            return {"sent": sent, "message": f"Asked {sent['to_label']}; it shows on that machine's page."}
-        if action == "request-withdraw":
-            book.withdraw(text(payload.get("id")))
-            return {"message": "Withdrawn."}
-        if action == "request-clear":
-            dropped = book.clear(everything_sent=bool(payload.get("everything_sent")))
-            return {"message": f"Cleared {dropped}. The task log keeps the record."}
-        if action == "changes":
-            repo_id, machine_id = text(payload.get("repo_id")), text(payload.get("machine_id"))
-            if machine_id == config["machine_id"]:
-                return own_changes(repo_id)
-            return network.ask(machine_id, f"/v1/changes/{repo_id}")
-        request = next((item for item in book.incoming() if item["id"] == payload.get("id")), None)
-        if request is None or request["status"] != "waiting":
-            raise ValueError("that request is no longer waiting; reload")
-        if not payload.get("accept"):
-            book.log("dismissed", request)
-            return book.settle(request["id"], "dismissed", "Dismissed here.")
-        with action_lock:
-            result = run_request(request, observer.local_checkouts, config["roots"])
-        book.log("applied", request, result)
-        atomic_write_bytes(config_dir / "fleet-rescan.request", b"request applied\n")  # see the result
-        threading.Thread(target=network.knock_others, daemon=True).start()  # the asker learns now
-        return book.settle(request["id"], "done", result)
+    # Everything this machine's own page can ask for (page_actions.py).
+    actions = PageActions(config, config_dir, observer, book, security_settings, audits)
+    action_lock, dashboard_action, own_changes = actions.lock, actions.handle, actions.own_changes
 
     network = PeerNetwork(config, lambda: latest["report"], store, log=log, shared=shared, adopt_name=adopt_name,
                           requests=book, own_changes=own_changes)
+    actions.network = network
+    network.on_requests = actions.run_waiting
 
     def sealed_folder_loop():
         """The shared protected values through the synced folder, sealed (sealed.py)."""
@@ -559,12 +530,20 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         if latest["local"] is not None:
             manifests.append(latest["local"]["manifest"])
             names.update(latest["local"].get("names") or {})
+        elif latest["previous"] is not None:  # still reading: the last known state, not nothing
+            manifests.append(latest["previous"]["manifest"])
+            names.update(latest["previous"].get("names") or {})
         return manifests, issues, names
 
     def document():
         manifests, issues, names = sources()
         if latest["local"] is not None:
             issues = list(issues) + list(latest["local"].get("issues") or [])
+        if active_roots != configured_roots:
+            issues = list(issues) + [
+                f"{len(configured_roots) - len(active_roots)} configured libraries are unavailable. "
+                "Showing available libraries only. Fleet status remains last known until they return. "
+                "Run 'gitso fleet doctor' on this machine to see the paths."]
         if pending_new:
             listed = ", ".join(sorted(p.name for p in sorted(pending_new))[:5])
             more = "" if len(pending_new) <= 5 else f" (+{len(pending_new) - 5} more)"
@@ -577,6 +556,9 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                 f"changes; the library is reread every {SWEEP_SECONDS // 60} minutes instead. To "
                 "watch everything, raise the limit: sudo sysctl fs.inotify.max_user_watches=524288 "
                 "(add fs.inotify.max_user_watches=524288 to /etc/sysctl.conf to keep it)."]
+        if watching["unavailable"]:
+            issues = list(issues) + [
+                "File watching is unavailable; available libraries are checked periodically."]
         if shared is not None:
             try:
                 waiting = len(shared.questions())
@@ -607,8 +589,8 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                       "unobserved_count": observer.excluded_from_observation})
         document["activity"] = dict(activity)
         incoming = book.incoming()
-        document["requests"] = {"waiting": [item for item in incoming if item["status"] == "waiting"],
-                                "answered": [item for item in incoming if item["status"] != "waiting"][:10],
+        document["requests"] = {"waiting": [item for item in incoming if item["status"] in ("waiting", "running")],
+                                "answered": [item for item in incoming if item["status"] not in ("waiting", "running")][:10],
                                 "sent": book.outgoing()}
         return document
 
@@ -628,8 +610,19 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             log("Sealing shared settings for the synced folder needs the cryptography package "
                 "(setup, or the Settings tab, installs it); Tailscale still carries them.")
 
-    if network.start():
+    if network.enabled:
         def poll_loop():
+            # At sign-in after a reboot the app can start before Tailscale is up (2026-11-17: every
+            # rebooted machine stopped pulling and serving for good). Keep trying, quietly, until
+            # it is; then serve, ask the others to pull this machine now, and poll as usual.
+            tries = 0
+            while not network.start(quiet=tries > 0):
+                tries += 1
+                if network.refused or stopping.wait(30.0):
+                    return
+            if tries:
+                log(f"Tailscale is up after {tries * 30} seconds; the tailnet tier started.")
+                network.knock_others()
             # Off the observation loop: an unreachable peer can take seconds to time out, and
             # that must never delay noticing a local edit.
             while True:
@@ -662,10 +655,19 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
 
     def open_events():
         # Linux watches only the repositories and the folders leading to them (events.py).
-        return event_source or NativeEvents([Path(root) for root in config["roots"]],
-                                            repositories=list(observer.paths))
+        if event_source is not None:
+            return event_source
+        if not active_roots:
+            return None
+        try:
+            return NativeEvents([Path(root) for root in active_roots],
+                                repositories=list(observer.paths))
+        except OSError:
+            log("File watching is unavailable; inventory will be refreshed periodically.")
+            return None
 
     def watch_note(events) -> None:
+        watching["unavailable"] = events is None and bool(active_roots)
         if getattr(events, "incomplete", False):
             log("Linux's file-watch limit was reached, so some folders are not watched; the "
                 f"library is reread every {SWEEP_SECONDS // 60} minutes instead.")
@@ -677,7 +679,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     try:
         started = time.monotonic()
         doing("finding", "finding the repositories in your library")
-        count = observer.inventory(progress=lambda done, total, _path: doing(
+        count = observer.inventory(roots=active_roots, progress=lambda done, total, _path: doing(
             "reading", f"reading Git status: {done} of {total} repositories", done, total))
         doing("publishing", f"found {count} repositories; putting this machine's state together", count, count)
         log(f"Initial inventory found {count} repositories in {time.monotonic() - started:.1f}s. "
@@ -691,6 +693,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         stop_serving()
         raise
     next_sweep = time.monotonic() + SWEEP_SECONDS
+    next_root_check = time.monotonic() + WATCH_RESTART_SECONDS
     request_path = config_dir / "fleet-rescan.request"
     fingerprint = None
     next_heartbeat = 0.0
@@ -709,7 +712,8 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         delay = fetch_minutes * 60
         while not stopping.wait(delay):
             delay = fetch_minutes * 60
-            paths = list(latest["paths"])
+            roots = available_roots()
+            paths = [path for path in latest["paths"] if any(path.is_relative_to(root) for root in roots)]
             if paths:
                 doing("fetching", f"fetching remotes (read-only): {len(paths)} repositories", 0, len(paths))
                 fetched, problems = fetch_repositories(paths)
@@ -723,6 +727,14 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         nonlocal fingerprint, next_heartbeat
         local = observer.report()
         shared, withheld = observer.shared_report(local)
+        latest["local"], latest["withheld"], latest["paths"] = local, withheld, observer.paths
+        next_heartbeat = time.monotonic() + heartbeat_seconds
+        if (active_roots != configured_roots or available_roots() != configured_roots
+                or any(issue.startswith("library unavailable") for issue in local["issues"])):
+            # A partial inventory would turn unavailable repositories into apparently missing
+            # ones on other machines. Keep the last complete report at its original timestamp.
+            fingerprint = None
+            return False
         # What Tailscale peers may fetch: without names unless that connection carries them.
         live = shared if names_over(config, "tailnet") else {
             **shared, "names": {}, "manifest": without_names(shared["manifest"])}
@@ -730,9 +742,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         if len(raw) > MAX_REPORT_BYTES or len(json.dumps(shared).encode()) > MAX_REPORT_BYTES:
             raise ValueError("report exceeds the size limit")
         atomic_write_bytes(config_dir / "fleet-latest.json", raw)
-        latest["local"], latest["report"], latest["withheld"] = local, live, withheld
-        latest["paths"] = observer.paths
-        next_heartbeat = time.monotonic() + heartbeat_seconds
+        latest["report"] = live
         # Fingerprinted on the shared view, so a change confined to a withheld namespace
         # correctly publishes nothing new -- only the per-slot heartbeat.
         current = semantic_fingerprint(shared["manifest"]) + json.dumps(
@@ -763,31 +773,44 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
             try:
                 force_inventory = False
                 try:
-                    changed = source.wait(timeout=1.0, debounce=config["debounce_seconds"])
-                except OSError as exc:
-                    log(f"Filesystem watching stopped ({exc}). Restarting it and taking a fresh "
-                        "inventory, because changes made meanwhile were not seen.")
+                    if source is None:
+                        stopping.wait(1.0)
+                        changed = set()
+                    else:
+                        changed = source.wait(timeout=1.0, debounce=config["debounce_seconds"])
+                except OSError:
+                    log("Filesystem watching stopped. Refreshing inventory and reopening the watch.")
                     source.close()
-                    if stopping.wait(WATCH_RESTART_SECONDS):
-                        break
-                    source = open_events()
+                    source = None
                     changed, force_inventory = set(), True
                 else:
-                    if _overflowed(source):
+                    if source is not None and _overflowed(source):
                         log("More filesystem changes arrived at once than could be tracked "
                             "individually; taking a fresh inventory.")
                         force_inventory = True
                 reason = None
-                if getattr(source, "incomplete", False) and time.monotonic() >= next_sweep:
+                now = time.monotonic()
+                rescan_requested = request_path.exists()
+                available = active_roots
+                if force_inventory or rescan_requested or now >= next_root_check:
+                    available = available_roots()
+                    if available != active_roots:
+                        force_inventory = True
+                        log(f"{len(available)} of {len(configured_roots)} configured libraries available.")
+                    next_root_check = now + WATCH_RESTART_SECONDS
+                needs_sweep = (source is None and bool(active_roots)) or getattr(source, "incomplete", False)
+                if needs_sweep and now >= next_sweep:
                     force_inventory, next_sweep = True, time.monotonic() + SWEEP_SECONDS
-                if force_inventory or request_path.exists():
+                if force_inventory or rescan_requested:
                     request_path.unlink(missing_ok=True)
                     started = time.monotonic()
                     doing("finding", "rescanning: finding the repositories in your library")
-                    count = observer.inventory(progress=lambda done, total, _path: doing(
+                    count = observer.inventory(roots=available, progress=lambda done, total, _path: doing(
                         "reading", f"rescanning: reading Git status: {done} of {total}", done, total))
-                    if event_source is None:  # watch what this inventory found, new clones included
-                        source.close()
+                    active_roots = available
+                    if event_source is None or source is None:
+                        if source is not None:
+                            source.close()
                         source = open_events()
                         watch_note(source)
                     doing("idle", watching_text())
@@ -821,7 +844,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                 elif time.monotonic() >= next_heartbeat:
                     recovery.acknowledge_available()
                     observe("heartbeat")
-                published = publisher.flush(log=log)
+                published = publisher.flush(log=log) if active_roots == configured_roots else []
                 if published:
                     log(f"Published pending status to {', '.join(published)}")
             except (OSError, ValueError) as exc:
@@ -831,6 +854,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
         print(f"error: {exc}", file=sys.stderr, flush=True)
         raise
     finally:
-        source.close()
+        if source is not None:
+            source.close()
         stop_serving()
     return 0

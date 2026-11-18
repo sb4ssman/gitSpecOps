@@ -3,9 +3,11 @@ import {FleetConnection} from './fleet_client.js';
 import {ageLabel, GroupExpansion, groupRows, regroup, selectRows} from './fleet_view.js';
 import {renderMap, VIEWS} from './fleet_map.js';
 import {auditThese, renderSecurity, securitySummary} from './fleet_security.js';
-import {columnsOf, copyGrid, GRID_FOOTNOTE, gridNotes, orderedMachines, perspectiveOf} from './fleet_grid.js';
+import {columnsOf, copyGrid, GRID_FOOTNOTE, gridNotes, orderedMachines, perspectiveOf, placeTree} from './fleet_grid.js';
 import {organizationChoices, renderOrgs} from './fleet_orgs.js';
 import {MENU, renderClouds, renderMachines as drawMachines, renderMenu} from './fleet_pages.js';
+import {notCountedSection, resolveBox} from './fleet_resolve.js';
+import {referenceSummary, renderReference} from './fleet_reference.js';
 import {renderSettings} from './fleet_settings.js';
 import {renderRequests} from './fleet_requests.js';
 
@@ -65,14 +67,17 @@ function setTheme(theme) {
 let markShown = '';
 function renderMark() {
   byId('first-observation').hidden = Boolean(state.data.machines && state.data.machines.length);
+  byId('away').hidden = !state.data.local_actions;  // offered at this computer only
   const mark = state.data.mark;
   if (!mark || !mark.machine || !mark.fleet) return;
   const m = mark.machine.state, f = mark.fleet.state;
   const words = `This machine: ${mark.machine.text} · Fleet: ${mark.fleet.text}`;
-  byId('mark-text').textContent = words;
+  // One short line: this machine, and the fleet in a few words; the full line on hover.
+  byId('mark-text').textContent = `This machine: ${mark.machine.text} · Fleet: ${mark.fleet.short || mark.fleet.text}`;
+  byId('mark-text').title = words;
   const activity = state.data.activity || {phase: 'idle', text: ''};
   const working = m === 'starting' || (activity.phase && activity.phase !== 'idle');
-  byId('activity-text').textContent = activity.text ? activity.text[0].toUpperCase() + activity.text.slice(1) : '';
+  renderActivity(activity.text ? activity.text[0].toUpperCase() + activity.text.slice(1) : '');
   byId('activity').classList.toggle('working', Boolean(working));
   const banner = byId('first-observation');
   if (!banner.hidden && activity.text) banner.textContent = `${activity.text[0].toUpperCase() + activity.text.slice(1)}. ` +
@@ -85,10 +90,30 @@ function renderMark() {
   byId('favicon').href = url(32, false);
 }
 
+/** The live line; "N folders are second copies" opens the list of them (the user, 2026-11-17:
+ *  "how do i use my tool to identify the offending duplicates, and see where they live?"). */
+function renderActivity(text) {
+  const line = byId('activity-text');
+  const found = text.match(/\d+ folders? (?:is a|are) second cop(?:y|ies)/);
+  if (!found) { line.textContent = text; return; }
+  const link = node('a', found[0]); link.href = '#repositories';
+  link.title = 'List the repositories with more than one folder on this machine';
+  link.onclick = event => { event.preventDefault(); showSecondCopies(); };
+  line.replaceChildren(text.slice(0, found.index), link, text.slice(found.index + found[0].length));
+}
+
+function showSecondCopies() {
+  controls.query.value = '';
+  controls.status.value = 'copies';
+  controls.machine.value = state.data.this_machine;
+  selectTab('repositories');
+  renderRepositories();
+}
+
 /** The menu: each item carries its tile's number and line (the user, 2026-11-16). */
 let activeTab = 'map';
 function renderSummary() {
-  renderMenu(byId('menu'), state.data, activeTab, securitySummary(), selectTab);
+  renderMenu(byId('menu'), state.data, activeTab, securitySummary(), selectTab, referenceSummary());
 }
 
 function renderFilters() {
@@ -108,8 +133,12 @@ function cellBadge(cell) {
 }
 
 function showDetail(row) {
+  const panel = byId('detail');
+  // Typing a commit message or using a control here: the 3-second refresh waits for you.
+  if (state.selected === row.id && !panel.hidden && panel.contains(document.activeElement)
+      && document.activeElement !== document.body) return;
   state.selected = row.id;
-  const panel = byId('detail'); panel.hidden = false; panel.replaceChildren();
+  panel.hidden = false; panel.replaceChildren();
   const head = node('div', undefined, 'detail-header');
   const identity = node('div'); identity.append(node('span', row.identity.host, 'host-note'), node('h3', row.name));
   const close = node('button', 'Close', 'quiet'); close.type = 'button';
@@ -170,6 +199,13 @@ function showDetail(row) {
       }
     }
   }
+  // Resolve here: the special operations for this machine's own copy (fleet_resolve.js).
+  const here = row.cells[state.data.this_machine];
+  if (state.data.local_actions && here && here.present) {
+    const act = (op, extra = {}) => connection.desktopAction('repo-action', {op, repo_id: row.id, ...extra},
+      state.data.local_actions.token, {structured: true});
+    panel.append(resolveBox(row, here, act, () => { panel.replaceChildren(); state.selected = null; showDetail(row); }));
+  }
   for (const machine of state.data.machines) {
     const cell = row.cells[machine.id];
     const section = node('section', undefined, 'detail-machine'); section.append(node('h4', machine.label), cellBadge(cell));
@@ -186,10 +222,46 @@ function showDetail(row) {
       ];
       for (const [term, value] of entries) facts.append(node('dt', term), node('dd', String(value)));
       section.append(facts);
+      const dirty = (cell.facts.staged || 0) + (cell.facts.unstaged || 0) + (cell.facts.untracked || 0);
+      if (dirty && fleetActions()) section.append(uncommittedThere(row, machine, dirty));
     }
     panel.append(section);
   }
   for (const current of document.querySelectorAll('tbody tr')) current.classList.toggle('selected', current.dataset.repoId === row.id);
+}
+
+/** "What is uncommitted there?": that machine answers with file names and line counts (never
+ *  contents). A machine that is off cannot answer; its counts are its last report. */
+const asked = new Map();
+function uncommittedThere(row, machine, dirty) {
+  const key = `${row.id}/${machine.id}`, box = node('div', undefined, 'detail-changes');
+  const view = asked.get(key);
+  const ask = node('button', view ? 'Ask again' : `Show the ${dirty} uncommitted file${dirty === 1 ? '' : 's'}`, 'quiet'); ask.type = 'button';
+  const redraw = () => { state.selected = null; showDetail(row); };
+  ask.onclick = async () => {
+    asked.set(key, {loading: true}); redraw();
+    try { asked.set(key, {result: await fleetActions().changes(row.id, machine.id)}); }
+    catch (error) {
+      asked.set(key, {error: machine.freshness === 'current' ? error.message
+        : `${machine.label} is not running gitSpecOps right now, so it cannot answer. These counts are its last report; ` +
+          'the file names never leave a machine until it is asked. Open this page there, or ask again when it is on.'});
+    }
+    redraw();
+  };
+  box.append(ask);
+  if (!view) return box;
+  if (view.loading) box.append(node('p', `Asking ${machine.label}…`, 'host-note'));
+  else if (view.error) box.append(node('p', view.error, 'tone-text-warning'));
+  else for (const [index, copy] of (view.result.copies || []).entries()) {
+    box.append(node('p', `${view.result.copies.length > 1 ? `Copy ${index + 1}: ` : ''}${copy.summary}`));
+    const list = node('ul');
+    for (const file of copy.files || []) {
+      const lines = file.added >= 0 && (file.added || file.deleted) ? ` +${file.added} −${file.deleted}` : '';
+      list.append(node('li', `${file.name} · ${file.status}${lines}${file.line_endings_only ? ' · line endings only' : ''}`));
+    }
+    box.append(list);
+  }
+  return box;
 }
 
 function renderRepositories() {
@@ -205,34 +277,60 @@ function renderRepositories() {
   }
   const perspective = perspectiveOf(data, null);
   const grid = {perspective, columns: columnsOf(orderedMachines(data, perspective), rows)};
-  // By library and folder: each library is a section, its folders inside it (the user,
-  // 2026-11-16). By owner: one level, as before.
-  const libraries = new Map();
-  for (const group of groups) {
-    const key = state.grouping === 'place' ? (group.host || 'Other machines') : '';
-    if (!libraries.has(key)) libraries.set(key, []);
-    libraries.get(key).push(group);
-  }
-  for (const [library, folders] of libraries) {
-    let target = list;
-    if (library) {
-      const outer = node('details', undefined, 'repo-library');
-      const outerId = `library/${library}`;
-      outer.open = state.expansion.isOpen(outerId);
-      outer.addEventListener('toggle', () => { state.expansion.record(outerId, outer.open); saveCollapsedGroups(); });
-      const count = folders.reduce((sum, group) => sum + group.rows.length, 0);
-      const total = folders.reduce((sum, group) => sum + (group.count ?? group.rows.length), 0);
-      const attention = folders.reduce((sum, group) => sum + group.attention, 0);
-      const head = node('summary'); head.append(document.createTextNode(library));
-      head.append(node('span', `${folders.length} folder${folders.length === 1 ? '' : 's'} · ${shownOf(count, total)} · ${attention} need attention`, 'group-meta'));
-      outer.append(head); list.append(outer); target = outer;
-    }
-    for (const group of folders) renderGroup(target, group, data, grid);
-  }
+  if (state.grouping === 'place') renderPlaceTree(list, data, rows, grid);
+  else for (const group of groups) renderGroup(list, group, data, grid);
   list.append(node('p', GRID_FOOTNOTE, 'host-note'));
   gridNotes(list, renderRepositories);
   const selected = rows.find(row => row.id === state.selected);
   if (selected) showDetail(selected); else { state.selected = null; byId('detail').hidden = true; }
+}
+
+// Other machines start collapsed; the ones the person opened stay open across reloads.
+const openedMachines = (() => {
+  try { return new Set(JSON.parse(localStorage.getItem('gitso.openMachines') || '[]')); } catch { return new Set(); }
+})();
+function saveOpenedMachines() {
+  try { localStorage.setItem('gitso.openMachines', JSON.stringify([...openedMachines])); } catch { /* a remembered choice only */ }
+}
+
+/** Machine > Library > Folder > Repositories, labelled at every level; this machine first and
+ *  open, issues first at every level, every control still on the page (the user, 2026-11-16). */
+function renderPlaceTree(list, data, rows, grid) {
+  const here = perspectiveOf(data, null);
+  const chosen = controls.machine.value;
+  for (const branch of placeTree(data, rows, here)) {
+    if (chosen !== 'all' && branch.machine.id !== chosen) continue;
+    if (!branch.repositories) continue;
+    const mine = branch.machine.id === here;
+    const machineId = `m/${branch.machine.id}`;
+    const outer = node('details', undefined, 'repo-machine');
+    outer.open = mine || chosen !== 'all' ? state.expansion.isOpen(machineId) : openedMachines.has(machineId);
+    outer.addEventListener('toggle', () => {
+      if (mine || chosen !== 'all') state.expansion.record(machineId, outer.open);
+      else if (outer.open) openedMachines.add(machineId); else openedMachines.delete(machineId);
+      saveCollapsedGroups(); saveOpenedMachines();
+    });
+    const head = node('summary');
+    head.append(node('span', 'Machine', 'level-label'), document.createTextNode(`${branch.machine.label}${mine ? ' (this machine)' : ''}`));
+    head.append(node('span', `${branch.libraries.length} librar${branch.libraries.length === 1 ? 'y' : 'ies'} · ` +
+      `${branch.repositories} repositories · ${branch.attention} need attention · ${branch.machine.freshness}`, 'group-meta'));
+    outer.append(head); list.append(outer);
+    for (const library of branch.libraries) {
+      const libraryId = `${machineId}/${library.name}`;
+      const inner = node('details', undefined, 'repo-library');
+      inner.open = state.expansion.isOpen(libraryId);
+      inner.addEventListener('toggle', () => { state.expansion.record(libraryId, inner.open); saveCollapsedGroups(); });
+      const libHead = node('summary');
+      libHead.append(node('span', 'Library', 'level-label'), document.createTextNode(library.name));
+      libHead.append(node('span', `${library.folders.length} folder${library.folders.length === 1 ? '' : 's'} · ` +
+        `${library.repositories} repositories · ${library.attention} need attention`, 'group-meta'));
+      inner.append(libHead); outer.append(inner);
+      for (const folder of library.folders) {
+        renderGroup(inner, {id: `${libraryId}/${folder.name}`, label: folder.name, rows: folder.rows,
+                            count: folder.rows.length, attention: folder.attention, level: 'Folder'}, data, grid);
+      }
+    }
+  }
 }
 
 /** One group of the inventory: the shared copy grid, so a copy reads the same as on
@@ -244,7 +342,9 @@ function renderGroup(list, group, data, grid) {
     state.expansion.record(group.id, details.open);
     saveCollapsedGroups();
   });
-  const summary = node('summary'); summary.append(document.createTextNode(group.label));
+  const summary = node('summary');
+  if (group.level) summary.append(node('span', group.level, 'level-label'));
+  summary.append(document.createTextNode(group.label));
   summary.append(node('span', `${shownOf(group.rows.length, group.count ?? group.rows.length)} · ${group.attention} need attention`, 'group-meta'));
   if (state.data.local_actions) {
     const audit = node('button', 'Audit these', 'quiet group-action'); audit.type = 'button';
@@ -259,7 +359,7 @@ function renderGroup(list, group, data, grid) {
 }
 
 function renderMachines() {
-  drawMachines(byId('machine-list'), state.data, ageLabel);
+  drawMachines(byId('machine-list'), state.data, ageLabel, null, fleetActions(), renderMachines);
 }
 
 function renderCloudsPanel() {
@@ -398,6 +498,13 @@ function renderAbout() {
     byId('setup-card').hidden = false;
     renderSettings(byId('setup-controls'), connection, () => state.data.local_actions.token);
   }
+  if (state.data.local_actions && !byId('not-counted')) {
+    // What this machine does not count, each with "Count again" (fleet_resolve.js).
+    const section = node('div', undefined, 'capability'); section.id = 'not-counted';
+    byId('capabilities').before(section);
+    notCountedSection(section, (op, extra = {}) => connection.desktopAction('repo-action', {op, ...extra},
+      state.data.local_actions.token, {structured: true}));
+  }
   renderSettingCards(byId('integrations'), integrations);
   renderSettingCards(byId('features'), features);
 }
@@ -424,7 +531,7 @@ function shownOf(shown, total) {
 }
 
 // The map's choices survive a reload (the user, 2026-11-16: reloading went back to the zoom map).
-const MAP_DEFAULTS = {view: 'zoom', perspective: null, group: 'all', repo: null};
+const MAP_DEFAULTS = {view: 'overview', perspective: null};
 const mapOptions = (() => {
   try { return {...MAP_DEFAULTS, ...JSON.parse(localStorage.getItem('gitso.map') || '{}'), perspective: null}; } catch { return {...MAP_DEFAULTS}; }
 })();
@@ -443,7 +550,7 @@ function renderMapPanel() {
   mapOptions.view = byId('map-view').value;
   fillSelect(byId('map-perspective'), data.machines.map(m => [m.id, m.label]), perspectiveOf(data, mapOptions.perspective));
   mapOptions.perspective = byId('map-perspective').value || null;
-  byId('map-perspective').closest('label').hidden = mapOptions.view === 'zoom';
+  byId('map-perspective').closest('label').hidden = mapOptions.view !== 'machines';
   // Never a blank map: while the library is still being read, say so; if drawing fails, say why
   // and what to do (the user, 2026-11-16).
   const box = byId('map');
@@ -454,7 +561,7 @@ function renderMapPanel() {
     return;
   }
   try {
-    renderMap(box, data, {...mapOptions, actions: fleetActions()}, change => { Object.assign(mapOptions, change); saveMapOptions(); renderMapPanel(); });
+    renderMap(box, data, {...mapOptions, actions: fleetActions(), onRepository: openRepository}, change => { Object.assign(mapOptions, change); saveMapOptions(); renderMapPanel(); });
   } catch (error) {
     box.replaceChildren(node('p', `The map could not be drawn (${error.message}). Switch to another map view above; `
       + 'if this one keeps failing, tell us the message.', 'tone-text-warning'));
@@ -479,6 +586,11 @@ function renderAll() {
   });
   renderFilters(); renderRepositories(); renderMapPanel(); renderOrgsPanel(); renderSecurity(byId('security'), state.data, connection);
   renderMachines(); renderCloudsPanel(); renderAbout(); renderNotices();
+  renderReference(byId('reference'), state.data.local_actions ? {
+    call: payload => connection.desktopAction('reference', payload, state.data.local_actions.token, {structured: true}),
+    data: () => state.data, actions: fleetActions,
+    repoAction: payload => connection.desktopAction('repo-action', payload, state.data.local_actions.token, {structured: true}),
+  } : null, renderSummary);
   renderSummary();  // after Security, so its tile shows the latest audit
   byId('last-updated').textContent = `View received ${state.receivedAt.toLocaleTimeString()}`;
 }
@@ -501,14 +613,43 @@ byId('grouping').onchange = () => {
 byId('clear-filters').onclick = () => { controls.query.value = ''; controls.status.value = 'attention'; controls.machine.value = 'all'; controls.sort.value = 'attention'; renderRepositories(); };
 byId('expand').onclick = () => {
   state.expansion.expandAll();
-  saveCollapsedGroups();
-  document.querySelectorAll('.repo-group, .repo-library').forEach(item => { item.open = true; });
+  for (const machine of state.data.machines) openedMachines.add(`m/${machine.id}`);
+  saveCollapsedGroups(); saveOpenedMachines();
+  document.querySelectorAll('.repo-group, .repo-library, .repo-machine').forEach(item => { item.open = true; });
 };
 byId('collapse').onclick = () => {
-  state.expansion.collapseAll([...state.data.groups.map(group => group.id),
-    ...new Set(state.data.groups.map(group => `library/${group.host || 'Other machines'}`))]);
+  const ids = [...state.data.groups.map(group => group.id)];
+  for (const branch of placeTree(state.data, state.data.rows, perspectiveOf(state.data, null))) {
+    ids.push(`m/${branch.machine.id}`);
+    for (const library of branch.libraries) {
+      ids.push(`m/${branch.machine.id}/${library.name}`);
+      for (const folder of library.folders) ids.push(`m/${branch.machine.id}/${library.name}/${folder.name}`);
+    }
+  }
+  state.expansion.collapseAll(ids);
+  openedMachines.clear(); saveOpenedMachines();
   saveCollapsedGroups();
-  document.querySelectorAll('.repo-group, .repo-library').forEach(item => { item.open = false; });
+  document.querySelectorAll('.repo-group, .repo-library, .repo-machine').forEach(item => { item.open = false; });
+};
+// "On my other devices": where your phone or another computer opens this page (2026-11-17).
+byId('away').onclick = async () => {
+  const note = byId('away-note');
+  if (!note.hidden) { note.hidden = true; return; }
+  note.hidden = false; note.textContent = 'Looking…';
+  try {
+    const s = (await connection.desktopAction('setup/settings', {}, state.data.local_actions.token, {structured: true})).settings;
+    if (s.remote_view) {
+      const link = node('a', s.remote_view); link.href = s.remote_view; link.target = '_blank'; link.rel = 'noopener';
+      const copy = node('button', 'Copy', 'quiet'); copy.type = 'button';
+      copy.onclick = async () => { try { await navigator.clipboard.writeText(s.remote_view); copy.textContent = 'Copied'; } catch { copy.textContent = 'Select it and copy'; } };
+      note.replaceChildren('The view from this machine, for your phone or another computer with Tailscale on the same account: ', link, ' ', copy,
+        ' It is read-only and shows the fleet as this machine sees it.');
+    } else {
+      const open = node('a', 'Settings'); open.href = '#settings'; open.onclick = event => { event.preventDefault(); note.hidden = true; selectTab('settings'); };
+      note.replaceChildren('Not shared with your other devices yet. In ', open,
+        ', under "How the app shows itself", choose "Also on my Tailscale devices", save, and restart the app. Install Tailscale on the other device with the same account.');
+    }
+  } catch (error) { note.textContent = error.message; }
 };
 byId('theme').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
 // The menu is on screen from the start; its numbers arrive with the first report.

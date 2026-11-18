@@ -238,7 +238,7 @@ def setup_operation():
         print(f"✓ Read access confirmed for {config['dest_org']} (write access is verified when repos are created)")
         print()
 
-    elif operation_mode == 'migrate':
+    if operation_mode == 'migrate':
         config['source_org'] = prompt_input("Source organization name: ")
         config['dest_org'] = prompt_input("Destination organization name: ")
         print()
@@ -250,7 +250,19 @@ def setup_operation():
         print(f"✓ Read access confirmed for {config['dest_org']} (write access is verified when repos are created)")
         print()
 
-    elif operation_mode == 'single':
+    if operation_mode in ('upload', 'migrate'):
+        # The person's choice, asked every time (the user, 2026-11-17). A duplication is usually
+        # an exact copy between private places, which needs no check; a copy that is headed
+        # somewhere public does.
+        print("Security check before each repository is pushed?")
+        print("  1. No: an exact copy, every branch, tag and note as it is (default)")
+        print("  2. Yes: read each history for credentials and your protected values first;")
+        print("     a repository with a high-severity finding is held, nothing is created for it,")
+        print("     and you are told how to make a clean copy to upload instead (slower)")
+        config['security'] = prompt_input("Check (1 or 2, default 1): ") == "2"
+        print()
+
+    if operation_mode == 'single':
         # The repo spec and target directory are collected inside run_single_repo so the
         # spec is resolved (and shown) before anything else is asked.
         config['source_spec'] = None
@@ -693,6 +705,7 @@ def main(argv=None):
     total_repos = len(remaining_repos)
     successful = 0
     failed = 0
+    held = []
 
     # Execute operation. Download always runs through the pool (workers may be 1); upload and
     # migrate are sequential because they create remote repos and we don't want to race those.
@@ -719,20 +732,27 @@ def main(argv=None):
         for idx, repo in enumerate(remaining_repos, 1):
             if operation_mode == 'upload':
                 result = process_upload_repo(
-                    repo, config['dest_org'], files['completed'], files['success'], files['error']
+                    repo, config['dest_org'], files['completed'], files['success'], files['error'],
+                    security=config.get('security', False)
                 )
             else:  # migrate
                 result = process_migrate_repo(
                     repo, config['source_org'], config['dest_org'], config['temp_dir'],
-                    files['completed'], files['success'], files['error']
+                    files['completed'], files['success'], files['error'],
+                    security=config.get('security', False)
                 )
             if result['status'] == 'success':
                 successful += 1
             else:
                 failed += 1
+                if result['status'] == 'held':
+                    held.append(result['repo'])
 
     # Show summary
     show_summary(operation_mode, total_repos, successful, failed, config['temp_dir'], files)
+    if held:
+        print(f"Held by the security check ({len(held)}), nothing created or pushed: {', '.join(held)}")
+        print("The reasons, and how to make a clean copy of each, are in the error log above.")
 
 
 def cli_main(argv=None):

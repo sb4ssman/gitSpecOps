@@ -17,6 +17,10 @@ function names(request) {
   return list.length > 6 ? `${list.slice(0, 6).join(', ')} and ${list.length - 6} more` : list.join(', ');
 }
 
+// How a request ended, in words: partly done and not done are never shown as done.
+const ENDED = {done: 'Done', partial: 'Partly done', failed: 'Not done', dismissed: 'Dismissed'};
+const ended = request => Object.hasOwn(ENDED, request.status);
+
 export function renderRequests(block, data, act) {
   const requests = data.requests || {waiting: [], answered: [], sent: []};
   block.replaceChildren();
@@ -25,7 +29,7 @@ export function renderRequests(block, data, act) {
   }
   block.hidden = false;
   if (message) block.append(el('p', message, 'host-note'));
-  const finished = requests.answered.length + requests.sent.filter(r => r.status === 'done' || r.status === 'dismissed').length;
+  const finished = requests.answered.length + requests.sent.filter(ended).length;
   if (finished) {
     const clear = el('button', `Clear ${finished} finished`); clear.type = 'button';
     clear.onclick = async () => {
@@ -41,6 +45,7 @@ export function renderRequests(block, data, act) {
         ? 'Each is fetched first and moved forward only if it is clean and simply behind; anything else is reported, not touched.'
         : 'Each is cloned into its organization folder in this machine\'s first library; nothing that exists is replaced.', 'host-note'));
     const busy = working.has(request.id);
+    if (request.status === 'running') { item.append(el('p', 'Running now…', 'host-note')); block.append(item); continue; }
     for (const [label, accept] of [['Apply', true], ['Dismiss', false]]) {
       const button = el('button', busy && accept ? 'Working…' : label); button.type = 'button'; button.disabled = busy;
       button.onclick = async () => {
@@ -55,20 +60,23 @@ export function renderRequests(block, data, act) {
   }
   for (const request of requests.answered.slice(0, 3)) {
     const item = el('details', undefined, 'request');
-    item.append(el('summary', `${request.status === 'done' ? 'Done' : 'Dismissed'}: ${KIND[request.kind]} for ${request.from_label} (${request.items.length})`),
+    item.append(el('summary', `${ENDED[request.status] || request.status}: ${KIND[request.kind]} for ${request.from_label} (${request.items.length})`),
       el('pre', request.result || '', 'host-note'));
     block.append(item);
   }
   for (const request of requests.sent) {
     // Answered over there: say so, with what happened; otherwise it is still waiting.
-    const answered = request.status === 'done' || request.status === 'dismissed';
-    const item = el(answered ? 'details' : 'div', undefined, 'request');
+    const answered = ended(request);
+    const item = el(answered ? 'details' : 'div', undefined, `request${request.status === 'partial' || request.status === 'failed' ? ' request-trouble' : ''}`);
+    if (answered && request.status !== 'done') item.open = true;
     const words = answered
-      ? `${request.status === 'done' ? 'Done' : 'Dismissed'} on ${request.to_label}: ${KIND[request.kind]} ${names(request)}`
-      : `Waiting on ${request.to_label} (apply it there): ${KIND[request.kind]} ${names(request)}. `;
+      ? `${ENDED[request.status]} on ${request.to_label}: ${KIND[request.kind]} ${names(request)}`
+      : request.status === 'running' ? `Running on ${request.to_label}: ${KIND[request.kind]} ${names(request)}. `
+      : `Sent to ${request.to_label}; it runs there when that machine next checks in: ${KIND[request.kind]} ${names(request)}. `;
     item.append(el(answered ? 'summary' : 'span', words, answered ? undefined : 'host-note'));
     if (answered) item.append(el('pre', request.result || '', 'host-note'));
     const button = el('button', answered ? 'Clear' : 'Withdraw'); button.type = 'button';
+    if (!answered) button.title = 'Stops it only if that machine has not picked it up yet';
     button.onclick = async () => {
       try { await act('request-withdraw', {id: request.id}); message = answered ? '' : 'Withdrawn.'; } catch (error) { message = error.message; }
     };

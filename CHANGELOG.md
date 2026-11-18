@@ -5,6 +5,65 @@ while the version starts with 0, gitSpecOps is a development preview and anythin
 
 ## Unreleased
 
+- **The operations as buttons, in every view.** The map's machine and organization levels, each
+  repository's view, and every card on Machines carry "Fast-forward N behind" (and, for a chosen
+  organization or repository, "Clone N missing"), on this machine now or sent to another to run
+  when it next checks in. Through a machine, an organization's list says that machine's own copy,
+  not the fleet's advice. The repository view has a button to its details (changes, commit,
+  push, safe to delete).
+- **Reference: one place to read and use an operation.** Choose one: its manual, its source code,
+  and a Use it form: which machine, pointed at a repository, an organization or a library, more
+  arguments. On this machine it opens a terminal in that folder with the command running, so its
+  own screen and questions are in front of you; on another machine, a fast-forward or a clone is
+  sent. Choosing an item keeps your place in the list.
+- **The menu fits one row** when the screen allows, and wraps when it does not.
+- **An open tab reloads itself** when the app was updated and restarted, instead of running the
+  old page against new data.
+
+- **Requests between machines run on arrival.** A request can only ask for a fast-forward after
+  a fresh fetch or a clone that replaces nothing, and only a machine of the same fleet can send
+  one, so the receiving machine now runs it when it next checks in, without a second approval
+  there (`auto_requests: false` restores Apply). A request acts on the copy in the library you
+  chose, and ends as done, partly done or not done, never "done" over a failure. Other machines
+  are told fixed sentences per repository; Git's own words stay in that machine's task log.
+- **Push and pull do exactly what was approved.** `gitso push` names its remote and one plain
+  refspec, so a configured force refspec, a mirror remote or `push.default` cannot widen or
+  overwrite; `gitso pull` and catch-up name the remote and branch, and refuse a branch that
+  tracks another remote.
+- **Safe-to-wipe is never SAFE over a folder it could not read.** Such a folder is listed and
+  blocks the verdict.
+- **A clone lands inside the library that was approved:** the real target is checked, links
+  included, before anything is created.
+- **Org copy asks about security.** No (the default) is an exact copy. Yes reads each history
+  first; a repository with a high-severity finding is held, nothing is created for it, and you
+  are told how to make a clean copy. Uploads send branches, tags and notes only.
+- **A namespace's repository list is complete or it is an error** (the limit is 20,000, and a
+  list that fills it is refused).
+
+- **Reference**, a new menu item between Security and Settings: the catalog of operations by
+  layer, each with its manual (and Git's own, for the Basic ones), this project's documents, and
+  the online manuals of the tools it drives. Reading only.
+- **The map's repository view:** machine boxes fit their columns (five overlapped); clicking one
+  opens the repository's details. There, a copy with uncommitted work has "Show the N
+  uncommitted files": that machine answers with file names and line counts. A machine that is
+  off cannot answer, and the page says so.
+
+- **Second copies, found and retired with proof.** The live line's "N folders are second copies"
+  opens the list (a new filter, "Several copies on one machine"). A repository with several
+  folders here lets you choose which copy the Resolve buttons act on, and "Safe to delete this
+  copy?" fetches, then proves it: every commit on a remote, nothing stashed, and every
+  uncommitted or untracked file byte-identical in another copy here (ignored files are listed,
+  not judged). gitSpecOps deletes nothing; it opens the folder. A not-counted entry now covers
+  everything inside its folder, and Settings can add a folder by path.
+- **The audit page:** scanners and protected values sit above what to audit; installed scanners
+  are ticked by default; a status line shows the phase of the repository being read (working
+  files, then every commit with their count) and for how long.
+- **"On my other devices"** in the header shows this machine's address for your phone or another
+  computer on your Tailscale account, or how to turn that on.
+- **The header** says this machine and the fleet in a few words; the full line is its tooltip.
+- **Fixes:** the page's commit and push now pass the app's settings profile; a Git read that
+  fails is an error, never an empty answer; Settings' not-counted list read the wrong record.
+
 - **The page, rebuilt around one menu and one vocabulary.** The menu is seven tiles, each with its
   number: Network map (the zoomable picture, now the first page), Repositories, Orgs/Archives,
   Machines, Clouds, Security, Settings (was "App & setup"; `#about` still opens it). Repositories

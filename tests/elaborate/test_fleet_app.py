@@ -191,7 +191,8 @@ def main():
                            "/assets/fleet_view.js", "/assets/fleet_standard.js",
                            "/assets/fleet_map.js", "/assets/fleet_zoom.js", "/assets/fleet_security.js",
                            "/assets/fleet_settings.js", "/assets/fleet_requests.js", "/assets/fleet_grid.js",
-                           "/assets/fleet_orgs.js", "/assets/fleet_pages.js", "/setup", "/assets/fleet_setup.js"}
+                           "/assets/fleet_orgs.js", "/assets/fleet_pages.js", "/assets/fleet_explorer.js", "/assets/fleet_resolve.js", "/assets/fleet_reference.js", "/assets/fleet_actions.js",
+                           "/setup", "/assets/fleet_setup.js"}
     assert all(isinstance(value[0], bytes) for value in assets.values())
     print("ALL-FLEET-APP-TESTS-PASS")
 

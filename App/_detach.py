@@ -33,8 +33,32 @@ _WMI_START = ("$si = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly
               "@{CommandLine=$env:GITSO_START; CurrentDirectory=$env:GITSO_START_IN; "
               "ProcessStartupInformation=$si}; "
               "if ($r.ReturnValue -eq 0) { $r.ProcessId } else { exit 1 }")
-STARTED = "started on its own: its icon is by the clock (Windows may tuck it under the ^ arrow)"
-ALREADY = "already running: its icon is by the clock (Windows may tuck it under the ^ arrow)"
+
+
+def where_the_icon_is() -> str:
+    """Where to find the running app, said truthfully for this computer: a Mac too old for Qt
+    runs it with no icon at all (macOS 10.15, 2026-11-16: "its icon is by the clock" was wrong)."""
+    import importlib.util
+    import sys
+    try:
+        has_qt = importlib.util.find_spec("PySide6") is not None
+    except (ImportError, ValueError):
+        has_qt = False
+    if not has_qt:
+        if sys.platform == "darwin":
+            from App._tray.macos_bar import swift_compiler
+            if swift_compiler():  # the native icon (App/_tray/macos_bar.py)
+                return "its icon is in the menu bar"
+        return "it has no icon on this computer (no Qt for it); open the page with gitso tray --open"
+    if sys.platform == "darwin":
+        return "its icon is in the menu bar"
+    if os.name == "nt":
+        return "its icon is by the clock (Windows may tuck it under the ^ arrow)"
+    return "its icon is in the system tray"
+
+
+STARTED = f"started on its own: {where_the_icon_is()}"
+ALREADY = f"already running: {where_the_icon_is()}"
 
 
 def interpreter() -> Path:
@@ -59,6 +83,50 @@ def running(config_dir=None, settings_home=None) -> bool:
             return False
     except (ValueError, OSError):
         return True
+
+
+def _session_id() -> int | None:
+    """This process's Windows session: 0 is the services session (SSH, services), which has no
+    desktop; the signed-in person's desktop is 1 or higher."""
+    import ctypes
+    kernel = ctypes.windll.kernel32
+    session = ctypes.c_ulong()
+    return session.value if kernel.ProcessIdToSessionId(kernel.GetCurrentProcessId(), ctypes.byref(session)) else None
+
+
+def _through_desktop_session(argv: list[str]) -> bool:
+    """From session 0, start `argv` in the signed-in person's desktop instead (2026-11-17: every app
+    `gitso update` restarted over SSH ran in session 0, with no icon, holding the lock, so it looked
+    dead until killed). A one-time task that runs only in that person's interactive session: made,
+    run, deleted. Deleting it does not stop what it started. False when Windows refused."""
+    if any(name.startswith("GITSPECOPS_") for name in os.environ):
+        return False  # a task gets the person's own environment; keep these overrides
+    # Inside a console with no window (2026-11-17): the virtual environment's pythonw.exe is a
+    # launcher that starts the real python.exe, a console program, so a plain task opened a blank
+    # console window on the desktop, and closing it killed the app. conhost --headless gives that
+    # console no window at all (checked on Windows 10: "Window Title: N/A").
+    conhost = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "conhost.exe"
+    if not conhost.exists():
+        return False
+    command = subprocess.list2cmdline([str(conhost), "--headless", *argv])
+    if len(command) > 261:  # schtasks' limit for the command
+        return False
+    name = f"gitSpecOps start {os.getpid()}"
+
+    def schtasks(*args):
+        return subprocess.run(["schtasks", *args], capture_output=True, text=True, timeout=60,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    try:
+        if schtasks("/create", "/tn", name, "/tr", command, "/sc", "once", "/st", "23:59", "/it", "/f").returncode:
+            return False
+        return schtasks("/run", "/tn", name).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+    finally:
+        try:
+            schtasks("/delete", "/tn", name, "/f")
+        except (OSError, subprocess.SubprocessError):
+            pass
 
 
 def _through_windows(argv: list[str]) -> int | None:
@@ -112,6 +180,15 @@ def start(arguments: list[str] | None = None, *, wait: float = 5.0) -> str:
         return ALREADY
     # --detached: run in place, and give up any console this start gave it (App/_tray/qt.py).
     argv = [str(interpreter()), str(TRAY), "--detached", *(arguments or [])]
+    if os.name == "nt" and _session_id() == 0 and _through_desktop_session(argv):
+        # Started in the person's desktop: no process id comes back, so the lock says when it runs.
+        import time
+        for _ in range(int(max(wait, 1) * 4)):
+            if running():
+                return STARTED
+            time.sleep(0.5)
+        raise RuntimeError("the app did not start in your desktop session; is anyone signed in? "
+                           "Start it there with gitso tray")
     pid = _through_windows(argv) if os.name == "nt" else None
     if pid is not None:
         code = _exit_code(pid, wait)

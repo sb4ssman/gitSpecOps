@@ -156,10 +156,12 @@ for moved, label in ((False, "already current"), (True, "updated")):
         return Result(args, 0, "Bereits aktuell.\n", "")
 
     pull_module.run_git = translated
+    _real_upstream, pull_module.upstream_of = pull_module.upstream_of, lambda _repo: ("origin", "refs/heads/main")
     try:
         check(f"a translated git still reports '{label}'", fast_forward("unused") == label)
     finally:
         pull_module.run_git = _real_run_git
+        pull_module.upstream_of = _real_upstream
 
 push_code = (ROOT / "Basic" / "push.py").read_text(encoding="utf-8").split('"""', 2)[2]
 check("Basic/push.py code has no force option", "force" not in push_code.lower())

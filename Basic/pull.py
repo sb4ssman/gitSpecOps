@@ -25,6 +25,7 @@ if _ROOT not in sys.path:
 
 from Basic._console import enable_unicode_output  # noqa: E402
 from Basic import _cli  # noqa: E402
+from Basic._facts import upstream_of  # noqa: E402
 from Basic._run import run_git  # noqa: E402
 
 EFFECT = "local"
@@ -44,11 +45,18 @@ def fast_forward(repo: Path | str, remote: str = "origin") -> str:
     Whether anything moved is read from HEAD before and after, never from git's wording:
     git translates its messages, so "Already up to date." reads differently elsewhere.
     """
+    # What was approved is what is pulled (an outside review, 2026-11-17): a branch that tracks
+    # another remote is refused, and the pull names the remote and the branch itself.
+    target = upstream_of(repo)
+    if target is None:
+        return "failed: this branch tracks no branch on a remote"
+    if target[0] != remote:
+        return f"failed: this branch tracks the remote '{target[0]}', not '{remote}'"
     fetched = run_git(repo, ["fetch", remote])
     if fetched.returncode != 0:
         return f"failed: fetch: {fetched.stderr.strip() or 'error'}"
     before = _head(repo)
-    pulled = run_git(repo, ["pull", "--ff-only"])
+    pulled = run_git(repo, ["pull", "--ff-only", "--no-rebase", "--", remote, target[1]])
     if pulled.returncode != 0:
         return f"failed: pull --ff-only: {pulled.stderr.strip() or 'not a fast-forward'}"
     return ALREADY_CURRENT if _head(repo) == before else UPDATED

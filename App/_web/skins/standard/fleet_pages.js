@@ -3,6 +3,7 @@
  * integrations) or a count of them. Nothing here decides what a state means.
  */
 import {html, PROVIDER} from './fleet_grid.js';
+import {machineActions} from './fleet_actions.js';
 
 /** The menu, in the user's order (2026-11-16). `id` is the panel and the address (#map). */
 export const MENU = [
@@ -12,13 +13,14 @@ export const MENU = [
   {id: 'machines', label: 'Machines'},
   {id: 'clouds', label: 'Clouds'},
   {id: 'security', label: 'Security'},
+  {id: 'reference', label: 'Reference'},
   {id: 'settings', label: 'Settings'},
 ];
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** Each menu item's number and line. `security` is the Security tab's own summary. */
-export function menuTiles(data, security) {
+export function menuTiles(data, security, reference) {
   const s = data.summary || {};
   const libraries = data.libraries || [];
   const talking = (data.integrations || []).filter(item => item.enabled).map(item => TRANSPORT_NAMES[item.id] || item.label);
@@ -31,12 +33,13 @@ export function menuTiles(data, security) {
     machines: [String(s.machines ?? data.machines.length), s.stale_machines ? `${s.stale_machines} stale` : 'all reports current'],
     clouds: [String(s.providers ?? providers.length), [...providers, ...talking].join(' · ') || 'none yet'],
     security: security,
+    reference: reference || ['Reference', 'operations and documents'],
     settings: [data.fleet_name || (data.mark?.fleet?.state === 'none' ? 'No fleet' : 'Fleet'), machine ? machine.label : 'this machine'],
   };
 }
 
-export function renderMenu(nav, data, active, security, onSelect) {
-  const tiles = data.generated_at ? menuTiles(data, security) : {};
+export function renderMenu(nav, data, active, security, onSelect, reference) {
+  const tiles = data.generated_at ? menuTiles(data, security, reference) : {};
   if (!nav.childElementCount) {
     for (const item of MENU) {
       const button = html('button', undefined, 'menu-tile'); button.type = 'button';
@@ -73,7 +76,7 @@ function table(headings, rows) {
 }
 
 /** Machines, each with its libraries under it. */
-export function renderMachines(container, data, ageLabel, onOrg) {
+export function renderMachines(container, data, ageLabel, onOrg, actions = null, redraw = () => {}) {
   container.replaceChildren();
   if (!data.machines.length) { container.append(html('p', 'No machine has reported yet.', 'empty')); return; }
   const libraries = data.libraries || [];
@@ -86,10 +89,30 @@ export function renderMachines(container, data, ageLabel, onOrg) {
     card.append(html('p', `Last report ${ageLabel(machine.age_seconds)} · ${plural(machine.repository_count, 'repository', 'repositories')} · device ID ${machine.id}`, 'host-note'));
     const mine = libraries.filter(entry => entry.machine_id === machine.id);
     if (mine.length) {
-      card.append(table(['Library', 'Repos', 'Orgs', 'Attention'], mine.map(entry => [
-        entry.library || 'not named (an older report)', entry.repositories, entry.organizations,
-        entry.attention ? `⚑ ${entry.attention}` : '0'])));
+      // Libraries across, their numbers down (the user, 2026-11-17: no sideways scrolling).
+      const label = id => (data.machines.find(m => m.id === id) || {label: id}).label;
+      const t = html('table', undefined, 'data-table machine-libraries');
+      const head = html('tr'); head.append(html('th', 'Library'));
+      for (const entry of mine) {
+        const th = html('th', entry.library || 'not named (an older report)');
+        // The same disk from another system on the same box (a dual boot), named.
+        for (const other of entry.same_disk_as || []) th.append(html('span', `same disk as ${label(other.machine_id)}: ${other.library}`, 'host-note'));
+        head.append(th);
+      }
+      const thead = html('thead'); thead.append(head); t.append(thead);
+      const body = html('tbody');
+      for (const [name, value] of [['Repositories', e => e.repositories], ['Organizations', e => e.organizations],
+                                   ['Need attention', e => (e.attention ? `⚑ ${e.attention}` : '0')]]) {
+        const line = html('tr'); line.append(html('th', name));
+        for (const entry of mine) line.append(html('td', String(value(entry))));
+        body.append(line);
+      }
+      t.append(body);
+      card.append(t);
     } else card.append(html('p', 'No library reported.', 'host-note'));
+    // What this machine can be brought up to date with, as buttons (fleet_actions.js).
+    const bar = machineActions({data, rows: data.rows, machine, scope: 'everything it has', actions, redraw, clone: false});
+    if (bar) card.append(bar);
     container.append(card);
   }
   const issues = data.issues || [];

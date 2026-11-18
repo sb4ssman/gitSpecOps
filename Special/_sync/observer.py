@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import functools
+
 import socket
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -190,16 +192,35 @@ def fetch_repositories(paths: list[Path], workers: int = DEFAULT_FETCH_WORKERS,
     return fetched_at, issues
 
 
+def library_available(root: Path | str) -> bool:
+    """Check a configured library without walking it or following user-created links."""
+    import os
+    from Special._runtime.files import traverses_link
+
+    try:
+        path = Path(root)
+        if traverses_link(path):
+            return False
+        with os.scandir(path) as entries:
+            next(entries, None)
+        return True
+    except OSError:
+        return False
+
+
 def _discover(roots: list[RootSpec], issues: list[str]) -> list[Path]:
     """Every work-tree repository inside the configured roots, de-duplicated."""
     found: list[Path] = []
     seen: set[Path] = set()
     for spec in roots:
         root = spec.path.expanduser()
+        if not library_available(root):
+            issues.append(f"library unavailable: {root}")
+            continue
         try:
             hits = find_repos(root, max_depth=None if spec.recursive else 0)
-        except NotADirectoryError:
-            issues.append(f"not a directory: {root}")
+        except OSError:
+            issues.append(f"library unavailable: {root}")
             continue
         for hit in hits:
             path = Path(hit.path).resolve()
@@ -235,6 +256,20 @@ def observe_roots(roots: list[RootSpec], secret: str | None = None, fetch: bool 
                              roots=[spec.path for spec in roots])
     observed.issues = issues + observed.issues
     return observed
+
+
+@functools.lru_cache(maxsize=64)
+def _disk(root: str, secret: str | None) -> str | None:
+    """One library's disk fingerprint, read once per run (Basic/_volumes.py)."""
+    from Basic._volumes import volume_of
+    from Special._sync.manifest import disk_id
+    found = volume_of(root)
+    return disk_id(found[0], found[1], secret) if found else None
+
+
+def _disks(roots, secret: str | None) -> dict:
+    """Each library root's disk fingerprint, keyed as place_of looks them up."""
+    return {str(Path(root)): disk for root in roots or [] if (disk := _disk(str(Path(root)), secret))}
 
 
 def observe_paths(paths: list[Path], secret: str | None = None,
@@ -304,7 +339,7 @@ def observe_paths(paths: list[Path], secret: str | None = None,
             "head": git_stdout(path, ["rev-parse", "--verify", "-q", "HEAD"]),
             "upstream_head": (git_stdout(path, ["rev-parse", "--verify", "-q", "@{upstream}"])
                               if facts.get("upstream") else None),
-            "place": place_of(path, roots),
+            "place": place_of(path, roots, _disks(roots, secret)),
         })
         # Local-only: the catalog is never published, so it may hold the full identity.
         # host/owner are what let `fleet converge` ask a provider to name a peer's hash; `identity`

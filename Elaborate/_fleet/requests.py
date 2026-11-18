@@ -4,8 +4,12 @@ machine's page, answered on the other's.
 Why:          syncing a fleet from one screen (the user, 2026-11-16) without breaking the rule that
               machines only read from each other. A request is published like a report: the asking
               machine serves its outgoing requests (GET /v1/requests); each machine pulls them on
-              its round and keeps the ones addressed to it. Nothing runs until a person presses
-              Apply on the machine that does the work.
+              its round and keeps the ones addressed to it. A request can only ask for the two
+              operations that cannot lose work (a fast-forward after a fresh fetch; a clone that
+              replaces nothing), and only a machine of the same fleet can send one, so the
+              receiving machine runs it on arrival (the user, 2026-11-17: remote management
+              without walking to the other machine). `auto_requests: false` in the app's
+              settings makes it wait for Apply on that machine's page instead.
 Reads:        this machine's requests-out.json and requests-in.json in the fleet folder.
 May change:   those two files only. Applying a request runs the existing safe operations
               (Special/_sync/actions.py): a fast-forward after a fresh fetch, a clone that never
@@ -22,6 +26,22 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 KINDS = {"pull": "fast-forward", "clone": "clone"}
+#: What a request can end as. "partial": some repositories done, some not; never shown as done.
+ENDED = ("done", "partial", "failed", "dismissed")
+#: What other machines are told about one repository: fixed sentences by outcome, never Git's
+#: own words (they can hold paths and addresses; an outside review, 2026-11-17). The detail stays
+#: in this machine's tasks.log.
+OUTCOMES = {
+    "pulled": (True, "fast-forwarded"), "current": (True, "already current"),
+    "cloned": (True, "cloned"), "exists": (True, "already there, left as it is"),
+    "dirty": (False, "has uncommitted work, so it was not moved"),
+    "diverged": (False, "has commits on both sides; it needs a person"),
+    "ahead": (False, "is ahead of its provider; nothing to pull"),
+    "detached": (False, "is not on a branch"), "no_upstream": (False, "tracks no branch on a remote"),
+    "fetch_failed": (False, "could not be fetched"), "pull_failed": (False, "could not be fast-forwarded"),
+    "pull_needs_review": (False, "was pulled, but its state needs a look on that machine"),
+    "clone_failed": (False, "could not be cloned"),
+}
 KEEP_DAYS = 7
 MAX_ITEMS = 500
 
@@ -104,9 +124,9 @@ class RequestBook:
         The task log keeps the record. Returns how many were dropped."""
         with self.lock:
             sent = self._read(self.out_path)
-            kept_sent = [] if everything_sent else [item for item in sent if item.get("status") not in ("done", "dismissed")]
+            kept_sent = [] if everything_sent else [item for item in sent if item.get("status") not in ENDED]
             book = self._read(self.in_path)
-            kept_in = {key: value for key, value in book.items() if value.get("status") == "waiting"}
+            kept_in = {key: value for key, value in book.items() if value.get("status") in ("waiting", "running")}
             self._write(self.out_path, kept_sent)
             self._write(self.in_path, kept_in)
             return len(sent) - len(kept_sent) + len(book) - len(kept_in)
@@ -158,22 +178,62 @@ class RequestBook:
             return book[request_id]
 
 
+def _library_of(path, libraries: list[str]) -> str:
+    from Special._sync.manifest import library_name
+    resolved = Path(path).resolve()
+    for root in libraries:
+        base = Path(root).resolve()
+        if resolved == base or base in resolved.parents:
+            return library_name(root)
+    return ""
+
+
 def run_request(request: dict, local_checkouts, libraries: list[str]) -> str:
-    """Do what a request asks, with the safe operations; returns what happened, in words."""
-    from Special._sync.actions import apply_catchup, apply_materialize, plan_catchup, render_catchup
-    if request["kind"] == "pull":
-        paths = [path for item in request["items"] for path in local_checkouts(item.get("repo_id", ""))]
-        if not paths:
-            return "None of those repositories has a copy here."
-        return render_catchup(apply_catchup(plan_catchup(paths)), applied=True)
+    """Do what a request asks; returns what happened, in words (see `perform`)."""
+    return perform(request, local_checkouts, libraries)[1]
+
+
+def perform(request: dict, local_checkouts, libraries: list[str], private=None) -> tuple[str, str]:
+    """Do what a request asks, with the safe operations. Returns (status, public text):
+    "done" when every repository ended well, "partial" when some did, "failed" when none did.
+    The text is fixed sentences per repository; `private(name, detail)` receives Git's own words
+    for this machine's log."""
+    from Special._sync.actions import apply_catchup, apply_materialize, plan_catchup
+    private = private or (lambda _name, _detail: None)
+    good = bad = 0
     lines = []
+
+    def say(name, action, detail=""):
+        nonlocal good, bad
+        ok, words = OUTCOMES.get(action, (False, action.replace("_", " ")))
+        good, bad = good + ok, bad + (not ok)
+        lines.append(f"{name}: {words}")
+        if detail and not ok:
+            private(name, detail)
+
+    if request["kind"] == "pull":
+        for item in request["items"]:
+            name, wanted = str(item.get("name") or "a repository"), str(item.get("library") or "")
+            paths = list(local_checkouts(item.get("repo_id", "")) or [])
+            if wanted:
+                # Only the copy in the library the asking page's column named.
+                paths = [path for path in paths if _library_of(path, libraries) == wanted]
+            if not paths:
+                bad += 1
+                lines.append(f"{name}: no copy here" + (f" in {wanted}" if wanted else ""))
+                continue
+            for result in apply_catchup(plan_catchup(paths)):
+                say(name, result["action"], result.get("detail", ""))
+        return _status(good, bad), "\n".join(lines)
     for item in request["items"]:
         host, owner, name, folder, wanted = (str(item.get(key) or "") for key in (
             "host", "owner", "name", "folder", "library"))
         if not all(part and "/" not in part and "\\" not in part and ".." not in part for part in (host, owner, name)):
+            bad += 1
             lines.append(f"{name or 'a repository'}: its name is not known here (the asking machine withholds names)")
             continue
         if folder and any(mark in folder for mark in ("/", "\\", "..", ":")):
+            bad += 1
             lines.append(f"{name}: the folder it names is not a plain folder name, so nothing was cloned")
             continue
         # The library the asking page's column named (one machine may keep several); the first
@@ -181,15 +241,25 @@ def run_request(request: dict, local_checkouts, libraries: list[str]) -> str:
         from Special._sync.manifest import library_name
         chosen = [root for root in libraries if library_name(root, libraries) == wanted] if wanted else libraries[:1]
         if not chosen:
+            bad += 1
             lines.append(f"{name}: no library called {wanted} here, so nothing was cloned")
             continue
-        library = Path(chosen[0])
+        from Special._sync.observer import library_available
+        if not library_available(chosen[0]):
+            bad += 1
+            lines.append(f"{name}: the selected library is unavailable; nothing was cloned")
+            continue
+        library = Path(chosen[0]).resolve()
         target = library / (folder or owner) / name
         if target.exists():
-            lines.append(f"{name}: already here, left as it is")
+            say(name, "exists")
             continue
         plan = [{"source": target, "name": name, "target": target, "library": library,
                  "origin": f"https://{host}/{owner}/{name}.git", "action": "clone", "detail": ""}]
         result = apply_materialize(plan)[0]
-        lines.append(f"{name}: {'cloned into ' + str(target.parent.name) if result['action'] == 'cloned' else result['detail']}")
-    return "\n".join(lines)
+        say(name, result["action"], result.get("detail", ""))
+    return _status(good, bad), "\n".join(lines)
+
+
+def _status(good: int, bad: int) -> str:
+    return "done" if not bad else "partial" if good else "failed"
