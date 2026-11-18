@@ -3200,3 +3200,11 @@ No code changed; decisions recorded where they govern.
 
 - Moved the handoff's working rules into Directives, added the hard stops to AGENTS.md, and
   replaced the duplicate CLAUDE.md with a three-line pointer.
+
+## 2026-11-18 09:58 - user (Codex) - Keep audit findings open and make fleet scope explicit
+
+- Security finding actions update their own cell; progress redraws preserve expanded results.
+- Incoming clone and fast-forward requests wait for Apply unless the receiving machine opts
+  in through Settings. Send previews explain that choice.
+- Read-only CLI commands report unavailable libraries alongside reachable work. Wipe proofs
+  and mutation commands retain their scope requirements.

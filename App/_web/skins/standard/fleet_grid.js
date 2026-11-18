@@ -213,7 +213,8 @@ export function copyGrid(data, rows, options) {
       const missing = rows.filter(row => !cellIn(row, column) && providerUrl(row));
       const here = machine.id === data.this_machine;
       const ask = (kind, list) => async () => {
-        if (here && !window.confirm(`${kind === 'pull' ? 'Fast-forward' : 'Clone'} ${list.length} here now? Each is fetched first and moved only if clean and simply behind; a clone replaces nothing.`)) return;
+        const timing = here ? 'Runs here now.' : 'The receiving machine applies it automatically only if enabled there; otherwise it waits for Apply.';
+        if (!window.confirm(`${kind === 'pull' ? 'Fast-forward' : 'Clone'} ${list.length} on ${machine.label}${column.library ? ` in ${column.library}` : ''}? ${timing}`)) return;
         gridState.message = here ? 'Working…' : gridState.message; onChange();
         try {
           const done = await actions.send({to: machine.id, to_label: machine.label, kind, items: list.map(row => ({

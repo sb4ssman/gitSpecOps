@@ -56,7 +56,8 @@ GitHub", "12 behind GitHub", "4 uncommitted files", with the commit it is on bes
 library under each machine (a machine with two libraries gets two columns), and the provider
 with its own commit. From the same row you can ask any machine to fast-forward what is simply
 behind, or clone what it is missing, into the library you choose; the machine checks again
-before it does anything, and another machine shows your request for approval.
+before it does anything. On another machine the request waits for Apply unless that machine
+has opted in to running incoming requests automatically.
 
 ![One organization across the fleet: "acme-tools: 1 of 4 are the same on every machine that has them. 3 need a decision", the three listed with their advice; below, a grid with a row per repository and a column per library under each machine (Desktop; Home server with two libraries, backup and srv; Laptop; Old laptop, stale), each cell saying how that copy compares with GitHub, with "Fast-forward 1" and "Clone 1 missing" buttons above the libraries that need them](docs/images/organization.png)
 
@@ -124,8 +125,8 @@ switched off".
 | **Protect** | scans; secure-commit and secure-push; history cleanup | findings on the map, on request | audit every machine *(planned)* | |
 | **Agents can** | work on folders you name | work on this machine | observe the whole fleet | |
 
-Built: having another of your machines fast-forward or clone; it runs there when that machine
-next checks in, and the result comes back (a setting makes it wait for approval there instead).
+Built: ask another of your machines to fast-forward or clone and see the result when it runs.
+Requests wait for Apply by default. Each receiving machine can opt in under Settings → Requests and the task log.
 Planned: committing and pushing on another machine, approved from this one. A private GitHub
 repository as another way to share is built but **experimental and untested**.
 [What works today, and what has only been tested](docs/STATUS.md).

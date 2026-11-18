@@ -36,7 +36,8 @@ export function machineActions({data, rows, machine, scope, actions, redraw, lib
   bar.append(html('strong', `${machine.label}${scope ? `, ${scope}` : ''}: `));
   const send = (kind, list) => async () => {
     const what = kind === 'pull' ? 'Fast-forward' : 'Clone';
-    if (here && !window.confirm(`${what} ${list.length} here now? Each is fetched first and moved only if clean and simply behind; a clone replaces nothing.`)) return;
+    const timing = here ? 'Runs here now.' : 'The receiving machine applies it automatically only if enabled there; otherwise it waits for Apply.';
+    if (!window.confirm(`${what} ${list.length} on ${machine.label}${library ? ` in ${library}` : ''}? ${timing}`)) return;
     notes.set(key, here ? 'Working…' : 'Sending…'); redraw();
     try {
       const done = await actions.send({to: machine.id, to_label: machine.label, kind, items: list.map(row => ({
@@ -49,7 +50,7 @@ export function machineActions({data, rows, machine, scope, actions, redraw, lib
   const where = here ? ' here' : '';
   if (behind.length) {
     const b = html('button', `Fast-forward ${behind.length} behind${where}`); b.type = 'button';
-    b.title = here ? 'Fetch, then move each clean copy that is simply behind' : `Runs on ${machine.label} when it next checks in; the result appears under Requests`;
+    b.title = 'Fetch, then move each clean, behind-only copy; the result appears under Requests';
     b.onclick = send('pull', behind); bar.append(b);
   }
   if (missing.length) {

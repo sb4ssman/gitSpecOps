@@ -119,7 +119,7 @@ OPTIONS = {
     "sync": {"root_recursion", "transport_names", "stale_hours", "expired_days", "compress_manifests"},
     "app": {"transport_names", "fetch_minutes", "share_names", "baskets", "recovery", "observation_mode",
             "debounce_seconds", "heartbeat", "inventory_notice_acknowledged", "local_port", "git_client",
-            "presentation", "seal_settings", "fleet_name", "not_counted"},
+            "presentation", "seal_settings", "fleet_name", "not_counted", "auto_requests"},
     "archive_manage": {"archives"},
 }
 
@@ -138,7 +138,8 @@ def options(component, value):
             for root, recursive in item.items():
                 path(root)
                 boolean(recursive)
-        elif key in ("share_names", "compress_manifests", "inventory_notice_acknowledged", "seal_settings"):
+        elif key in ("share_names", "compress_manifests", "inventory_notice_acknowledged", "seal_settings",
+                     "auto_requests"):
             boolean(item)
         elif key in ("stale_hours", "expired_days", "heartbeat", "local_port", "fetch_minutes"):
             integer(item, 0 if key == "fetch_minutes" else (1024 if key == "local_port" else 1),

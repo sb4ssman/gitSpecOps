@@ -47,7 +47,7 @@ submodules, oversized files.
 | One machine, two systems (dual boot): the same disk is not counted twice | yes | yes | yes | Windows, Debian | |
 | Status through a synced folder | yes | not confirmed | yes | | between two real machines |
 | Status through a private repository | yes | no | yes | | between two real machines; marked experimental |
-| Requests: fast-forward or clone on another machine, run on arrival | yes | the earlier form (approve there) was used; the run-on-arrival form is new | yes | | between two real machines |
+| Requests: fast-forward or clone on another machine, with optional automatic execution | yes | approval on the receiving machine was used; automatic execution is opt-in | yes | | opt-in flow between two real machines |
 | Ask another machine what is uncommitted (file names and line counts) | yes | yes | yes | Windows | |
 | Recovery snapshots of unfinished work | yes | no | yes | | capture on one real machine, restore on another |
 | Attended remote commit and push ("that machine, commit these files") | no | | | | designed, not built |

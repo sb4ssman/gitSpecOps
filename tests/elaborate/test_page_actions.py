@@ -64,19 +64,20 @@ class PageActionTests(unittest.TestCase):
         self.assertTrue((self.dir / "fleet-rescan.request").exists())
 
     def test_an_arriving_request_runs_without_apply_and_ends_in_a_state(self):
+        self.config["auto_requests"] = True
         sent = self.arrive()
         self.actions.run_waiting()
         ended = self.book.incoming()[0]
         self.assertEqual((ended["id"], ended["status"]), (sent["id"], "failed"))
         self.assertIn("alpha: no copy here", ended["result"])
 
-    def test_auto_requests_off_waits_for_apply(self):
-        self.config["auto_requests"] = False
+    def test_auto_requests_waits_for_apply_by_default(self):
         self.arrive()
         self.actions.run_waiting()
         self.assertEqual(self.book.incoming()[0]["status"], "waiting")
 
     def test_a_request_that_cannot_be_run_is_failed_never_left_running(self):
+        self.config["auto_requests"] = True
         self.arrive()
         with patch("Elaborate._fleet.requests.perform", side_effect=RuntimeError("boom")):
             self.actions.run_waiting()

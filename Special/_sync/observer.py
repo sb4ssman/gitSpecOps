@@ -214,6 +214,9 @@ def _discover(roots: list[RootSpec], issues: list[str]) -> list[Path]:
     seen: set[Path] = set()
     for spec in roots:
         root = spec.path.expanduser()
+        if not library_available(root):
+            issues.append(f"library unavailable: {root}")
+            continue
         try:
             hits = find_repos(root, max_depth=None if spec.recursive else 0)
         except OSError:

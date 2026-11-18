@@ -23,13 +23,14 @@ from pathlib import Path
 
 ACTIONS = ("find", "add", "remove", "presentation", "join", "leave", "open-folder",
            "settings", "connections", "fetch", "sign-in", "fleets", "show-key", "shared-answer", "seal",
-           "name-fleet", "baskets", "tasks")
-PLANNED = ("find", "add", "join", "leave", "connections", "show-key", "seal")
+           "name-fleet", "baskets", "tasks", "auto-requests")
+PLANNED = ("find", "add", "join", "leave", "connections", "show-key", "seal", "auto-requests")
 QUESTIONS = {"find": "Look in these folders?", "add": "Enroll these library folders?",
              "join": "Join with these choices?", "leave": "Leave the fleet?",
              "connections": "Connect this way?",
              "show-key": "Show the fleet key on this page? Anyone who has it can join your fleet.",
-             "seal": "Change how protected values go through the synced folder?"}
+             "seal": "Change how protected values go through the synced folder?",
+             "auto-requests": "Change how this machine handles incoming fleet requests?"}
 POLL_CHOICES = (60, 300, 1800)       # the same choices setup offers for Tailscale
 FETCH_CHOICES = (0, 60, 360, 1440)   # never, hourly, every 6 hours, daily
 
@@ -83,6 +84,7 @@ class SetupRoutes:
                          "names": (repo or {}).get("names", False)}},
             "fetch_minutes": int((config or {}).get("fetch_minutes") or 0),
             "fetch_choices": list(FETCH_CHOICES),
+            "auto_requests": (config or {}).get("auto_requests") is True,
             "shared": self._shared_state(config, bool(folder)),
             "sign_in": {"supported": bool(sign_in.get("supported")), "enabled": bool(sign_in.get("enabled")),
                         "elsewhere": sign_in.get("elsewhere"), "reason": sign_in.get("reason")},
@@ -191,6 +193,14 @@ class SetupRoutes:
 
         if action == "connections":
             shown = self._connections_plan(payload)
+            return shown, shown
+        if action == "auto-requests":
+            enabled = payload.get("enabled")
+            if type(enabled) is not bool:
+                raise ValueError("choose whether incoming requests run on arrival")
+            shown = {"action": action, "enabled": enabled, "changes": [
+                "Apply incoming fast-forward and clone requests when they arrive."
+                if enabled else "Wait for approval here before applying incoming requests."]}
             return shown, shown
         if action == "show-key":
             shown = {"action": "show-key", "shows": "this machine's fleet key, on this page only"}
@@ -320,7 +330,9 @@ class SetupRoutes:
                 raise ValueError("this machine is not enrolled")
             return {"key": config["fleet_secret"], "applied": True,
                     "notice": "Copy it into setup, or the Settings tab, on the machine joining."}
-        if action == "fetch":
+        if action == "auto-requests":
+            enrollment.set_auto_requests(shown["enabled"], home=self.home)
+        elif action == "fetch":
             minutes = payload.get("minutes")
             if minutes not in FETCH_CHOICES:
                 raise ValueError("choose never, every hour, every 6 hours or every day")
@@ -390,5 +402,6 @@ NOTICES = {
     "presentation": "Saved. Takes effect when the app restarts.",
     "connections": "Saved. The app reconnects now.",
     "fetch": "Saved. The app uses the new schedule now.",
+    "auto-requests": "Saved. The app uses the new request setting now.",
     "seal": "Saved. The app uses it now.",
 }

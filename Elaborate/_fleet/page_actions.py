@@ -189,7 +189,7 @@ class PageActions:
     def run_waiting(self) -> None:
         """Requests from this fleet's machines run on arrival (requests.py): they can only ask
         for a fast-forward or a clone, neither of which can lose work."""
-        if self.config.get("auto_requests", True) is False:
+        if self.config.get("auto_requests") is not True:
             return
         for request in self.book.incoming():
             if request.get("status") == "waiting":

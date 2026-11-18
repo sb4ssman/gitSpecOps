@@ -55,12 +55,11 @@ committing or pushing from the app, are what the product is for):
    or refuses. B needs no person and no AI of its own. The channel is the fleet's own peer
    protocol over the tailnet (Tailscale identity + fleet key), with a fixed set of verbs, never
    a shell. Forced pushes, reset, rebase, merge and delete stay out of reach from anywhere.
-   *Amended 2026-11-17 with the user:* **the two safe requests run on arrival.** A request
+   *Amended 2026-11-18:* **the two safe requests can run on arrival with explicit opt-in.** A request
    from another machine of the same fleet can only ask for a fast-forward after a fresh fetch
-   or a clone that replaces nothing; neither can lose work, so the receiving machine runs it
-   when it arrives, without a second approval there ("sending a message and then going to the
-   computer to accept it isn't ideal"). `auto_requests: false` in the app's settings makes them
-   wait for Apply instead. Commit and push on another machine remain the attended design above.
+   or a clone that replaces nothing. The receiving machine waits for Apply by default; its
+   Settings page can opt in to running these requests on arrival without a second approval.
+   Commit and push on another machine remain the attended design above.
 3. **Everything else is a command the user invoked**, from the terminal, a tray item or a
    dashboard button alike — the same command, the same plan → show → confirm:
    detect → plan → approve → execute → review. Fast-forward-only pulls, non-force pushes, nothing

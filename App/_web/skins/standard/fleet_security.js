@@ -254,6 +254,11 @@ function valueCell(entry, material, finding) {
   const cell = html('td');
   const key = `${ui.audit && ui.audit.id}/${entry.index}/${material}/${finding.finding_id}`;
   const shown = ui.revealed.get(key);
+  const updateCell = () => {
+    const updated = valueCell(entry, material, finding);
+    cell.replaceWith(updated);
+    updated.querySelector('button')?.focus({preventScroll: true});
+  };
   cell.append(html('code', shown === undefined ? finding.value : shown), document.createTextNode(' '));
   if (entry.index === undefined || !finding.finding_id) return cell;
   const toggle = html('button', shown === undefined ? 'Show' : 'Hide', 'repo-link'); toggle.type = 'button';
@@ -263,7 +268,7 @@ function valueCell(entry, material, finding) {
       try { ui.revealed.set(key, (await act('security-reveal', {index: entry.index, material, finding_id: finding.finding_id})).value); }
       catch (error) { say(error.message); return; }
     }
-    setAudit(ui.audit);
+    updateCell();
   };
   cell.append(toggle);
   // Acknowledge it (the user, 2026-11-17): a review accepts this exact finding (a binary file,
@@ -277,8 +282,8 @@ function valueCell(entry, material, finding) {
       const done = await act('security-accept', {index: entry.index, material, finding_id: finding.finding_id});
       ui.settled.set(key, done.status === 'accepted' || done.status === 'already-reviewed'
         ? 'Accepted: the next audit will not flag it.' : done.message);
-    } catch (error) { ui.settled.set(key, error.message); }
-    setAudit(ui.audit);
+    } catch (error) { say(error.message); return; }
+    updateCell();
   };
   cell.append(document.createTextNode(' '), accept);
   if (finding.check !== 'binary content') {
@@ -291,8 +296,8 @@ function valueCell(entry, material, finding) {
         const value = ui.revealed.get(key) ?? (await act('security-reveal', {index: entry.index, material, finding_id: finding.finding_id})).value;
         await act('security-policy-change', {list: 'safe_values', add: [value], confirm: word});
         ui.settled.set(key, 'On the safe list: the next audit will not flag it.');
-      } catch (error) { ui.settled.set(key, error.message); }
-      setAudit(ui.audit);
+      } catch (error) { say(error.message); return; }
+      updateCell();
     };
     cell.append(document.createTextNode(' '), safe);
   }
@@ -308,9 +313,12 @@ function findingsOf(record) {
 }
 
 function setAudit(audit) {
+  const box = document.getElementById('security-results');
+  const expanded = new Set(ui.audit?.id === audit?.id
+    ? [...box.querySelectorAll('details.sec-result[open]')].map(item => item.dataset.resultKey)
+    : []);
   ui.audit = audit;
   renderRunBar();
-  const box = document.getElementById('security-results');
   box.replaceChildren();
   if (!audit) { box.append(html('p', 'No audit has run since gitSpecOps started. Results are kept only here, until it restarts.', 'host-note')); return; }
   const progress = html('div', undefined, 'sec-progress');
@@ -338,6 +346,8 @@ function setAudit(audit) {
     const tree = findingsOf(result.working_tree), past = findingsOf(result.history);
     const gaps = [...(result.gaps || []), ...((result.working_tree || {}).gaps || []), ...((result.history || {}).gaps || [])];
     const item = html('details', undefined, `sec-result tone-border-${tone}`);
+    item.dataset.resultKey = `${entry.repo_id}/${entry.checkout}`;
+    item.open = expanded.has(item.dataset.resultKey);
     const summary = html('summary');
     summary.append(html('span', label, `pill tone-${tone}`), html('strong', ` ${nameOf(entry.repo_id)}`),
                    html('span', ` · files: ${openOf(result.working_tree, tree)} · history: ${result.history ? openOf(result.history, past) : 'not checked'}` +

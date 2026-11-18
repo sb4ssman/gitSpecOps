@@ -183,6 +183,18 @@ def remove_library(path, *, home=None) -> list[str]:
     return config["roots"]
 
 
+def set_auto_requests(enabled: bool, *, home=None) -> None:
+    """Save this machine's explicit choice for incoming fast-forward and clone requests."""
+    if type(enabled) is not bool:
+        raise ValueError("choose whether incoming requests run on arrival")
+    snapshot = _snapshot(home)
+    config = snapshot.config("app")
+    if config is None:
+        raise ValueError("this machine is not enrolled")
+    config["auto_requests"] = enabled
+    save_fleet_config(config, component="app", home=home)
+
+
 def set_fetch_minutes(minutes: int, *, home=None) -> int:
     """How often the app fetches every repository's remote, read-only: minutes, 0 for never."""
     if type(minutes) is not int or minutes < 0:

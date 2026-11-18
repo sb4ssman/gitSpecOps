@@ -20,7 +20,7 @@ Remote management: see work on a machine, act on it from any machine.
 
 **Built 2026-11-17, untested by a person, most likely to need fixes:**
 - `App/_web/skins/standard/fleet_actions.js`: fast-forward / clone bars on the map's levels,
-  Machines cards and Reference. Requests now run on arrival (`auto_requests`, default on).
+  Machines cards and Reference. Requests can run on arrival when the receiver opts in.
 - Reference's Use it form; `run-command` in `Special/_sync/resolve.py` opens a terminal with a
   catalog command in a folder this machine knows (Windows `cmd /k`; macOS a `.command` file;
   Linux the first terminal found). Only Windows was exercised, and only by a mocked test.
@@ -39,6 +39,8 @@ Reference worth showing.
 ## Next, in order
 The missing-library fallback is covered with disposable repositories on Windows. Confirm the
 dashboard and `fleet doctor` during the next real Linux mount outage and after remounting.
+Click through consecutive Accept and Show actions in Security, and try both incoming request
+approval modes on two real peers.
 
 1. **A person's pass over the page's new buttons** (2026-11-17): Resolve (open, changes, commit,
    push, safe to delete, not counted), the copy chooser, Accept and Not a secret, Reference,
@@ -66,7 +68,6 @@ dashboard and `fleet doctor` during the next real Linux mount outage and after r
 - **Keyboard, focus, contrast and narrow screens:** never reviewed.
 - **Malformed peer records, interrupted operations, names that need Git's quoting:** failure
   tests not written yet.
-- **`auto_requests` has no switch in Settings**; it is a key in the app's settings (default on).
 
 ## Waiting on the user
 - **Screenshots to retake on the user's screen** (redact user and computer): the setup menu

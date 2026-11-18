@@ -2,13 +2,16 @@
 (2026-11-15: setup's first scan found "no folders", and the secret check took over an hour)."""
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from _bootstrap import setup  # noqa: E402
+from _bootstrap import ROOT, setup  # noqa: E402
 
 setup()
 
@@ -20,6 +23,26 @@ def args(**overrides):
 
 
 class LibraryFoldersTests(unittest.TestCase):
+    def test_audit_reports_reachable_repositories_and_unavailable_scope(self):
+        from Special._sync.enrollment import add_libraries
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            home, reachable, unavailable = (root / name for name in ("profile", "local", "external"))
+            unavailable.mkdir()
+            checkout = reachable / "example"
+            subprocess.run(["git", "init", "-q", str(checkout)], check=True)
+            add_libraries([reachable, unavailable], home=home)
+            unavailable.rmdir()
+            done = subprocess.run([sys.executable, "-B", str(ROOT / "gitso.py"), "machine", "audit",
+                                   "--settings-home", str(home), "--json"],
+                                  capture_output=True, text=True, encoding="utf-8", timeout=45)
+            report = json.loads(done.stdout)
+            self.assertNotEqual(done.returncode, 0)
+            rows = {row["name"]: row["findings"] for row in report["repositories"]}
+            self.assertIn("no origin", rows["example"])
+            self.assertIn("nothing", rows["external"][0])
+
     def test_the_app_library_folders_are_read_recursively_when_nothing_else_is_saved(self):
         specs, source = _root_specs(args(), None, {"roots": ["/library"]})
         self.assertEqual([(str(spec.path), spec.recursive) for spec in specs], [(str(Path("/library")), True)])
