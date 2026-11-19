@@ -115,7 +115,7 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
                         "security-reveal": fleet_action, "security-accept": fleet_action,
                         "security-policy": fleet_action, "security-policy-change": fleet_action,
                         # Requests between machines and uncommitted-work summaries (Elaborate/_fleet/requests.py).
-                        "request-send": fleet_action, "request-withdraw": fleet_action,
+                        "request-send": fleet_action, "request-confirm": fleet_action, "request-withdraw": fleet_action,
                         "request-answer": fleet_action, "request-clear": fleet_action, "changes": fleet_action,
                         "repo-action": fleet_action}
             if fleet_action is not None:

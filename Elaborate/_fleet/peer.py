@@ -202,6 +202,7 @@ class PeerNetwork:
         self.requests = requests  # requests.RequestBook: asked of others, asked of this machine
         self.own_changes = own_changes  # repo_id -> this machine's uncommitted-work summary
         self.on_requests = None  # called when requests arrive (the peer runs the safe ones)
+        self.request_mode = lambda: "local"
         self.addresses: dict[str, str] = {}  # machine_id -> its Tailscale address, from the last round
         self.server = None
         self.identity = None
@@ -240,7 +241,7 @@ class PeerNetwork:
                                            own_settings=self.shared.record if self.shared else None,
                                            own_name=lambda: self.config.get("fleet_name"),
                                            on_knock=self.knocked.set,
-                                           own_requests=self.requests.published if self.requests else None,
+                                           own_requests=(lambda: self.requests.published(self.request_mode())) if self.requests else None,
                                            own_changes=self.own_changes, own_known=self.known)
             threading.Thread(target=self.server.serve_forever, daemon=True).start()
         except OSError as exc:
@@ -315,10 +316,14 @@ class PeerNetwork:
         """Take the requests this peer has addressed to this machine (requests.py)."""
         if self.requests is None:
             return
-        from Elaborate._fleet.net import FleetClient
+        from Elaborate._fleet.net import FleetClient, peer_identity
         try:
+            allowed = self.config["transports"]["tailnet"]["allowed_login"]
+            identity = peer_identity(host["ip"], allowed)
+            if not self.requests.bind_peer(machine_id, identity["machine_id"]):
+                return  # Another transport identity already owns this request address.
             new = self.requests.receive(FleetClient(f"http://{host['ip']}:{self.port}").request("/v1/requests"),
-                                        machine_id)
+                                        machine_id, self.request_mode(), peer_label=identity["label"])
         except (OSError, ValueError, KeyError, TypeError):
             return  # an older peer without requests
         if new:
@@ -488,13 +493,15 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     from Elaborate._fleet.page_actions import PageActions
     from Elaborate._fleet.requests import RequestBook
     book = RequestBook(config_dir, config["machine_id"], config["label"])
+    book.recover_interrupted()
     # Everything this machine's own page can ask for (page_actions.py).
     actions = PageActions(config, config_dir, observer, book, security_settings, audits)
-    action_lock, dashboard_action, own_changes = actions.lock, actions.handle, actions.own_changes
+    dashboard_action, own_changes = actions.handle, actions.own_changes
 
     network = PeerNetwork(config, lambda: latest["report"], store, log=log, shared=shared, adopt_name=adopt_name,
                           requests=book, own_changes=own_changes)
     actions.network = network
+    network.request_mode = actions.request_mode
     network.on_requests = actions.run_waiting
 
     def sealed_folder_loop():

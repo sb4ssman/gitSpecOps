@@ -12,7 +12,7 @@ export const MENU = [
   {id: 'orgs', label: 'Orgs/Archives'},
   {id: 'machines', label: 'Machines'},
   {id: 'clouds', label: 'Clouds'},
-  {id: 'security', label: 'Security'},
+  {id: 'security', label: 'Fleet Security'},
   {id: 'reference', label: 'Reference'},
   {id: 'settings', label: 'Settings'},
 ];

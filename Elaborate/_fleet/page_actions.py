@@ -22,7 +22,7 @@ from pathlib import Path
 from Basic._files import atomic_write_bytes
 
 HEADLINE = {"done": "Done", "partial": "Partly done", "failed": "Not done"}
-REQUEST_ACTIONS = ("request-send", "request-withdraw", "request-answer", "request-clear", "changes")
+REQUEST_ACTIONS = ("request-send", "request-confirm", "request-withdraw", "request-answer", "request-clear", "changes")
 #: Repository actions after which this machine's own state is read again.
 RESCAN_AFTER = ("pull", "commit-apply", "push-apply", "not-counted", "not-counted-folder", "count-again", "fetch")
 
@@ -113,21 +113,25 @@ class PageActions:
 
     # ---------------------------------------------------------------- uncommitted work
     def own_changes(self, repo_id: str) -> dict:
+        from Elaborate._fleet.requests import _library_of
         from Special._sync.changes import working_changes
         copies = []
         for path in self.observer.local_checkouts(repo_id):
+            library = _library_of(path, self.config.get("roots") or [])
             try:
-                copies.append(working_changes(path))
+                copies.append({**working_changes(path), "library": library})
             except ValueError as exc:
-                copies.append({"files": [], "count": 0, "summary": str(exc)})
+                copies.append({"files": [], "count": 0, "summary": str(exc), "library": library})
         return {"machine": self.config["label"], "copies": copies}
 
     # ---------------------------------------------------------------- requests between machines
     def requests(self, action: str, payload: dict):
         config, book = self.config, self.book
         if action == "request-send":
-            items = [{key: _text(item.get(key)) for key in ("repo_id", "host", "owner", "name", "folder", "library")}
-                     for item in payload.get("items") or [] if isinstance(item, dict)]
+            from Elaborate._fleet.requests import valid_items
+            items = payload.get("items")
+            if not valid_items(items):
+                raise ValueError("choose a bounded list of valid repository targets")
             if _text(payload.get("to")) == config["machine_id"]:
                 # Asked of this machine, from its own page: the person is here, so it runs now,
                 # with the same safe operations (the user, 2026-11-16).
@@ -140,11 +144,15 @@ class PageActions:
             sent = book.send(_text(payload.get("to")), _text(payload.get("to_label")), _text(payload.get("kind")), items)
             book.log("asked", sent)
             self.knock()  # so it is picked up now
-            return {"sent": sent, "message": f"Asked {sent['to_label']}. It runs there when that machine next checks in "
-                                             "(about a minute when it is on); the result appears under Requests."}
+            return {"sent": sent, "message": f"Queued for {sent['to_label']}. Requests shows when the receiving machine responds."}
         if action == "request-withdraw":
             book.withdraw(_text(payload.get("id")))
             return {"message": "Withdrawn."}
+        if action == "request-confirm":
+            request = book.confirm(_text(payload.get("id")), _text(payload.get("text"), limit=401))
+            book.log("confirmed remotely", request)
+            self.knock()
+            return {"message": f"Approval sent to {request['to_label']} for this request."}
         if action == "request-clear":
             dropped = book.clear(everything_sent=bool(payload.get("everything_sent")))
             return {"message": f"Cleared {dropped}. The task log keeps the record."}
@@ -155,45 +163,66 @@ class PageActions:
             if self.network is None:
                 raise ValueError("this machine is not connected to its fleet right now")
             return self.network.ask(machine_id, f"/v1/changes/{repo_id}")
-        request = next((item for item in book.incoming() if item["id"] == payload.get("id")), None)
-        if request is None or request["status"] != "waiting":
-            raise ValueError("that request is no longer waiting; reload")
-        if payload.get("accept") is None:
+        if type(payload.get("accept")) is not bool:
             raise ValueError("answer with accept true or false")
+        request_id = _text(payload.get("id"))
         if not payload.get("accept"):
+            request = book.claim(request_id, None, dismiss=True)
             book.log("dismissed", request)
-            return book.settle(request["id"], "dismissed", "Dismissed here.")
-        return self.answer(request)
+            self.knock()
+            return request
+        if self.request_mode() == "paused":
+            raise ValueError("Incoming fleet operations are paused on this machine.")
+        return self.answer(request_id)
 
-    def run_and_log(self, event: str, request: dict) -> tuple[str, str]:
+    def run_and_log(self, event: str, request: dict, mode: str | None = None) -> tuple[str, str]:
         """Run a request with the safe operations; Git's own words stay in this machine's log."""
-        from Elaborate._fleet.requests import perform
+        from Elaborate._fleet.requests import approval_valid, perform
         details = []
         with self.lock:
+            if "from" in request and self.request_mode() == "paused":
+                return "dismissed", "Incoming fleet operations are paused on this machine."
+            if mode is not None and mode != self.request_mode():
+                return "failed", "The receiving machine's approval policy changed before execution."
+            if mode is not None and not approval_valid(request, mode):
+                return "failed", "The approval expired before execution."
             status, result = perform(request, self.observer.local_checkouts, self.config["roots"],
-                                     private=lambda name, detail: details.append(f"{name}: {detail}"))
+                                     private=lambda name, detail: details.append(f"{name}: {detail}"),
+                                     fleet="from" in request)
         self.book.log(event, request, "\n".join([result, *details]))
         self.rescan(b"request ran")  # see the result
         return status, result
 
-    def answer(self, request: dict) -> dict:
-        self.book.settle(request["id"], "running", "")
+    def answer(self, request_id: str, mode: str | None = None) -> dict:
+        request = self.book.claim(request_id, mode)
         try:
-            status, result = self.run_and_log("applied", request)
+            event = {"automatic": "ran automatically", "confirm": "applied remote approval",
+                     "typed": "applied typed remote approval"}.get(mode, "applied locally")
+            status, result = self.run_and_log(event, request, mode)
         except Exception:  # noqa: BLE001 - a request must end in a state, never stay "running"
             status, result = "failed", "It could not be run on that machine; its log has the reason."
         settled = self.book.settle(request["id"], status, result)
         self.knock()  # the asker learns now
         return settled
 
+    def request_mode(self) -> str:
+        from Special._sync.enrollment import request_approval_mode
+        try:
+            _home, snapshot = self.security_settings()
+            if snapshot is None and hasattr(self.config, "snapshot"):
+                return "local"
+            config = snapshot.config("app") if snapshot is not None else self.config
+            return request_approval_mode((config or {}).get("auto_requests"))
+        except (OSError, ValueError):
+            return "local"
+
     def run_waiting(self) -> None:
-        """Requests from this fleet's machines run on arrival (requests.py): they can only ask
-        for a fast-forward or a clone, neither of which can lose work."""
-        if self.config.get("auto_requests") is not True:
-            return
+        """Apply eligible requests under the receiver's current policy."""
+        self.knock()
         for request in self.book.incoming():
-            if request.get("status") == "waiting":
+            mode = self.request_mode()
+            if mode not in ("local", "paused") and request.get("status") == "waiting":
                 try:
-                    self.answer(request)
+                    self.answer(request["id"], mode)
                 except ValueError:
                     continue

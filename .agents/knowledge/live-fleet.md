@@ -15,6 +15,22 @@ v3 status manifest. Recovery content is still planned, separately from that mani
 Use [FLEET.md](../../docs/FLEET.md) for current commands and
 [tiers-and-capture.md](tiers-and-capture.md) for the agreed next work.
 
+## Personal fleet trust and operation checks
+
+Start with the devices and transports the owner already selected. Tailscale identifies
+the peer for live requests. The receiver applies its configured operation policy. The
+selected synced folder and managed private GitHub repository provide trusted shared
+state within the operator's chosen access scope. Today the live peer route carries
+operation requests. The folder and GitHub state routes carry manifests. Each transport
+keeps its existing capability and authorization boundary.
+
+Git executes repository operations. GitHub CLI uses the existing login for GitHub API
+operations and can be a Git credential helper if the owner configured it. App and CLI
+entry points use the same operation. Git's refs and object IDs identify the approved
+state, native Git flags enforce the requested effect, and the result is checked with
+native Git. Verify the request and repository material at the point of use. Preserve
+the repository checks and the user's Git hooks.
+
 ## Historical pilot record — superseded, not deployment instructions
 
 The following records explain the original host/client design and why it was replaced.
