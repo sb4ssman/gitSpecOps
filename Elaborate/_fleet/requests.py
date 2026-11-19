@@ -1,15 +1,9 @@
 """Requests between machines: "please fast-forward these", "please clone this". Asked on one
 machine's page, answered on the other's.
 
-Why:          syncing a fleet from one screen (the user, 2026-11-16) without breaking the rule that
-              machines only read from each other. A request is published like a report: the asking
-              machine serves its outgoing requests (GET /v1/requests); each machine pulls them on
-              its round and keeps the ones addressed to it. A request can only ask for the two
-              operations that cannot lose work (a fast-forward after a fresh fetch; a clone that
-              replaces nothing), and only a machine of the same fleet can send one, so the
-              receiving machine runs it on arrival (the user, 2026-11-17: remote management
-              without walking to the other machine). `auto_requests: false` in the app's
-              settings makes it wait for Apply on that machine's page instead.
+Why:          Each machine pulls requests from its authenticated peers and keeps those addressed
+              to it. Its local policy decides whether to run a clone or safe fast-forward on
+              arrival, wait for its own operator, or accept one confirmation from the sender.
 Reads:        this machine's requests-out.json and requests-in.json in the fleet folder.
 May change:   those two files only. Applying a request runs the existing safe operations
               (Special/_sync/actions.py): a fast-forward after a fresh fetch, a clone that never
@@ -19,7 +13,10 @@ Layer:        Elaborate: other machines.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import re
+import secrets
 import threading
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -41,9 +38,22 @@ OUTCOMES = {
     "fetch_failed": (False, "could not be fetched"), "pull_failed": (False, "could not be fast-forwarded"),
     "pull_needs_review": (False, "was pulled, but its state needs a look on that machine"),
     "clone_failed": (False, "could not be cloned"),
+    "remote_policy": (False, "requires local review before Git can run"),
 }
 KEEP_DAYS = 7
 MAX_ITEMS = 500
+CONFIRMATION_MINUTES = 15
+CONFIRMATION_MODES = ("confirm", "typed")
+ITEM_KEYS = ("repo_id", "host", "owner", "name", "folder", "library")
+
+
+def valid_items(items) -> bool:
+    """A bounded peer payload of fields, never arguments or paths on the receiver."""
+    return (isinstance(items, list) and 0 < len(items) <= MAX_ITEMS
+            and all(isinstance(item, dict) and item and set(item) <= set(ITEM_KEYS)
+                    and all(isinstance(value, str) and len(value) <= 200
+                            and (not value or value.isprintable()) for value in item.values())
+                    for item in items))
 
 
 def _now() -> datetime:
@@ -52,37 +62,93 @@ def _now() -> datetime:
 
 def _fresh(stamp: str) -> bool:
     try:
-        return _now() - datetime.fromisoformat(stamp) < timedelta(days=KEEP_DAYS)
+        age = _now() - datetime.fromisoformat(stamp)
+        return -timedelta(minutes=1) <= age < timedelta(days=KEEP_DAYS)
     except (TypeError, ValueError):
         return False
+
+
+def _digest(request: dict) -> str:
+    fields = {key: request[key] for key in ("id", "from", "to", "kind", "items", "at")}
+    return hashlib.sha256(json.dumps(fields, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _phrase(request: dict) -> str:
+    if len(request["items"]) == 1:
+        item = request["items"][0]
+        if item.get("owner") and item.get("name"):
+            return f"{item['owner']}/{item['name']}"
+    return f"{KINDS[request['kind']].upper()} {len(request['items'])}"
+
+
+def _valid_receipt(value, request) -> bool:
+    if (not isinstance(value, dict) or set(value) != {"mode", "nonce", "digest", "expires"}
+            or value.get("mode") not in CONFIRMATION_MODES
+            or not re.fullmatch(r"[0-9a-f]{32}", str(value.get("nonce", "")))
+            or value.get("digest") != _digest(request)):
+        return False
+    try:
+        return _now() < datetime.fromisoformat(value["expires"])
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def approval_valid(request: dict, mode: str) -> bool:
+    return (_fresh(request["at"]) and request.get("approval_mode") == mode
+            and (mode == "automatic" or (mode in CONFIRMATION_MODES and request.get("confirmed") is True
+                                         and _valid_receipt(request.get("challenge"), request))))
 
 
 class RequestBook:
     def __init__(self, directory: Path, machine_id: str, label: str):
         self.out_path = Path(directory) / "requests-out.json"
         self.in_path = Path(directory) / "requests-in.json"
+        self.peers_path = Path(directory) / "request-peers.json"
         self.machine_id, self.label = machine_id, label
         self.lock = threading.Lock()
 
     def _read(self, path: Path):
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
             return [] if path == self.out_path else {}
+        if not isinstance(record, list if path == self.out_path else dict):
+            raise ValueError("invalid request record; review the request state on this machine")
+        return record
 
     def _write(self, path: Path, value) -> None:
         from Basic._files import atomic_write_bytes
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_bytes(path, json.dumps(value, indent=1).encode())
 
+    def bind_peer(self, machine_id: str, device_id: str) -> bool:
+        """Pin a legacy report id to the authenticated tailnet device that first used it."""
+        if machine_id.startswith("ts-"):
+            return machine_id == device_id
+        if not device_id.startswith("ts-") or machine_id == self.machine_id:
+            return False
+        with self.lock:
+            try:
+                peers = json.loads(self.peers_path.read_bytes())
+            except FileNotFoundError:
+                peers = {}
+            if not isinstance(peers, dict):
+                raise ValueError("invalid request peer bindings")
+            if machine_id in peers:
+                return peers[machine_id] == device_id
+            peers[machine_id] = device_id
+            self._write(self.peers_path, peers)
+            return True
+
     # ---------------------------------------------------------------- asking
     def send(self, to: str, to_label: str, kind: str, items: list[dict]) -> dict:
         if kind not in KINDS:
             raise ValueError("a request is pull or clone")
-        if not items or len(items) > MAX_ITEMS:
-            raise ValueError("choose at least one repository")
+        if not valid_items(items):
+            raise ValueError("choose a bounded list of valid repository targets")
         request = {"id": uuid.uuid4().hex[:16], "from": self.machine_id, "from_label": self.label,
-                   "to": to, "to_label": to_label, "kind": kind, "items": items, "at": _now().isoformat()}
+                   "to": to, "to_label": to_label, "kind": kind, "items": items, "at": _now().isoformat(),
+                   "supports_confirmation": True}
         with self.lock:
             sent = [item for item in self._read(self.out_path) if _fresh(item.get("at", ""))]
             sent.append(request)
@@ -93,13 +159,47 @@ class RequestBook:
         with self.lock:
             return [item for item in self._read(self.out_path) if _fresh(item.get("at", ""))]
 
-    def published(self) -> list[dict]:
+    def published(self, mode: str | None = None) -> list[dict]:
         """What GET /v1/requests serves: this machine's requests, and its answers to the requests
         others sent it, so the asking machine learns what happened (the user, 2026-11-16)."""
-        answers = [{"answer_for": item["id"], "from": self.machine_id, "to": item["from"],
-                    "status": item["status"], "result": item.get("result", "")[:2000], "at": item["at"]}
-                   for item in self.incoming() if item["status"] != "waiting"]
+        answers = []
+        for item in self.incoming(include_hidden=True):
+            selected = item.get("approval_mode", "local")
+            effective = "paused" if mode == "paused" else selected if mode is None or mode == selected else "local"
+            answer = {"answer_for": item["id"], "from": self.machine_id, "to": item["from"],
+                      "status": item["status"], "result": item.get("result", "")[:2000], "at": item["at"],
+                      "approval_mode": effective}
+            if (item["status"] == "waiting" and effective in CONFIRMATION_MODES
+                    and _valid_receipt(item.get("challenge"), item)):
+                answer["challenge"] = item["challenge"]
+            answers.append(answer)
         return self.outgoing() + answers
+
+    def confirm(self, request_id: str, text: str) -> dict:
+        with self.lock:
+            sent = self._read(self.out_path)
+            request = next((item for item in sent if item["id"] == request_id), None)
+            if not request or request.get("status") != "waiting" or request.get("confirmation"):
+                raise ValueError("this request is no longer waiting for confirmation")
+            challenge = request.get("challenge")
+            if not _valid_receipt(challenge, request):
+                raise ValueError("the receiving machine's confirmation has expired; send a new request")
+            if challenge["mode"] == "typed" and text != _phrase(request):
+                raise ValueError("the acknowledgment did not match")
+            request["confirmation"] = {"nonce": challenge["nonce"], "digest": challenge["digest"],
+                                       "text": text if challenge["mode"] == "typed" else ""}
+            self._write(self.out_path, sent)
+            return request
+
+    def recover_interrupted(self) -> None:
+        """A previous process may have applied Git changes before it lost its receipt."""
+        with self.lock:
+            book = self._read(self.in_path)
+            running = [item for item in book.values() if item.get("status") == "running"]
+            for item in running:
+                item.update(status="partial", result="Interrupted. Check the checkout before sending another request.")
+            if running:
+                self._write(self.in_path, book)
 
     def log(self, event: str, request: dict, result: str = "") -> None:
         """The task log: every request sent, applied or dismissed, and every local run, one JSON
@@ -126,13 +226,17 @@ class RequestBook:
             sent = self._read(self.out_path)
             kept_sent = [] if everything_sent else [item for item in sent if item.get("status") not in ENDED]
             book = self._read(self.in_path)
-            kept_in = {key: value for key, value in book.items() if value.get("status") in ("waiting", "running")}
+            cleared_in = 0
+            for value in book.values():
+                if value.get("status") in ENDED and not value.get("hidden"):
+                    value["hidden"] = True  # Keep the receipt until expiry so it cannot run again.
+                    cleared_in += 1
             self._write(self.out_path, kept_sent)
-            self._write(self.in_path, kept_in)
-            return len(sent) - len(kept_sent) + len(book) - len(kept_in)
+            self._write(self.in_path, book)
+            return len(sent) - len(kept_sent) + cleared_in
 
     # ---------------------------------------------------------------- answering
-    def receive(self, requests, from_machine: str) -> int:
+    def receive(self, requests, from_machine: str, mode: str = "local", *, peer_label=None) -> int:
         """Keep the requests a machine publishes that are addressed here. Returns how many are new."""
         if not isinstance(requests, list):
             return 0
@@ -146,27 +250,73 @@ class RequestBook:
                 if (isinstance(item, dict) and item.get("answer_for") and item.get("to") == self.machine_id
                         and item.get("from") == from_machine):
                     for request in sent:
-                        if request.get("id") == item["answer_for"] and request.get("status") != item.get("status"):
-                            request.update(status=str(item.get("status"))[:20], result=str(item.get("result"))[:2000])
-                            answered = True
+                        if (request.get("id") == item["answer_for"] and request.get("to") == from_machine
+                                and request.get("status") not in ENDED
+                                and not (request.get("status") == "running" and item.get("status") == "waiting")
+                                and item.get("status") in (*ENDED, "waiting", "running")):
+                            challenge = item.get("challenge")
+                            updates = {"status": item["status"], "result": str(item.get("result", ""))[:2000],
+                                       "approval_mode": item.get("approval_mode", "local"),
+                                       "challenge": challenge if _valid_receipt(challenge, request) else None}
+                            if any(request.get(key) != value for key, value in updates.items()):
+                                request.update(updates)
+                                answered = True
             if answered:
                 self._write(self.out_path, sent)
             book = self._read(self.in_path)
             for item in requests:
                 if (not isinstance(item, dict) or item.get("to") != self.machine_id
                         or item.get("from") != from_machine or item.get("kind") not in KINDS
-                        or not isinstance(item.get("items"), list) or not _fresh(item.get("at", ""))):
+                        or not re.fullmatch(r"[0-9a-f]{16}", str(item.get("id", "")))
+                        or not valid_items(item.get("items"))
+                        or not _fresh(item.get("at", ""))):
                     continue
-                if item["id"] not in book:
-                    book[item["id"]] = {**item, "status": "waiting", "result": ""}
+                request = book.get(item["id"])
+                if request is None:
+                    request = {key: item[key] for key in ("id", "from", "to", "kind", "items", "at")}
+                    request.update(from_label=str(peer_label or item.get("from_label", from_machine))[:200], status="waiting", result="",
+                                   approval_mode=mode if item.get("supports_confirmation") is True or mode == "automatic" else "local")
+                    if mode == "paused":
+                        request.update(status="dismissed", result="Incoming fleet operations are paused on this machine.")
+                    if request["approval_mode"] in CONFIRMATION_MODES:
+                        request["challenge"] = {"mode": mode, "digest": _digest(request), "nonce": secrets.token_hex(16),
+                                                "expires": (_now() + timedelta(minutes=CONFIRMATION_MINUTES)).isoformat()}
+                    book[item["id"]] = request
+                    added += 1
+                elif mode == "paused" and request["status"] == "waiting" and request["from"] == from_machine:
+                    request.update(status="dismissed", result="Incoming fleet operations are paused on this machine.")
+                    added += 1
+                proof, challenge = item.get("confirmation"), request.get("challenge")
+                if (request["status"] == "waiting" and not request.get("confirmed")
+                        and mode in CONFIRMATION_MODES and request.get("approval_mode") == mode
+                        and request["from"] == from_machine and _valid_receipt(challenge, request)
+                        and isinstance(proof, dict) and proof.get("nonce") == challenge["nonce"]
+                        and proof.get("digest") == challenge["digest"] == _digest(item)
+                        and (mode != "typed" or proof.get("text") == _phrase(request))):
+                    request["confirmed"] = True
                     added += 1
             book = {key: value for key, value in book.items() if _fresh(value.get("at", ""))}
             self._write(self.in_path, book)
         return added
 
-    def incoming(self) -> list[dict]:
+    def incoming(self, *, include_hidden=False) -> list[dict]:
         with self.lock:
-            return sorted(self._read(self.in_path).values(), key=lambda item: item.get("at", ""), reverse=True)
+            book = self._read(self.in_path)
+            return sorted((item for item in book.values() if include_hidden or not item.get("hidden")),
+                          key=lambda item: item.get("at", ""), reverse=True)
+
+    def claim(self, request_id: str, mode: str | None, *, dismiss=False) -> dict:
+        """Atomically take a waiting request; mode None is the receiver's local decision."""
+        with self.lock:
+            book = self._read(self.in_path)
+            request = book.get(request_id)
+            if not request or request["status"] != "waiting" or not _fresh(request["at"]):
+                raise ValueError("that request is no longer waiting; reload")
+            if mode is not None and not approval_valid(request, mode):
+                raise ValueError("this request is waiting for approval")
+            request.update(status="dismissed" if dismiss else "running", result="Dismissed here." if dismiss else "")
+            self._write(self.in_path, book)
+            return request
 
     def settle(self, request_id: str, status: str, result: str) -> dict:
         with self.lock:
@@ -193,12 +343,15 @@ def run_request(request: dict, local_checkouts, libraries: list[str]) -> str:
     return perform(request, local_checkouts, libraries)[1]
 
 
-def perform(request: dict, local_checkouts, libraries: list[str], private=None) -> tuple[str, str]:
+def perform(request: dict, local_checkouts, libraries: list[str], private=None, *, fleet=False) -> tuple[str, str]:
     """Do what a request asks, with the safe operations. Returns (status, public text):
     "done" when every repository ended well, "partial" when some did, "failed" when none did.
     The text is fixed sentences per repository; `private(name, detail)` receives Git's own words
     for this machine's log."""
-    from Special._sync.actions import apply_catchup, apply_materialize, plan_catchup
+    from Special._sync.actions import apply_catchup, apply_materialize, fleet_clone_origin, plan_catchup
+    from Special._runtime.files import traverses_link
+    if request.get("kind") not in KINDS or not valid_items(request.get("items")):
+        return "failed", "Invalid operation or repository targets."
     private = private or (lambda _name, _detail: None)
     good = bad = 0
     lines = []
@@ -215,14 +368,15 @@ def perform(request: dict, local_checkouts, libraries: list[str], private=None) 
         for item in request["items"]:
             name, wanted = str(item.get("name") or "a repository"), str(item.get("library") or "")
             paths = list(local_checkouts(item.get("repo_id", "")) or [])
-            if wanted:
+            if wanted or fleet:
                 # Only the copy in the library the asking page's column named.
-                paths = [path for path in paths if _library_of(path, libraries) == wanted]
+                paths = [path for path in paths if (library := _library_of(path, libraries))
+                         and (not wanted or library == wanted) and (not fleet or not traverses_link(Path(path)))]
             if not paths:
                 bad += 1
                 lines.append(f"{name}: no copy here" + (f" in {wanted}" if wanted else ""))
                 continue
-            for result in apply_catchup(plan_catchup(paths)):
+            for result in apply_catchup(plan_catchup(paths, fleet=fleet), fleet=fleet):
                 say(name, result["action"], result.get("detail", ""))
         return _status(good, bad), "\n".join(lines)
     for item in request["items"]:
@@ -235,6 +389,10 @@ def perform(request: dict, local_checkouts, libraries: list[str], private=None) 
         if folder and any(mark in folder for mark in ("/", "\\", "..", ":")):
             bad += 1
             lines.append(f"{name}: the folder it names is not a plain folder name, so nothing was cloned")
+            continue
+        origin = fleet_clone_origin(host, owner, name, folder)
+        if origin is None:
+            say("Repository", "remote_policy")
             continue
         # The library the asking page's column named (one machine may keep several); the first
         # library when it names none.
@@ -255,8 +413,8 @@ def perform(request: dict, local_checkouts, libraries: list[str], private=None) 
             say(name, "exists")
             continue
         plan = [{"source": target, "name": name, "target": target, "library": library,
-                 "origin": f"https://{host}/{owner}/{name}.git", "action": "clone", "detail": ""}]
-        result = apply_materialize(plan)[0]
+                 "origin": origin, "action": "clone", "detail": ""}]
+        result = apply_materialize(plan, fleet=True)[0]
         say(name, result["action"], result.get("detail", ""))
     return _status(good, bad), "\n".join(lines)
 

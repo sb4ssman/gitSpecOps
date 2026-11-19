@@ -96,7 +96,7 @@ function oneOrganization(container, data, perspective, group, handlers) {
   container.append(verdict);
   container.append(copyGrid(data, rows, {perspective, actions, asks: true, onName: onRepository, onChange: () => onPick({})}));
   container.append(html('p', GRID_FOOTNOTE, 'host-note'));
-  gridNotes(container, () => onPick({}));
+  gridNotes(container);
 }
 
 /** Draw the panel's body. `options`: group ("all" or "org:<name>"), perspective; handlers:

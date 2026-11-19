@@ -59,6 +59,14 @@ committing or pushing from the app, are what the product is for):
    from another machine of the same fleet can only ask for a fast-forward after a fresh fetch
    or a clone that replaces nothing. The receiving machine waits for Apply by default; its
    Settings page can opt in to running these requests on arrival without a second approval.
+   **App Security** also allows confirmation on the sending device, with a click or typed
+   acknowledgment. Both options trust the authenticated sending device. One approval applies
+   to the received request and expires after 15 minutes. Each machine chooses its own policy.
+   **Pause incoming operations** holds fleet writes while the local Git actions remain available.
+   The fleet executor validates the request again and uses approved HTTPS provider URLs,
+   bounded local checkout paths and fixed Git arguments. Checkout-owned execution rules and
+   rewritten destinations require local review. A fast-forward applies the fetched commit that
+   was planned and refuses an ignored-file collision.
    Commit and push on another machine remain the attended design above.
 3. **Everything else is a command the user invoked**, from the terminal, a tray item or a
    dashboard button alike — the same command, the same plan → show → confirm:
@@ -83,6 +91,22 @@ what was not verified. Ask before running anything in the background (tray, peer
 tasks), acting over SSH, or capturing any screen. Work with the Destructive Command Guard, never
 around it. Do not force-push, reset, rebase, or delete branches. Work on `dev`; merging to
 `main` is the user's call. Commit and push only when asked.
+
+### Development preview workflow
+
+1. Work on `dev`. Verify the change in that checkout and run the repository hygiene and security
+   checks. Keep unrelated work out of the release.
+2. When the user asks to distribute the preview, commit and push the verified work to `dev`, then
+   promote it to `main` through the repository's pull-request workflow. Verify both remote refs.
+   The installed `gitso update` follows the checkout's configured upstream branch, so both
+   channels need the fix for propagation.
+3. A running preview loads its Python modules and web assets at startup. Refresh it through its
+   existing lifecycle when authorized, using the same profile. Check the served page version or
+   assets and exercise the changed behavior. A browser reload against the original process still
+   serves the original code. On the tray, the local lifecycle is `gitso tray --stop` then
+   `gitso tray`. A fleet trial needs the updated preview on both peers.
+4. Report the commit or pull request for each branch and what the running preview actually
+   served and did. If a guard or authorization prevents any step, report the exact blocker.
 
 This repository is public. Keep machine names, real paths, and the user's name and email out.
 Run `tests/repo/test_repo_hygiene.py` before every commit and **stop if it fails**. On

@@ -63,7 +63,10 @@ Microsoft Store can sign an accepted MSIX; broadly distributed macOS builds shou
 ID signing and notarization. A random user's first-run experience should not ask them to trust a
 self-signed certificate.
 
-## Update model
+The standing [development preview workflow](../README.md#development-preview-workflow) is in
+the project brief, under **How this user works**.
+
+## Packaged updates
 
 There is one release manifest per channel (`stable`, `beta`, `development`) containing version,
 minimum compatible database/report/display versions, per-platform artifact URL, size and SHA-256.

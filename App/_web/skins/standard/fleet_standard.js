@@ -236,7 +236,7 @@ const asked = new Map();
 function uncommittedThere(row, machine, dirty) {
   const key = `${row.id}/${machine.id}`, box = node('div', undefined, 'detail-changes');
   const view = asked.get(key);
-  const ask = node('button', view ? 'Ask again' : `Show the ${dirty} uncommitted file${dirty === 1 ? '' : 's'}`, 'quiet'); ask.type = 'button';
+  const ask = node('button', view ? 'Ask again' : `Show the ${dirty} uncommitted item${dirty === 1 ? '' : 's'}`, 'quiet'); ask.type = 'button';
   const redraw = () => { state.selected = null; showDetail(row); };
   ask.onclick = async () => {
     asked.set(key, {loading: true}); redraw();
@@ -276,11 +276,11 @@ function renderRepositories() {
     byId('detail').hidden = true; return;
   }
   const perspective = perspectiveOf(data, null);
-  const grid = {perspective, columns: columnsOf(orderedMachines(data, perspective), rows)};
+  const grid = {perspective, columns: columnsOf(orderedMachines(data, perspective), rows, data.libraries)};
   if (state.grouping === 'place') renderPlaceTree(list, data, rows, grid);
   else for (const group of groups) renderGroup(list, group, data, grid);
   list.append(node('p', GRID_FOOTNOTE, 'host-note'));
-  gridNotes(list, renderRepositories);
+  gridNotes(list);
   const selected = rows.find(row => row.id === state.selected);
   if (selected) showDetail(selected); else { state.selected = null; byId('detail').hidden = true; }
 }

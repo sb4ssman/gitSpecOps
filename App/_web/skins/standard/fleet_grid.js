@@ -39,7 +39,7 @@ export function copyText(cell, row) {
   const remote = PROVIDER[host] || (host && host !== 'local' ? host : null);
   const parts = [];
   const changed = (facts.staged || 0) + (facts.unstaged || 0) + (facts.untracked || 0);
-  if (changed) parts.push(`${changed} uncommitted file${changed === 1 ? '' : 's'}`);
+  if (changed) parts.push(`${changed} uncommitted item${changed === 1 ? '' : 's'}`);
   if (!remote) parts.push('no remote: the only copy is on machines');
   else if (!facts.has_upstream) parts.push(`not linked to a branch on ${remote}`);
   else if (facts.ahead && facts.behind) parts.push(`${facts.ahead} ahead and ${facts.behind} behind ${remote}`);
@@ -66,7 +66,7 @@ export const copiesOf = cell => (cell.copies && cell.copies.length ? cell.copies
 
 /** Libraries under machines: one column per library a machine keeps these repositories in (two
  *  libraries, two columns), one column when it keeps them in one or none. */
-export function columnsOf(machines, rows) {
+export function columnsOf(machines, rows, reportedLibraries = []) {
   const columns = [];
   for (const machine of machines) {
     const libraries = [];
@@ -76,6 +76,11 @@ export function columnsOf(machines, rows) {
       for (const copy of copiesOf(cell)) {
         const library = (copy.place || {}).library;
         if (library && !libraries.includes(library)) libraries.push(library);
+      }
+    }
+    if (!libraries.length) {
+      for (const entry of reportedLibraries) {
+        if (entry.machine_id === machine.id && entry.library && !libraries.includes(entry.library)) libraries.push(entry.library);
       }
     }
     libraries.sort((a, b) => a.localeCompare(b));
@@ -161,6 +166,7 @@ export const shortCommit = head => (head ? head.slice(0, 7) : '');
 
 /** What the grids keep across refreshes: the last request's answer, the work summary shown. */
 export const gridState = {message: '', changes: null};
+const gridOffsets = new Map();
 
 /** The grid. `options`: perspective, columns (shared across several grids so they line up),
  *  actions (this computer only: requests and work summaries), onName(row), onChange() to redraw,
@@ -168,13 +174,31 @@ export const gridState = {message: '', changes: null};
 export function copyGrid(data, rows, options) {
   const {perspective, actions, onName, onChange = () => {}, asks = false, advice = false} = options;
   const machines = orderedMachines(data, perspective);
-  const columns = options.columns || columnsOf(machines, rows);
+  const columns = options.columns || columnsOf(machines, rows, data.libraries);
   // Alternate shades by machine, so a machine's libraries read as one block.
   const shades = new Map(machines.map((machine, index) => [machine.id, index % 2 ? 'map-shade-b' : 'map-shade-a']));
   const shadeOf = column => shades.get(column.machine.id);
   const startsGroup = column => columns.find(item => item.machine.id === column.machine.id) === column;
   const cellClass = (column, tone) => `${tone} ${shadeOf(column)}${startsGroup(column) ? ' map-group-start' : ''}`;
-  const table = html('table', undefined, 'map-grid map-org');
+  const table = html('table', undefined, 'map-grid map-org copy-grid');
+  const inspector = html('aside', undefined, 'copy-inspector');
+  inspector.hidden = true;
+  const send = async (kind, list, column) => {
+    const machine = column.machine;
+    const target = `${machine.label}${column.library ? ` · ${column.library}` : ''}`;
+    const action = kind === 'pull' ? 'Fast-forward' : 'Clone';
+    const subject = list.length === 1 ? list[0].name : `${list.length} repositories`;
+    const timing = machine.id === data.this_machine ? 'Runs here now.' : 'The receiving machine decides whether to run or ask for approval.';
+    if (!window.confirm(`${action} ${subject} on ${target}? ${timing}`)) return;
+    try {
+      const done = await actions.send({to: machine.id, to_label: machine.label, kind, items: list.map(row => ({
+        repo_id: row.id, name: (row.identity || {}).name || row.name, host: (row.identity || {}).host,
+        owner: (row.identity || {}).owner, folder: (row.place || {}).folder || '',
+        ...(column.library ? {library: column.library} : {})}))});
+      gridState.message = done.message;
+    } catch (error) { gridState.message = error.message; }
+    onChange();
+  };
   // Equal widths for every library column, whatever its words.
   const widths = html('colgroup');
   widths.append(html('col', undefined, 'map-col-repo'), html('col', undefined, 'map-col-online'));
@@ -209,25 +233,12 @@ export function copyGrid(data, rows, options) {
       const machine = column.machine;
       const cell = html('td', undefined, cellClass(column, ''));
       // A fast-forward is all the button can do: only copies simply behind their provider.
-      const held = rows.filter(row => ((cellIn(row, column) || {}).facts || {}).behind > 0);
-      const missing = rows.filter(row => !cellIn(row, column) && providerUrl(row));
+      const held = rows.filter(row => canFastForward(cellIn(row, column)));
+      const missing = rows.filter(row => column.library && !cellIn(row, column) && providerUrl(row));
       const here = machine.id === data.this_machine;
-      const ask = (kind, list) => async () => {
-        const timing = here ? 'Runs here now.' : 'The receiving machine applies it automatically only if enabled there; otherwise it waits for Apply.';
-        if (!window.confirm(`${kind === 'pull' ? 'Fast-forward' : 'Clone'} ${list.length} on ${machine.label}${column.library ? ` in ${column.library}` : ''}? ${timing}`)) return;
-        gridState.message = here ? 'Working…' : gridState.message; onChange();
-        try {
-          const done = await actions.send({to: machine.id, to_label: machine.label, kind, items: list.map(row => ({
-            repo_id: row.id, name: (row.identity || {}).name || row.name, host: (row.identity || {}).host,
-            owner: (row.identity || {}).owner, folder: (row.place || {}).folder || '',
-            ...(column.library ? {library: column.library} : {})}))});
-          gridState.message = done.message;
-        } catch (error) { gridState.message = error.message; }
-        onChange();
-      };
       const suffix = here ? ' here' : '';
-      if (held.length) { const b = html('button', `Fast-forward ${held.length}${suffix}`); b.type = 'button'; b.onclick = ask('pull', held); cell.append(b); }
-      if (missing.length) { const b = html('button', `Clone ${missing.length} missing${suffix}`); b.type = 'button'; b.onclick = ask('clone', missing); cell.append(b); }
+      if (held.length) { const b = html('button', `Fast-forward ${held.length}${suffix}`); b.type = 'button'; b.onclick = () => send('pull', held, column); cell.append(b); }
+      if (missing.length) { const b = html('button', `Clone ${missing.length} missing${suffix}`); b.type = 'button'; b.onclick = () => send('clone', missing, column); cell.append(b); }
       line.append(cell);
     }
     if (advice) line.append(html('td'));
@@ -255,19 +266,48 @@ export function copyGrid(data, rows, options) {
       const machine = column.machine;
       const cell = cellIn(row, column);
       const td = html('td', undefined, cellClass(column, cell && cell.present ? `tone-${cell.tone}` : 'tone-muted'));
-      if (actions && dirtyOf(cell)) {
+      const status = html('span', !cell && column.split && (row.cells[machine.id] || {}).present
+        ? `not in ${column.library}` : copyText(cell, row));
+      td.append(status);
+      if (actions && dirtyOf(cell) && !cell.same_disk_as) {
         // Uncommitted work: ask that machine what it is (names and line counts, never contents).
-        const show = html('button', copyText(cell, row), 'repo-link'); show.type = 'button';
-        show.title = 'Show what the uncommitted work is';
+        const show = html('button', 'Review changes', 'quiet copy-action'); show.type = 'button';
+        const key = JSON.stringify([row.id, machine.id, column.library]);
+        show.setAttribute('aria-label', `Review changes: ${row.name} on ${machine.label}${column.library ? ` (${column.library})` : ''}`);
+        const summarize = view => {
+          const [copy, ...others] = inspectorCopies(view);
+          if (!copy || others.length || !Number.isInteger(copy.untracked_folders)) return;
+          const facts = cell.facts || {};
+          const summary = copyText({...cell, facts: {...facts, staged: 0, unstaged: 0, untracked: 0}}, row);
+          status.textContent = `${copy.summary} · ${summary}`;
+        };
+        if (gridState.changes?.key === key) {
+          summarize(gridState.changes);
+          gridState.changes.trigger = show;
+          td.classList.add('copy-selected');
+        }
         show.onclick = async () => {
-          gridState.changes = {title: `${row.name} on ${machine.label}`, loading: true}; onChange();
-          try { gridState.changes = {title: `${row.name} on ${machine.label}`, result: await actions.changes(row.id, machine.id)}; }
-          catch (error) { gridState.changes = {title: `${row.name} on ${machine.label}`, error: error.message}; }
-          onChange();
+          const view = {title: [row.name, machine.label, column.library].filter(Boolean).join(' · '),
+            key, library: column.library, loading: true, trigger: show};
+          gridState.changes = view;
+          drawInspector(inspector, show);
+          try { view.result = await actions.changes(row.id, machine.id); }
+          catch (error) { view.error = error.message; }
+          view.loading = false;
+          if (gridState.changes === view) {
+            summarize(view);
+            drawInspector(activeInspector);
+          }
         };
         td.append(show);
-      } else td.textContent = !cell && column.split && (row.cells[machine.id] || {}).present
-        ? `not in ${column.library}` : copyText(cell, row);
+      } else if (actions && ((!cell && column.library && providerUrl(row)) || canFastForward(cell))) {
+        const clone = !cell;
+        const button = html('button', clone ? 'Clone here' : 'Fast-forward', 'quiet copy-action');
+        button.type = 'button';
+        button.setAttribute('aria-label', `${button.textContent}: ${row.name} on ${machine.label}${column.library ? ` (${column.library})` : ''}`);
+        button.onclick = () => send(clone ? 'clone' : 'pull', [row], column);
+        td.append(button);
+      }
       const commit = cell && cell.present && shortCommit((cell.facts || {}).head);
       if (commit) td.append(html('span', commit, 'host-note'));
       line.append(td);
@@ -276,31 +316,79 @@ export function copyGrid(data, rows, options) {
     body.append(line);
   }
   table.append(body);
-  const scroll = html('div', undefined, 'table-scroll'); scroll.append(table);
-  return scroll;
+  const scroll = html('div', undefined, 'table-scroll copy-grid-scroll'); scroll.append(table);
+  const scrollKey = JSON.stringify([location.hash, perspective, rows[0]?.id, rows.length]);
+  const offset = gridOffsets.get(scrollKey);
+  if (offset) requestAnimationFrame(() => { scroll.scrollLeft = offset.left; scroll.scrollTop = offset.top; });
+  scroll.addEventListener('scroll', () => gridOffsets.set(scrollKey, {left: scroll.scrollLeft, top: scroll.scrollTop}), {passive: true});
+  const wrapper = html('div', undefined, 'copy-grid-wrap'); wrapper.append(scroll, inspector);
+  return wrapper;
 }
 
-/** The last request's answer and the uncommitted-work summary, under a grid. */
-export function gridNotes(container, onChange) {
+function canFastForward(cell) {
+  const facts = (cell && cell.facts) || {};
+  return cell && !cell.same_disk_as && !dirtyOf(cell) && !facts.operation && facts.behind > 0 && !(facts.ahead > 0);
+}
+
+/** The last request's answer and the inspector for the selected checkout. */
+export function gridNotes(container) {
   if (gridState.message) container.append(html(gridState.message.includes('\n') ? 'pre' : 'p', gridState.message, 'host-note'));
-  if (!gridState.changes) return;
+  if (!gridState.changes || activeInspector?.isConnected) return;
+  const inspector = gridState.changes.trigger?.closest('.copy-grid-wrap')?.querySelector('.copy-inspector');
+  if (inspector && container.contains(inspector)) drawInspector(inspector);
+}
+
+let activeInspector;
+let selectedCopy;
+function inspectorCopies(view) {
+  const copies = view.result?.copies || [];
+  return view.library && copies.every(copy => Object.hasOwn(copy, 'library'))
+    ? copies.filter(copy => copy.library === view.library) : copies;
+}
+
+function drawInspector(box, trigger) {
+  if (activeInspector && activeInspector !== box) activeInspector.hidden = true;
+  activeInspector = box;
   const view = gridState.changes;
-  const box = html('div', undefined, 'map-changes');
+  selectedCopy?.classList.remove('copy-selected');
+  selectedCopy = view.trigger?.closest('td');
+  selectedCopy?.classList.add('copy-selected');
+  box.hidden = false;
+  box.setAttribute('aria-label', view.title);
+  const keepFocus = box.contains(document.activeElement);
+  box.replaceChildren();
   const close = html('button', 'Close'); close.type = 'button';
-  close.onclick = () => { gridState.changes = null; onChange(); };
-  box.append(html('strong', `Uncommitted work: ${view.title}`), close);
+  const dismiss = () => {
+    gridState.changes = null;
+    box.hidden = true;
+    selectedCopy?.classList.remove('copy-selected');
+    view.trigger?.focus({preventScroll: true});
+  };
+  close.onclick = dismiss;
+  box.onkeydown = event => { if (event.key === 'Escape') dismiss(); };
+  const header = html('div', undefined, 'detail-header');
+  header.append(html('h3', view.title), close);
+  box.append(header);
   if (view.loading) box.append(html('p', 'Asking…', 'host-note'));
   else if (view.error) box.append(html('p', view.error, 'tone-text-warning'));
-  else for (const [index, copy] of (view.result.copies || []).entries()) {
-    box.append(html('p', `${view.result.copies.length > 1 ? `Copy ${index + 1}: ` : ''}${copy.summary}`));
-    const list = html('ul');
-    for (const file of copy.files || []) {
-      const lines = file.added >= 0 && (file.added || file.deleted) ? ` +${file.added} −${file.deleted}` : '';
-      list.append(html('li', `${file.name} · ${file.status}${lines}${file.line_endings_only ? ' · line endings only' : ''}`));
+  else {
+    const copies = view.result.copies || [];
+    const scoped = view.library && copies.every(copy => Object.hasOwn(copy, 'library'));
+    const shown = inspectorCopies(view);
+    if (!shown.length) box.append(html('p', 'No checkout details were returned for this library.'));
+    if (!scoped && view.library && copies.length > 1) box.append(html('p', 'This peer reported changes across its libraries.'));
+    for (const [index, copy] of shown.entries()) {
+      box.append(html('p', `${shown.length > 1 ? `Copy ${index + 1}: ` : ''}${copy.summary}`));
+      const list = html('ul');
+      for (const file of copy.files || []) {
+        const lines = file.added >= 0 && (file.added || file.deleted) ? ` +${file.added} −${file.deleted}` : '';
+        const status = file.kind === 'folder' ? 'new folder' : file.status;
+        list.append(html('li', `${file.name} · ${status}${lines}${file.line_endings_only ? ' · line endings only' : ''}`));
+      }
+      box.append(list);
     }
-    box.append(list);
   }
-  container.append(box);
+  if (trigger || keepFocus) close.focus({preventScroll: true});
 }
 
 /** The words under every grid: what "matches" is measured against, and when. */

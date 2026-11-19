@@ -42,7 +42,7 @@ class PageActionTests(unittest.TestCase):
     def arrive(self):
         other = RequestBook(self.dir / "other", "lap", "Lap")
         sent = other.send("desk", "Desk", "pull", [{"repo_id": "r1", "name": "alpha"}])
-        self.book.receive(other.published(), "lap")
+        self.book.receive(other.published(), "lap", self.actions.request_mode())
         return sent
 
     def test_unknown_actions_are_refused(self):
@@ -76,6 +76,15 @@ class PageActionTests(unittest.TestCase):
         self.actions.run_waiting()
         self.assertEqual(self.book.incoming()[0]["status"], "waiting")
 
+    def test_pausing_blocks_an_already_queued_request(self):
+        sent = self.arrive()
+        self.config["auto_requests"] = "paused"
+        with patch("Elaborate._fleet.requests.perform") as perform:
+            self.actions.run_waiting()
+            with self.assertRaisesRegex(ValueError, "paused"):
+                self.actions.handle("request-answer", {"id": sent["id"], "accept": True})
+            perform.assert_not_called()
+
     def test_a_request_that_cannot_be_run_is_failed_never_left_running(self):
         self.config["auto_requests"] = True
         self.arrive()
@@ -84,6 +93,26 @@ class PageActionTests(unittest.TestCase):
         ended = self.book.incoming()[0]
         self.assertEqual(ended["status"], "failed")
         self.assertNotIn("boom", ended["result"], "the reason stays on this machine")
+
+    def test_sender_approval_is_applied_once_under_receiver_policy(self):
+        self.config["auto_requests"] = "typed"
+        other = RequestBook(self.dir / "other", "lap", "Lap")
+        sender = PageActions({"machine_id": "lap", "label": "Lap"}, self.dir, Observer(), other,
+                             lambda: (self.dir / "profile", None), audits=None)
+        sent = sender.handle("request-send", {"to": "desk", "to_label": "Desk", "kind": "clone",
+                                               "items": [{"owner": "team", "name": "tool"}]})["sent"]
+        self.book.receive(other.published(), "lap", self.actions.request_mode())
+        other.receive(self.book.published(), "desk")
+        with patch("Elaborate._fleet.requests.perform", return_value=("done", "cloned")) as perform:
+            self.actions.run_waiting()
+            perform.assert_not_called()
+            sender.handle("request-confirm", {"id": sent["id"], "text": "team/tool"})
+            self.book.receive(other.published(), "lap", self.actions.request_mode())
+            self.actions.run_waiting()
+            self.actions.run_waiting()
+            perform.assert_called_once()
+        other.receive(self.book.published(), "desk")
+        self.assertEqual(other.outgoing()[0]["status"], "done")
 
 
 if __name__ == "__main__":

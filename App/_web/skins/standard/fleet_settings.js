@@ -273,10 +273,15 @@ export function renderSettings(block, connection, token) {
   function tasksSection(s) {
     // The task log: what was asked of other machines, what was applied or dismissed here, and what
     // ran here; plus clearing finished or stale requests (the user, 2026-11-16).
-    const box = section('Requests and the task log', 'Every request this machine sent, applied or dismissed, and every fleet action run here, newest first. Kept in tasks.log in the settings folder.');
-    const automatic = check('Run incoming fast-forward and clone requests automatically', s.auto_requests);
-    box.append(automatic.label, el('p', 'When off, requests wait for Apply on this machine.', 'host-note'),
-      row(button('Review request setting', () => planned('auto-requests', {enabled: automatic.input.checked},
+    const box = section('App Security', 'Set how this machine approves incoming fleet operations. The task log records requests and results.');
+    const approval = el('select');
+    approval.append(choice('paused', 'Pause incoming operations'), choice('local', 'Approve on this machine'),
+      choice('typed', 'Type to approve on the sending machine'),
+      choice('confirm', 'Confirm on the sending machine'), choice('automatic', 'Run automatically'));
+    approval.value = s.request_approval || (s.auto_requests ? 'automatic' : 'local');
+    box.append(field('Incoming clone and fast-forward requests', approval),
+      el('p', 'Remote approval trusts the enrolled sending device. Typed approval asks for acknowledgment.', 'host-note'),
+      row(button('Review request setting', () => planned('auto-requests', {mode: approval.value},
         done => load(done.notice || 'Saved.')))));
     const list = el('div');
     const clear = async payload => {

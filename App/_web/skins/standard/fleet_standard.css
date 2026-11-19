@@ -51,9 +51,16 @@ main{padding:0 32px}.section-title{margin:24px 0 18px}.section-title p{margin:5p
 .request-waiting{border-color:var(--accent)}
 .request button{margin-right:8px}
 .map-asks td button{margin:2px 6px 2px 0;font-size:12px;min-height:30px;padding:4px 8px}
-.map-changes{margin-top:12px;border:1px solid var(--border);border-radius:8px;padding:10px 14px;background:var(--surface)}
-.map-changes button{float:right}
-.map-changes ul{max-height:320px;overflow:auto;font-size:12px}
+.copy-grid-scroll{max-block-size:75vh;max-block-size:75dvh;scrollbar-gutter:stable}
+.copy-grid{border-collapse:separate;border-spacing:0;min-width:880px}
+.copy-grid thead{position:sticky;top:0;z-index:2}
+.copy-grid thead th{background-color:var(--surface)}
+.copy-grid tbody td:first-child,.copy-grid thead tr:first-child th:first-child{position:sticky;left:0;background:var(--surface);z-index:1}
+.copy-grid tbody td:first-child{box-shadow:1px 0 var(--border)}
+.copy-action{display:block;margin-top:6px;font-size:12px;padding:3px 7px;min-height:24px}
+.copy-grid td.copy-selected{box-shadow:inset 0 0 0 2px var(--accent)}
+.copy-inspector{position:fixed;z-index:20;right:12px;top:12px;bottom:12px;width:min(420px,calc(100% - 24px));overflow:auto;overscroll-behavior:contain;border:1px solid var(--border);border-radius:8px;padding:18px;background:var(--surface);box-shadow:0 8px 28px #0006}
+.copy-inspector ul{padding-left:20px;font-size:13px;overflow-wrap:anywhere}
 .map-verdict{margin:10px 0 14px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
 .map-verdict-open{border-color:var(--warning, #d29922)}
 .map-verdict ul{margin:6px 0 0;padding-left:18px;font-size:13px}
