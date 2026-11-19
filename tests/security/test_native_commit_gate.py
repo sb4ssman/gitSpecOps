@@ -7,16 +7,23 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _bootstrap import setup
 
 setup()
 
-from Special._security._native_gate_cli import main  # noqa: E402
+from Special._security._native_gate_cli import _runtime, main  # noqa: E402
 
 
 class NativeCommitGateTests(unittest.TestCase):
+    def test_runtime_archive_is_independent_of_the_clock(self):
+        with patch("zipfile.time.localtime", return_value=(2026, 1, 1, 0, 0, 0, 0, 1, 0)):
+            preview = _runtime()
+        with patch("zipfile.time.localtime", return_value=(2026, 1, 1, 0, 0, 4, 0, 1, 0)):
+            self.assertEqual(_runtime(), preview)
+
     def test_plain_commit_and_local_only(self):
         with tempfile.TemporaryDirectory() as root:
             repo = Path(root) / "repo"
@@ -37,8 +44,10 @@ class NativeCommitGateTests(unittest.TestCase):
                 with contextlib.redirect_stdout(output):
                     self.assertEqual(main(argv), 0)
                 token = json.loads(output.getvalue())["plan_id"]
-                with contextlib.redirect_stdout(io.StringIO()):
-                    self.assertEqual(main([*argv, "--apply", token]), 0)
+                result = io.StringIO()
+                with contextlib.redirect_stdout(result):
+                    code = main([*argv, "--apply", token])
+                self.assertEqual(code, 0, result.getvalue())
 
             git("init", "-q")
             git("config", "user.name", "gate-check")

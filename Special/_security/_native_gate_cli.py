@@ -66,7 +66,8 @@ def _verify(directory, record):
 def _runtime():
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("__main__.py", "from Special._security._native_gate import main\nraise SystemExit(main())\n")
+        archive.writestr(zipfile.ZipInfo("__main__.py"),
+                         "from Special._security._native_gate import main\nraise SystemExit(main())\n")
         directories = set()
         for package in ("Basic", "Special", "_os"):
             for source in sorted((ROOT / package).rglob("*.py")):
