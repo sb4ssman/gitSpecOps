@@ -40,8 +40,13 @@ jobs:
     strategy:
       fail-fast: false   # one system failing must not hide how the others did
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest, ubuntu-latest]
         python: ["3.11", "3.14"]
+        include:
+          - os: macos-15-intel
+            python: "3.11"
+          - os: macos-26
+            python: "3.14"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
