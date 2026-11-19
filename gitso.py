@@ -114,6 +114,8 @@ COMMANDS = (
         ("relink", "Update the commit ids a checkout's files quote, after a rewrite."),
     )),
     Command("secure-commit", "Special/secure_commit.py", "Special._security._commit.cli"),
+    Command("commit-gate", "Special/commit_gate.py", "Special._security._native_gate_cli"),
+    Command("git-inspect", "Special/git_inspect.py", "Special.git_inspect"),
     Command("secure-push", "Special/secure_push.py", "Special._security._push_cli"),
     # Elaborate: other machines, or over time.
     Command("machine safe-to-wipe", "Elaborate/machine_safe_to_wipe.py", "Elaborate.machine_safe_to_wipe",

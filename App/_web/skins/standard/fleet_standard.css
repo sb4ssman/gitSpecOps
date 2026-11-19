@@ -54,6 +54,7 @@ main{padding:0 32px}.section-title{margin:24px 0 18px}.section-title p{margin:5p
 .copy-grid-scroll{max-block-size:75vh;max-block-size:75dvh;scrollbar-gutter:stable}
 .copy-grid{border-collapse:separate;border-spacing:0;min-width:880px}
 .copy-grid thead{position:sticky;top:0;z-index:2}
+.unavailable-action{display:inline-block}.unavailable-action button{pointer-events:none}
 .copy-grid thead th{background-color:var(--surface)}
 .copy-grid tbody td:first-child,.copy-grid thead tr:first-child th:first-child{position:sticky;left:0;background:var(--surface);z-index:1}
 .copy-grid tbody td:first-child{box-shadow:1px 0 var(--border)}

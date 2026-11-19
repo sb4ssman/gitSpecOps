@@ -172,7 +172,8 @@ const gridOffsets = new Map();
  *  actions (this computer only: requests and work summaries), onName(row), onChange() to redraw,
  *  asks (the "Ask a machine" row), advice (an Advice column). */
 export function copyGrid(data, rows, options) {
-  const {perspective, actions, onName, onChange = () => {}, asks = false, advice = false} = options;
+  const {perspective, actions, onName, onChange = () => {}, asks = false, advice = false,
+    showUnavailable = true} = options;
   const machines = orderedMachines(data, perspective);
   const columns = options.columns || columnsOf(machines, rows, data.libraries);
   // Alternate shades by machine, so a machine's libraries read as one block.
@@ -237,8 +238,28 @@ export function copyGrid(data, rows, options) {
       const missing = rows.filter(row => column.library && !cellIn(row, column) && providerUrl(row));
       const here = machine.id === data.this_machine;
       const suffix = here ? ' here' : '';
-      if (held.length) { const b = html('button', `Fast-forward ${held.length}${suffix}`); b.type = 'button'; b.onclick = () => send('pull', held, column); cell.append(b); }
-      if (missing.length) { const b = html('button', `Clone ${missing.length} missing${suffix}`); b.type = 'button'; b.onclick = () => send('clone', missing, column); cell.append(b); }
+      const choices = [
+        ['pull', held, `Fast-forward ${held.length}${suffix}`, 'No existing checkout is clean and behind-only.'],
+        ['clone', missing, `Clone ${missing.length} missing${suffix}`, column.library
+          ? 'No missing repository with a known clone source.' : 'No destination library is selected.'],
+      ];
+      for (const [kind, items, label, reason] of choices) {
+        if (!items.length && !showUnavailable) continue;
+        const button = html('button', label);
+        button.type = 'button';
+        button.disabled = !items.length;
+        if (items.length) {
+          button.onclick = () => send(kind, items, column);
+          cell.append(button);
+        } else {
+          const explanation = html('span', undefined, 'unavailable-action');
+          explanation.tabIndex = 0;
+          explanation.title = reason;
+          explanation.setAttribute('aria-label', `${label}. ${reason}`);
+          explanation.append(button);
+          cell.append(explanation);
+        }
+      }
       line.append(cell);
     }
     if (advice) line.append(html('td'));

@@ -13,10 +13,12 @@ Review caught those once. A test catches them every time, which is the differenc
 policy and a guarantee. It scans **tracked files only** — what the public can actually read —
 and deliberately says nothing about git history, which no test can retroactively clean.
 
-Offline: `git ls-files` plus local reads. No network.
+Offline: `git ls-files` plus local reads. Also checks the fleet wiring for unused bindings
+before a commit, covering a regression that otherwise only surfaced in CI. No network.
 """
 import re
 import subprocess
+import symtable
 import sys
 import tempfile
 from pathlib import Path
@@ -190,6 +192,23 @@ def test_agent_workspace_stays_local(names):
     if leaked:
         raise AssertionError("only READMEs may be tracked under .agents/tools and "
                              ".agents/output:\n  " + "\n  ".join(leaked))
+
+
+def test_fleet_peer_wiring_uses_its_local_bindings(_names):
+    """Catch obsolete bindings such as the unused action lock left by the peer split."""
+    path = ROOT / "Elaborate/_fleet/peer.py"
+    module = symtable.symtable(path.read_text(encoding="utf-8"), str(path), "exec")
+    peer = next((scope for scope in module.get_children() if scope.get_name() == "run_peer"), None)
+    if peer is None:
+        raise AssertionError("fleet wiring moved; point this check at the current runner")
+    # A nested function can use a binding without the outer scope marking it as referenced.
+    captured = {symbol.get_name() for child in peer.get_children()
+                for symbol in child.get_symbols() if symbol.is_free()}
+    unused = sorted(symbol.get_name() for symbol in peer.get_symbols()
+                    if symbol.is_local() and symbol.is_assigned() and not symbol.is_referenced()
+                    and symbol.get_name() not in captured and not symbol.get_name().startswith("_"))
+    if unused:
+        raise AssertionError("Elaborate/_fleet/peer.py: unused local bindings in run_peer: " + ", ".join(unused))
 
 
 def main():

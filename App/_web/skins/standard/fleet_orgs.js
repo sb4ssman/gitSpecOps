@@ -76,7 +76,7 @@ function overview(container, data, perspective, onPick, onAudit) {
   container.append(scroll);
 }
 
-function oneOrganization(container, data, perspective, group, handlers) {
+function oneOrganization(container, data, perspective, group, handlers, showUnavailable) {
   const {onPick, onAudit, onRepository, actions} = handlers;
   const rows = rowsOf(data, group);
   const label = group.slice(4);
@@ -94,7 +94,8 @@ function oneOrganization(container, data, perspective, group, handlers) {
     verdict.append(list);
   }
   container.append(verdict);
-  container.append(copyGrid(data, rows, {perspective, actions, asks: true, onName: onRepository, onChange: () => onPick({})}));
+  container.append(copyGrid(data, rows, {perspective, actions, asks: true, showUnavailable,
+    onName: onRepository, onChange: () => onPick({})}));
   container.append(html('p', GRID_FOOTNOTE, 'host-note'));
   gridNotes(container);
 }
@@ -105,6 +106,6 @@ export function renderOrgs(container, data, options, handlers) {
   container.replaceChildren();
   if (!data.rows.length) { container.append(html('p', 'No repositories observed yet.', 'empty')); return; }
   if (options.group && options.group !== 'all' && rowsOf(data, options.group).length) {
-    oneOrganization(container, data, options.perspective, options.group, handlers);
+    oneOrganization(container, data, options.perspective, options.group, handlers, options.showUnavailable);
   } else overview(container, data, options.perspective, handlers.onPick, handlers.onAudit);
 }

@@ -1,5 +1,20 @@
 # Security policy
 
+## Local Git commit protection
+
+`gitso commit-gate /path/to/repo --mode scan` previews the installation. The
+installed hooks use the selected profile and a bundled copy of the scanner
+outside the checkout. Normal commits check the staged changes, message and
+effective identity. `--mode local-only` instead holds commits and pushes through
+Git's hooks while allowing stash and fast-forward updates. Use
+`gitso commit-gate /path/to/repo` to inspect the installed mode.
+
+Enable and verify the gate in each checkout that needs it. A source update
+does not register Git hooks. The installer reports an existing conflicting hook
+or custom hooks directory instead of replacing it. Git hooks can be bypassed and
+do not cover operations that never invoke those hooks. For a publication check
+over existing outgoing history, use `gitso secure-push`.
+
 gitSpecOps decides what may leave your machines, so a flaw in it matters. Thank you for
 reporting one privately.
 

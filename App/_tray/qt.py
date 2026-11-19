@@ -13,6 +13,7 @@ import argparse
 import os
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 
@@ -101,7 +102,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
     except ImportError as exc:
         raise TrayUnavailable(missing_qt_message()) from exc
     from App._launch import profile_arguments, run_app
-    from Basic._version import check_for_update, version_line
+    from Basic._version import check_for_update, checkout_update_state, running_from_source, version_line
     from Elaborate._fleet import autostart
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([sys.argv[0]])
@@ -132,6 +133,7 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
         snapshot = QtCore.Signal(object)
         notify = QtCore.Signal(str, str)
         work = QtCore.Signal(int)
+        update_state = QtCore.Signal(str)
 
     bridge = Bridge()
     icons = Icons()
@@ -268,6 +270,29 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
     login.toggled.connect(toggle_autostart)
     version_action = menu.addAction(version_line())
     version_action.setEnabled(False)
+
+    def show_update_state(status):
+        available = status in ("changed", "outdated")
+        version_action.setText(version_line() + (" · Review update" if available else ""))
+        version_action.setEnabled(available)
+
+    def open_update():
+        from Basic._version import RELEASES_URL
+        if not running_from_source():
+            webbrowser.open(RELEASES_URL)
+            return
+        from Special._sync.resolve import _terminal
+        root = TRAY_SCRIPT.parents[1]
+        python = Path(sys.executable)
+        if python.name.lower() == "pythonw.exe":
+            python = python.with_name("python.exe")
+        try:
+            _terminal([str(python), str(root / "gitso.py"), "update"], root)
+        except (OSError, ValueError):
+            bridge.notify.emit("Update terminal unavailable", "Open a terminal and run gitso update.")
+
+    bridge.update_state.connect(show_update_state)
+    version_action.triggered.connect(open_update)
     menu.addSeparator()
     menu.addAction("Quit gitSpecOps").triggered.connect(app.quit)
     tray.setContextMenu(menu)
@@ -331,10 +356,14 @@ def run_tray(config_dir=None, settings_home=None, *, view=None, web=None, open_o
             if stopping.is_set():
                 return
         label = context.get("label") or "Fleet"
-        status = check_for_update()  # once per run, not per poll
-        if status["state"] == "outdated":
-            bridge.notify.emit("Update available", status["message"])
+        next_update_check = 0.0
         while not stopping.is_set():
+            now = time.monotonic()
+            if now >= next_update_check:
+                status = (checkout_update_state(TRAY_SCRIPT.parents[1]) if running_from_source()
+                          else check_for_update()["state"])
+                bridge.update_state.emit(status)
+                next_update_check = now + 24 * 60 * 60
             try:
                 snapshot = snapshot_from_display(context["dashboard"](), context.get("url") or "", label)
             except Exception:  # noqa: BLE001 - a skin must survive any peer failure

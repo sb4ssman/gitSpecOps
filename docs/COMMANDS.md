@@ -8,7 +8,7 @@ path. A subject's actions share a section (`archive add`, `archive remove`, ...)
 <subject>` lists them. `gitso docs <command>` prints the same text in a terminal.
 
 - **Basic: one Git or host operation:** [discover](#discover), [status](#status), [fetch](#fetch), [pull](#pull), [clone](#clone), [reset-keep](#reset-keep), [commit](#commit), [push](#push)
-- **Special: this machine, once:** [machine show](#machine-show--add--remove--find--presentation), [machine add](#machine-show--add--remove--find--presentation), [machine remove](#machine-show--add--remove--find--presentation), [machine find](#machine-show--add--remove--find--presentation), [machine presentation](#machine-show--add--remove--find--presentation), [machine check](#machine-check), [machine map](#machine-map), [machine catch-up](#machine-catch-up), [machine audit](#machine-audit), [machine materialize](#machine-materialize), [machine buffers](#machine-buffers), [repo name](#repo-name--list), [repo list](#repo-name--list), [archive add](#archive-add--remove--list--status--refresh--check), [archive remove](#archive-add--remove--list--status--refresh--check), [archive list](#archive-add--remove--list--status--refresh--check), [archive status](#archive-add--remove--list--status--refresh--check), [archive refresh](#archive-add--remove--list--status--refresh--check), [archive check](#archive-add--remove--list--status--refresh--check), [archive update](#archive-update), [archive sync](#archive-sync), [inventory export](#inventory-export), [inventory restore](#inventory-restore), [org copy](#org-copy), [scan](#scan), [review](#review), [history scan](#history-scan), [history clean](#history-clean), [history follow](#history-follow--relink), [history relink](#history-follow--relink), [secure-commit](#secure-commit), [secure-push](#secure-push)
+- **Special: this machine, once:** [machine show](#machine-show--add--remove--find--presentation), [machine add](#machine-show--add--remove--find--presentation), [machine remove](#machine-show--add--remove--find--presentation), [machine find](#machine-show--add--remove--find--presentation), [machine presentation](#machine-show--add--remove--find--presentation), [machine check](#machine-check), [machine map](#machine-map), [machine catch-up](#machine-catch-up), [machine audit](#machine-audit), [machine materialize](#machine-materialize), [machine buffers](#machine-buffers), [repo name](#repo-name--list), [repo list](#repo-name--list), [archive add](#archive-add--remove--list--status--refresh--check), [archive remove](#archive-add--remove--list--status--refresh--check), [archive list](#archive-add--remove--list--status--refresh--check), [archive status](#archive-add--remove--list--status--refresh--check), [archive refresh](#archive-add--remove--list--status--refresh--check), [archive check](#archive-add--remove--list--status--refresh--check), [archive update](#archive-update), [archive sync](#archive-sync), [inventory export](#inventory-export), [inventory restore](#inventory-restore), [org copy](#org-copy), [scan](#scan), [review](#review), [history scan](#history-scan), [history clean](#history-clean), [history follow](#history-follow--relink), [history relink](#history-follow--relink), [secure-commit](#secure-commit), [commit-gate](#commit-gate), [git-inspect](#git-inspect), [secure-push](#secure-push)
 - **Elaborate: other machines, or over time:** [machine safe-to-wipe](#machine-safe-to-wipe), [archive schedule](#archive-schedule), [fleet setup](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet status](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet transports](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet leave](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet key](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet baskets](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet git-client](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet join](#fleet-setup--status--transports--leave--key--baskets--git-client--join), [fleet doctor](#fleet-doctor), [fleet preflight](#fleet-preflight), [fleet publish](#fleet-publish), [fleet suggest](#fleet-suggest), [fleet converge](#fleet-converge), [peer run](#peer-run--rescan), [peer rescan](#peer-run--rescan), [recovery](#recovery), [start-at-sign-in](#start-at-sign-in)
 - **App: presence and presentation:** [tray](#tray), [serve-web](#serve-web)
 - **Setup:** [setup](#setup), [update](#update)
@@ -702,6 +702,41 @@ Python 3.11+, Git 2.36+. Checking writes no index, Git objects, report or settin
 named working-tree contents, preserves other staged work and runs existing traditional hooks
 through a temporary per-command relay. Unreviewed hook changes hold the commit. No persistent
 hook installation, automatic push or rollback. See --help for profile options.
+```
+
+### commit-gate
+
+`gitso commit-gate`; or `Special/commit_gate.py`.
+
+```text
+Inspect or install fail-closed Git hooks on one local checkout.
+
+Reads: Git's effective hooks directory and the selected gitso profile.
+May change: after approval, local hook files and a scanner runtime in the profile.
+Results: the effective hook path and mode. Scan checks normal commits. Local-only
+         holds commits and pushes through Git's hooks while leaving stash available.
+Layer: Special: this machine, once.
+
+    gitso commit-gate /path/to/repo
+    gitso commit-gate /path/to/repo --mode scan
+    gitso commit-gate /path/to/repo --mode local-only
+    gitso commit-gate /path/to/repo --mode off
+
+Report existing hooks that need integration without replacing them. Changing the
+checkout's mode takes effect without a network connection or app restart.
+```
+
+### git-inspect
+
+`gitso git-inspect`; or `Special/git_inspect.py`.
+
+```text
+Show which Git gitso uses and how to update that installation.
+
+Reads: the active Git executable, its version and hook command capabilities.
+May change: nothing.
+Results: the binary path, version, hook backend and platform update guidance.
+Layer: Special: this machine, once.
 ```
 
 ### secure-push

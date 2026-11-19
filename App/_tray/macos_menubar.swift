@@ -71,7 +71,7 @@ final class Bar: NSObject, NSApplicationDelegate {
     }
 
     @objc func openPage() { NSWorkspace.shared.open(URL(string: page)!) }
-    @objc func update() { run(["update", "--yes"]) }
+    @objc func update() { run(["update", "--terminal"]) }
     @objc func quitApp() { run(["tray", "--stop"]) }
 
     func draw() {

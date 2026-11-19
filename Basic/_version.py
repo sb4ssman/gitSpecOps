@@ -94,3 +94,27 @@ def check_for_update(timeout: int = 15) -> dict:
 def version_line() -> str:
     origin = "source" if running_from_source() else "bundle"
     return f"{PRODUCT_NAME} {VERSION} ({origin})"
+
+
+def checkout_update_state(root: Path, timeout: int = 10) -> str:
+    """Check the configured upstream tip without fetching or changing local refs."""
+    from Basic._run import run_git
+
+    branch = run_git(root, ["symbolic-ref", "--quiet", "HEAD"], timeout=timeout)
+    head = run_git(root, ["rev-parse", "--verify", "HEAD"], timeout=timeout)
+    if branch.returncode or head.returncode:
+        return UNKNOWN
+    fields = run_git(root, ["for-each-ref", "--format=%(upstream:remotename)%00%(upstream:remoteref)",
+                            branch.stdout.strip()], timeout=timeout)
+    upstream = fields.stdout.strip().split("\0")
+    if fields.returncode or len(upstream) != 2:
+        return UNKNOWN
+    remote, ref = upstream
+    if not remote or not ref.startswith("refs/heads/"):
+        return UNKNOWN
+    live = run_git(root, ["ls-remote", "--refs", "--exit-code", "--", remote, ref],
+                   timeout=timeout, env={"GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"})
+    tip, sep, name = live.stdout.strip().partition("\t")
+    if live.returncode or not sep or name != ref:
+        return UNKNOWN
+    return "current" if tip == head.stdout.strip() else "changed"

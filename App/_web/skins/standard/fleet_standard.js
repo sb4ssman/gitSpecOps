@@ -385,12 +385,35 @@ function openRepository(row) {
 const orgOptions = (() => {
   try { return {group: 'all', ...JSON.parse(localStorage.getItem('gitso.orgs') || '{}'), perspective: null}; } catch { return {group: 'all', perspective: null}; }
 })();
+const unavailableActionsKey = 'gitso.showUnavailableActions';
+let showUnavailableActions = (() => {
+  try { return localStorage.getItem(unavailableActionsKey) !== 'false'; } catch { return true; }
+})();
+
+function unavailableActionsChoice() {
+  const label = node('label', undefined, 'unavailable-actions-choice');
+  const input = node('input');
+  input.type = 'checkbox';
+  input.checked = showUnavailableActions;
+  input.onchange = () => {
+    showUnavailableActions = input.checked;
+    try { localStorage.setItem(unavailableActionsKey, String(input.checked)); } catch { /* private storage may refuse */ }
+    for (const choice of document.querySelectorAll('.unavailable-actions-choice input')) choice.checked = input.checked;
+    if (state.data) renderOrgsPanel();
+  };
+  label.append(input, document.createTextNode(' Show unavailable actions'));
+  return label;
+}
+
+byId('orgs-perspective').closest('label').after(unavailableActionsChoice());
+
 function renderOrgsPanel() {
   const data = state.data;
   fillSelect(byId('orgs-group'), [['all', 'All organizations'], ...organizationChoices(data)], orgOptions.group);
   fillSelect(byId('orgs-perspective'), data.machines.map(m => [m.id, m.label]), perspectiveOf(data, orgOptions.perspective));
   byId('orgs-perspective').closest('label').hidden = !byId('orgs-group').value || byId('orgs-group').value === 'all';
-  renderOrgs(byId('orgs'), data, {group: byId('orgs-group').value, perspective: perspectiveOf(data, orgOptions.perspective)}, {
+  renderOrgs(byId('orgs'), data, {group: byId('orgs-group').value, perspective: perspectiveOf(data, orgOptions.perspective),
+    showUnavailable: showUnavailableActions}, {
     onPick: change => {
       Object.assign(orgOptions, change);
       try { localStorage.setItem('gitso.orgs', JSON.stringify({group: orgOptions.group})); } catch { /* a remembered choice only */ }
@@ -507,6 +530,11 @@ function renderAbout() {
   }
   renderSettingCards(byId('integrations'), integrations);
   renderSettingCards(byId('features'), features);
+  if (!byId('unavailable-actions-settings')) {
+    const choice = unavailableActionsChoice();
+    choice.id = 'unavailable-actions-settings';
+    byId('integrations').before(choice);
+  }
 }
 
 function renderSettingCards(block, settings) {

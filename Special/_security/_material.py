@@ -329,6 +329,10 @@ def _proposed(report, policy, proposal):
               content_id=hashlib.sha256(name.encode("utf-8") + b"\0" + data).hexdigest(), context_kind="path")
         report.files += 1
         _bytes(report, data, name, policy)
+    _commit_metadata(report, policy, proposal)
+
+
+def _commit_metadata(report, policy, proposal):
     _text(report, proposal["message"], "proposed commit message", policy, context_kind="message")
     for role in ("author", "committer"):
         identity = proposal["identities"].get(role)
@@ -359,6 +363,8 @@ def scan(repo: Path, policy, *, material="tree", refs=None, engines=None, execut
             _tree(report, repo, policy)
         elif material == "index":
             _index(report, repo, policy)
+            if proposal is not None:
+                _commit_metadata(report, policy, proposal)
         elif material == "history":
             _history(report, repo, policy, list(refs or ["--all"]))
         elif material == "outgoing":

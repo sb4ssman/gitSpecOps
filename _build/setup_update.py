@@ -170,8 +170,21 @@ def main(argv=None) -> int:
     """`gitso update`: the same update as setup's menu item 2. --yes updates without asking."""
     import argparse
     parser = argparse.ArgumentParser(prog="gitso update", description=__doc__.split("\n", 1)[0])
-    parser.add_argument("--yes", action="store_true", help="update without asking (it still shows what is new)")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--yes", action="store_true", help="update without asking (it still shows what is new)")
+    mode.add_argument("--terminal", action="store_true", help="open an interactive update in a new terminal")
     args = parser.parse_args(argv)
+    if args.terminal:
+        from Special._sync.resolve import _terminal
+        try:
+            interpreter = Path(sys.executable)
+            if interpreter.name.lower() == "pythonw.exe":
+                interpreter = interpreter.with_name("python.exe")
+            _terminal([str(interpreter), str(ROOT / "gitso.py"), "update"], ROOT)
+        except (OSError, ValueError):
+            notice("Update terminal unavailable", "Open a terminal and run gitso update.", "warning")
+            return 1
+        return 0
     return update("u" if args.yes else None)
 
 

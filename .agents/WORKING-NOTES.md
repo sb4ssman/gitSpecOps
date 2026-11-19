@@ -37,6 +37,17 @@ Reference worth showing.
 **Open from the outside review:** listed below under "From the outside review".
 
 ## Next, in order
+
+- Build fleet commit enforcement on top of `gitso commit-gate`. Share required policy
+  revisions and per-checkout receipts over the enrolled transports, covering fleet,
+  library, organization and repository scopes. Show incomplete coverage. Preserve
+  existing hooks when integrating and verify named hooks on versions that support
+  them. Add an outgoing-history hook and reuse scan work only when its inputs agree.
+- Wire attended remote commit and push to checked named-file and outgoing-ref plans.
+  Keep these separate from clone and fast-forward consent.
+- Verify the interactive tray update in the live Qt and native macOS trays. Add
+  periodic availability to the native macOS menu and an opt-in installer preview
+  based on the Git binary reported by `gitso git-inspect`.
 The missing-library fallback is covered with disposable repositories on Windows. Confirm the
 dashboard and `fleet doctor` during the next real Linux mount outage and after remounting.
 Click through consecutive Accept and Show actions in Security, and try both incoming request
