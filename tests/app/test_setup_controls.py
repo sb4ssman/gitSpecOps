@@ -73,6 +73,10 @@ class SetupControlsTests(unittest.TestCase):
         self.assertTrue(SetupRoutes(self.home, self.state_dir).settings()["auto_requests"])
         self.approved("auto-requests", {"enabled": False})
         self.assertFalse(self.routes.settings()["auto_requests"])
+        for mode in ("paused", "confirm", "typed", "local", "automatic"):
+            with self.subTest(mode=mode):
+                self.approved("auto-requests", {"mode": mode})
+                self.assertEqual(SetupRoutes(self.home, self.state_dir).settings()["request_approval"], mode)
 
     def test_connections_change_and_turn_off(self):
         self.approved("connections", {"folder": str(self.synced), "tailnet": True, "tailnet_seconds": 300})

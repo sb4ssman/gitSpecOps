@@ -8,10 +8,12 @@ resets, merges, rebases, or chooses its way through a conflict.
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import re
 
 from Basic._discovery import RepoHit, classify, find_repos
 from Basic._facts import repo_facts, unpushed_commits, upstream_of
+from Basic._history_read import _environment as check_repository_environment
 from Basic._identity import parse_remote_url
 from Basic._run import run_git
 
@@ -25,6 +27,12 @@ NON_INTERACTIVE_GIT_ENV = {
     "GIT_OPTIONAL_LOCKS": "0",
 }
 
+FLEET_GIT_ENV = {**NON_INTERACTIVE_GIT_ENV, "GIT_ALLOW_PROTOCOL": "https", "GIT_PROTOCOL_FROM_USER": "0",
+                 "GIT_NO_REPLACE_OBJECTS": "1", "GIT_NO_LAZY_FETCH": "1"}
+FLEET_GIT_OPTIONS = ["-c", "http.followRedirects=false", "-c", "http.sslVerify=true", "-c", "submodule.recurse=false"]
+_FLEET_HOSTS = frozenset({"github.com", "gitlab.com", "bitbucket.org"})
+_REDIRECT_ENV = {"GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_SSL_NO_VERIFY", "GIT_EXEC_PATH", "GIT_TEMPLATE_DIR"}
+
 # A remote URL is input, not a filesystem layout.  Materialization may construct a new
 # destination from its identity, so it accepts only components that are portable on Windows
 # and cannot mean "the parent" or a device.  An unusual self-hosted remote can still be cloned
@@ -36,9 +44,83 @@ _WINDOWS_DEVICES = frozenset({"CON", "PRN", "AUX", "NUL", *
 
 
 def _safe_component(value: object) -> bool:
-    if not isinstance(value, str) or not _PORTABLE_COMPONENT.fullmatch(value):
+    if not isinstance(value, str) or len(value) > 200 or value.endswith(".") or not _PORTABLE_COMPONENT.fullmatch(value):
         return False
-    return value.rstrip(". ").upper() not in _WINDOWS_DEVICES
+    return value.split(".", 1)[0].upper() not in _WINDOWS_DEVICES
+
+
+def fleet_clone_origin(host: str, owner: str, name: str, folder: str) -> str | None:
+    """Construct an HTTPS remote from the three provider identifiers and a portable folder."""
+    if host.lower() not in _FLEET_HOSTS or not all(_safe_component(part) for part in (owner, name, folder or owner)):
+        return None
+    return f"https://{host.lower()}/{owner}/{name}.git"
+
+
+def _fleet_origin_allowed(url: str) -> bool:
+    match = re.fullmatch(r"https://([^/]+)/([^/]+)/([^/]+)", url)
+    if not match:
+        return False
+    host, owner, name = match.groups()
+    return fleet_clone_origin(host, owner, name.removesuffix(".git"), "") is not None
+
+
+def _fleet_environment_allowed() -> bool:
+    try:
+        check_repository_environment()
+    except ValueError:
+        return False
+    return not any(name in os.environ for name in _REDIRECT_ENV)
+
+
+def _fleet_effective_origin(path: Path, origin: str) -> bool:
+    if not _fleet_origin_allowed(origin):
+        return False
+    result = run_git(path, ["ls-remote", "--get-url", "--", origin], timeout=30, env=FLEET_GIT_ENV)
+    return result.returncode == 0 and result.stdout.rstrip("\r\n") == origin
+
+
+def _fleet_checkout_origin(path: Path) -> str | None:
+    """Reject checkout-owned settings that could change the execution policy."""
+    if not _fleet_environment_allowed():
+        return None
+    from Special._runtime.files import traverses_link
+    metadata = path / ".git"
+    if not metadata.is_dir() or traverses_link(metadata):
+        return None  # Separate worktree metadata requires local review.
+    location = run_git(path, ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir",
+                              "--git-common-dir"], timeout=30, env=FLEET_GIT_ENV)
+    if location.returncode or [Path(value) for value in location.stdout.splitlines()] != [path, metadata, metadata]:
+        return None
+    config = run_git(path, ["config", "--show-scope", "--name-only", "--list"], timeout=30, env=FLEET_GIT_ENV)
+    if config.returncode:
+        return None
+    for line in config.stdout.splitlines():
+        scope, _, key = line.partition("\t")
+        key = key.lower()
+        if scope in ("local", "worktree") and (key.startswith(("include", "url.", "credential.", "http.", "filter.",
+                                                                  "merge.", "diff.", "protocol.")) or key in (
+                "core.worktree", "core.fsmonitor", "core.hookspath", "core.sshcommand", "core.gitproxy",
+                "core.attributesfile")):
+            return None
+    hooks = run_git(path, ["config", "--type=path", "--get", "core.hooksPath"], timeout=30, env=FLEET_GIT_ENV)
+    if hooks.returncode == 0:
+        if not Path(hooks.stdout.rstrip("\r\n")).is_absolute():
+            return None
+    elif hooks.returncode == 1:
+        default_hooks = run_git(path, ["rev-parse", "--path-format=absolute", "--git-path", "hooks"],
+                                timeout=30, env=FLEET_GIT_ENV)
+        if default_hooks.returncode or any(os.path.lexists(Path(default_hooks.stdout.rstrip("\r\n")) / hook)
+                                           for hook in ("reference-transaction", "post-merge", "post-index-change")):
+            return None
+    else:
+        return None
+    configured = run_git(path, ["config", "--get-all", "remote.origin.url"], timeout=30, env=FLEET_GIT_ENV)
+    effective = run_git(path, ["remote", "get-url", "--all", "origin"], timeout=30, env=FLEET_GIT_ENV)
+    urls = configured.stdout.splitlines()
+    if (configured.returncode == effective.returncode == 0 and len(urls) == 1
+            and effective.stdout.splitlines() == urls and _fleet_origin_allowed(urls[0])):
+        return urls[0]
+    return None
 
 
 def _safe_materialization_target(destination: Path, host: object, owner: object,
@@ -75,7 +157,7 @@ def target_inside_library(target: Path, library: Path) -> bool:
         existing = lexical.parent
         while not existing.exists():
             existing = existing.parent
-        return existing.resolve(strict=True).is_relative_to(library) and not lexical.is_symlink()
+        return existing.resolve(strict=True) == existing and not lexical.is_symlink()
     except (OSError, ValueError):
         return False
 
@@ -95,10 +177,16 @@ def _dirty(path: Path) -> bool | None:
     return bool(result.stdout)
 
 
-def _fetch(path: Path):
+def _fetch(path: Path, *, origin=None):
     # Fetch changes only remote-tracking refs. No --prune: a catch-up must not delete even
     # stale local metadata as a side effect of answering whether a pull is safe.
-    return run_git(path, ["-c", "credential.interactive=never", "fetch", "--quiet", "origin"],
+    if origin is not None:
+        return run_git(path, [*FLEET_GIT_OPTIONS, "-c", "credential.interactive=never", "fetch", "--quiet",
+                              "--atomic", "--no-recurse-submodules", "--no-tags", "--no-prune", "--refmap=",
+                              "--no-auto-maintenance", "--no-write-fetch-head", "--", origin,
+                              "refs/heads/*:refs/remotes/origin/*"],
+                       timeout=FETCH_TIMEOUT_SECONDS, env=FLEET_GIT_ENV)
+    return run_git(path, ["-c", "credential.interactive=never", "fetch", "--quiet", "--no-recurse-submodules", "origin"],
                    timeout=FETCH_TIMEOUT_SECONDS, env=NON_INTERACTIVE_GIT_ENV)
 
 
@@ -115,6 +203,9 @@ def _classify(path: Path) -> dict:
     if dirty:
         return {"path": path, "name": path.name, "action": "dirty",
                 "detail": "Uncommitted or untracked work is present."}
+    if in_progress_operation(path):
+        return {"path": path, "name": path.name, "action": "operation_in_progress",
+                "detail": "A Git operation is already in progress."}
     if not facts.get("branch"):
         return {"path": path, "name": path.name, "action": "detached",
                 "detail": "HEAD is detached, so no branch direction is assumed."}
@@ -138,38 +229,69 @@ def _classify(path: Path) -> dict:
             "behind": behind, "detail": "Already current after a fresh fetch."}
 
 
-def plan_catchup(paths) -> list[dict]:
+def _catchup_tips(path: Path, *, fleet=False) -> tuple[str, str, str] | None:
+    env = FLEET_GIT_ENV if fleet else NON_INTERACTIVE_GIT_ENV
+    branch = run_git(path, ["symbolic-ref", "--quiet", "HEAD"], timeout=30, env=env)
+    if fleet:
+        remote_ref = run_git(path, ["rev-parse", "--symbolic-full-name", "@{upstream}"], timeout=30, env=env)
+        if remote_ref.returncode or not remote_ref.stdout.strip().startswith("refs/remotes/origin/"):
+            return None
+    tips = run_git(path, ["rev-parse", "--verify", "HEAD^{commit}"], timeout=30, env=env)
+    upstream = run_git(path, ["rev-parse", "--verify", "@{upstream}^{commit}"], timeout=30, env=env)
+    commit_ids = (tips.stdout.strip(), upstream.stdout.strip())
+    if branch.returncode or tips.returncode or upstream.returncode or not all(
+            re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", value) for value in commit_ids):
+        return None
+    return (branch.stdout.strip(), *commit_ids)
+
+
+def plan_catchup(paths, *, fleet=False) -> list[dict]:
     """Fetch and plan across local paths. This is safe to run repeatedly and changes no files."""
     plan = []
     for item in sorted((Path(path).resolve() for path in paths), key=lambda path: str(path).casefold()):
-        fetched = _fetch(item)
+        origin = _fleet_checkout_origin(item) if fleet else None
+        if fleet and origin is None:
+            plan.append({"path": item, "name": item.name, "action": "remote_policy",
+                         "detail": "The checkout requires local review before a fleet operation."})
+            continue
+        fetched = _fetch(item, origin=origin)
         if fetched.returncode:
             plan.append({"path": item, "name": item.name, "action": "fetch_failed",
                          "detail": _message(fetched)})
         else:
-            plan.append(_classify(item))
+            row = _classify(item)
+            if row["action"] == "pull":
+                row["tips"] = _catchup_tips(item, fleet=fleet)
+                row["origin"] = origin
+            plan.append(row)
     return plan
 
 
-def apply_catchup(plan: list[dict]) -> list[dict]:
+def apply_catchup(plan: list[dict], *, fleet=False) -> list[dict]:
     """Apply only planned fast-forward pulls, then recheck each one before claiming success."""
     results = []
     for item in plan:
         if item["action"] != "pull":
             results.append(dict(item))
             continue
-        # Explicitly disable recursive submodule updates: this action is about this checkout's
-        # current branch, not arbitrary nested repositories.
-        # The remote that was fetched and judged is the one pulled, by name, with the branch
-        # it tracks: never whatever the configuration would pick (2026-11-17).
+        if fleet:
+            origin = _fleet_checkout_origin(item["path"])
+            if origin is None or origin != item.get("origin"):
+                results.append({**item, "action": "remote_policy", "detail": "The checkout requires local review."})
+                continue
         target = upstream_of(item["path"])
         if target is None or target[0] != "origin":
             results.append({**item, "action": "pull_failed",
                             "detail": "This branch does not track a branch on origin; left as it is."})
             continue
-        pulled = run_git(item["path"], ["-c", "submodule.recurse=false", "pull", "--ff-only", "--no-rebase",
-                                        "--", "origin", target[1]],
-                         timeout=PULL_TIMEOUT_SECONDS, env=NON_INTERACTIVE_GIT_ENV)
+        tips = item.get("tips")
+        if not tips or _classify(item["path"])["action"] != "pull" or _catchup_tips(item["path"], fleet=fleet) != tips:
+            results.append({**item, "action": "pull_failed",
+                            "detail": "The branch, commits or working tree changed after planning."})
+            continue
+        pulled = run_git(item["path"], ["-c", "submodule.recurse=false", "merge", "--ff-only", "--no-autostash",
+                                        "--no-overwrite-ignore", "--", tips[2]],
+                         timeout=PULL_TIMEOUT_SECONDS, env=FLEET_GIT_ENV if fleet else NON_INTERACTIVE_GIT_ENV)
         if pulled.returncode:
             results.append({**item, "action": "pull_failed", "detail": _message(pulled)})
             continue
@@ -419,7 +541,7 @@ def plan_materialize(paths, destination) -> list[dict]:
     return rows
 
 
-def apply_materialize(plan: list[dict]) -> list[dict]:
+def apply_materialize(plan: list[dict], *, fleet=False) -> list[dict]:
     """Clone only planned missing repositories. Existing destinations are never touched."""
     results = []
     for item in plan:
@@ -436,13 +558,20 @@ def apply_materialize(plan: list[dict]) -> list[dict]:
             results.append({**item, "action": "clone_failed",
                             "detail": "The destination is not inside the chosen library; nothing was created."})
             continue
+        if fleet and (not _fleet_environment_allowed() or not _fleet_effective_origin(library, item["origin"])):
+            results.append({**item, "action": "remote_policy", "detail": "The clone origin requires local review."})
+            continue
         target.parent.mkdir(parents=True, exist_ok=True)
         if not target_inside_library(target, library) or target.exists():
             results.append({**item, "action": "clone_failed",
                             "detail": "Destination changed after planning; left it untouched."})
             continue
-        result = run_git(target.parent, ["clone", "--", item["origin"], str(target)], timeout=300,
-                         env=NON_INTERACTIVE_GIT_ENV)
+        if fleet and not _fleet_effective_origin(target.parent, item["origin"]):
+            results.append({**item, "action": "remote_policy", "detail": "The clone origin changed before execution."})
+            continue
+        result = run_git(target.parent, [*(FLEET_GIT_OPTIONS if fleet else ()), "clone", "--no-recurse-submodules",
+                                         "--", item["origin"], str(target)], timeout=300,
+                         env=FLEET_GIT_ENV if fleet else NON_INTERACTIVE_GIT_ENV)
         results.append({**item, "action": "cloned" if not result.returncode else "clone_failed",
                         "detail": "Cloned from origin." if not result.returncode else _message(result)})
     return results

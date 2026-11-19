@@ -36,7 +36,7 @@ export function machineActions({data, rows, machine, scope, actions, redraw, lib
   bar.append(html('strong', `${machine.label}${scope ? `, ${scope}` : ''}: `));
   const send = (kind, list) => async () => {
     const what = kind === 'pull' ? 'Fast-forward' : 'Clone';
-    const timing = here ? 'Runs here now.' : 'The receiving machine applies it automatically only if enabled there; otherwise it waits for Apply.';
+    const timing = here ? 'Runs here now.' : 'The receiving machine decides whether to run or ask for approval.';
     if (!window.confirm(`${what} ${list.length} on ${machine.label}${library ? ` in ${library}` : ''}? ${timing}`)) return;
     notes.set(key, here ? 'Working…' : 'Sending…'); redraw();
     try {

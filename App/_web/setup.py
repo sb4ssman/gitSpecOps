@@ -48,6 +48,7 @@ class SetupRoutes:
     def settings(self) -> dict:
         """Every setting the Settings tab can change, as it is now. Never the fleet key."""
         from Elaborate._fleet import autostart
+        from Special._sync.enrollment import request_approval_mode
         state = self.state()
         config = self._config()
         transports = ((state.get("fleet") or {}).get("transports")) or {}
@@ -84,7 +85,8 @@ class SetupRoutes:
                          "names": (repo or {}).get("names", False)}},
             "fetch_minutes": int((config or {}).get("fetch_minutes") or 0),
             "fetch_choices": list(FETCH_CHOICES),
-            "auto_requests": (config or {}).get("auto_requests") is True,
+            "auto_requests": (config or {}).get("auto_requests") in (True, "automatic"),
+            "request_approval": request_approval_mode((config or {}).get("auto_requests")),
             "shared": self._shared_state(config, bool(folder)),
             "sign_in": {"supported": bool(sign_in.get("supported")), "enabled": bool(sign_in.get("enabled")),
                         "elsewhere": sign_in.get("elsewhere"), "reason": sign_in.get("reason")},
@@ -195,12 +197,19 @@ class SetupRoutes:
             shown = self._connections_plan(payload)
             return shown, shown
         if action == "auto-requests":
-            enabled = payload.get("enabled")
-            if type(enabled) is not bool:
-                raise ValueError("choose whether incoming requests run on arrival")
-            shown = {"action": action, "enabled": enabled, "changes": [
-                "Apply incoming fast-forward and clone requests when they arrive."
-                if enabled else "Wait for approval here before applying incoming requests."]}
+            from Special._settings.records import REQUEST_APPROVAL_MODES
+            mode = payload.get("mode", payload.get("enabled"))
+            if type(mode) is not bool and mode not in REQUEST_APPROVAL_MODES:
+                raise ValueError("choose an incoming request approval mode")
+            mode = enrollment.request_approval_mode(mode)
+            descriptions = {
+                "paused": "Pause incoming operations. Local repository actions remain available.",
+                "local": "Wait for approval on this machine.",
+                "confirm": "Allow the sending machine to approve each displayed request once.",
+                "typed": "Require typed acknowledgment of each displayed request on the sending machine.",
+                "automatic": "Apply eligible incoming fast-forward and clone requests when they arrive.",
+            }
+            shown = {"action": action, "mode": mode, "changes": [descriptions[mode]]}
             return shown, shown
         if action == "show-key":
             shown = {"action": "show-key", "shows": "this machine's fleet key, on this page only"}
@@ -331,7 +340,7 @@ class SetupRoutes:
             return {"key": config["fleet_secret"], "applied": True,
                     "notice": "Copy it into setup, or the Settings tab, on the machine joining."}
         if action == "auto-requests":
-            enrollment.set_auto_requests(shown["enabled"], home=self.home)
+            enrollment.set_auto_requests(shown["mode"], home=self.home)
         elif action == "fetch":
             minutes = payload.get("minutes")
             if minutes not in FETCH_CHOICES:

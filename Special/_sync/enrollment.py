@@ -183,15 +183,25 @@ def remove_library(path, *, home=None) -> list[str]:
     return config["roots"]
 
 
-def set_auto_requests(enabled: bool, *, home=None) -> None:
+def request_approval_mode(value) -> str:
+    """Translate the original boolean setting into an approval mode."""
+    from Special._settings.records import REQUEST_APPROVAL_MODES
+    if value is True:
+        return "automatic"
+    return value if value in REQUEST_APPROVAL_MODES else "local"
+
+
+def set_auto_requests(enabled, *, home=None) -> None:
     """Save this machine's explicit choice for incoming fast-forward and clone requests."""
-    if type(enabled) is not bool:
-        raise ValueError("choose whether incoming requests run on arrival")
+    from Special._settings.records import REQUEST_APPROVAL_MODES
+    if type(enabled) is not bool and enabled not in REQUEST_APPROVAL_MODES:
+        raise ValueError("choose an incoming request approval mode")
     snapshot = _snapshot(home)
     config = snapshot.config("app")
     if config is None:
         raise ValueError("this machine is not enrolled")
-    config["auto_requests"] = enabled
+    mode = request_approval_mode(enabled)
+    config["auto_requests"] = mode if mode in ("paused", "confirm", "typed") else mode == "automatic"
     save_fleet_config(config, component="app", home=home)
 
 
