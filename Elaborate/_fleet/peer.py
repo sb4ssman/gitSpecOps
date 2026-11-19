@@ -496,7 +496,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     book.recover_interrupted()
     # Everything this machine's own page can ask for (page_actions.py).
     actions = PageActions(config, config_dir, observer, book, security_settings, audits)
-    action_lock, dashboard_action, own_changes = actions.lock, actions.handle, actions.own_changes
+    dashboard_action, own_changes = actions.handle, actions.own_changes
 
     network = PeerNetwork(config, lambda: latest["report"], store, log=log, shared=shared, adopt_name=adopt_name,
                           requests=book, own_changes=own_changes)
