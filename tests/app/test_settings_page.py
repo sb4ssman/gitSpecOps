@@ -26,9 +26,12 @@ const settings = {enrolled: true, fleet_id: null, libraries: ['/home/x/Github'],
   shared: {questions: [{id: 'q1', kind: 'remove', list: 'never_publish', value: 'old-name', from: 'desk'}], sealed: false, encryption_installed: false, has_folder: true},
   fetch_minutes: 1440, fetch_choices: [0, 60, 360, 1440], sign_in: {supported: true, enabled: false}};
 const calls = [];
+const storage = {available: true, exists: false, enabled: false, path: 'audit-checkpoint.sqlite3'};
 const connection = {desktopAction: async (action, payload) => {
   calls.push([action, payload]);
   if (action === 'setup/settings') return {settings, applied: true};
+  if (action === 'security-engines') return {audit_storage: storage};
+  if (action === 'security-policy-change') return {audit_storage: {...storage, enabled: payload.audit_history_cache}};
   if (action === 'setup/connections' && !payload.apply) return {applied: false, plan_id: 'p1', question: 'Connect this way?', plan: {changes: ['start a fleet', 'Tailscale: on']}};
   return {applied: true, notice: 'Saved.'};
 }};
@@ -37,6 +40,9 @@ const block = new Node('div');
 renderSettings(block, connection, () => 'token');
 await new Promise(r => setTimeout(r, 10));
 const out = {sections: block.text()};
+const enable = block.all().find(n => n.textContent === 'Enable local history storage');
+await enable.onclick();
+out.auditStorage = block.text();
 const review = block.all().find(n => n.tag === 'button' && n.textContent === 'Review the change');
 block.all().find(n => n.tag === 'input' && n.attrs.type !== 'x' && n.type === 'checkbox').checked = true;  // Tailscale on
 await review.onclick(); await new Promise(r => setTimeout(r, 10));
@@ -60,6 +66,8 @@ class SettingsPageTests(unittest.TestCase):
                       "Library folders", "/home/x/Github", "How the app shows itself", "Share with the other machines",
                       "Start at sign-in"):
             self.assertIn(words, out["sections"])
+        self.assertIn("audit-checkpoint.sqlite3", out["sections"])
+        self.assertIn("Disable local history storage", out["auditStorage"])
         self.assertIn("Connect this way?", out["plan"])
         self.assertIn("start a fleet", out["plan"])
         self.assertIn(["setup/connections", None, True], out["calls"])

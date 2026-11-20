@@ -38,6 +38,7 @@ export function renderSettings(block, connection, token) {
   if (block.dataset.built === '1') return;
   block.dataset.built = '1';
   const state = {settings: null, message: '', plan: null, key: '', auditStorage: null};
+  let auditStorageSlot = null;
 
   async function call(action, payload = {}) {
     return connection.desktopAction(`setup/${action}`, payload, token(), {structured: true});
@@ -51,11 +52,9 @@ export function renderSettings(block, connection, token) {
     try {
       const reply = await connection.desktopAction('security-engines', {}, token(), {structured: true});
       state.auditStorage = reply.audit_storage || null;
-      const slot = block.querySelector('[data-audit-storage]');
-      if (slot) slot.replaceChildren(auditStorageSection());
+      auditStorageSlot?.replaceChildren(auditStorageSection());
     } catch (error) {
-      const slot = block.querySelector('[data-audit-storage]');
-      if (slot) slot.replaceChildren(el('p', error.message, 'tone-text-warning'));
+      auditStorageSlot?.replaceChildren(el('p', error.message, 'tone-text-warning'));
     }
   }
 
@@ -338,8 +337,7 @@ export function renderSettings(block, connection, token) {
         const reply = await connection.desktopAction('security-policy-change', {audit_history_cache: !audit.enabled},
           token(), {structured: true});
         state.auditStorage = reply.audit_storage;
-        const slot = box.parentNode;
-        if (slot) slot.replaceChildren(auditStorageSection(),
+        auditStorageSlot?.replaceChildren(auditStorageSection(),
           el('p', audit.enabled ? 'Storage disabled. The existing file is kept.' : 'Storage enabled for the next audit.', 'host-note'));
       } catch (error) { status.textContent = error.message; }
       finally { save.disabled = false; }
@@ -353,6 +351,7 @@ export function renderSettings(block, connection, token) {
   }
 
   function draw() {
+    auditStorageSlot = null;
     block.replaceChildren();
     const status = el('p', state.message, 'host-note'); status.setAttribute('role', 'status');
     if (state.message) block.append(status);
@@ -363,10 +362,9 @@ export function renderSettings(block, connection, token) {
     const grid = el('div', undefined, 'setup-sections');
     grid.append(fleetSection(s), connectionsSection(s), librariesSection(s), sharedSection(s), fetchSection(s),
       basketsSection(s), displaySection(s), signInSection(s), tasksSection(s));
-    const storage = el('div');
-    storage.dataset.auditStorage = '';
-    if (state.auditStorage) storage.append(auditStorageSection());
-    grid.append(storage);
+    auditStorageSlot = el('div');
+    if (state.auditStorage) auditStorageSlot.append(auditStorageSection());
+    grid.append(auditStorageSlot);
     block.append(grid);
   }
 
