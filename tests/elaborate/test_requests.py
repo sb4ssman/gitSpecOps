@@ -252,6 +252,12 @@ class ChangesTests(unittest.TestCase):
             self.assertEqual((changes["untracked_files"], changes["untracked_folders"]), (1, 1))
             self.assertEqual(changes["summary"], "2 changed files, 1 new file, 1 new folder, 1 only line endings")
             self.assertNotIn("secret", str(changes))
+            expanded = working_changes(repo, expanded=True)
+            self.assertEqual((expanded["untracked_files"], expanded["untracked_folders"]), (3, 0))
+            self.assertIn("new folder/first.txt", {item["name"] for item in expanded["files"]})
+            page = working_changes(repo, expanded=True, offset=2)
+            self.assertEqual(page["files"], expanded["files"][2:])
+            self.assertNotIn("secret", str(page))
 
 
 if __name__ == "__main__":

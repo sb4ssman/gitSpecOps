@@ -15,6 +15,219 @@ function button(label, onClick, title = '') {
   return b;
 }
 
+const remoteWork = new Map();
+
+export function remoteResolveBox(row, machine, sent, act, redraw) {
+  const key = `${row.id}/${machine.id}`;
+  const session = remoteWork.get(key) || {selected: new Set(), message: ''};
+  remoteWork.set(key, session);
+  const box = html('section', undefined, 'resolve-box');
+  box.append(html('h4', `Resolve on ${machine.label}`));
+  const pending = session.pending && sent.find(request => request.id === session.pending.id);
+  const request = (op, values = {}) => async () => {
+    session.busy = true;
+    session.note = '';
+    redraw();
+    try {
+      const resolve = {op, ...(session.checkout ? {checkout: session.checkout} : {}), ...values};
+      const answer = await act('remote-resolve', {machine_id: machine.id, machine_label: machine.label,
+                                                repo_id: row.id, resolve});
+      session.pending = {id: answer.sent.id, op, values};
+      session.note = answer.message;
+    } catch (error) { session.note = error.message; }
+    session.busy = false;
+    redraw();
+  };
+  const openResponse = async item => {
+    session.busy = true;
+    try {
+      const result = await act('remote-result', {id: item.id});
+      if (result.checkout) session.checkout = result.checkout;
+      if (result.copies) {
+        session.choices = {items: result.copies, op: item.op};
+      } else if (['branches', 'stashes'].includes(item.op)) {
+        session.inspection = result;
+      } else if (item.op === 'changes') {
+        session.changes = result;
+        session.selected.clear();
+        session.plan = session.file = null;
+      } else if (item.op === 'untracked') {
+        session.file = result;
+      } else {
+        session.plan = {op: item.op, values: result.draft || item.values || {}, result};
+        if (['commit-apply', 'stash-apply'].includes(item.op) && result.applied) {
+          session.changes = null;
+          session.selected.clear();
+          session.message = '';
+        }
+      }
+      session.note = result.message || '';
+    } catch (error) { session.note = error.message; }
+    session.opened = item.id;
+    session.pending = null;
+    session.busy = false;
+    redraw();
+  };
+  if (session.pending || session.busy) {
+    const status = pending?.status;
+    box.append(html('p', status ? `Request ${status}.` : session.note || 'Waiting for the receiving machine.', 'host-note'));
+    if (session.pending && ['done', 'failed', 'partial'].includes(status)) {
+      box.append(button('Open response from ' + machine.label, () => openResponse(session.pending)));
+    }
+    if (session.pending && (!status || status === 'dismissed')) {
+      box.append(button('Return to Resolve controls', () => {
+        session.pending = null;
+        redraw();
+      }, 'A queued request can be withdrawn from the Requests panel.'));
+    }
+    return box;
+  }
+  const previous = [...sent].reverse().find(item => item.kind === 'resolve' &&
+    item.to === machine.id && item.items[0]?.repo_id === row.id && ['done', 'failed', 'partial'].includes(item.status));
+  if (previous && previous.id !== session.opened) {
+    box.append(button('Reopen latest Resolve response', () => openResponse({id: previous.id, op: previous.resolve?.op})));
+  }
+  box.append(button('Request diff…', request('changes')),
+    button('Request branches…', request('branches')),
+    button('Request stash list…', request('stashes')),
+    button('Request fetch…', request('fetch')));
+  if (session.inspection) box.append(checkoutInspection(session.inspection));
+  if (session.checkout) {
+    box.append(button('Check outgoing push…', request('push-plan')),
+      button('Choose another checkout', () => {
+        session.checkout = '';
+        session.changes = session.plan = session.file = session.inspection = session.choices = null;
+        session.selected.clear();
+        redraw();
+      }));
+  }
+  if (session.note) box.append(html('p', session.note, 'host-note'));
+  for (const choice of session.choices?.items || []) {
+    box.append(button(choice.label, async () => {
+      const op = session.choices.op;
+      session.choices = null;
+      await request(op, {checkout: choice.checkout})();
+    }));
+  }
+  if (session.checkout && session.changes?.files) {
+    const stashMessage = html('input'); stashMessage.placeholder = 'Stash description';
+    stashMessage.setAttribute('aria-label', 'Stash description');
+    stashMessage.value = session.stashMessage || '';
+    stashMessage.oninput = () => { session.stashMessage = stashMessage.value; };
+    box.append(stashMessage, button('Preview stash of tracked work…', () => {
+      if (!stashMessage.value.trim()) { session.note = 'Write a stash description first.'; redraw(); return; }
+      request('stash-plan', {message: stashMessage.value.trim()})();
+    }));
+  }
+  if (session.changes?.files) {
+    const {files, label, summary, staged, unstaged, cut} = session.changes;
+    box.append(html('p', `${label} · ${summary}`));
+    if (cut) box.append(html('p', 'This preview is limited. Review the rest directly on the host.', 'host-note'));
+    for (const [title, diff] of [['Staged diff', staged], ['Unstaged diff', unstaged]]) {
+      if (!diff) continue;
+      const details = html('details');
+      details.append(html('summary', title), html('pre', diff, 'resolve-diff'));
+      box.append(details);
+    }
+    const list = html('ul', undefined, 'resolve-files');
+    for (const file of files) {
+      const line = html('li');
+      const tick = html('input'); tick.type = 'checkbox'; tick.checked = session.selected.has(file.name);
+      tick.setAttribute('aria-label', `Include ${file.name}`);
+      tick.onchange = () => { tick.checked ? session.selected.add(file.name) : session.selected.delete(file.name); };
+      line.append(tick, html('code', ` ${file.status} ${file.name}`));
+      if (file.status === 'untracked') line.append(button('Request preview…', request('untracked', {file: file.name})));
+      list.append(line);
+    }
+    box.append(list);
+    if (session.file) {
+      box.append(html('strong', session.file.file || 'File preview'),
+        html('pre', session.file.binary ? 'Binary file' : session.file.text || session.file.message || '', 'resolve-diff'));
+      if (session.file.cut) box.append(html('p', 'Preview truncated.', 'host-note'));
+    }
+    if (files.length) {
+      const stash = html('input'); stash.placeholder = 'Stash description';
+      stash.setAttribute('aria-label', 'Stash description');
+      stash.value = state.stashMessage || '';
+      stash.oninput = () => { state.stashMessage = stash.value; };
+      panel.append(stash, button('Preview stash of tracked work…', () => {
+        const message = stash.value.trim();
+        run('stash-plan', {message}, result => { state.stashPlan = {message, result}; })();
+      }));
+      if (state.stashPlan?.result.plan_id) {
+        const {message, result} = state.stashPlan;
+        panel.append(stashPreview(result, message),
+          button('Create checked stash', run('stash-apply', {message, plan_id: result.plan_id}, answer => {
+            state.stashPlan = null;
+            if (answer.applied) state.changes = state.inspection = null;
+          })));
+      }
+      const message = html('textarea'); message.rows = 3; message.placeholder = 'Commit message';
+      message.setAttribute('aria-label', 'Remote commit message');
+      message.value = session.message;
+      message.oninput = () => { session.message = message.value; };
+      box.append(message, button('Check selected commit…', () => {
+        if (!session.selected.size || !session.message.trim()) {
+          session.note = 'Select files and write a commit message first.';
+          redraw();
+          return;
+        }
+        request('commit-plan', {files: [...session.selected], message: session.message.trim()})();
+      }));
+    }
+  }
+  if (session.plan) {
+    const {result, values, op} = session.plan;
+    box.append(html('p', STATUS_WORDS[result.status] || result.message || result.status || '', 'host-note'));
+    if (result.destination) box.append(html('p', `${result.branch} → ${result.remote} / ${result.destination}`, 'host-note'));
+    if (result.security) {
+      const {status, coverage, gaps, findings} = result.security;
+      box.append(html('p', `Security ${status} · ${coverage} · ${gaps} gaps`, 'host-note'));
+      for (const finding of findings) box.append(html('p', `${finding.check} · ${finding.where}`, 'host-note'));
+    }
+    if (op.endsWith('-plan') && result.ok && result.plan_id) {
+      if (op === 'commit-plan') {
+        box.append(html('pre', values.message + '\n\n' + values.files.join('\n'), 'host-note'));
+      }
+      if (op === 'stash-plan') box.append(stashPreview(result, values.message));
+      const apply = op.replace('-plan', '-apply');
+      const labels = {'commit-apply': 'Request checked commit…', 'push-apply': 'Request checked push…',
+        'stash-apply': 'Request checked stash…'};
+      box.append(button(labels[apply], request(apply, {...values, plan_id: result.plan_id})));
+    }
+  }
+  return box;
+}
+
+function checkoutInspection(result) {
+  const box = html('div');
+  if (!result.branches && !result.stashes) {
+    box.append(html('p', 'The host could not read this checkout.', 'host-note'));
+    return box;
+  }
+  const entries = result.branches || result.stashes;
+  box.append(html('strong', result.branches ? 'Branches and upstreams' : 'Stashes'));
+  if (!entries.length) box.append(html('p', 'None on this checkout.', 'host-note'));
+  const list = html('ul');
+  for (const entry of entries) {
+    const text = result.branches
+      ? `${entry.current ? '* ' : ''}${entry.branch} · ${entry.tip.slice(0, 10)} · ${entry.upstream || 'No upstream'} ${entry.divergence}`
+      : `${entry.ref} · ${entry.oid.slice(0, 10)} · ${entry.subject}`;
+    list.append(html('li', text));
+  }
+  box.append(list);
+  if (result.cut) box.append(html('p', 'Showing the first 50 entries.', 'host-note'));
+  return box;
+}
+
+function stashPreview(result, message) {
+  const box = html('div');
+  box.append(html('p', `Stash ${result.count} tracked files · ${result.untracked} untracked entries stay here.`, 'host-note'),
+    html('pre', message + '\n\n' + result.files.join('\n'), 'host-note'));
+  if (result.count > result.files.length) box.append(html('p', 'Only the first 50 paths are shown.', 'host-note'));
+  return box;
+}
+
 function words(record) {
   if (!record) return '';
   if (record.error) return record.error;
@@ -51,8 +264,13 @@ export function resolveBox(row, cell, act, redraw) {
   tools.append(
     button('Open folder', run('open-folder'), 'Open this copy in the file browser'),
     button('Open in VS Code', run('open-editor')),
+    button('Inspect branches', run('branches', {}, answer => { state.inspection = answer; })),
+    button('Inspect stashes', run('stashes', {}, answer => { state.inspection = answer; })),
     button(state.changes ? 'Refresh changes' : 'Show changes', run('changes', {}, answer => {
-      state.changes = answer; state.picked = new Set((answer.files || []).map(f => f.path));
+      state.changes = answer;
+      const available = new Set((answer.files || []).map(file => file.path));
+      state.picked = new Set([...(state.picked || [])].filter(path => available.has(path)));
+      state.commit = null;
     }), 'Each changed file, a summary and the diff, from this machine only'),
     button('Fetch', run('fetch'), 'Bring the provider\'s news; moves nothing of yours'));
   if ((facts.behind || 0) > 0 && !(facts.ahead || 0)) {
@@ -70,6 +288,7 @@ export function resolveBox(row, cell, act, redraw) {
   }, 'For a dependency checkout inside a build folder, say'));
   box.append(tools);
   if (state.note) box.append(html('p', state.note, 'host-note'));
+  if (state.inspection) box.append(checkoutInspection(state.inspection));
 
   if (state.retire) box.append(retirePanel(state, run, redraw));
 
@@ -104,9 +323,10 @@ export function resolveBox(row, cell, act, redraw) {
     }
     if (files.length) {
       const message = html('textarea'); message.rows = 3; message.placeholder = 'Commit message';
+      message.setAttribute('aria-label', 'Commit message');
       message.value = state.message || '';
       message.oninput = () => { state.message = message.value; };
-      panel.append(message);
+      panel.append(html('p', 'Select the files to commit and enter a message.', 'host-note'), message);
       panel.append(button('Check this commit…', () => run('commit-plan', {message: state.message || '', files: [...state.picked]},
         answer => { state.commit = answer; })(), 'secure-commit: checks the files, message and identity first'));
       if (state.commit) {
@@ -127,6 +347,8 @@ export function resolveBox(row, cell, act, redraw) {
  *  one click away (an outside review, 2026-11-17: no raw JSON as the main display). */
 const STATUS_WORDS = {
   ready: 'Checked: ready to commit.', planned: 'Checked: ready to push.', committed: 'Committed.', pushed: 'Pushed.',
+  fetched: 'Fetched remote refs.', 'stash-ready': 'Checked stash ready for approval.', stashed: 'Stash created.',
+  'nothing-to-stash': 'No tracked work to stash.', 'stash-needs-review': 'A stash was created. Review the host checkout.',
   'already-current': 'Nothing to push: the provider already has it.', 'nothing-to-commit': 'Nothing to commit.',
   blocked: 'Blocked: a high-severity finding. Resolve it first.', 'review-required': 'Findings need a look before this can go ahead.',
   'hook-rejected': 'A Git hook in this repository refused the commit.',
@@ -160,7 +382,7 @@ function copyChooser(state, redraw) {
     pick.checked = (state.checkout || 0) === copy.checkout;
     pick.onchange = () => {
       state.checkout = copy.checkout;
-      state.changes = state.commit = state.push = state.retire = null; state.note = '';
+      state.changes = state.commit = state.push = state.retire = state.inspection = state.stashPlan = null; state.note = '';
       redraw();
     };
     line.append(pick, html('strong', ` ${copy.library}${copy.inside ? ` / ${copy.inside}` : ''}`),

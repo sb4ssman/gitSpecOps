@@ -19,7 +19,8 @@ to the next audit without restarting anything.
 """
 from __future__ import annotations
 
-from Special._settings import SettingsError
+from Special._security._history_cache import SQLITE_AVAILABLE
+from Special._settings import SettingsError, resolve_settings
 from Special._settings.security import load_security_settings, save_security_settings
 
 LISTS = ("never_publish", "never_publish_words", "safe_values")
@@ -67,6 +68,27 @@ def policy_view(home) -> dict:
     return {"lists": {name: list(owned[name]) for name in LISTS},
             "machine_only_counts": {"never_publish": len(owned["local_never_publish"]),
                                     "safe_values": len(owned["local_safe_values"])}}
+
+
+def audit_cache_view(home):
+    settings = resolve_settings(home=home)
+    path = settings.home / "security-history.sqlite3"
+    return {"enabled": settings.values["security"]["audit_history_cache"],
+            "path": str(path), "exists": path.is_file(), "available": SQLITE_AVAILABLE}
+
+
+def audit_cache_change(home, payload):
+    enabled = payload.get("audit_history_cache")
+    if set(payload) != {"audit_history_cache"} or type(enabled) is not bool:
+        raise ValueError("send a boolean choice for audit history storage")
+    if enabled and not SQLITE_AVAILABLE:
+        raise ValueError("this Python build does not provide SQLite")
+    snapshot = _load(home)
+    try:
+        save_security_settings(snapshot, {"audit_history_cache": enabled})
+    except SettingsError as exc:
+        raise ValueError(f"not saved: {exc}") from None
+    return audit_cache_view(home)
 
 
 def _values(payload, key) -> list[str]:

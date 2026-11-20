@@ -309,7 +309,8 @@ export function copyGrid(data, rows, options) {
         }
         show.onclick = async () => {
           const view = {title: [row.name, machine.label, column.library].filter(Boolean).join(' · '),
-            key, library: column.library, loading: true, trigger: show};
+            key, library: column.library, loading: true, trigger: show,
+            requestDetail: offset => actions.changes(row.id, machine.id, offset)};
           gridState.changes = view;
           drawInspector(inspector, show);
           try { view.result = await actions.changes(row.id, machine.id); }
@@ -398,6 +399,35 @@ function drawInspector(box, trigger) {
     const shown = inspectorCopies(view);
     if (!shown.length) box.append(html('p', 'No checkout details were returned for this library.'));
     if (!scoped && view.library && copies.length > 1) box.append(html('p', 'This peer reported changes across its libraries.'));
+    if (shown.length && view.requestDetail) {
+      const page = Number.isInteger(view.offset) ? view.offset : null;
+      const request = (label, offset) => {
+        const button = html('button', label, 'quiet');
+        button.type = 'button';
+        button.onclick = async () => {
+          button.disabled = true;
+          try {
+            const result = await view.requestDetail(offset);
+            if (gridState.changes !== view) return;
+            view.result = result;
+            view.offset = offset;
+            view.detailError = '';
+          } catch (error) {
+            view.detailError = error.message;
+          }
+          if (gridState.changes === view) drawInspector(activeInspector);
+        };
+        box.append(button);
+      };
+      if (page === null) request('Request complete file list', 0);
+      else {
+        if (page > 0) request('Previous files', Math.max(0, page - 200));
+        const next = shown.find(copy => Number.isInteger(copy.next_offset))?.next_offset;
+        if (next !== undefined) request('More files', next);
+        request('Show summary', undefined);
+      }
+      if (view.detailError) box.append(html('p', view.detailError, 'tone-text-warning'));
+    }
     for (const [index, copy] of shown.entries()) {
       box.append(html('p', `${shown.length > 1 ? `Copy ${index + 1}: ` : ''}${copy.summary}`));
       const list = html('ul');

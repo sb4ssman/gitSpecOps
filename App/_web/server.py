@@ -108,16 +108,16 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
         def do_POST(self):
             action = self.path.removeprefix("/v1/")
             handlers = {"git-client": desktop_action, "open-git-client": desktop_action,
-                        "catchup-preview": fleet_action, "security-preview": fleet_action,
+                        "catchup-preview": fleet_action, "security-preview": fleet_action, "repo-visibility": fleet_action,
                         # The security audit: local only (never on the tailnet listener).
                         "security-engines": fleet_action, "security-start": fleet_action,
-                        "security-status": fleet_action, "security-stop": fleet_action,
+                        "security-status": fleet_action, "security-export": fleet_action, "security-stop": fleet_action,
                         "security-reveal": fleet_action, "security-accept": fleet_action,
                         "security-policy": fleet_action, "security-policy-change": fleet_action,
                         # Requests between machines and uncommitted-work summaries (Elaborate/_fleet/requests.py).
                         "request-send": fleet_action, "request-confirm": fleet_action, "request-withdraw": fleet_action,
                         "request-answer": fleet_action, "request-clear": fleet_action, "changes": fleet_action,
-                        "repo-action": fleet_action}
+                        "repo-action": fleet_action, "remote-resolve": fleet_action, "remote-result": fleet_action}
             if fleet_action is not None:
                 # The catalog and the documents: read-only, this computer only (reference.py).
                 from App._web.reference import reference
@@ -151,7 +151,7 @@ def make_local_server(address, build_document, assets, desktop_action=None, flee
                 length = int(self.headers.get("Content-Length", "0"))
                 # A whole organization's repository ids fit in 64 KiB; everything else stays small.
                 limit = (4096 if action.startswith(("setup/", "security-policy")) else
-                         65536 if action in ("security-start", "request-send", "repo-action") else 1024)
+                         65536 if action in ("security-start", "request-send", "repo-action", "remote-resolve") else 1024)
                 if not 0 < length <= limit or self.headers.get("Transfer-Encoding"):
                     raise ValueError("invalid action size")
                 payload = json.loads(self.rfile.read(length))

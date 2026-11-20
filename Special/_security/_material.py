@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 import re
 import hashlib
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 
@@ -18,18 +20,20 @@ from Special._security import _reviews
 MAX_FILE_BYTES = 32 * 1024 * 1024
 
 
-def _text(report, text, where, policy, object_id="", *, content_id=None, context_kind="content"):
-    findings = inspect(text, where, policy, object_id)
-    report.findings.extend(replace(item, content_id=content_id if content_id is not None else item.content_id,
+def _text(report, text, where, policy, object_id="", *, content_id=None, context_kind="content", findings=None):
+    if findings is None:
+        findings = inspect(text, where, policy, object_id)
+    report.findings.extend(replace(item, where=where, content_id=content_id if content_id is not None else item.content_id,
                                    context_kind=context_kind) for item in findings)
     runner = getattr(report, "_engine_runner", None)
     if runner is not None:
         runner.add(text, where, object_id)
 
 
-def _bytes(report, data, where, policy, object_id=""):
-    _text(report, data.decode("utf-8", errors="replace"), where, policy, object_id,
-          content_id=hashlib.sha256(data).hexdigest())
+def _bytes(report, data, where, policy, object_id="", *, decoded=None, findings=None, digest=None):
+    digest = digest or hashlib.sha256(data).hexdigest()
+    _text(report, data.decode("utf-8", errors="replace") if decoded is None else decoded,
+          where, policy, object_id, content_id=digest, findings=findings)
     if data.startswith(b"version https://git-lfs.github.com/spec/v1"):
         report.gap(where, "Git LFS pointer only; payload not inspected")
     archive_name = where
@@ -145,7 +149,7 @@ def _ref_ids(repo):
     return states
 
 
-def _small_blobs(report, repo, versions):
+def _blob_sizes(report, repo, versions):
     """Ask sizes before loading bytes; oversized and missing objects remain coverage gaps."""
     ids = sorted(versions)
     expected = {}
@@ -167,12 +171,60 @@ def _small_blobs(report, repo, versions):
             if reason:
                 for name in versions[object_id]:
                     report.gap(name, reason)
+    return expected
+
+
+def _small_blobs(report, repo, versions):
+    expected = _blob_sizes(report, repo, versions)
     for object_id, data in read_blobs(repo, expected):
         if data is None or len(data) != expected[object_id]:
             for name in versions[object_id]:
                 report.gap(name, "Git blob missing or truncated")
         else:
             yield object_id, data
+
+
+def _batch_sizes(sizes):
+    """Stable bounded read groups; a single admitted large blob is read by itself."""
+    batch, total = {}, 0
+    for oid, size in sizes.items():
+        if batch and (len(batch) == 128 or total + size > 8 * 1024 * 1024):
+            yield batch
+            batch, total = {}, 0
+        batch[oid] = size
+        total += size
+    if batch:
+        yield batch
+
+
+def _prepare_blob(data, policy, oid):
+    text = data.decode("utf-8", errors="replace")
+    return text, inspect(text, "", policy, oid), hashlib.sha256(data).hexdigest()
+
+
+def _audit_blob_batches(repo, sizes, workers, known, policy):
+    """Drain Git before preparing independent built-in content checks for each batch."""
+    policy.allowed("", 0, 0)  # Initialize the shared policy's pattern cache before the workers.
+
+    def read(batch):
+        received = tuple(read_blobs(repo, batch))
+        if [oid for oid, _ in received] != list(batch):
+            raise CommandFailed("Git did not return the exact requested blob batch")
+        return [(oid, data, _prepare_blob(data, policy, oid) if data is not None and len(data) == batch[oid] else None)
+                for oid, data in received]
+
+    pending, buffered = deque(), 0
+    capacity = workers if callable(workers) else lambda: workers
+    with ThreadPoolExecutor(max_workers=8, thread_name_prefix="audit-git-read") as pool:
+        for batch in _batch_sizes(sizes):
+            size = sum(batch.values())
+            while pending and (len(pending) >= capacity() or buffered + size > 32 * 1024 * 1024):
+                prior, future = pending.popleft()
+                buffered -= sum(prior.values())
+                yield prior, future
+            pending.append((batch, None if known(batch) else pool.submit(read, batch)))
+            buffered += size
+        yield from pending
 
 
 def _history_limits(report, repo):
@@ -193,7 +245,7 @@ def _history_limits(report, repo):
     return True
 
 
-def _history(report, repo, policy, refs):
+def _history(report, repo, policy, refs, baseline=(), workers=None, receipts=None):
     states = _ref_ids(repo)
     selected = list(states) if refs == ["--all"] else list(refs)
     if any(ref not in states for ref in selected):
@@ -229,13 +281,14 @@ def _history(report, repo, policy, refs):
             report.gap(ref, "unsupported ref target type")
         elif current not in tips:
             tips.append(current)
-    _history_versions(report, repo, policy, tips, direct)
+    revisions = [*tips, *(f"^{oid}" for oid in baseline)] if tips else []
+    _history_versions(report, repo, policy, revisions, direct, workers=workers, receipts=receipts)
     after = _ref_ids(repo)
     if (after != states if refs == ["--all"] else any(after.get(ref) != states[ref] for ref in selected)):
         report.gap("refs", "references changed during scan; rerun required")
 
 
-def _history_versions(report, repo, policy, tips, direct=None):
+def _history_versions(report, repo, policy, tips, direct=None, *, workers=None, receipts=None):
     """Inspect each changed blob/path, raw commit identity/message and new gitlink in a range."""
     versions = file_versions(repo, tips) if tips else {}
     direct = direct or {}
@@ -247,15 +300,25 @@ def _history_versions(report, repo, policy, tips, direct=None):
             first = len(report.findings)
             _text(report, name, name + " [path]", policy, object_id, content_id="", context_kind="path")
             path_findings[object_id, name] = (first, len(report.findings))
-    for object_id, data in _small_blobs(report, repo, versions):
+    def scan_blob(object_id, data, prepared=None):
         paths = versions[object_id]
+        # Primary built-in rules depend on the text. Archive, metadata, path and external
+        # scanner inputs still use each original path and preserve the original input order.
+        decoded, findings, digest = prepared or _prepare_blob(data, policy, object_id)
         for name in sorted(paths):
             report.files += 1
             first, last = path_findings[object_id, name]
-            path_content = hashlib.sha256(name.encode("utf-8") + b"\0" + data).hexdigest()
-            for index in range(first, last):
-                report.findings[index] = replace(report.findings[index], content_id=path_content)
-            _bytes(report, data, name, policy, object_id)
+            if first != last:
+                path_content = hashlib.sha256(name.encode("utf-8") + b"\0" + data).hexdigest()
+                for index in range(first, last):
+                    report.findings[index] = replace(report.findings[index], content_id=path_content)
+            _bytes(report, data, name, policy, object_id, decoded=decoded, findings=findings, digest=digest)
+
+    if workers is None:
+        for object_id, data in _small_blobs(report, repo, versions):
+            scan_blob(object_id, data)
+    else:
+        _scan_blob_batches(report, repo, versions, path_findings, scan_blob, workers, receipts, policy)
     for commit in commits(repo, tips) if tips else []:
         report.commits += 1
         _text(report, commit.message, "commit message", policy, commit.id, context_kind="message")
@@ -269,6 +332,48 @@ def _history_versions(report, repo, policy, tips, direct=None):
         fields = part.strip().split()
         if part.strip().startswith(":") and len(fields) >= 5 and fields[1] == "160000":
             report.gap(parts[index + 1], "historical submodule payload not inspected")
+
+
+def _scan_blob_batches(report, repo, versions, path_findings, scan_blob, workers, receipts, policy):
+    def identity(batch):
+        if receipts is None:
+            return None
+        entries = []
+        for oid in batch:
+            paths = sorted(versions[oid])
+            if any(first != last for first, last in (path_findings[oid, name] for name in paths)):
+                return None
+            entries.append((oid, batch[oid], paths))
+        return receipts.batch_key(entries)
+
+    def known(batch):
+        key = identity(batch)
+        return key is not None and receipts.has_clean_batch(key)
+
+    sizes = _blob_sizes(report, repo, versions)
+    for batch, future in _audit_blob_batches(repo, sizes, workers, known, policy):
+        if future is None:
+            report.files += sum(len(versions[oid]) for oid in batch)
+            report.reused_batches += 1
+            continue
+        try:
+            blobs = future.result()
+        except (CommandFailed, OSError, ValueError):
+            for oid in batch:
+                for name in versions[oid]:
+                    report.gap(name, "Git blob batch could not be read")
+            continue
+        initial = (len(report.findings), getattr(report, "_gap_events", 0), report.archives)
+        for oid, data, prepared in blobs:
+            if prepared is None:
+                for name in versions[oid]:
+                    report.gap(name, "Git blob missing or truncated")
+            else:
+                scan_blob(oid, data, prepared)
+        if initial == (len(report.findings), getattr(report, "_gap_events", 0), report.archives):
+            key = identity(batch)
+            if key is not None:
+                receipts.save_clean_batch(key)
 
 
 def _index(report, repo, policy):
@@ -343,7 +448,7 @@ def _commit_metadata(report, policy, proposal):
 
 
 def scan(repo: Path, policy, *, material="tree", refs=None, engines=None, executables=None,
-         reference_names=(), proposal=None):
+         reference_names=(), proposal=None, _audit_baseline=(), _audit_workers=None, _audit_receipts=None):
     """Scan selected material with built-in checks and explicitly selected optional engines.
 
     None uses policy.engines; an empty list disables external engines for this invocation.
@@ -366,7 +471,8 @@ def scan(repo: Path, policy, *, material="tree", refs=None, engines=None, execut
             if proposal is not None:
                 _commit_metadata(report, policy, proposal)
         elif material == "history":
-            _history(report, repo, policy, list(refs or ["--all"]))
+            _history(report, repo, policy, list(refs or ["--all"]), _audit_baseline,
+                     workers=_audit_workers, receipts=_audit_receipts)
         elif material == "outgoing":
             _outgoing(report, repo, policy, list(refs or ()))
         elif material == "proposed":

@@ -64,6 +64,7 @@ class Report:
     files: int = 0
     commits: int = 0
     archives: int = 0
+    reused_batches: int = 0
     checks: tuple = ("credential-shapes", "personal-shapes", "identity", "leak-description")
     private_values: tuple = field(default=(), repr=False)
     engines: dict = field(default_factory=dict)
@@ -88,6 +89,7 @@ class Report:
         return "review-required" if self.actionable else "passed"
 
     def gap(self, where: str, reason: str):
+        self._gap_events = getattr(self, "_gap_events", 0) + 1
         entry = {"where": where, "reason": reason}
         if entry not in self.gaps:
             self.gaps.append(entry)
@@ -117,10 +119,11 @@ class Report:
         if redacted:
             # Values also occur in filenames, ref names and the repository path.
             values = sorted({value for value in [*private_values, *(item.value for item in self.findings)] if value}, key=len, reverse=True)
+            patterns = [re.compile(re.escape(private), re.I) for private in values]
             def conceal(value):
                 if isinstance(value, str):
-                    for private in values:
-                        value = re.sub(re.escape(private), lambda match: mask(match[0]), value, flags=re.I)
+                    for pattern in patterns:
+                        value = pattern.sub(lambda match: mask(match[0]), value)
                     return value
                 if isinstance(value, list):
                     return [conceal(item) for item in value]

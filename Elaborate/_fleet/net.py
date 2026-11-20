@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 import shutil
 import socket
 import subprocess
@@ -146,7 +147,7 @@ class FleetClient:
 
 def make_peer_server(address, own_report, secret: str, allowed_login: str, authenticate=None,
                      own_settings=None, own_name=None, on_knock=None, own_requests=None, own_changes=None,
-                     own_known=None):
+                     own_known=None, own_authenticated_requests=None, own_resolve_result=None):
     """A peer's tailnet endpoint: **read-only**, and it serves only this machine's own state.
 
     The v2 host accepted `POST /v1/report` from clients, which is what made it an authority --
@@ -210,9 +211,26 @@ def make_peer_server(address, own_report, secret: str, allowed_login: str, authe
                     self.send(200, {"fleet_id": fleet_id_for(secret),
                                     "fleet_name": own_name() if own_name else None})
                     return
-                if self.path == "/v1/requests" and own_requests is not None:
-                    # What this machine has asked of others (requests.py); each takes its own.
-                    self.send(200, own_requests())
+                if self.path == "/v1/requests" and (own_requests is not None or own_authenticated_requests is not None):
+                    requests = (own_authenticated_requests(peer["machine_id"]) if own_authenticated_requests
+                                else own_requests())
+                    self.send(200, requests)
+                    return
+                if self.path.startswith("/v1/resolve-result/") and own_resolve_result is not None:
+                    request_id = self.path.removeprefix("/v1/resolve-result/")
+                    if re.fullmatch(r"[a-f0-9]{16}", request_id) is None:
+                        self.send(400, {"error": "invalid resolve request"})
+                        return
+                    result = own_resolve_result(request_id, peer["machine_id"])
+                    self.send(200 if result is not None else 404, result or {"error": "no available result"})
+                    return
+                if self.path.startswith("/v1/change-files/") and own_changes is not None:
+                    repo_id, sep, offset = self.path.removeprefix("/v1/change-files/").partition("/")
+                    if (not repo_id.isalnum() or len(repo_id) > 64 or not sep
+                            or not offset.isascii() or not offset.isdigit() or len(offset) > 6):
+                        self.send(400, {"error": "invalid file detail page"})
+                        return
+                    self.send(200, own_changes(repo_id, offset=int(offset)))
                     return
                 if self.path.startswith("/v1/changes/") and own_changes is not None:
                     # One repository's uncommitted work: file names and line counts, never contents.

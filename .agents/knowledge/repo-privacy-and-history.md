@@ -19,9 +19,8 @@ of **every blob** — 566 objects, 355 blobs — for seven secret shapes (64-hex
 GitHub tokens, AWS keys, private-key blocks, Slack/Stripe/Google keys, credential assignments,
 and URLs with inline credentials).
 
-**Result: no secrets in history.** The only credential-shaped hit is
-`http://user:password@100.64.0.1:8765` in `test_fleet_app.py` — a fixture asserting that such a
-URL is *rejected*.
+**September 11 result:** The selected checks found one credential-shaped match. It was an
+invented fixture in `test_fleet_app.py` that checks rejection of a URL with inline credentials.
 
 **Personal data is in history** and was never removed, only sanitized going forward: three
 Tailscale addresses, four machine names, five private namespaces, one Windows user path.

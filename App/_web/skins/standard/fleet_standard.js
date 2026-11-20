@@ -6,7 +6,7 @@ import {auditThese, renderSecurity, securitySummary} from './fleet_security.js';
 import {columnsOf, copyGrid, GRID_FOOTNOTE, gridNotes, orderedMachines, perspectiveOf, placeTree} from './fleet_grid.js';
 import {organizationChoices, renderOrgs} from './fleet_orgs.js';
 import {MENU, renderClouds, renderMachines as drawMachines, renderMenu} from './fleet_pages.js';
-import {notCountedSection, resolveBox} from './fleet_resolve.js';
+import {notCountedSection, remoteResolveBox, resolveBox} from './fleet_resolve.js';
 import {referenceSummary, renderReference} from './fleet_reference.js';
 import {renderSettings} from './fleet_settings.js';
 import {renderRequests} from './fleet_requests.js';
@@ -20,6 +20,7 @@ const node = (tag, text, className) => {
 };
 const state = {data: null, raw: null, selected: null, receivedAt: null,
                expansion: new GroupExpansion(savedCollapsedGroups()), grouping: savedGrouping()};
+let repoVisibility = null;
 const desktopMessages = new Map();
 const desktopPending = new Set();
 // Session memory only: no report, browser storage, notification or fleet publication.
@@ -28,7 +29,7 @@ const securityPending = new Set();
 let desktopDraft = null;
 const controls = {
   query: byId('search'), status: byId('status-filter'), machine: byId('machine-filter'),
-  sort: byId('sort'), warning: byId('connection-warning'),
+  sort: byId('sort'), visibility: byId('visibility-filter'), warning: byId('connection-warning'),
 };
 
 // Group by where repositories live (library, then folder) or by GitHub owner. Every view reads
@@ -132,6 +133,13 @@ function cellBadge(cell) {
   return badge;
 }
 
+let orgReview = null;
+
+function reviewOrgIssues(rows) {
+  orgReview = {ids: rows.map(row => row.id), index: 0};
+  openRepository(rows[0]);
+}
+
 function showDetail(row) {
   const panel = byId('detail');
   // Typing a commit message or using a control here: the 3-second refresh waits for you.
@@ -144,6 +152,29 @@ function showDetail(row) {
   const close = node('button', 'Close', 'quiet'); close.type = 'button';
   close.onclick = () => { state.selected = null; panel.hidden = true; renderRepositories(); };
   head.append(identity, close); panel.append(head);
+  if (orgReview?.ids[orgReview.index] === row.id) {
+    const index = orgReview.index;
+    const count = orgReview.ids.length;
+    const nav = node('div', undefined, 'setting-row');
+    const next = node('button', index + 1 === count ? 'Finish walkthrough' : 'Next issue', 'quiet');
+    next.type = 'button';
+    next.onclick = () => {
+      for (let i = index + 1; i < count; i++) {
+        const current = state.data.rows.find(item => item.id === orgReview.ids[i]);
+        if (!current || (!current.needs_attention && current.copies?.heads_agree !== false)) continue;
+        orgReview.index = i;
+        openRepository(current);
+        return;
+      }
+      orgReview = null;
+      selectTab('orgs');
+    };
+    const back = node('button', 'Back to Orgs', 'quiet');
+    back.type = 'button';
+    back.onclick = () => { orgReview = null; selectTab('orgs'); };
+    nav.append(node('span', `Issue ${index + 1} of ${count}`, 'host-note'), next, back);
+    panel.append(nav);
+  }
   panel.append(node('p', row.advice, 'detail-advice'));
   if (row.publication && !row.publication.published) {
     panel.append(node('p', row.publication.reason, 'tone-text-warning'));
@@ -225,6 +256,10 @@ function showDetail(row) {
       const dirty = (cell.facts.staged || 0) + (cell.facts.unstaged || 0) + (cell.facts.untracked || 0);
       if (dirty && fleetActions()) section.append(uncommittedThere(row, machine, dirty));
     }
+    if (cell.present && machine.id !== state.data.this_machine && fleetActions()) {
+      section.append(remoteResolveBox(row, machine, state.data.requests?.sent || [], fleetActions().act,
+        () => { state.selected = null; showDetail(row); }));
+    }
     panel.append(section);
   }
   for (const current of document.querySelectorAll('tbody tr')) current.classList.toggle('selected', current.dataset.repoId === row.id);
@@ -267,7 +302,9 @@ function uncommittedThere(row, machine, dirty) {
 function renderRepositories() {
   const data = state.data;
   const rows = selectRows(data, {query: controls.query.value, status: controls.status.value,
-    machine: controls.machine.value, sort: controls.sort.value});
+    machine: controls.machine.value, sort: controls.sort.value,
+    visibility: controls.visibility.value, visibilityById: repoVisibility || {}});
+  byId('refresh-visibility').hidden = !data.local_actions;
   const groups = groupRows(data, rows);
   byId('result-count').textContent = `${rows.length} of ${data.summary.repositories} repositories shown`;
   const list = byId('repository-list'); list.replaceChildren();
@@ -376,6 +413,7 @@ function openAudit(repoIds) {
 function openRepository(row) {
   controls.query.value = row.identity ? row.identity.name : row.name;
   controls.status.value = 'all';
+  controls.visibility.value = 'all';
   selectTab('repositories');
   renderRepositories();
   showDetail(row);
@@ -419,7 +457,7 @@ function renderOrgsPanel() {
       try { localStorage.setItem('gitso.orgs', JSON.stringify({group: orgOptions.group})); } catch { /* a remembered choice only */ }
       renderOrgsPanel();
     },
-    onAudit: data.local_actions ? openAudit : null, onRepository: openRepository, actions: fleetActions(),
+    onReview: reviewOrgIssues, onRepository: row => { orgReview = null; openRepository(row); }, actions: fleetActions(),
   });
 }
 for (const [id, key] of [['orgs-group', 'group'], ['orgs-perspective', 'perspective']]) {
@@ -605,7 +643,7 @@ function fleetActions() {
   if (!state.data.local_actions) return null;
   const act = (action, payload) => connection.desktopAction(action, payload, state.data.local_actions.token, {structured: true});
   return {act, send: payload => act('request-send', payload),
-          changes: (repo_id, machine_id) => act('changes', {repo_id, machine_id})};
+          changes: (repo_id, machine_id, offset) => act('changes', {repo_id, machine_id, offset})};
 }
 
 function renderAll() {
@@ -632,13 +670,39 @@ function selectTab(tab) {
 }
 
 for (const control of [controls.query, controls.status, controls.machine, controls.sort]) control.addEventListener('input', renderRepositories);
+controls.visibility.addEventListener('input', () => {
+  if (controls.visibility.value !== 'all' && !repoVisibility && state.data.local_actions) refreshRepoVisibility();
+  else renderRepositories();
+});
+async function refreshRepoVisibility() {
+  const refresh = byId('refresh-visibility');
+  const status = byId('visibility-status');
+  if (refresh.disabled) return;
+  refresh.disabled = true;
+  status.hidden = false;
+  status.textContent = 'Checking GitHub visibility…';
+  try {
+    const result = await connection.desktopAction('repo-visibility', {}, state.data.local_actions.token, {structured: true});
+    repoVisibility = result.visibility;
+    status.textContent = `${result.namespaces_checked} GitHub namespaces checked.` +
+      (result.namespaces_unavailable ? ` ${result.namespaces_unavailable} unavailable.` : '') +
+      ' Repositories without a confirmed visibility are Unknown.';
+  } catch (error) {
+    repoVisibility = null;
+    status.textContent = error.message;
+  } finally {
+    refresh.disabled = false;
+    renderRepositories();
+  }
+}
+byId('refresh-visibility').onclick = refreshRepoVisibility;
 byId('grouping').value = state.grouping;
 byId('grouping').onchange = () => {
   state.grouping = byId('grouping').value;
   try { localStorage.setItem('gitso.grouping', state.grouping); } catch { /* a remembered choice only */ }
   if (state.raw) { state.data = regroup(state.raw, state.grouping); renderAll(); }
 };
-byId('clear-filters').onclick = () => { controls.query.value = ''; controls.status.value = 'attention'; controls.machine.value = 'all'; controls.sort.value = 'attention'; renderRepositories(); };
+byId('clear-filters').onclick = () => { controls.query.value = ''; controls.status.value = 'attention'; controls.machine.value = 'all'; controls.sort.value = 'attention'; controls.visibility.value = 'all'; renderRepositories(); };
 byId('expand').onclick = () => {
   state.expansion.expandAll();
   for (const machine of state.data.machines) openedMachines.add(`m/${machine.id}`);

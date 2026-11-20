@@ -15,6 +15,15 @@ from Special._sync.manifest import (COMPRESSED_SUFFIX, MANIFEST_SUFFIX, decode_m
 from Special._sync.manifest import SAFE_MACHINE_ID  # noqa: E402  (shared with local config)
 
 
+AUDIT_COVERAGE_DIR = "audit-coverage"
+
+
+def coverage_filename(machine_id):
+    if not SAFE_MACHINE_ID.fullmatch(machine_id):
+        raise ValueError("invalid machine identifier")
+    return f"{machine_id}.json"
+
+
 class FolderTransport:
     def __init__(self, root: str | Path):
         self.root = Path(root)
@@ -51,6 +60,15 @@ class FolderTransport:
             except OSError:
                 pass
         return written
+
+    def write_audit_coverage(self, machine_id: str, payload: bytes) -> Path:
+        from Special._runtime.files import traverses_link
+
+        path = self.root / AUDIT_COVERAGE_DIR / coverage_filename(machine_id)
+        if not self.root.is_dir() or traverses_link(path):
+            raise OSError("shared coverage folder is unavailable")
+        path.parent.mkdir(exist_ok=True)
+        return atomic_write_bytes(path, payload)
 
     def doctor(self) -> dict:
         return {

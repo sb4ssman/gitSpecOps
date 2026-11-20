@@ -64,7 +64,9 @@ has opted in to running incoming requests automatically.
 **Machines** lists each machine with the libraries under it; **Clouds** lists the providers and
 how the machines talk (Tailscale, a shared folder, a gitso-managed repository); **Security**
 audits chosen repositories, files and every commit, and any group of repositories has an
-"Audit these" button that takes them there; **Settings** changes this machine's setup.
+a "Walk through" walkthrough that takes them one repository at a time; **Settings** changes this
+machine's setup. From the Security page you can filter repositories by GitHub visibility
+(Public, Private, Internal, Unknown) and choose **Select all public repos** for a first pass.
 
 ![Machines: four cards, each machine with its libraries under it and how many repositories, organizations and copies needing attention each holds; the Home server shows two libraries, and the Old laptop is marked stale](docs/images/machines.png)
 
@@ -127,8 +129,41 @@ switched off".
 
 Built: ask another of your machines to fast-forward or clone and see the result when it runs.
 Requests wait for Apply by default. Each receiving machine can opt in under Settings → Requests and the task log.
-Planned: committing and pushing on another machine, approved from this one. A private GitHub
-repository as another way to share is built but **experimental and untested**.
+Use the **Visibility** filter to find public or private repositories. On **Orgs**, open
+an individual issue or walk through the checkouts that need attention.
+
+### Resolve work on another machine
+
+Open a repository's details and choose **Request diff** under the machine that has the work.
+Both devices need this build and a live Tailscale fleet connection. The receiving machine
+approves disclosure in **Requests**. Open the resulting receipt to see staged and unstaged
+diffs, or request a preview of a particular untracked file.
+
+Choose the checkout and files, write a message, and request a commit check. The receiving
+machine applies the checked commit only after a separate approval. A push has its own preview
+of the branch, destination, and outgoing security checks. The checked push revalidates the
+destination before sending any commits. The receiver's automatic clone and fast-forward mode
+does not apply to Resolve requests. Resolve also offers branch and divergence inspection,
+a stash list, and fetch. Stash creation previews the tracked files and requires a separate
+apply request. Untracked files stay in the checkout.
+
+### Enroll in security
+
+Start in **Fleet Security**. Set **Protected values**, select your scanners, and use
+**Select all public repos** for a first audit. Filter by visibility (Public, Private,
+Internal, Unknown) to work through results one group at a time. Audits support up to
+eight runners. Use **Export masked report** and **Open masked report** to revisit a run.
+**Settings → Audit history storage** can save reusable scans locally when you opt in.
+Coverage exports to a folder or private state repo are HMAC-signed receipts; receiving
+machines verify the signature before using another machine's snapshot, and each machine
+still applies its own policy and makes its own release decision.
+
+For a checkout where routine Git commands should be checked, use `gitso commit-gate <checkout>`
+to inspect its hook setup and `gitso commit-gate <checkout> --mode scan` to review the install.
+Resolve any existing-hook integration on that checkout. For explicit outbound checks, use
+`gitso secure-push <checkout>`. [Security and cleanup](docs/PROTECT.md).
+
+A private GitHub state repository is another way to share fleet status.
 [What works today, and what has only been tested](docs/STATUS.md).
 
 ## Commands

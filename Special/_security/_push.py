@@ -115,7 +115,7 @@ class PushResult:
                 "plan_id": self.plan_id, "artifacts": []}
 
 
-def push_checked(repo, *, settings_home=None, apply=False, approve=None):
+def push_checked(repo, *, settings_home=None, apply=False, approve=None, expected_base=None):
     """Preview one local push mapping; apply its exact plan through publish_checked.
 
     Preview reads local scope/policy only, with no fetch, network, file writes or security
@@ -141,7 +141,7 @@ def push_checked(repo, *, settings_home=None, apply=False, approve=None):
                               plan_id=plan_id)
         if approve != plan_id:
             return PushResult("approval-required", "No push: approve the exact current local plan.", plan_id=plan_id)
-        result = publish_checked(snapshot, settings_home=home, expected_policy=policy)
+        result = publish_checked(snapshot, settings_home=home, expected_policy=policy, expected_base=expected_base)
         return PushResult(result.status, result.message, result.report, plan_id)
     except SettingsError as exc:
         return PushResult("incomplete", str(exc))
@@ -149,7 +149,35 @@ def push_checked(repo, *, settings_home=None, apply=False, approve=None):
         return PushResult("incomplete", "Push scope or security settings could not be read; no push performed.")
 
 
-def publish_checked(snapshot: PushSnapshot, *, settings_home=None, expected_policy=None) -> PushResult:
+def preview_remote_push(repo, *, settings_home=None):
+    """Attended remote review of the exact provider base and outgoing history."""
+    try:
+        snapshot = read_push_snapshot(repo)
+        policy = load_policy(snapshot.repo, home=settings_home)
+        if policy.gaps:
+            return {"ok": False, "status": "incomplete"}, None
+        fetched = fetch(snapshot.repo, snapshot.remote)
+        if fetched.returncode or read_push_snapshot(repo) != snapshot:
+            return {"ok": False, "status": "incomplete"}, None
+        base = _remote_tip(snapshot)
+        if base == snapshot.tip:
+            return {"ok": True, "status": "already-current"}, base
+        report = scan(snapshot.repo, policy, material="outgoing", refs=[base, snapshot.tip],
+                      reference_names=(snapshot.branch, snapshot.destination))
+        preview = push_checked(repo, settings_home=settings_home)
+        if (not _same_policy(policy, load_policy(snapshot.repo, home=settings_home))
+                or read_push_snapshot(repo) != snapshot or _remote_tip(snapshot) != base):
+            return {"ok": False, "status": "stale"}, None
+        ok = not report.gaps and not report.actionable and preview.status == "planned"
+        return {"ok": ok, "status": "planned" if ok else report.check_status,
+                "plan_id": preview.plan_id if ok else None, "security": report.record(),
+                "branch": snapshot.branch, "remote": snapshot.remote, "destination": snapshot.destination}, base
+    except (CommandFailed, OSError, ValueError):
+        return {"ok": False, "status": "incomplete"}, None
+
+
+def publish_checked(snapshot: PushSnapshot, *, settings_home=None, expected_policy=None,
+                    expected_base=None) -> PushResult:
     """Execute the approved snapshot only after current selected checks pass.
 
     Uncertain findings hold the push for review; resolve scoped policy and rerun. There is no
@@ -171,6 +199,8 @@ def publish_checked(snapshot: PushSnapshot, *, settings_home=None, expected_poli
         if read_push_snapshot(snapshot.repo) != snapshot:
             return PushResult("stale", "failed: source or destination changed during fetch; rebuild the publish plan")
         base = _remote_tip(snapshot)
+        if expected_base is not None and base != expected_base:
+            return PushResult("stale", "The remote branch changed after the preview; check it again.")
         if base == snapshot.tip:
             return PushResult("already-current", "already current")
         report = scan(snapshot.repo, policy, material="outgoing", refs=[base, snapshot.tip],

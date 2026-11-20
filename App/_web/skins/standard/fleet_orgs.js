@@ -19,14 +19,18 @@ export function organizationChoices(data) {
     .map(label => [`org:${label}`, label]);
 }
 
-function auditButton(rows, onAudit) {
-  const button = html('button', `Audit these ${rows.length}`, 'quiet'); button.type = 'button';
-  button.title = 'Choose them on the Security tab; the audit starts when you press Audit there';
-  button.onclick = event => { event.stopPropagation(); onAudit(rows.map(row => row.id)); };
+function needsDecision(row) {
+  return row.needs_attention || row.copies?.heads_agree === false;
+}
+
+function reviewButton(rows, onReview) {
+  const button = html('button', `Walk through ${rows.length} ${rows.length === 1 ? 'issue' : 'issues'}`, 'quiet');
+  button.type = 'button';
+  button.onclick = () => onReview(rows);
   return button;
 }
 
-function overview(container, data, perspective, onPick, onAudit) {
+function overview(container, data, perspective, onPick, onReview) {
   const machines = orderedMachines(data, perspective);
   const columns = columnsOf(machines, data.rows);
   const names = organizationChoices(data).map(([, name]) => name);
@@ -53,13 +57,14 @@ function overview(container, data, perspective, onPick, onAudit) {
   const body = html('tbody');
   for (const name of names) {
     const rows = rowsOf(data, `org:${name}`);
-    const attention = rows.filter(row => row.needs_attention).length;
+    const issues = rows.filter(needsDecision);
+    const attention = issues.length;
     const line = html('tr', undefined, attention ? 'map-attention' : '');
     const cell = html('td');
     const open = html('button', `${attention ? '⚑ ' : ''}${name}`, 'repo-link'); open.type = 'button';
     open.onclick = () => onPick({group: `org:${name}`});
     cell.append(open);
-    if (onAudit) cell.append(auditButton(rows, onAudit));
+    if (attention) cell.append(reviewButton(issues, onReview));
     line.append(cell, html('td', `${rows.length}${attention ? ` · ${attention} need attention` : ''}`));
     for (const column of columns) {
       const here = rows.map(row => cellIn(row, column)).filter(Boolean);
@@ -77,20 +82,27 @@ function overview(container, data, perspective, onPick, onAudit) {
 }
 
 function oneOrganization(container, data, perspective, group, handlers, showUnavailable) {
-  const {onPick, onAudit, onRepository, actions} = handlers;
+  const {onPick, onReview, onRepository, actions} = handlers;
   const rows = rowsOf(data, group);
   const label = group.slice(4);
   // In words first: what is the same everywhere, and what needs a decision, from Python's advice.
-  const settled = rows.filter(row => !row.needs_attention && (row.copies || {}).heads_agree !== false);
-  const open = rows.filter(row => !settled.includes(row));
+  const open = rows.filter(needsDecision);
   const verdict = html('div', undefined, open.length ? 'map-verdict map-verdict-open' : 'map-verdict');
   verdict.append(html('strong', open.length
-    ? `${label}: ${settled.length} of ${rows.length} are the same on every machine that has them. ${open.length} need${open.length === 1 ? 's' : ''} a decision:`
+    ? `${label}: ${rows.length - open.length} of ${rows.length} are the same on every machine that has them. ${open.length} need${open.length === 1 ? 's' : ''} a decision:`
     : `${label}: all ${rows.length} are the same on every machine that has them.`));
-  if (onAudit) verdict.append(auditButton(rows, onAudit));
   if (open.length) {
+    verdict.append(reviewButton(open, onReview));
     const list = html('ul');
-    for (const row of open) list.append(html('li', `${row.identity ? row.identity.name : row.name}: ${row.advice}`));
+    for (const row of open) {
+      const item = html('li');
+      const inspect = html('button', row.identity ? row.identity.name : row.name, 'repo-link');
+      inspect.type = 'button';
+      inspect.title = 'Open checkout details and available actions';
+      inspect.onclick = () => onRepository(row);
+      item.append(inspect, document.createTextNode(` ${row.advice}`));
+      list.append(item);
+    }
     verdict.append(list);
   }
   container.append(verdict);
@@ -101,11 +113,11 @@ function oneOrganization(container, data, perspective, group, handlers, showUnav
 }
 
 /** Draw the panel's body. `options`: group ("all" or "org:<name>"), perspective; handlers:
- *  onPick(change), onAudit(repoIds), onRepository(row), actions. */
+ *  onPick(change), onReview(rows), onRepository(row), actions. */
 export function renderOrgs(container, data, options, handlers) {
   container.replaceChildren();
   if (!data.rows.length) { container.append(html('p', 'No repositories observed yet.', 'empty')); return; }
   if (options.group && options.group !== 'all' && rowsOf(data, options.group).length) {
     oneOrganization(container, data, options.perspective, options.group, handlers, options.showUnavailable);
-  } else overview(container, data, options.perspective, handlers.onPick, handlers.onAudit);
+  } else overview(container, data, options.perspective, handlers.onPick, handlers.onReview);
 }

@@ -50,7 +50,7 @@ submodules, oversized files.
 | Requests: fast-forward or clone on another machine, with optional automatic execution | yes | approval on the receiving machine was used; automatic execution is opt-in | yes | | opt-in flow between two real machines |
 | Ask another machine what is uncommitted (file names and line counts) | yes | yes | yes | Windows | |
 | Recovery snapshots of unfinished work | yes | no | yes | | capture on one real machine, restore on another |
-| Attended remote commit and push ("that machine, commit these files") | no | | | | designed, not built |
+| Attended remote diff, commit and push | Windows dev checkout | | disposable Git repositories | | live two-peer trial pending |
 
 ## The app
 

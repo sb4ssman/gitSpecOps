@@ -116,3 +116,9 @@ main{padding:0 32px}.section-title{margin:24px 0 18px}.section-title p{margin:5p
 .ref-text{max-height:none}
 .ref-source summary{cursor:pointer;font-weight:600;margin:10px 0 6px}
 .ref-code{white-space:pre;overflow:auto;max-height:60vh;font-size:12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--background)}
+.footer-feedback{display:inline-flex;align-items:center;padding:6px 12px;border:1px solid var(--border);border-radius:6px;text-decoration:none}.footer-feedback:hover{border-color:var(--accent);text-decoration:underline}
+.sec-findings .sec-location,.sec-findings .sec-value{overflow-wrap:anywhere}
+.sec-findings .sec-value{min-width:9ch;font-family:ui-monospace,Consolas,monospace}
+.sec-findings .sec-actions{min-width:max-content;white-space:nowrap;font-family:inherit}
+.sec-findings .sec-action-divider{margin-inline:6px;color:var(--muted)}
+.sec-findings .sec-action-status{display:block;white-space:normal;margin-top:4px}

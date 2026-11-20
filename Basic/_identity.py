@@ -89,3 +89,4 @@ class RepoRef:
     private: bool = False
     fork: bool = False
     archived: bool = False
+    visibility: str | None = None

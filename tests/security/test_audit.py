@@ -66,6 +66,155 @@ class AuditTests(unittest.TestCase):
         quick = audit_checkout(self.repo, history=False, settings_home=self.home)
         self.assertIsNone(quick["history"], "files only when history is not asked for")
 
+    def test_browser_history_storage_requires_opt_in_and_disable_preserves_file(self):
+        from Special._security._policy_edit import audit_cache_change, audit_cache_view
+
+        def run():
+            return audit_checkout(self.repo, settings_home=self.home, cache=None)["history"]
+
+        settings = audit_cache_view(self.home)
+        database = Path(settings["path"])
+        self.assertFalse(settings["enabled"])
+        self.assertNotIn("checkpoint", run())
+        self.assertFalse(database.exists())
+
+        enabled = audit_cache_change(self.home, {"audit_history_cache": True})
+        self.assertTrue(enabled["enabled"])
+        self.assertFalse(database.exists(), "enabling stores the preference only")
+        self.assertEqual(run()["checkpoint"]["mode"], "full")
+        self.assertTrue(database.exists())
+
+        original = database.read_bytes()
+        audit_cache_change(self.home, {"audit_history_cache": False})
+        self.assertNotIn("checkpoint", run())
+        self.assertEqual(database.read_bytes(), original)
+
+    def test_history_checkpoint_reuses_masked_results_and_a_fresh_scan_can_reveal(self):
+        def audit(**options):
+            return audit_checkout(self.repo, settings_home=self.home, cache=True, **options)
+
+        first = audit()
+        self.assertEqual(first["history"]["checkpoint"]["mode"], "full")
+        self.assertEqual(first["history"]["coverage"], "complete-for-selected-checks")
+        values = {}
+        reused = audit(values=values)
+        self.assertEqual(reused["check_status"], "blocked")
+        self.assertEqual(reused["history"]["checkpoint"],
+                         {"mode": "reused", "reused_commits": 2, "new_commits": 0})
+        self.assertNotIn("history", values)
+        self.assertNotIn(b"private-marker", (self.home / "security-history.sqlite3").read_bytes())
+        fresh = audit(values=values, fresh=True)
+        self.assertEqual(fresh["history"]["checkpoint"]["mode"], "full")
+        self.assertIn("private-marker", values["history"])
+
+    def test_clean_history_checkpoint_handles_new_commits_and_unmerged_branch(self):
+        self.git(self.repo, "checkout", "--orphan", "clean")
+        self.commit("notes.txt", "a new unrelated history")
+        self.git(self.repo, "branch", "-D", "main")
+
+        def history():
+            return audit_checkout(self.repo, settings_home=self.home, cache=True)["history"]
+
+        first = history()
+        self.assertEqual(first["checkpoint"]["mode"], "full")
+        self.assertFalse(first["findings"])
+        self.git(self.repo, "checkout", "-b", "side")
+        self.commit("side.txt", "another change")
+        self.git(self.repo, "checkout", "clean")
+        self.commit("notes.txt", "a change on the original branch")
+        delta = history()
+        self.assertEqual(delta["checkpoint"], {"mode": "incremental", "reused_commits": 1, "new_commits": 2})
+        self.assertEqual(delta["commits"], 3)
+        self.git(self.repo, "branch", "-D", "side")
+        self.assertEqual(history()["checkpoint"]["mode"], "full")
+
+    def test_history_checkpoint_invalidates_when_private_policy_changes(self):
+        default = audit_checkout(self.repo, settings_home=self.home, cache=True)
+        self.assertEqual(default["history"]["check_status"], "blocked")
+        (self.home / "settings.json").write_text(json.dumps(
+            {"schema_version": 2, "defaults": {"security": {"never_publish": ["unrelated-value"]}}}), encoding="utf-8")
+        updated = audit_checkout(self.repo, settings_home=self.home, cache=True)
+        self.assertEqual(updated["history"]["checkpoint"]["mode"], "full")
+        self.assertEqual(updated["history"]["check_status"], "passed")
+
+    def test_coverage_receipt_omits_findings_locations_and_ref_names(self):
+        from Special._security._audit import coverage_receipt
+
+        result = audit_checkout(self.repo, settings_home=self.home)
+        audit = {"results": [{"repo_id": "a" * 32, "checkout": 1, "security": result}],
+                 "started_at": "now", "finished_at": None, "state": "running", "engines": [],
+                 "history": True, "total": 2, "done": 1}
+        receipt = coverage_receipt(audit, "test-machine")
+        self.assertEqual(receipt["repositories_finished"], 1)
+        self.assertEqual(receipt["checkouts"][0]["history"]["commits_scanned"], 2)
+        from Elaborate._transport.folder import FolderTransport
+
+        shared = FolderTransport(self.root)
+        published = shared.write_audit_coverage("test-machine", json.dumps(receipt).encode())
+        self.assertEqual(published, self.root / "audit-coverage" / "test-machine.json")
+        self.assertEqual(json.loads(published.read_bytes()), receipt)
+        for private in ("findings", "notes.txt", "refs/heads", "policy", "private-marker", str(self.repo)):
+            self.assertNotIn(private, json.dumps(receipt))
+
+    def test_batched_history_preserves_findings_and_reuses_clean_work_after_ref_changes(self):
+        self.git(self.repo, "checkout", "--orphan", "clean")
+        self.commit("clean.txt", "a small clean object")
+        self.git(self.repo, "branch", "-D", "main")
+
+        def audit(**options):
+            return audit_checkout(self.repo, settings_home=self.home, cache=True,
+                                  history_workers=2, **options)["history"]
+
+        full = audit()
+        self.assertEqual(full["reused_batches"], 0)
+        self.git(self.repo, "branch", "-m", "renamed")
+        self.assertEqual(audit()["reused_batches"], 1)
+        self.assertEqual(audit(fresh=True)["reused_batches"], 0)
+
+        self.commit("one.txt", "a private-marker")
+        self.commit("two.txt", "a private-marker")
+        report = audit(fresh=True)
+        locations = {item["where"] for item in report["findings"] if item["check"] == "never-publish"}
+        self.assertEqual(locations, {"one.txt", "two.txt"})
+
+    def test_runners_finish_other_repositories_while_a_slow_one_is_active(self):
+        release_slow = threading.Event()
+        slow_active = threading.Event()
+        following_active = threading.Event()
+        self.addCleanup(release_slow.set)
+
+        def runner(path, *, values, step, **kwargs):
+            step("scanning history")
+            if path.name == "slow":
+                slow_active.set()
+                release_slow.wait(10)
+            if path.name == "following":
+                following_active.set()
+            values["history"] = [path.name]
+            return {"check_status": "passed"}
+
+        jobs = AuditJobs(lambda repo_id: [Path(repo_id)], runner=runner)
+        for invalid in (0, 9, True, "2"):
+            with self.assertRaisesRegex(ValueError, "simultaneous runners"):
+                jobs.start({"repo_ids": ["slow"], "runners": invalid})
+        jobs.start({"repo_ids": ["slow", "fast", "following"], "runners": 2})
+        self.assertTrue(slow_active.wait(5))
+        self.assertTrue(following_active.wait(5))
+        running = jobs.status()["audit"]
+        self.assertEqual((running["state"], running["runners"]), ("running", 2))
+        self.assertIn("slow", {worker["repo_id"] for worker in running["active"]})
+        self.assertTrue(any(entry["repo_id"] == "fast" for entry in running["results"]))
+        release_slow.set()
+        for _ in range(200):
+            finished = jobs.status()["audit"]
+            if finished["state"] != "running":
+                break
+            threading.Event().wait(0.01)
+        self.assertEqual((finished["state"], finished["done"], finished["active"]), ("finished", 3, []))
+        for entry in finished["results"]:
+            result = jobs.reveal({"index": entry["index"], "material": "history", "finding_id": "finding-000001"})
+            self.assertEqual(result["value"], entry["repo_id"])
+
     def test_jobs_audit_known_ids_only_one_at_a_time(self):
         gate = threading.Event()
 
@@ -102,10 +251,17 @@ class AuditTests(unittest.TestCase):
                 break
             threading.Event().wait(0.05)
         self.assertNotIn("private-marker", json.dumps(jobs.status()), "the polled status stays masked")
+        full = jobs.status(full=True)["audit"]
+        self.assertNotIn("private-marker", json.dumps(full))
+        self.assertNotIn("values", full)
         entry = audit["results"][0]
         finding = next(f for f in entry["security"]["history"]["findings"] if f["classification"] != "quiet")
-        shown = jobs.reveal({"index": entry["index"], "material": "history", "finding_id": finding["finding_id"]})
+        request = {"index": entry["index"], "material": "history", "finding_id": finding["finding_id"]}
+        shown = jobs.reveal({**request, "audit_started_at": audit["started_at"]})
         self.assertIn("private-marker", shown["value"])
+        for action in (jobs.reveal, jobs.accept):
+            with self.assertRaisesRegex(ValueError, "earlier audit"):
+                action({**request, "audit_started_at": "2020-01-01T00:00:00Z"})
         for bad in ({"index": 9, "material": "history", "finding_id": finding["finding_id"]},
                     {"index": 0, "material": "path", "finding_id": finding["finding_id"]},
                     {"index": 0, "material": "history", "finding_id": "finding-999999"},
@@ -148,7 +304,8 @@ class AuditTests(unittest.TestCase):
         from Special._security._audit import audit_in_process
         values: dict = {}
         steps = []
-        result = audit_in_process(self.repo, history=True, settings_home=self.home, values=values, step=steps.append)
+        result = audit_in_process(self.repo, history=True, settings_home=self.home, values=values,
+                                  step=steps.append, worker_budget=lambda: 8)
         self.assertEqual(result["check_status"], "blocked", "the deleted value is still found in history")
         self.assertTrue(steps and steps[0].startswith("working files"), steps)
         self.assertTrue(any(step.startswith("every commit:") for step in steps), "the status line hears each phase")

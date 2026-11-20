@@ -1,7 +1,9 @@
 /* Presentation selectors. Status meanings and attention decisions come from Python. */
-export function selectRows(data, {query = '', status = 'attention', machine = 'all', sort = 'attention'} = {}) {
+export function selectRows(data, {query = '', status = 'attention', machine = 'all', sort = 'attention',
+                                 visibility = 'all', visibilityById = {}} = {}) {
   const search = query.trim().toLocaleLowerCase();
   const rows = data.rows.filter(row => {
+    if (visibility !== 'all' && (visibilityById[row.id] || 'unknown') !== visibility) return false;
     if (!`${row.name} ${row.identity.host}`.toLocaleLowerCase().includes(search)) return false;
     const cell = machine === 'all' ? null : row.cells[machine];
     if (machine !== 'all' && !cell) return false;

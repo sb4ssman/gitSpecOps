@@ -43,8 +43,8 @@ Reference worth showing.
   library, organization and repository scopes. Show incomplete coverage. Preserve
   existing hooks when integrating and verify named hooks on versions that support
   them. Add an outgoing-history hook and reuse scan work only when its inputs agree.
-- Wire attended remote commit and push to checked named-file and outgoing-ref plans.
-  Keep these separate from clone and fast-forward consent.
+- Verify attended remote Resolve on two live peers, including private diff delivery and separate
+  local approval of commit and push plans. Verify that concurrent changes require a new preview.
 - Verify the interactive tray update in the live Qt and native macOS trays. Add
   periodic availability to the native macOS menu and an opt-in installer preview
   based on the Git binary reported by `gitso git-inspect`.

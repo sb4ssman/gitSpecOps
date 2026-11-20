@@ -39,9 +39,9 @@ DIFF_LIMIT = 200_000  # characters of diff shown at once
 LISTED = 200  # files listed by "Safe to delete?"
 OPS = {"open-folder", "open-editor", "changes", "fetch", "pull", "commit-plan", "commit-apply",
        "push-plan", "push-apply", "not-counted", "count-again", "not-counted-list",
-       "not-counted-folder", "copies", "retire-check", "run-command"}
+       "not-counted-folder", "copies", "retire-check", "run-command", "branches", "stashes", "stash-plan", "stash-apply"}
 #: Ops that only read (or open a window); the peer runs them outside its action lock.
-READ_ONLY = {"changes", "open-folder", "open-editor", "not-counted-list", "copies", "run-command"}
+READ_ONLY = {"changes", "open-folder", "open-editor", "not-counted-list", "copies", "run-command", "branches", "stashes", "stash-plan"}
 GITSO = Path(__file__).resolve().parents[2] / "gitso.py"
 
 
@@ -96,6 +96,41 @@ def changes(path: Path) -> dict:
     diff = _git(path, "diff") + _git(path, "diff", "--cached")
     return {"files": files, "summary": _git(path, "diff", "--stat", "HEAD", check=False).strip(),
             "diff": diff[:DIFF_LIMIT], "cut": len(diff) > DIFF_LIMIT}
+
+
+def inspect_remote_changes(path):
+    """An attended diff plus a bounded changed-file list. No external diff helpers."""
+    from Special._sync.changes import working_changes
+
+    work = working_changes(path, expanded=True)
+    staged = _git(path, "diff", "--no-ext-diff", "--no-textconv", "--cached", "--")
+    unstaged = _git(path, "diff", "--no-ext-diff", "--no-textconv", "--")
+    half = DIFF_LIMIT // 2
+    return {"files": work["files"], "count": work["count"], "summary": work["summary"],
+            "staged": staged[:half], "unstaged": unstaged[:half],
+            "cut": len(staged) > half or len(unstaged) > half or work["next_offset"] is not None}
+
+
+def inspect_untracked(repo, name):
+    """Read one explicitly approved untracked file only inside the observed checkout."""
+    import stat
+
+    from Special._runtime.files import traverses_link
+
+    root = Path(repo).resolve()
+    path = root / name
+    admitted = _git(root, "ls-files", "--others", "--exclude-standard", "-z").split("\0")
+    if name not in admitted or not path.resolve().is_relative_to(root) or traverses_link(path):
+        raise ValueError("the requested file is not a readable untracked file")
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    with os.fdopen(descriptor, "rb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError("the requested file is not regular")
+        size = 65536
+        data = stream.read(size + 1)
+    if b"\0" in data:
+        return {"file": name, "binary": True}
+    return {"file": name, "text": data[:size].decode("utf-8", "replace"), "cut": len(data) > size}
 
 
 def _libraries(home) -> list[Path]:
@@ -318,6 +353,11 @@ def repo_action(op: str, payload: dict, checkouts, *, home=None) -> dict:
             raise ValueError("no editor found here (install VS Code and its 'code' command)")
         subprocess.Popen([code, str(path)], creationflags=NO_WINDOW, cwd=str(path))
         return {"message": f"Opened {path.name} in VS Code."}
+    if op in ("branches", "stashes", "stash-plan", "stash-apply"):
+        from Special._sync.checkout_ops import inspect_checkout, stash_checked
+        if op in ("branches", "stashes"):
+            return inspect_checkout(path, op)
+        return stash_checked(path, payload.get("message"), _plan_id(payload) if op == "stash-apply" else None)
     if op == "changes":
         return {"path_name": path.name, **changes(path)}
     if op == "retire-check":

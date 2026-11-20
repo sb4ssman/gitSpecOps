@@ -32,7 +32,7 @@ DEFAULTS = {
     # never_publish_words: protected values matched only as whole words (no letter, digit or
     # underscore touching either side), for short values that also occur inside other words.
     "security": {"never_publish": [], "never_publish_words": [], "safe_values": [], "local_never_publish": [],
-                 "local_safe_values": [], "engines": [], "repository_exceptions": {}},
+                 "local_safe_values": [], "engines": [], "repository_exceptions": {}, "audit_history_cache": False},
 }
 _ACCUMULATED = {"scope.exclude_paths", "security.never_publish", "security.never_publish_words",
                 "security.local_never_publish"}
@@ -74,6 +74,9 @@ def _part(value):
             where = f"{section}.{key}"
             if where == "security.repository_exceptions":
                 _exceptions(item, where)
+            elif where == "security.audit_history_cache":
+                if type(item) is not bool:
+                    raise SettingsError("security.audit_history_cache must be a boolean")
             elif section in ("scope", "security"):
                 _strings(item, where)
                 if where == "security.engines" and (len(item) != len(set(item)) or
@@ -185,7 +188,7 @@ class ResolvedSettings:
                 "output": {"save": self.values["output"]["save"]},
                 "logging": {key: value for key, value in self.values["logging"].items()
                             if key != "directory"},
-                "security": {key: list(value) if key == "engines" else len(value)
+                "security": {key: value if key == "audit_history_cache" else list(value) if key == "engines" else len(value)
                              for key, value in self.values["security"].items()},
                 "enrollment": {"machine_configured": bool(self.values.get("machine")),
                                "defined_transports": sorted(self.values.get("transports", {})),

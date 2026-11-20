@@ -133,6 +133,20 @@ try:
         except ValueError:
             pass
 
+    # Coverage is a separate per-machine artifact, written only to private state repositories.
+    coverage = b'{"kind":"gitso-audit-coverage"}'
+    fake = install([{"private": False}])
+    try:
+        repo_transport.RepoTransport("o/r").write_audit_coverage("laptop", coverage)
+        failures.append("accepted a public repo for audit coverage")
+    except ValueError:
+        check(not fake.indexes("PUT"), "audit coverage touched a public repo")
+
+    fake = install([{"private": True}, GhError("HTTP 404: Not Found"), {"content": {}}])
+    where = repo_transport.RepoTransport("o/r").write_audit_coverage("laptop", coverage)
+    check(where == "o/r:audit-coverage/laptop.json", "coverage went to the wrong location")
+    check(base64.b64decode(fake.fields(2)["content"]) == coverage, "wrong audit coverage bytes")
+
     # --- writing: the concurrency contract -------------------------------------------
     fake = install([encoded(payload, sha="existing-sha"), {"content": {}}])
     where = repo_transport.RepoTransport("o/r").write_own_manifest("laptop", manifest)

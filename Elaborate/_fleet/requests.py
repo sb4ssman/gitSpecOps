@@ -22,7 +22,42 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-KINDS = {"pull": "fast-forward", "clone": "clone"}
+KINDS = {"pull": "fast-forward", "clone": "clone", "resolve": "resolve repository"}
+RESOLVE_OPERATIONS = {
+    "changes": set(), "untracked": {"file"}, "commit-plan": {"files", "message"},
+    "commit-apply": {"files", "message", "plan_id"}, "push-plan": set(), "push-apply": {"plan_id"},
+    "branches": set(), "stashes": set(), "fetch": set(),
+    "stash-plan": {"message"}, "stash-apply": {"message", "plan_id"},
+}
+
+
+def valid_resolve(value) -> bool:
+    if not isinstance(value, dict) or not isinstance(value.get("op"), str):
+        return False
+    op = value["op"]
+    if op not in RESOLVE_OPERATIONS:
+        return False
+    base = {"op", "checkout"}
+    fields = RESOLVE_OPERATIONS[op]
+    if not fields <= value.keys() or set(value) - base - fields:
+        return False
+    checkout = value.get("checkout", "")
+    if not isinstance(checkout, str) or (checkout and not re.fullmatch(r"[a-f0-9]{32}", checkout)):
+        return False
+    if op not in ("changes", "branches", "stashes", "fetch") and not checkout:
+        return False
+    if "files" in fields and (not isinstance(value["files"], list) or not 0 < len(value["files"]) <= 100):
+        return False
+    paths = value["files"] if "files" in fields else [value["file"]] if "file" in fields else []
+    if any(not isinstance(path, str) or not 0 < len(path) <= 500 or not path.isprintable() for path in paths):
+        return False
+    if "message" in fields:
+        msg = value["message"]
+        if not isinstance(msg, str) or not msg.strip() or len(msg) > 5000 or "\0" in msg:
+            return False
+    return "plan_id" not in fields or (
+        isinstance(value["plan_id"], str) and re.fullmatch(r"[a-f0-9]{64}", value["plan_id"]) is not None
+    )
 #: What a request can end as. "partial": some repositories done, some not; never shown as done.
 ENDED = ("done", "partial", "failed", "dismissed")
 #: What other machines are told about one repository: fixed sentences by outcome, never Git's
@@ -141,7 +176,19 @@ class RequestBook:
             return True
 
     # ---------------------------------------------------------------- asking
-    def send(self, to: str, to_label: str, kind: str, items: list[dict]) -> dict:
+    def device_matches(self, machine_id, device_id) -> bool:
+        if not isinstance(device_id, str) or not device_id.startswith("ts-"):
+            return False
+        if machine_id.startswith("ts-"):
+            return device_id == machine_id
+        with self.lock:
+            try:
+                peers = json.loads(self.peers_path.read_bytes())
+            except (FileNotFoundError, ValueError):
+                return False
+            return isinstance(peers, dict) and peers.get(machine_id) == device_id
+
+    def send(self, to: str, to_label: str, kind: str, items: list[dict], *, resolve=None) -> dict:
         if kind not in KINDS:
             raise ValueError("a request is pull or clone")
         if not valid_items(items):
@@ -149,6 +196,10 @@ class RequestBook:
         request = {"id": uuid.uuid4().hex[:16], "from": self.machine_id, "from_label": self.label,
                    "to": to, "to_label": to_label, "kind": kind, "items": items, "at": _now().isoformat(),
                    "supports_confirmation": True}
+        if kind == "resolve":
+            if len(items) != 1 or not valid_resolve(resolve):
+                raise ValueError("invalid remote repository operation")
+            request["resolve"] = resolve
         with self.lock:
             sent = [item for item in self._read(self.out_path) if _fresh(item.get("at", ""))]
             sent.append(request)
@@ -159,11 +210,13 @@ class RequestBook:
         with self.lock:
             return [item for item in self._read(self.out_path) if _fresh(item.get("at", ""))]
 
-    def published(self, mode: str | None = None) -> list[dict]:
+    def published(self, mode: str | None = None, *, device_id=None) -> list[dict]:
         """What GET /v1/requests serves: this machine's requests, and its answers to the requests
         others sent it, so the asking machine learns what happened (the user, 2026-11-16)."""
         answers = []
         for item in self.incoming(include_hidden=True):
+            if item["kind"] == "resolve" and not self.device_matches(item["from"], device_id):
+                continue
             selected = item.get("approval_mode", "local")
             effective = "paused" if mode == "paused" else selected if mode is None or mode == selected else "local"
             answer = {"answer_for": item["id"], "from": self.machine_id, "to": item["from"],
@@ -173,7 +226,10 @@ class RequestBook:
                     and _valid_receipt(item.get("challenge"), item)):
                 answer["challenge"] = item["challenge"]
             answers.append(answer)
-        return self.outgoing() + answers
+        return [item for item in self.outgoing()
+                if item["kind"] != "resolve" or (
+                    item.get("status") not in ENDED and self.device_matches(item["to"], device_id)
+                )] + answers
 
     def confirm(self, request_id: str, text: str) -> dict:
         with self.lock:
@@ -260,6 +316,8 @@ class RequestBook:
                                        "challenge": challenge if _valid_receipt(challenge, request) else None}
                             if any(request.get(key) != value for key, value in updates.items()):
                                 request.update(updates)
+                                if request["kind"] == "resolve" and request["status"] in ENDED:
+                                    request["resolve"] = {"op": request["resolve"]["op"]}
                                 answered = True
             if answered:
                 self._write(self.out_path, sent)
@@ -271,11 +329,16 @@ class RequestBook:
                         or not valid_items(item.get("items"))
                         or not _fresh(item.get("at", ""))):
                     continue
+                resolve = item.get("kind") == "resolve"
+                if resolve and (len(item["items"]) != 1 or not valid_resolve(item.get("resolve"))):
+                    continue
                 request = book.get(item["id"])
                 if request is None:
                     request = {key: item[key] for key in ("id", "from", "to", "kind", "items", "at")}
                     request.update(from_label=str(peer_label or item.get("from_label", from_machine))[:200], status="waiting", result="",
                                    approval_mode=mode if item.get("supports_confirmation") is True or mode == "automatic" else "local")
+                    if resolve:
+                        request.update(resolve=item["resolve"], approval_mode="local")
                     if mode == "paused":
                         request.update(status="dismissed", result="Incoming fleet operations are paused on this machine.")
                     if request["approval_mode"] in CONFIRMATION_MODES:
@@ -324,6 +387,8 @@ class RequestBook:
             if request_id not in book:
                 raise ValueError("that request is no longer here; reload")
             book[request_id].update(status=status, result=result[:2000])
+            if book[request_id]["kind"] == "resolve" and status in ENDED:
+                book[request_id]["resolve"] = {"op": book[request_id]["resolve"]["op"]}
             self._write(self.in_path, book)
             return book[request_id]
 
@@ -350,7 +415,7 @@ def perform(request: dict, local_checkouts, libraries: list[str], private=None, 
     for this machine's log."""
     from Special._sync.actions import apply_catchup, apply_materialize, fleet_clone_origin, plan_catchup
     from Special._runtime.files import traverses_link
-    if request.get("kind") not in KINDS or not valid_items(request.get("items")):
+    if request.get("kind") not in ("pull", "clone") or not valid_items(request.get("items")):
         return "failed", "Invalid operation or repository targets."
     private = private or (lambda _name, _detail: None)
     good = bad = 0

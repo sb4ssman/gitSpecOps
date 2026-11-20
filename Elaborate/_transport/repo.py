@@ -34,7 +34,7 @@ if _REPO_ROOT not in sys.path:
 
 from Basic._providers.github import GhError, run_gh  # noqa: E402
 
-from Elaborate._transport.folder import SAFE_MACHINE_ID  # noqa: E402
+from Elaborate._transport.folder import AUDIT_COVERAGE_DIR, SAFE_MACHINE_ID, coverage_filename  # noqa: E402
 from Special._sync.manifest import (COMPRESSED_SUFFIX, MANIFEST_SUFFIX,  # noqa: E402
                       decode_manifest, encode_manifest, manifest_filename)
 
@@ -121,20 +121,29 @@ class RepoTransport:
         payload = encode_manifest(manifest, compress)
         path = f"{MANIFEST_DIR}/{manifest_filename(machine_id, compress)}"
 
+        self._write_raw(path, payload, f"gitSpecOps: {machine_id}")
+        self._remove_stale(machine_id, compress)
+        return f"{self.spec}:{path}"
+
+    def write_audit_coverage(self, machine_id: str, payload: bytes) -> str:
+        path = f"{AUDIT_COVERAGE_DIR}/{coverage_filename(machine_id)}"
+        info = self._api("")
+        if not isinstance(info, dict) or info.get("private") is not True:
+            raise ValueError("audit coverage requires a private state repository")
+        self._write_raw(path, payload, f"gitSpecOps: audit coverage for {machine_id}")
+        return f"{self.spec}:{path}"
+
+    def _write_raw(self, path: str, payload: bytes, message: str) -> None:
         for attempt in range(2):
             _existing, sha = self._read_raw(path)
-            fields = {
-                "message": f"gitSpecOps: {machine_id}",
-                "content": base64.b64encode(payload).decode("ascii"),
-            }
+            fields = {"message": message, "content": base64.b64encode(payload).decode("ascii")}
             if sha:
                 fields["sha"] = sha
             if self.branch:
                 fields["branch"] = self.branch
             try:
                 self._api(f"contents/{path}", method="PUT", fields=fields)
-                self._remove_stale(machine_id, compress)
-                return f"{self.spec}:{path}"
+                return
             except GhError as exc:
                 # 409/422 here means the blob moved under us — another machine wrote, or our
                 # cached sha is stale. Re-reading and retrying is correct; forcing is not.

@@ -43,7 +43,8 @@ class SecuritySettings:
     def owned_policy(self) -> dict:
         """Raw common-owned lists only, distinct from effective accumulated component values."""
         owned = self.document.get("defaults", {}).get("security", {})
-        return {name: copy.deepcopy(owned.get(name, [])) for name in DEFAULTS["security"]}
+        return {name: copy.deepcopy(owned.get(name, False if name == "audit_history_cache" else []))
+                for name in DEFAULTS["security"]}
 
     def summary(self) -> dict:
         """Counts and source labels only; no policies, identities, profile paths or revisions."""

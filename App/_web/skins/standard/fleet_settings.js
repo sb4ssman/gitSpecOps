@@ -37,7 +37,7 @@ const textInput = (value, placeholder) => {
 export function renderSettings(block, connection, token) {
   if (block.dataset.built === '1') return;
   block.dataset.built = '1';
-  const state = {settings: null, message: '', plan: null, key: ''};
+  const state = {settings: null, message: '', plan: null, key: '', auditStorage: null};
 
   async function call(action, payload = {}) {
     return connection.desktopAction(`setup/${action}`, payload, token(), {structured: true});
@@ -48,6 +48,15 @@ export function renderSettings(block, connection, token) {
     try { state.settings = (await call('settings')).settings; }
     catch (error) { state.message = error.message; }
     draw();
+    try {
+      const reply = await connection.desktopAction('security-engines', {}, token(), {structured: true});
+      state.auditStorage = reply.audit_storage || null;
+      const slot = block.querySelector('[data-audit-storage]');
+      if (slot) slot.replaceChildren(auditStorageSection());
+    } catch (error) {
+      const slot = block.querySelector('[data-audit-storage]');
+      if (slot) slot.replaceChildren(el('p', error.message, 'tone-text-warning'));
+    }
   }
 
   // A setting made at once: say what happened, then read the settings back.
@@ -313,6 +322,36 @@ export function renderSettings(block, connection, token) {
     return box;
   }
 
+  function auditStorageSection() {
+    const audit = state.auditStorage;
+    const box = section('Audit history storage');
+    if (!audit) return box;
+    box.append(el('p', 'Enable to save masked history scans on this machine with Python’s built-in SQLite. ' +
+      'The file can contain private repository metadata. Fleet sharing exports coverage separately.', 'host-note'),
+      el('code', audit.path),
+      el('p', audit.exists ? 'Database file exists.' : 'An audit can save completed history work after you enable storage.', 'host-note'));
+    const status = el('p', '', 'host-note');
+    status.setAttribute('role', 'status');
+    const save = button(audit.enabled ? 'Disable local history storage' : 'Enable local history storage', async () => {
+      save.disabled = true;
+      try {
+        const reply = await connection.desktopAction('security-policy-change', {audit_history_cache: !audit.enabled},
+          token(), {structured: true});
+        state.auditStorage = reply.audit_storage;
+        const slot = box.parentNode;
+        if (slot) slot.replaceChildren(auditStorageSection(),
+          el('p', audit.enabled ? 'Storage disabled. The existing file is kept.' : 'Storage enabled for the next audit.', 'host-note'));
+      } catch (error) { status.textContent = error.message; }
+      finally { save.disabled = false; }
+    });
+    if (!audit.available && !audit.enabled) {
+      box.append(el('p', 'This Python build omits SQLite. Audits can run without it.', 'host-note'));
+    } else {
+      box.append(save, status);
+    }
+    return box;
+  }
+
   function draw() {
     block.replaceChildren();
     const status = el('p', state.message, 'host-note'); status.setAttribute('role', 'status');
@@ -324,6 +363,10 @@ export function renderSettings(block, connection, token) {
     const grid = el('div', undefined, 'setup-sections');
     grid.append(fleetSection(s), connectionsSection(s), librariesSection(s), sharedSection(s), fetchSection(s),
       basketsSection(s), displaySection(s), signInSection(s), tasksSection(s));
+    const storage = el('div');
+    storage.dataset.auditStorage = '';
+    if (state.auditStorage) storage.append(auditStorageSection());
+    grid.append(storage);
     block.append(grid);
   }
 

@@ -201,6 +201,7 @@ class PeerNetwork:
         self.adopt_name = adopt_name  # saves a newer fleet name heard from a machine of this fleet
         self.requests = requests  # requests.RequestBook: asked of others, asked of this machine
         self.own_changes = own_changes  # repo_id -> this machine's uncommitted-work summary
+        self.own_resolve_result = None
         self.on_requests = None  # called when requests arrive (the peer runs the safe ones)
         self.request_mode = lambda: "local"
         self.addresses: dict[str, str] = {}  # machine_id -> its Tailscale address, from the last round
@@ -241,8 +242,11 @@ class PeerNetwork:
                                            own_settings=self.shared.record if self.shared else None,
                                            own_name=lambda: self.config.get("fleet_name"),
                                            on_knock=self.knocked.set,
-                                           own_requests=(lambda: self.requests.published(self.request_mode())) if self.requests else None,
-                                           own_changes=self.own_changes, own_known=self.known)
+                                           own_authenticated_requests=(
+                                               lambda device: self.requests.published(self.request_mode(), device_id=device)
+                                           ) if self.requests else None,
+                                           own_changes=self.own_changes, own_known=self.known,
+                                           own_resolve_result=self.own_resolve_result)
             threading.Thread(target=self.server.serve_forever, daemon=True).start()
         except OSError as exc:
             self.log(f"Could not listen for peers on port {self.port}: {exc}")
@@ -501,6 +505,7 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
     network = PeerNetwork(config, lambda: latest["report"], store, log=log, shared=shared, adopt_name=adopt_name,
                           requests=book, own_changes=own_changes)
     actions.network = network
+    network.own_resolve_result = actions.remote_resolve.result
     network.request_mode = actions.request_mode
     network.on_requests = actions.run_waiting
 
@@ -596,7 +601,8 @@ def run_peer(config: dict, config_dir: Path, stopping: threading.Event, *,
                       "unobserved_count": observer.excluded_from_observation})
         document["activity"] = dict(activity)
         incoming = book.incoming()
-        document["requests"] = {"waiting": [item for item in incoming if item["status"] in ("waiting", "running")],
+        document["requests"] = {"waiting": [actions.remote_resolve.pending_details(item) for item in incoming
+                                             if item["status"] in ("waiting", "running")],
                                 "answered": [item for item in incoming if item["status"] not in ("waiting", "running")][:10],
                                 "sent": book.outgoing()}
         return document

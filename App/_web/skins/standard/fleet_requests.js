@@ -8,13 +8,19 @@ const el = (tag, text, className) => {
   if (className) item.className = className;
   return item;
 };
-const KIND = {pull: 'fast-forward', clone: 'clone'};
+const KIND = {pull: 'fast-forward', clone: 'clone', resolve: 'resolve repository'};
+const RESOLVE_WORDS = {changes: 'share the staged and unstaged diff', untracked: 'share an untracked file preview',
+  'commit-plan': 'check the proposed commit', 'commit-apply': 'apply the checked commit',
+  'push-plan': 'check the outgoing commits', 'push-apply': 'apply the checked push',
+  branches: 'share branch and divergence details', stashes: 'share the stash list', fetch: 'fetch remote refs',
+  'stash-plan': 'preview a stash of tracked work', 'stash-apply': 'create the checked stash'};
+const description = request => RESOLVE_WORDS[request.resolve?.op] || KIND[request.kind];
 const working = new Set();
 const openApprovals = new Set();
 let message = '';
 
-function names(request) {
-  const list = request.items.map(item => item.name || item.repo_id.slice(0, 8));
+function names(request, rows = []) {
+  const list = request.items.map(item => item.name || rows.find(row => row.id === item.repo_id)?.name || item.repo_id.slice(0, 8));
   return list.length > 6 ? `${list.slice(0, 6).join(', ')} and ${list.length - 6} more` : list.join(', ');
 }
 
@@ -60,7 +66,12 @@ function remoteApproval(request, act) {
 
 // How a request ended, in words: partly done and not done are never shown as done.
 const ENDED = {done: 'Done', partial: 'Partly done', failed: 'Not done', dismissed: 'Dismissed'};
-const ended = request => Object.hasOwn(ENDED, request.status);
+const ended = request => Object.prototype.hasOwnProperty.call(ENDED, request.status);
+
+function requestedWhen(request) {
+  const date = new Date(request.at);
+  return Number.isFinite(date.getTime()) ? `Requested ${date.toLocaleString()}` : '';
+}
 
 export function renderRequests(block, data, act) {
   const requests = data.requests || {waiting: [], answered: [], sent: []};
@@ -70,42 +81,72 @@ export function renderRequests(block, data, act) {
   }
   block.hidden = false;
   if (message) block.append(el('p', message, 'host-note'));
-  const finished = requests.answered.length + requests.sent.filter(ended).length;
+  const outgoing = requests.sent.filter(request => !ended(request));
+  const replies = requests.sent.filter(ended);
+  const finished = requests.answered.length + replies.length;
+  const incomingSection = el('section');
+  const outgoingSection = el('section');
+  const finishedSection = el('section');
+  if (requests.waiting.length) {
+    incomingSection.append(el('h3', `Incoming requests (${requests.waiting.length})`));
+    block.append(incomingSection);
+  }
+  if (outgoing.length) {
+    outgoingSection.append(el('h3', `Outgoing requests (${outgoing.length})`));
+    block.append(outgoingSection);
+  }
   if (finished) {
+    finishedSection.append(el('h3', `Finished receipts (${finished})`));
+    block.append(finishedSection);
     const clear = el('button', `Clear ${finished} finished`); clear.type = 'button';
     clear.onclick = async () => {
       try { await act('request-clear', {}); message = 'Cleared; the task log (Settings) keeps the record.'; } catch (error) { message = error.message; }
     };
-    block.append(clear);
+    finishedSection.append(clear);
   }
   for (const request of requests.waiting) {
     const item = el('div', undefined, 'request request-waiting');
-    item.append(el('strong', `${request.from_label} asks this machine to ${KIND[request.kind]} ${request.items.length} repositor${request.items.length === 1 ? 'y' : 'ies'}`),
-      el('p', names(request), 'host-note'),
-      el('p', request.kind === 'pull'
-        ? 'Each is fetched first and moved forward only if it is clean and simply behind; anything else is reported, not touched.'
-        : 'Each is cloned into its organization folder in this machine\'s first library; nothing that exists is replaced.', 'host-note'));
+    item.append(el('strong', `${request.from_label} asks this machine to ${description(request)}`),
+      el('p', names(request, data.rows), 'host-note'));
+    if (request.kind === 'resolve') {
+      const details = request.resolve;
+      for (const text of request.resolve_details || []) item.append(el('p', text, 'host-note'));
+      if (details.op === 'changes' || details.op === 'untracked') {
+        item.append(el('p', 'Apply shares the requested content with the requesting device.', 'host-note'));
+      }
+      if (details.file) item.append(el('code', details.file));
+      if (details.files) item.append(el('pre', details.files.join('\n'), 'host-note'));
+      if (details.message) item.append(el('pre', details.message, 'host-note'));
+    } else {
+      item.append(el('p', request.kind === 'pull'
+        ? 'Each is fetched first and moved forward only if it is clean and simply behind.'
+        : 'Each is cloned into its organization folder in this machine’s first library.', 'host-note'));
+    }
     const busy = working.has(request.id);
-    if (request.status === 'running') { item.append(el('p', 'Running now…', 'host-note')); block.append(item); continue; }
+    if (request.status === 'running') { item.append(el('p', 'Running now…', 'host-note')); incomingSection.append(item); continue; }
     for (const [label, accept] of [['Apply', true], ['Dismiss', false]]) {
       const button = el('button', busy && accept ? 'Working…' : label); button.type = 'button'; button.disabled = busy;
       button.onclick = async () => {
         working.add(request.id); renderRequests(block, data, act);
-        try { await act('request-answer', {id: request.id, accept}); message = accept ? 'Done; the result is below.' : 'Dismissed.'; }
+        try {
+          const reply = await act('request-answer', {id: request.id, accept});
+          message = ENDED[reply.status] ? `${ENDED[reply.status]}. See the finished receipt for details.` :
+            'Reply recorded. See Requests for the current status.';
+        }
         catch (error) { message = error.message; }
         working.delete(request.id);
       };
       item.append(button);
     }
-    block.append(item);
+    incomingSection.append(item);
   }
-  for (const request of requests.answered.slice(0, 3)) {
+  for (const request of requests.answered) {
     const item = el('details', undefined, 'request');
     item.append(el('summary', `${ENDED[request.status] || request.status}: ${KIND[request.kind]} for ${request.from_label} (${request.items.length})`),
       el('pre', request.result || '', 'host-note'));
-    block.append(item);
+    finishedSection.append(item);
   }
-  for (const request of requests.sent) {
+  for (const request of [...outgoing, ...replies]) {
     // Answered over there: say so, with what happened; otherwise it is still waiting.
     const answered = ended(request);
     const item = el(answered ? 'details' : 'div', undefined, `request${request.status === 'partial' || request.status === 'failed' ? ' request-trouble' : ''}`);
@@ -119,11 +160,14 @@ export function renderRequests(block, data, act) {
         : request.approval_mode === 'automatic' ? 'Accepted for automatic execution'
           : 'Waiting for approval on the receiving machine';
     const words = answered
-      ? `${ENDED[request.status]} on ${request.to_label}: ${KIND[request.kind]} ${names(request)}`
-      : request.status === 'running' ? `Running on ${request.to_label}: ${KIND[request.kind]} ${names(request)}. `
-      : request.status === 'waiting' ? `${waiting} · ${request.to_label}: ${KIND[request.kind]} ${names(request)}. `
-        : `Queued for ${request.to_label}; awaiting receipt: ${KIND[request.kind]} ${names(request)}. `;
+      ? `${ENDED[request.status]} on ${request.to_label}: ${description(request)} ${names(request, data.rows)}`
+      : request.status === 'running' ? `Running on ${request.to_label}: ${description(request)} ${names(request, data.rows)}. `
+      : request.status === 'waiting' ? `${waiting} · ${request.to_label}: ${description(request)} ${names(request, data.rows)}. `
+        : `Queued for ${request.to_label}; awaiting receipt: ${description(request)} ${names(request, data.rows)}. `;
     item.append(el(answered ? 'summary' : 'span', words, answered ? undefined : 'host-note'));
+    const when = requestedWhen(request);
+    const machine = data.machines?.find(candidate => candidate.id === request.to);
+    if (when) item.append(el('p', when + (!answered && machine?.freshness === 'stale' ? ' · receiver has not reported recently' : ''), 'host-note'));
     if (canApprove) item.append(remoteApproval(request, act));
     if (answered) item.append(el('pre', request.result || '', 'host-note'));
     const button = el('button', answered ? 'Clear' : 'Withdraw'); button.type = 'button';
@@ -132,6 +176,6 @@ export function renderRequests(block, data, act) {
       try { await act('request-withdraw', {id: request.id}); message = answered ? '' : 'Withdrawn.'; } catch (error) { message = error.message; }
     };
     if (answered || !request.status) item.append(button);
-    block.append(item);
+    (answered ? finishedSection : outgoingSection).append(item);
   }
 }

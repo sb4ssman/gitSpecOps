@@ -11,6 +11,8 @@ RULES = {
 #: Shared service senders, not a person: GitHub's own, and the Claude co-author trailer
 #: (`Co-Authored-By: Claude ... <noreply@anthropic.com>`). Exact watched values still flag.
 SERVICE_NOREPLY = frozenset({"noreply@github.com", "noreply@anthropic.com"})
+# RFC 6598 publishes this allocation; only the exact network notation is public.
+SHARED_PREFIX = re.compile(r"(?<![\w.])100\.64\.0\.0/10(?![\w/.])")
 LEAK_WORDS = re.compile(r"(?i)\b(?:leak|purge|scrub|still served|support ticket)\b")
 COMMIT_ID = re.compile(r"(?<![A-Za-z0-9])[0-9a-f]{7,40}(?![A-Za-z0-9])")
 
@@ -18,6 +20,8 @@ COMMIT_ID = re.compile(r"(?<![A-Za-z0-9])[0-9a-f]{7,40}(?![A-Za-z0-9])")
 def check(text, where, policy, object_id=""):
     for name, pattern in RULES.items():
         for match in pattern.finditer(text):
+            if name == "tailnet address" and SHARED_PREFIX.match(text, match.start()):
+                continue
             if name == "email address" and (match[0].lower().endswith("@users.noreply.github.com") or
                                              match[0].lower() in SERVICE_NOREPLY):
                 continue

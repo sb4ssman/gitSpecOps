@@ -31,10 +31,11 @@ def _numstat(path: Path, *extra: str) -> dict[str, tuple[int, int]]:
     return counts
 
 
-def working_changes(path) -> dict:
+def working_changes(path, *, expanded=False, offset=0) -> dict:
     """Changed files and compact untracked entries, with line counts for tracked files."""
     path = Path(path)
-    status = run_git(path, ["status", "--porcelain=v1", "-z", "--untracked-files=normal"], timeout=60)
+    untracked_mode = "all" if expanded else "normal"
+    status = run_git(path, ["status", "--porcelain=v1", "-z", f"--untracked-files={untracked_mode}"], timeout=60)
     if status.returncode:
         raise ValueError("Git could not read this checkout's status")
     plain, ignoring_eol = _numstat(path), _numstat(path, "--ignore-cr-at-eol")
@@ -62,6 +63,8 @@ def working_changes(path) -> dict:
         (tracked, "changed file"), (untracked_files, "new file"), (untracked_folders, "new folder")) if count]
     if eol_only:
         parts.append("all only line endings" if eol_only == len(files) else f"{eol_only} only line endings")
-    return {"files": files[:MAX_FILES], "count": len(files), "eol_only": eol_only, "untracked": untracked,
+    end = offset + MAX_FILES
+    return {"files": files[offset:end], "count": len(files), "next_offset": end if end < len(files) else None,
+            "eol_only": eol_only, "untracked": untracked,
             "untracked_files": untracked_files, "untracked_folders": untracked_folders,
             "summary": ", ".join(parts) if files else "no uncommitted work"}

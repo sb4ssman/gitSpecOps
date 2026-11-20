@@ -67,7 +67,7 @@ def gh_authenticated() -> bool:
 # The provider
 # -------------------------------------------------------------------------------------
 # Fields requested from `gh` for both list and view; maps 1:1 onto RepoRef in _ref_from_json.
-_FIELDS = "id,name,nameWithOwner,url,isPrivate,isFork,isArchived"
+_FIELDS = "id,name,nameWithOwner,url,isPrivate,isFork,isArchived,visibility"
 
 
 def _ref_from_json(item: dict) -> RepoRef:
@@ -81,6 +81,7 @@ def _ref_from_json(item: dict) -> RepoRef:
         private=item.get("isPrivate", False),
         fork=item.get("isFork", False),
         archived=item.get("isArchived", False),
+        visibility=(item.get("visibility") or "").lower() or None,
     )
 
 
